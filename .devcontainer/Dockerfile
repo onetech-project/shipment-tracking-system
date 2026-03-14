@@ -7,4 +7,6 @@ RUN apt-get update && apt-get install -y \
   libzbar0 \
   build-essential \
   python3 \
+  postgresql-client \
+  redis-tools \
   && rm -rf /var/lib/apt/lists/*

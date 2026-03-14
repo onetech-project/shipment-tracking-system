@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ── Stage 1: Build ────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:24.14.0-alpine AS builder
 
 WORKDIR /app
 
@@ -22,7 +22,7 @@ WORKDIR /app/apps/backend
 RUN npm run build
 
 # ── Stage 2: Production ───────────────────────────────────
-FROM node:20-alpine AS production
+FROM node:24.14.0-alpine AS production
 
 ENV NODE_ENV=production
 
@@ -41,6 +41,6 @@ COPY packages/shared/ packages/shared/
 
 WORKDIR /app/apps/backend
 
-EXPOSE 3001
+EXPOSE 4000
 
 CMD ["node", "dist/main"]

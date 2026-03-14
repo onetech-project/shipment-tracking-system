@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ── Stage 1: Dependencies ─────────────────────────────────
-FROM node:20-alpine AS deps
+FROM node:24.14.0-alpine AS deps
 
 WORKDIR /app
 
@@ -12,7 +12,7 @@ COPY packages/shared/package.json packages/shared/
 RUN npm ci --workspace=apps/frontend --include-workspace-root
 
 # ── Stage 2: Build ────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:24.14.0-alpine AS builder
 
 WORKDIR /app
 
@@ -28,7 +28,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # ── Stage 3: Production ───────────────────────────────────
-FROM node:20-alpine AS production
+FROM node:24.14.0-alpine AS production
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
