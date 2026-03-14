@@ -137,3 +137,20 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# NestJS build output
+apps/backend/dist/
+
+# Next.js standalone
+apps/frontend/.next/
+apps/frontend/out/
+
+# TypeORM migration build artifacts
+*.js.map
+
+# Docker secrets / overrides
+docker-compose.override.yml
+*.pem
+*.key
+*.crt
+

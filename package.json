@@ -8,8 +8,16 @@
   ],
   "scripts": {
     "dev": "concurrently \"npm:dev:backend\" \"npm:dev:frontend\"",
-    "dev:backend": "npm run start:dev --workspace=backend",
-    "dev:frontend": "npm run dev --workspace=frontend"
+    "dev:backend": "npm run start:dev --workspace=apps/backend",
+    "dev:frontend": "npm run dev --workspace=apps/frontend",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "migration:run": "npm run migration:run --workspace=apps/backend",
+    "migration:revert": "npm run migration:revert --workspace=apps/backend",
+    "migration:generate": "npm run migration:generate --workspace=apps/backend",
+    "migration:show": "npm run migration:show --workspace=apps/backend",
+    "schema:drop": "npm run schema:drop --workspace=apps/backend"
   },
   "devDependencies": {
     "concurrently": "^8.2.0"

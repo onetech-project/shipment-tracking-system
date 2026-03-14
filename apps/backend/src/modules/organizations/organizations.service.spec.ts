@@ -1,0 +1,144 @@
+import { Test, TestingModule } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
+import { NotFoundException, ConflictException } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { OrganizationsService } from './organizations.service';
+import { Organization } from './entities/organization.entity';
+import { AuthService } from '../auth/auth.service';
+
+function makeOrg(overrides: Partial<Organization> = {}): Organization {
+  return Object.assign(new Organization(), {
+    id: 'org-1',
+    name: 'Acme',
+    slug: 'acme',
+    isActive: true,
+    ...overrides,
+  });
+}
+
+describe('OrganizationsService', () => {
+  let service: OrganizationsService;
+
+  const orgRepo = {
+    find: jest.fn(),
+    findOne: jest.fn(),
+    create: jest.fn((dto) => dto),
+    save: jest.fn(),
+  };
+
+  const authService = {
+    revokeAllTokens: jest.fn(),
+  };
+
+  const eventEmitter = { emit: jest.fn() };
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        OrganizationsService,
+        { provide: getRepositoryToken(Organization), useValue: orgRepo },
+        { provide: AuthService, useValue: authService },
+        { provide: EventEmitter2, useValue: eventEmitter },
+      ],
+    }).compile();
+
+    service = module.get<OrganizationsService>(OrganizationsService);
+    jest.clearAllMocks();
+    orgRepo.create.mockImplementation((dto) => ({ ...dto }));
+  });
+
+  // ─── findOne ──────────────────────────────────────────────────────────────
+
+  describe('findOne()', () => {
+    it('returns the organization when it exists', async () => {
+      const org = makeOrg();
+      orgRepo.findOne.mockResolvedValue(org);
+
+      const result = await service.findOne('org-1');
+      expect(result).toBe(org);
+    });
+
+    it('throws NotFoundException when not found', async () => {
+      orgRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.findOne('missing-id')).rejects.toThrow(
+        new NotFoundException('Organization not found'),
+      );
+    });
+  });
+
+  // ─── create ───────────────────────────────────────────────────────────────
+
+  describe('create()', () => {
+    it('saves and returns a new organization', async () => {
+      const saved = makeOrg();
+      orgRepo.findOne.mockResolvedValue(null); // no duplicate
+      orgRepo.save.mockResolvedValue(saved);
+
+      const result = await service.create({ name: 'Acme', slug: 'acme' });
+
+      expect(orgRepo.save).toHaveBeenCalled();
+      expect(result).toBe(saved);
+      expect(eventEmitter.emit).toHaveBeenCalledWith('organization.created', { organizationId: 'org-1' });
+    });
+
+    it('throws ConflictException when name/slug already in use', async () => {
+      orgRepo.findOne.mockResolvedValue(makeOrg()); // duplicate found
+
+      await expect(service.create({ name: 'Acme', slug: 'acme' })).rejects.toThrow(
+        new ConflictException('Organization name or slug already exists'),
+      );
+
+      expect(orgRepo.save).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── update ───────────────────────────────────────────────────────────────
+
+  describe('update()', () => {
+    it('applies dto changes and saves', async () => {
+      const org = makeOrg();
+      const saved = makeOrg({ name: 'NewName' });
+      orgRepo.findOne.mockResolvedValue(org);
+      orgRepo.save.mockResolvedValue(saved);
+
+      const result = await service.update('org-1', { name: 'NewName' });
+
+      expect(orgRepo.save).toHaveBeenCalledWith(expect.objectContaining({ name: 'NewName' }));
+      expect(result).toBe(saved);
+      expect(eventEmitter.emit).toHaveBeenCalledWith('organization.updated', { organizationId: 'org-1' });
+    });
+
+    it('throws NotFoundException when organization does not exist', async () => {
+      orgRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.update('bad-id', { name: 'X' })).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ─── deactivate ───────────────────────────────────────────────────────────
+
+  describe('deactivate()', () => {
+    it('sets isActive=false and revokes tokens', async () => {
+      const org = makeOrg();
+      orgRepo.findOne.mockResolvedValue(org);
+      orgRepo.save.mockResolvedValue(org);
+      authService.revokeAllTokens.mockResolvedValue(undefined);
+
+      await service.deactivate('org-1', 'actor-1');
+
+      expect(orgRepo.save).toHaveBeenCalledWith(expect.objectContaining({ isActive: false }));
+      expect(authService.revokeAllTokens).toHaveBeenCalledWith('actor-1');
+      expect(eventEmitter.emit).toHaveBeenCalledWith('organization.deactivated', {
+        organizationId: 'org-1',
+        actorId: 'actor-1',
+      });
+    });
+
+    it('throws NotFoundException when org not found', async () => {
+      orgRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.deactivate('missing', 'actor-1')).rejects.toThrow(NotFoundException);
+    });
+  });
+});

@@ -21,13 +21,13 @@
 
 **Purpose**: Scaffold the monorepo workspace, apps, and DevOps artifacts.
 
-- [ ] T001 Initialize NestJS backend application with TypeScript in `apps/backend/`
-- [ ] T002 Initialize Next.js 14 frontend application with TypeScript and App Router in `apps/frontend/`
-- [ ] T003 [P] Initialize `packages/shared` TypeScript package with `package.json` and `tsconfig.json` in `packages/shared/`
-- [ ] T004 [P] Configure monorepo root `package.json` with workspaces and shared scripts in `package.json`
-- [ ] T005 [P] Create backend Dockerfile (multi-stage, Node 20 LTS) in `apps/backend/Dockerfile`
-- [ ] T006 [P] Create frontend Dockerfile (multi-stage, Node 20 LTS, standalone output) in `apps/frontend/Dockerfile`
-- [ ] T007 [P] Create root `Jenkinsfile` with monorepo build, test, and Docker pipeline stages in `Jenkinsfile`
+- [X] T001 Initialize NestJS backend application with TypeScript in `apps/backend/`
+- [X] T002 Initialize Next.js 14 frontend application with TypeScript and App Router in `apps/frontend/`
+- [X] T003 [P] Initialize `packages/shared` TypeScript package with `package.json` and `tsconfig.json` in `packages/shared/`
+- [X] T004 [P] Configure monorepo root `package.json` with workspaces and shared scripts in `package.json`
+- [X] T005 [P] Create backend Dockerfile (multi-stage, Node 20 LTS) in `apps/backend/Dockerfile`
+- [X] T006 [P] Create frontend Dockerfile (multi-stage, Node 20 LTS, standalone output) in `apps/frontend/Dockerfile`
+- [X] T007 [P] Create root `Jenkinsfile` with monorepo build, test, and Docker pipeline stages in `Jenkinsfile`
 
 **Checkpoint**: Both apps scaffold cleanly, shared package is importable, CI/CD artifacts exist.
 
@@ -41,29 +41,29 @@
 
 ### Database & TypeORM
 
-- [ ] T008 Configure TypeORM DataSource with PostgreSQL connection and migration discovery in `apps/backend/src/database/data-source.ts`
-- [ ] T009 Create migration 001 — `organizations` table (id, name, address, is_active, timestamps) in `apps/backend/src/database/migrations/20260314000001-create-organizations.ts`
-- [ ] T010 Create migration 002 — `users` table (id, username, password, is_super_admin, login tracking, lock fields, is_active, timestamps) in `apps/backend/src/database/migrations/20260314000002-create-users.ts`
-- [ ] T011 Create migration 003 — `profiles` table (id, user_id FK UNIQUE, organization_id FK, personal fields, timestamps) in `apps/backend/src/database/migrations/20260314000003-create-profiles.ts`
-- [ ] T012 Create migration 004 — `roles` table (id, name, organization_id NULLABLE, is_default, timestamps) and `permissions` table (id, name UNIQUE `<action>.<module>`, description, timestamps) in `apps/backend/src/database/migrations/20260314000004-create-roles-permissions.ts`
-- [ ] T013 Create migration 005 — `user_roles` join table (user_id, role_id, organization_id composite PK, assigned_at, assigned_by) and `role_permissions` join table (role_id, permission_id composite PK, assigned_at, assigned_by) in `apps/backend/src/database/migrations/20260314000005-create-user-roles-role-permissions.ts`
-- [ ] T014 Create migration 006 — `refresh_tokens` table (id, user_id FK, organization_id NULLABLE, token_hash CHAR(64) UNIQUE, family_id, expires_at, last_used_at, revoked_at, ip_address, user_agent, created_at) in `apps/backend/src/database/migrations/20260314000006-create-refresh-tokens.ts`
-- [ ] T015 Create migration 007 — `invitations` table (id, organization_id FK, email, invited_by FK, token_hash CHAR(64) UNIQUE, status, expires_at, used_at NULLABLE, role_id FK NULLABLE, timestamps) in `apps/backend/src/database/migrations/20260314000007-create-invitations.ts`
-- [ ] T016 Create migration 008 — `audit_logs` partitioned table (id+created_at composite PK, user_id NULLABLE, action, entity_type NULLABLE, entity_id NULLABLE, metadata JSONB NULLABLE, ip_address NULLABLE, user_agent NULLABLE, created_at) with monthly range partitioning in `apps/backend/src/database/migrations/20260314000008-create-audit-logs.ts`
-- [ ] T017 Create migration 009 — all secondary indexes (idx_organizations_name, idx_users_username, idx_user_roles_user_org, idx_refresh_tokens_family_id, idx_audit_logs_user_id, idx_audit_logs_entity, and others per data-model.md) in `apps/backend/src/database/migrations/20260314000009-create-indexes.ts`
+- [X] T008 Configure TypeORM DataSource with PostgreSQL connection and migration discovery in `apps/backend/src/database/data-source.ts`
+- [X] T009 Create migration 001 — `organizations` table (id, name, address, is_active, timestamps) in `apps/backend/src/database/migrations/20260314000001-create-organizations.ts`
+- [X] T010 Create migration 002 — `users` table (id, username, password, is_super_admin, login tracking, lock fields, is_active, timestamps) in `apps/backend/src/database/migrations/20260314000002-create-users.ts`
+- [X] T011 Create migration 003 — `profiles` table (id, user_id FK UNIQUE, organization_id FK, personal fields, timestamps) in `apps/backend/src/database/migrations/20260314000003-create-profiles.ts`
+- [X] T012 Create migration 004 — `roles` table (id, name, organization_id NULLABLE, is_default, timestamps) and `permissions` table (id, name UNIQUE `<action>.<module>`, description, timestamps) in `apps/backend/src/database/migrations/20260314000004-create-roles-permissions.ts`
+- [X] T013 Create migration 005 — `user_roles` join table (user_id, role_id, organization_id composite PK, assigned_at, assigned_by) and `role_permissions` join table (role_id, permission_id composite PK, assigned_at, assigned_by) in `apps/backend/src/database/migrations/20260314000005-create-user-roles-role-permissions.ts`
+- [X] T014 Create migration 006 — `refresh_tokens` table (id, user_id FK, organization_id NULLABLE, token_hash CHAR(64) UNIQUE, family_id, expires_at, last_used_at, revoked_at, ip_address, user_agent, created_at) in `apps/backend/src/database/migrations/20260314000006-create-refresh-tokens.ts`
+- [X] T015 Create migration 007 — `invitations` table (id, organization_id FK, email, invited_by FK, token_hash CHAR(64) UNIQUE, status, expires_at, used_at NULLABLE, role_id FK NULLABLE, timestamps) in `apps/backend/src/database/migrations/20260314000007-create-invitations.ts`
+- [X] T016 Create migration 008 — `audit_logs` partitioned table (id+created_at composite PK, user_id NULLABLE, action, entity_type NULLABLE, entity_id NULLABLE, metadata JSONB NULLABLE, ip_address NULLABLE, user_agent NULLABLE, created_at) with monthly range partitioning in `apps/backend/src/database/migrations/20260314000008-create-audit-logs.ts`
+- [X] T017 Create migration 009 — all secondary indexes (idx_organizations_name, idx_users_username, idx_user_roles_user_org, idx_refresh_tokens_family_id, idx_audit_logs_user_id, idx_audit_logs_entity, and others per data-model.md) in `apps/backend/src/database/migrations/20260314000009-create-indexes.ts`
 
 ### Backend Infrastructure
 
-- [ ] T018 [P] Configure `ConfigModule` (Joi env validation for DATABASE_URL, JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, SMTP_*, LOGIN_MAX_ATTEMPTS, SESSION_INACTIVITY_MINUTES, INVITATION_EXPIRY_HOURS) in `apps/backend/src/app.module.ts`
-- [ ] T019 [P] Set up `nestjs-cls` module and implement `TenantClsInterceptor` (populates `organizationId` from JWT claims on every request) in `apps/backend/src/common/interceptors/tenant-cls.interceptor.ts`
-- [ ] T020 [P] Set up `@nestjs/event-emitter` module for async domain events in `apps/backend/src/app.module.ts`
-- [ ] T021 [P] Set up `BullMQ` module with Redis connection and `EmailQueue` producer for invitation email retry in `apps/backend/src/modules/invitations/email/email.module.ts`
-- [ ] T022 [P] Create global `HttpExceptionFilter` with structured `{ statusCode, error, message }` response shape in `apps/backend/src/common/filters/http-exception.filter.ts`
-- [ ] T023 [P] Create `@Public()` and `@CurrentUser()` decorators in `apps/backend/src/common/decorators/public.decorator.ts` and `current-user.decorator.ts`
+- [X] T018 [P] Configure `ConfigModule` (Joi env validation for DATABASE_URL, JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, SMTP_*, LOGIN_MAX_ATTEMPTS, SESSION_INACTIVITY_MINUTES, INVITATION_EXPIRY_HOURS) in `apps/backend/src/app.module.ts`
+- [X] T019 [P] Set up `nestjs-cls` module and implement `TenantClsInterceptor` (populates `organizationId` from JWT claims on every request) in `apps/backend/src/common/interceptors/tenant-cls.interceptor.ts`
+- [X] T020 [P] Set up `@nestjs/event-emitter` module for async domain events in `apps/backend/src/app.module.ts`
+- [X] T021 [P] Set up `BullMQ` module with Redis connection and `EmailQueue` producer for invitation email retry in `apps/backend/src/modules/invitations/email/email.module.ts`
+- [X] T022 [P] Create global `HttpExceptionFilter` with structured `{ statusCode, error, message }` response shape in `apps/backend/src/common/filters/http-exception.filter.ts`
+- [X] T023 [P] Create `@Public()` and `@CurrentUser()` decorators in `apps/backend/src/common/decorators/public.decorator.ts` and `current-user.decorator.ts`
 
 ### Shared Package
 
-- [ ] T024 [P] Create `JwtPayload` interface and `Permission` enum (all `<action>.<module>` keys from data-model.md) and shared DTOs in `packages/shared/src/auth/index.ts`
+- [X] T024 [P] Create `JwtPayload` interface and `Permission` enum (all `<action>.<module>` keys from data-model.md) and shared DTOs in `packages/shared/src/auth/index.ts`
 
 **Checkpoint**: Database schema is complete. App infrastructure (config, interceptors, event emitter, BullMQ, exception filter, decorators) is wired. Shared types are importable from `packages/shared`.
 
@@ -77,18 +77,18 @@
 
 ### Implementation
 
-- [ ] T025 [P] [US1] Create `User` TypeORM entity mapping to `users` table in `apps/backend/src/modules/users/entities/user.entity.ts`
-- [ ] T026 [P] [US1] Create `RefreshToken` TypeORM entity mapping to `refresh_tokens` table in `apps/backend/src/modules/auth/entities/refresh-token.entity.ts`
-- [ ] T027 [US1] Implement `JwtStrategy` (validates access token, loads user from DB if `is_super_admin` or org active) in `apps/backend/src/modules/auth/strategies/jwt.strategy.ts`
-- [ ] T028 [US1] Implement `RefreshTokenStrategy` (validates refresh token hash, checks `expires_at`, checks `last_used_at` against `SESSION_INACTIVITY_MINUTES`, detects family reuse) in `apps/backend/src/modules/auth/strategies/refresh-token.strategy.ts`
-- [ ] T029 [US1] Implement global `JwtAuthGuard` (extends `AuthGuard('jwt')`, checks `@Public()` metadata via `Reflector`) in `apps/backend/src/common/guards/jwt-auth.guard.ts`
-- [ ] T030 [US1] Implement `AuthService.login()` — validate credentials with bcrypt, increment `failed_attempts` on failure, lock account at `LOGIN_MAX_ATTEMPTS`, reset `failed_attempts` on success, issue access token + refresh token, store SHA-256 hash of refresh token in DB in `apps/backend/src/modules/auth/auth.service.ts`
-- [ ] T031 [US1] Implement `AuthService.refreshToken()` — verify token hash, perform rotation (invalidate current, issue new in same family), detect and handle family reuse (revoke all family tokens) in `apps/backend/src/modules/auth/auth.service.ts`
-- [ ] T032 [US1] Implement `AuthService.logout()` and `AuthService.logoutAll()` — set `revoked_at` on one or all refresh tokens for user in `apps/backend/src/modules/auth/auth.service.ts`
-- [ ] T033 [US1] Implement `AuthController` with endpoints `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `POST /auth/logout-all`, `GET /auth/me`; set/clear `HttpOnly` refresh token cookie in `apps/backend/src/modules/auth/auth.controller.ts`
-- [ ] T034 [P] [US1] Implement frontend auth context (stores access token in memory, exposes `login()`, `logout()`, `user` state) in `apps/frontend/src/features/auth/auth.context.tsx`
-- [ ] T035 [P] [US1] Implement frontend login page with email/password form and error handling in `apps/frontend/src/app/(auth)/login/page.tsx`
-- [ ] T036 [P] [US1] Implement frontend API client with Axios interceptor for automatic access token attachment and silent refresh on 401 in `apps/frontend/src/shared/api/client.ts`
+- [X] T025 [P] [US1] Create `User` TypeORM entity mapping to `users` table in `apps/backend/src/modules/users/entities/user.entity.ts`
+- [X] T026 [P] [US1] Create `RefreshToken` TypeORM entity mapping to `refresh_tokens` table in `apps/backend/src/modules/auth/entities/refresh-token.entity.ts`
+- [X] T027 [US1] Implement `JwtStrategy` (validates access token, loads user from DB if `is_super_admin` or org active) in `apps/backend/src/modules/auth/strategies/jwt.strategy.ts`
+- [X] T028 [US1] Implement `RefreshTokenStrategy` (validates refresh token hash, checks `expires_at`, checks `last_used_at` against `SESSION_INACTIVITY_MINUTES`, detects family reuse) in `apps/backend/src/modules/auth/strategies/refresh-token.strategy.ts`
+- [X] T029 [US1] Implement global `JwtAuthGuard` (extends `AuthGuard('jwt')`, checks `@Public()` metadata via `Reflector`) in `apps/backend/src/common/guards/jwt-auth.guard.ts`
+- [X] T030 [US1] Implement `AuthService.login()` — validate credentials with bcrypt, increment `failed_attempts` on failure, lock account at `LOGIN_MAX_ATTEMPTS`, reset `failed_attempts` on success, issue access token + refresh token, store SHA-256 hash of refresh token in DB in `apps/backend/src/modules/auth/auth.service.ts`
+- [X] T031 [US1] Implement `AuthService.refreshToken()` — verify token hash, perform rotation (invalidate current, issue new in same family), detect and handle family reuse (revoke all family tokens) in `apps/backend/src/modules/auth/auth.service.ts`
+- [X] T032 [US1] Implement `AuthService.logout()` and `AuthService.logoutAll()` — set `revoked_at` on one or all refresh tokens for user in `apps/backend/src/modules/auth/auth.service.ts`
+- [X] T033 [US1] Implement `AuthController` with endpoints `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `POST /auth/logout-all`, `GET /auth/me`; set/clear `HttpOnly` refresh token cookie in `apps/backend/src/modules/auth/auth.controller.ts`
+- [X] T034 [P] [US1] Implement frontend auth context (stores access token in memory, exposes `login()`, `logout()`, `user` state) in `apps/frontend/src/features/auth/auth.context.tsx`
+- [X] T035 [P] [US1] Implement frontend login page with email/password form and error handling in `apps/frontend/src/app/(auth)/login/page.tsx`
+- [X] T036 [P] [US1] Implement frontend API client with Axios interceptor for automatic access token attachment and silent refresh on 401 in `apps/frontend/src/shared/api/client.ts`
 
 **Checkpoint**: Full login → refresh → logout lifecycle works. Account lockout works. Access token in memory; refresh token in `HttpOnly` cookie.
 
@@ -102,14 +102,14 @@
 
 ### Implementation
 
-- [ ] T037 [P] [US2] Create `Organization` TypeORM entity in `apps/backend/src/modules/organizations/entities/organization.entity.ts`
-- [ ] T038 [P] [US2] Create `Profile` TypeORM entity (references `User` and `Organization`) in `apps/backend/src/modules/organizations/entities/profile.entity.ts`
-- [ ] T039 [US2] Implement `TenantRepository<T>` abstract base class (automatically appends `organization_id` filter from `nestjs-cls` context on all queries) in `apps/backend/src/common/repositories/tenant.repository.ts`
-- [ ] T040 [US2] Implement `OrganizationsService` (findAll with pagination, findOne, create, update, deactivate) in `apps/backend/src/modules/organizations/organizations.service.ts`
-- [ ] T041 [US2] Implement `OrganizationsController` with endpoints `GET /organizations`, `GET /organizations/:id`, `POST /organizations`, `PATCH /organizations/:id`, `PATCH /organizations/:id/deactivate`; restrict create/update/deactivate to `is_super_admin` in `apps/backend/src/modules/organizations/organizations.controller.ts`
-- [ ] T042 [US2] Implement org deactivation side-effect: set `revoked_at` on all active `refresh_tokens` for users whose `profiles.organization_id` matches the deactivated org in `apps/backend/src/modules/organizations/organizations.service.ts`
-- [ ] T043 [P] [US2] Implement frontend organization list and detail pages at `apps/frontend/src/app/(dashboard)/organizations/` (page.tsx and `[id]/page.tsx`)
-- [ ] T044 [P] [US2] Implement frontend organization feature hooks and server actions in `apps/frontend/src/features/organizations/`
+- [X] T037 [P] [US2] Create `Organization` TypeORM entity in `apps/backend/src/modules/organizations/entities/organization.entity.ts`
+- [X] T038 [P] [US2] Create `Profile` TypeORM entity (references `User` and `Organization`) in `apps/backend/src/modules/organizations/entities/profile.entity.ts`
+- [X] T039 [US2] Implement `TenantRepository<T>` abstract base class (automatically appends `organization_id` filter from `nestjs-cls` context on all queries) in `apps/backend/src/common/repositories/tenant.repository.ts`
+- [X] T040 [US2] Implement `OrganizationsService` (findAll with pagination, findOne, create, update, deactivate) in `apps/backend/src/modules/organizations/organizations.service.ts`
+- [X] T041 [US2] Implement `OrganizationsController` with endpoints `GET /organizations`, `GET /organizations/:id`, `POST /organizations`, `PATCH /organizations/:id`, `PATCH /organizations/:id/deactivate`; restrict create/update/deactivate to `is_super_admin` in `apps/backend/src/modules/organizations/organizations.controller.ts`
+- [X] T042 [US2] Implement org deactivation side-effect: set `revoked_at` on all active `refresh_tokens` for users whose `profiles.organization_id` matches the deactivated org in `apps/backend/src/modules/organizations/organizations.service.ts`
+- [X] T043 [P] [US2] Implement frontend organization list and detail pages at `apps/frontend/src/app/(dashboard)/organizations/` (page.tsx and `[id]/page.tsx`)
+- [X] T044 [P] [US2] Implement frontend organization feature hooks and server actions in `apps/frontend/src/features/organizations/`
 
 **Checkpoint**: Super Admin can fully manage organizations. Deactivation immediately terminates org sessions.
 
@@ -123,12 +123,12 @@
 
 ### Implementation
 
-- [ ] T045 [US3] Create `Invitation` TypeORM entity mapping to `invitations` table in `apps/backend/src/modules/invitations/entities/invitation.entity.ts`
-- [ ] T046 [US3] Implement `EmailService` with `@nestjs-modules/mailer` and `EmailQueueConsumer` BullMQ worker (exponential backoff retry) for sending invitation emails in `apps/backend/src/modules/invitations/email/email.service.ts` and `email.processor.ts`
-- [ ] T047 [US3] Implement `InvitationsService` — generate `crypto.randomBytes(32)` token, store SHA-256 hash, enforce `INVITATION_EXPIRY_HOURS`, idempotent re-invite logic (revoke pending → create new), atomic `UPDATE WHERE used_at IS NULL` single-use gate on accept in `apps/backend/src/modules/invitations/invitations.service.ts`
-- [ ] T048 [US3] Implement `InvitationsController` with endpoints `POST /invitations`, `GET /invitations`, `GET /invitations/verify` (@Public), `POST /invitations/accept` (@Public), `DELETE /invitations/:id` in `apps/backend/src/modules/invitations/invitations.controller.ts`
-- [ ] T049 [P] [US3] Implement frontend accept-invitation page (form to set password, calls `POST /invitations/accept`, redirects to login on success) in `apps/frontend/src/app/invitations/accept/page.tsx`
-- [ ] T050 [P] [US3] Implement frontend invitation send form and list in `apps/frontend/src/features/invitations/` and `apps/frontend/src/app/(dashboard)/invitations/page.tsx`
+- [X] T045 [US3] Create `Invitation` TypeORM entity mapping to `invitations` table in `apps/backend/src/modules/invitations/entities/invitation.entity.ts`
+- [X] T046 [US3] Implement `EmailService` with `@nestjs-modules/mailer` and `EmailQueueConsumer` BullMQ worker (exponential backoff retry) for sending invitation emails in `apps/backend/src/modules/invitations/email/email.service.ts` and `email.processor.ts`
+- [X] T047 [US3] Implement `InvitationsService` — generate `crypto.randomBytes(32)` token, store SHA-256 hash, enforce `INVITATION_EXPIRY_HOURS`, idempotent re-invite logic (revoke pending → create new), atomic `UPDATE WHERE used_at IS NULL` single-use gate on accept in `apps/backend/src/modules/invitations/invitations.service.ts`
+- [X] T048 [US3] Implement `InvitationsController` with endpoints `POST /invitations`, `GET /invitations`, `GET /invitations/verify` (@Public), `POST /invitations/accept` (@Public), `DELETE /invitations/:id` in `apps/backend/src/modules/invitations/invitations.controller.ts`
+- [X] T049 [P] [US3] Implement frontend accept-invitation page (form to set password, calls `POST /invitations/accept`, redirects to login on success) in `apps/frontend/src/app/invitations/accept/page.tsx`
+- [X] T050 [P] [US3] Implement frontend invitation send form and list in `apps/frontend/src/features/invitations/` and `apps/frontend/src/app/(dashboard)/invitations/page.tsx`
 
 **Checkpoint**: Full invitation lifecycle works end-to-end. Expired and replayed tokens are rejected.
 
@@ -142,21 +142,21 @@
 
 ### Implementation
 
-- [ ] T051 [P] [US4] Create `Role` TypeORM entity in `apps/backend/src/modules/roles/entities/role.entity.ts`
-- [ ] T052 [P] [US4] Create `Permission` TypeORM entity in `apps/backend/src/modules/permissions/entities/permission.entity.ts`
-- [ ] T053 [P] [US4] Create `UserRole` TypeORM entity (composite PK: user_id, role_id, organization_id) in `apps/backend/src/modules/roles/entities/user-role.entity.ts`
-- [ ] T054 [P] [US4] Create `RolePermission` TypeORM entity (composite PK: role_id, permission_id) in `apps/backend/src/modules/roles/entities/role-permission.entity.ts`
-- [ ] T055 [US4] Implement `RbacSeederService` with `OnApplicationBootstrap` — idempotent upsert of all default roles (`super_admin`, `admin`, `owner`, `manager`, `staff`) and all permissions from `Permission` enum in `apps/backend/src/modules/permissions/rbac-seeder.service.ts`
-- [ ] T056 [US4] Implement `PermissionsService` (findAll, findOne, create [Super Admin only], update, delete) in `apps/backend/src/modules/permissions/permissions.service.ts`
-- [ ] T057 [US4] Implement `PermissionsController` with endpoints `GET /permissions`, `GET /permissions/:id`, `POST /permissions`, `PATCH /permissions/:id`, `DELETE /permissions/:id` in `apps/backend/src/modules/permissions/permissions.controller.ts`
-- [ ] T058 [US4] Implement `RolesService` (findAll org-scoped, findOne, create, update, delete, assignPermissions via `PUT /roles/:id/permissions`) in `apps/backend/src/modules/roles/roles.service.ts`
-- [ ] T059 [US4] Implement `RolesController` with endpoints `GET /roles`, `GET /roles/:id`, `POST /roles`, `PATCH /roles/:id`, `DELETE /roles/:id`, `PUT /roles/:id/permissions` in `apps/backend/src/modules/roles/roles.controller.ts`
-- [ ] T060 [US4] Implement `PermissionService.getPermissions(userId, orgId)` — execute RBAC JOIN query (user_roles → roles → role_permissions → permissions), return `Set<string>`, cache per request via `nestjs-cls` in `apps/backend/src/modules/permissions/permission.service.ts`
-- [ ] T061 [US4] Implement `RbacGuard` — read `@Authorize()` metadata via `Reflector.getAllAndOverride`, call `PermissionService.getPermissions()`, deny if required permission not in set, bypass for `is_super_admin` in `apps/backend/src/common/guards/rbac.guard.ts`
-- [ ] T062 [US4] Implement `@Authorize(permission: string)` decorator and `PermissionAssertion` injectable for service-layer defense in `apps/backend/src/common/decorators/authorize.decorator.ts`
-- [ ] T063 [US4] Apply `@Authorize()` guards to all existing controller endpoints in Auth, Organizations modules
-- [ ] T064 [P] [US4] Implement frontend roles management pages (list, create, edit, assign permissions) in `apps/frontend/src/app/(dashboard)/roles/` and `apps/frontend/src/features/roles/`
-- [ ] T065 [P] [US4] Implement frontend permissions management pages (list, create, edit) in `apps/frontend/src/app/(dashboard)/permissions/` and `apps/frontend/src/features/permissions/`
+- [X] T051 [P] [US4] Create `Role` TypeORM entity in `apps/backend/src/modules/roles/entities/role.entity.ts`
+- [X] T052 [P] [US4] Create `Permission` TypeORM entity in `apps/backend/src/modules/permissions/entities/permission.entity.ts`
+- [X] T053 [P] [US4] Create `UserRole` TypeORM entity (composite PK: user_id, role_id, organization_id) in `apps/backend/src/modules/roles/entities/user-role.entity.ts`
+- [X] T054 [P] [US4] Create `RolePermission` TypeORM entity (composite PK: role_id, permission_id) in `apps/backend/src/modules/roles/entities/role-permission.entity.ts`
+- [X] T055 [US4] Implement `RbacSeederService` with `OnApplicationBootstrap` — idempotent upsert of all default roles (`super_admin`, `admin`, `owner`, `manager`, `staff`) and all permissions from `Permission` enum in `apps/backend/src/modules/permissions/rbac-seeder.service.ts`
+- [X] T056 [US4] Implement `PermissionsService` (findAll, findOne, create [Super Admin only], update, delete) in `apps/backend/src/modules/permissions/permissions.service.ts`
+- [X] T057 [US4] Implement `PermissionsController` with endpoints `GET /permissions`, `GET /permissions/:id`, `POST /permissions`, `PATCH /permissions/:id`, `DELETE /permissions/:id` in `apps/backend/src/modules/permissions/permissions.controller.ts`
+- [X] T058 [US4] Implement `RolesService` (findAll org-scoped, findOne, create, update, delete, assignPermissions via `PUT /roles/:id/permissions`) in `apps/backend/src/modules/roles/roles.service.ts`
+- [X] T059 [US4] Implement `RolesController` with endpoints `GET /roles`, `GET /roles/:id`, `POST /roles`, `PATCH /roles/:id`, `DELETE /roles/:id`, `PUT /roles/:id/permissions` in `apps/backend/src/modules/roles/roles.controller.ts`
+- [X] T060 [US4] Implement `PermissionService.getPermissions(userId, orgId)` — execute RBAC JOIN query (user_roles → roles → role_permissions → permissions), return `Set<string>`, cache per request via `nestjs-cls` in `apps/backend/src/modules/permissions/permission.service.ts`
+- [X] T061 [US4] Implement `RbacGuard` — read `@Authorize()` metadata via `Reflector.getAllAndOverride`, call `PermissionService.getPermissions()`, deny if required permission not in set, bypass for `is_super_admin` in `apps/backend/src/common/guards/rbac.guard.ts`
+- [X] T062 [US4] Implement `@Authorize(permission: string)` decorator and `PermissionAssertion` injectable for service-layer defense in `apps/backend/src/common/decorators/authorize.decorator.ts`
+- [X] T063 [US4] Apply `@Authorize()` guards to all existing controller endpoints in Auth, Organizations modules
+- [X] T064 [P] [US4] Implement frontend roles management pages (list, create, edit, assign permissions) in `apps/frontend/src/app/(dashboard)/roles/` and `apps/frontend/src/features/roles/`
+- [X] T065 [P] [US4] Implement frontend permissions management pages (list, create, edit) in `apps/frontend/src/app/(dashboard)/permissions/` and `apps/frontend/src/features/permissions/`
 
 **Checkpoint**: RBAC guard enforces permissions on all endpoints. Default roles and permissions are seeded. Org Admins cannot create permissions. Super Admin bypass works.
 
@@ -170,12 +170,12 @@
 
 ### Implementation
 
-- [ ] T066 [US5] Implement `UsersService` (findAll org-scoped, findOne, create with Profile, update, delete, assignRoles, unlock, changePassword) in `apps/backend/src/modules/users/users.service.ts`
-- [ ] T067 [US5] Implement `UsersController` with endpoints `GET /users`, `GET /users/:id`, `POST /users`, `PATCH /users/:id`, `DELETE /users/:id`, `PUT /users/:id/roles`, `POST /users/:id/unlock`, `POST /users/:id/change-password` in `apps/backend/src/modules/users/users.controller.ts`
-- [ ] T068 [US5] Enforce org-scoped isolation in `UsersService` — Organization Admin queries filtered by `organizationId` from JWT/CLS context; throw `ForbiddenException` on cross-org access attempts in `apps/backend/src/modules/users/users.service.ts`
-- [ ] T069 [US5] On `DELETE /users/:id` — call `AuthService.revokeAllTokens(userId)` to terminate all active sessions before deleting user in `apps/backend/src/modules/users/users.service.ts`
-- [ ] T070 [US5] On `PUT /users/:id/roles` — revoke existing refresh tokens so updated permissions take effect on next login in `apps/backend/src/modules/users/users.service.ts`
-- [ ] T071 [P] [US5] Implement frontend users management pages (list, create, edit, assign roles) in `apps/frontend/src/app/(dashboard)/users/` and `apps/frontend/src/features/users/`
+- [X] T066 [US5] Implement `UsersService` (findAll org-scoped, findOne, create with Profile, update, delete, assignRoles, unlock, changePassword) in `apps/backend/src/modules/users/users.service.ts`
+- [X] T067 [US5] Implement `UsersController` with endpoints `GET /users`, `GET /users/:id`, `POST /users`, `PATCH /users/:id`, `DELETE /users/:id`, `PUT /users/:id/roles`, `POST /users/:id/unlock`, `POST /users/:id/change-password` in `apps/backend/src/modules/users/users.controller.ts`
+- [X] T068 [US5] Enforce org-scoped isolation in `UsersService` — Organization Admin queries filtered by `organizationId` from JWT/CLS context; throw `ForbiddenException` on cross-org access attempts in `apps/backend/src/modules/users/users.service.ts`
+- [X] T069 [US5] On `DELETE /users/:id` — call `AuthService.revokeAllTokens(userId)` to terminate all active sessions before deleting user in `apps/backend/src/modules/users/users.service.ts`
+- [X] T070 [US5] On `PUT /users/:id/roles` — revoke existing refresh tokens so updated permissions take effect on next login in `apps/backend/src/modules/users/users.service.ts`
+- [X] T071 [P] [US5] Implement frontend users management pages (list, create, edit, assign roles) in `apps/frontend/src/app/(dashboard)/users/` and `apps/frontend/src/features/users/`
 
 **Checkpoint**: Super Admin and Org Admin user management works with tenant isolation enforced. Session revocation on delete and role change works.
 
@@ -189,11 +189,11 @@
 
 ### Implementation
 
-- [ ] T072 [US6] Verify `AuthService.login()` reads `LOGIN_MAX_ATTEMPTS` from `ConfigService` and locks account (`is_locked=true`, `locked_at=NOW()`) when threshold is reached; returns `ACCOUNT_LOCKED` code in `apps/backend/src/modules/auth/auth.service.ts`
-- [ ] T073 [US6] Verify `RefreshTokenStrategy.validate()` reads `SESSION_INACTIVITY_MINUTES` from `ConfigService` and rejects token with `SESSION_EXPIRED` code when `last_used_at` is stale in `apps/backend/src/modules/auth/strategies/refresh-token.strategy.ts`
-- [ ] T074 [US6] Verify `AuthService.login()` resets `failed_attempts` to 0 on successful authentication in `apps/backend/src/modules/auth/auth.service.ts`
-- [ ] T075 [US6] Verify `UsersService.unlock()` resets `is_locked=false`, `failed_attempts=0`, `locked_at=NULL` atomically and optionally sets `require_password_reset=true` in `apps/backend/src/modules/users/users.service.ts`
-- [ ] T076 [US6] Verify `AuthController` returns structured error with `ACCOUNT_LOCKED` (403) and `ACCOUNT_INACTIVE` (403) response codes with human-readable messages in `apps/backend/src/modules/auth/auth.controller.ts`
+- [X] T072 [US6] Verify `AuthService.login()` reads `LOGIN_MAX_ATTEMPTS` from `ConfigService` and locks account (`is_locked=true`, `locked_at=NOW()`) when threshold is reached; returns `ACCOUNT_LOCKED` code in `apps/backend/src/modules/auth/auth.service.ts`
+- [X] T073 [US6] Verify `RefreshTokenStrategy.validate()` reads `SESSION_INACTIVITY_MINUTES` from `ConfigService` and rejects token with `SESSION_EXPIRED` code when `last_used_at` is stale in `apps/backend/src/modules/auth/strategies/refresh-token.strategy.ts`
+- [X] T074 [US6] Verify `AuthService.login()` resets `failed_attempts` to 0 on successful authentication in `apps/backend/src/modules/auth/auth.service.ts`
+- [X] T075 [US6] Verify `UsersService.unlock()` resets `is_locked=false`, `failed_attempts=0`, `locked_at=NULL` atomically and optionally sets `require_password_reset=true` in `apps/backend/src/modules/users/users.service.ts`
+- [X] T076 [US6] Verify `AuthController` returns structured error with `ACCOUNT_LOCKED` (403) and `ACCOUNT_INACTIVE` (403) response codes with human-readable messages in `apps/backend/src/modules/auth/auth.controller.ts`
 
 **Checkpoint**: Account lockout threshold is configurable. Locked accounts are clearly communicated. Admin unlock is fully operational. Inactivity timeout is enforced.
 
@@ -207,16 +207,16 @@
 
 ### Implementation
 
-- [ ] T077 [US7] Create `AuditLog` TypeORM entity mapping to the `audit_logs` partitioned table in `apps/backend/src/modules/audit/entities/audit-log.entity.ts`
-- [ ] T078 [US7] Implement `AuditModule` and `AuditService.record(event)` — appends to `audit_logs` via `INSERT` (fire-and-forget, no blocking the request); registers as event listener host in `apps/backend/src/modules/audit/audit.module.ts` and `audit.service.ts`
-- [ ] T079 [US7] Register `@OnEvent()` listeners for auth events (`auth.login.success`, `auth.login.failed`, `auth.logout`, `auth.account.locked`, `auth.account.unlocked`) in `apps/backend/src/modules/audit/audit.service.ts`
-- [ ] T080 [US7] Register `@OnEvent()` listeners for org events (`org.created`, `org.updated`, `org.deactivated`) in `apps/backend/src/modules/audit/audit.service.ts`
-- [ ] T081 [US7] Register `@OnEvent()` listeners for user/invitation events (`user.created`, `user.updated`, `user.deleted`, `user.role_assigned`, `user.role_removed`, `user.invited`, `user.activation`) in `apps/backend/src/modules/audit/audit.service.ts`
-- [ ] T082 [US7] Register `@OnEvent()` listeners for role/permission events (`role.created`, `role.permission_assigned`, `role.permission_removed`, `permission.created`) in `apps/backend/src/modules/audit/audit.service.ts`
-- [ ] T083 [US7] Emit all auth domain events from `apps/backend/src/modules/auth/auth.service.ts` using `EventEmitter2`
-- [ ] T084 [US7] Emit all organization domain events from `apps/backend/src/modules/organizations/organizations.service.ts`
-- [ ] T085 [US7] Emit all user and invitation domain events from `apps/backend/src/modules/users/users.service.ts` and `apps/backend/src/modules/invitations/invitations.service.ts`
-- [ ] T086 [US7] Emit all role and permission domain events from `apps/backend/src/modules/roles/roles.service.ts` and `apps/backend/src/modules/permissions/permissions.service.ts`
+- [X] T077 [US7] Create `AuditLog` TypeORM entity mapping to the `audit_logs` partitioned table in `apps/backend/src/modules/audit/entities/audit-log.entity.ts`
+- [X] T078 [US7] Implement `AuditModule` and `AuditService.record`(event)` — appends to `audit_logs` via `INSERT` (fire-and-forget, no blocking the request); registers as event listener host in `apps/backend/src/modules/audit/audit.module.ts` and `audit.service.ts`
+- [X] T079 [US7] Register `@OnEvent()` listeners for auth events (`auth.login.success`, `auth.login.failed`, `auth.logout`, `auth.account.locked`, `auth.account.unlocked`) in `apps/backend/src/modules/audit/audit.service.ts`
+- [X] T080 [US7] Register `@OnEvent()` listeners for org events (`org.created`, `org.updated`, `org.deactivated`) in `apps/backend/src/modules/audit/audit.service.ts`
+- [X] T081 [US7] Register `@OnEvent()` listeners for user/invitation events (`user.created`, `user.updated`, `user.deleted`, `user.role_assigned`, `user.role_removed`, `user.invited`, `user.activation`) in `apps/backend/src/modules/audit/audit.service.ts`
+- [X] T082 [US7] Register `@OnEvent()` listeners for role/permission events (`role.created`, `role.permission_assigned`, `role.permission_removed`, `permission.created`) in `apps/backend/src/modules/audit/audit.service.ts`
+- [X] T083 [US7] Emit all auth domain events from `apps/backend/src/modules/auth/auth.service.ts` using `EventEmitter2`
+- [X] T084 [US7] Emit all organization domain events from `apps/backend/src/modules/organizations/organizations.service.ts`
+- [X] T085 [US7] Emit all user and invitation domain events from `apps/backend/src/modules/users/users.service.ts` and `apps/backend/src/modules/invitations/invitations.service.ts`
+- [X] T086 [US7] Emit all role and permission domain events from `apps/backend/src/modules/roles/roles.service.ts` and `apps/backend/src/modules/permissions/permissions.service.ts`
 
 **Checkpoint**: All 19 audit action types (from data-model.md taxonomy) produce verifiable `audit_logs` rows. Audit writes do not block HTTP responses.
 
@@ -226,11 +226,11 @@
 
 **Purpose**: Hardening, navigation, and developer experience improvements that span all stories.
 
-- [ ] T087 [P] Apply `@nestjs/throttler` rate limiting: strict (10 req/min IP) on `POST /auth/login` and `POST /invitations/accept`; moderate on `POST /auth/refresh` in `apps/backend/src/modules/auth/auth.controller.ts` and `invitations.controller.ts`
-- [ ] T088 [P] Add `GET /health` endpoint returning `{ status: 'ok' }` in `apps/backend/src/app.controller.ts`
-- [ ] T089 [P] Implement `apps/frontend/src/app/(dashboard)/layout.tsx` — server component that redirects unauthenticated users to `/login`
-- [ ] T090 [P] Implement `apps/frontend/src/app/(auth)/layout.tsx` — minimal layout for auth pages (login)
-- [ ] T091 [P] Implement root route `apps/frontend/src/app/page.tsx` — redirect to `/dashboard` if authenticated, else `/login`
+- [X] T087 [P] Apply `@nestjs/throttler` rate limiting: strict (10 req/min IP) on `POST /auth/login` and `POST /invitations/accept`; moderate on `POST /auth/refresh` in `apps/backend/src/modules/auth/auth.controller.ts` and `invitations.controller.ts`
+- [X] T088 [P] Add `GET /health` endpoint returning `{ status: 'ok' }` in `apps/backend/src/app.controller.ts`
+- [X] T089 [P] Implement `apps/frontend/src/app/(dashboard)/layout.tsx` — server component that redirects unauthenticated users to `/login`
+- [X] T090 [P] Implement `apps/frontend/src/app/(auth)/layout.tsx` — minimal layout for auth pages (login)
+- [X] T091 [P] Implement root route `apps/frontend/src/app/page.tsx` — redirect to `/dashboard` if authenticated, else `/login`
 - [ ] T092 [P] Run `quickstart.md` validation: `npm install` → `migration:run` → seed → `dev:backend` → `dev:frontend` → smoke-test login flow
 
 ---
