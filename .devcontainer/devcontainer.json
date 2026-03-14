@@ -1,0 +1,33 @@
+{
+  "name": "shipment-tracking-dev",
+
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "workspace",
+
+  "workspaceFolder": "/workspace",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "GitHub.copilot",
+        "GitHub.copilot-chat",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-azuretools.vscode-docker",
+        "bradlc.vscode-tailwindcss",
+        "ms-vscode.vscode-typescript-next",
+        "eamodio.gitlens",
+        "formulahendry.auto-rename-tag",
+        "formulahendry.auto-close-tag",
+        "bracketpaircolordlw.bracket-pair-color-dlw",
+        "cweijan.vscode-database-client2",
+        "cweijan.dbclient-jdbc",
+        "christian-kohler.npm-intellisense"
+      ]
+    }
+  },
+
+  "postCreateCommand": "npm install",
+
+  "forwardPorts": [3000, 4000, 5432, 6379]
+}
