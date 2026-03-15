@@ -8,6 +8,7 @@ import { Profile } from '../organizations/entities/profile.entity';
 import { UserRole } from '../roles/entities/user-role.entity';
 import { AuthService } from '../auth/auth.service';
 import { CreateUserDto, UpdateUserDto, ChangePasswordDto, AdminResetPasswordDto } from './dto/user.dto';
+import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -21,10 +22,16 @@ export class UsersService {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
-  async findAll(organizationId: string): Promise<User[]> {
+  async findAll(requestingUser: Pick<AuthenticatedUser, 'organizationId' | 'isSuperAdmin'>): Promise<User[]> {
+    if (requestingUser.isSuperAdmin) {
+      return this.userRepo
+        .createQueryBuilder('u')
+        .select(['u.id', 'u.username', 'u.isActive', 'u.isLocked', 'u.lastLoginAt', 'u.createdAt'])
+        .getMany();
+    }
     return this.userRepo
       .createQueryBuilder('u')
-      .innerJoin('user_roles', 'ur', 'ur.user_id = u.id AND ur.organization_id = :organizationId', { organizationId })
+      .innerJoin('user_roles', 'ur', 'ur.user_id = u.id AND ur.organization_id = :organizationId', { organizationId: requestingUser.organizationId })
       .select(['u.id', 'u.username', 'u.isActive', 'u.isLocked', 'u.lastLoginAt', 'u.createdAt'])
       .getMany();
   }

@@ -36,7 +36,6 @@ export class AuthController {
     const { accessToken, refreshToken, user } = await this.authService.login(
       dto.username,
       dto.password,
-      dto.organizationId,
       req.ip,
       req.headers['user-agent'],
     );

@@ -9,7 +9,6 @@ import { useAuth } from '@/features/auth/auth.context';
 const loginSchema = z.object({
   username: z.string().min(1, 'Username is required'),
   password: z.string().min(1, 'Password is required'),
-  organizationId: z.string().uuid('Invalid organization ID'),
 });
 
 type LoginForm = z.infer<typeof loginSchema>;
@@ -26,7 +25,7 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginForm) => {
     setError(null);
     try {
-      await login(data.username, data.password, data.organizationId);
+      await login(data.username, data.password);
       router.replace('/dashboard');
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
@@ -58,12 +57,6 @@ export default function LoginPage() {
           <label htmlFor="password">Password</label>
           <input id="password" type="password" {...register('password')} style={{ display: 'block', width: '100%', padding: '.5rem', marginTop: 4 }} />
           {errors.password && <span style={{ color: '#dc2626', fontSize: '.875rem' }}>{errors.password.message}</span>}
-        </div>
-
-        <div style={{ marginBottom: '1.5rem' }}>
-          <label htmlFor="organizationId">Organization ID</label>
-          <input id="organizationId" {...register('organizationId')} style={{ display: 'block', width: '100%', padding: '.5rem', marginTop: 4 }} />
-          {errors.organizationId && <span style={{ color: '#dc2626', fontSize: '.875rem' }}>{errors.organizationId.message}</span>}
         </div>
 
         <button type="submit" disabled={isSubmitting} style={{ width: '100%', padding: '.75rem', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' }}>

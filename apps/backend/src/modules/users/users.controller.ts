@@ -23,7 +23,7 @@ export class UsersController {
   @Get()
   @Authorize(Permission.READ_USER)
   findAll(@CurrentUser() user: AuthenticatedUser) {
-    return this.service.findAll(user.organizationId);
+    return this.service.findAll(user);
   }
 
   @Get(':id')

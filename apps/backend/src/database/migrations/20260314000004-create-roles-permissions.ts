@@ -22,6 +22,8 @@ export class CreateRolesPermissions20260314000004 implements MigrationInterface 
         "id"          UUID         NOT NULL DEFAULT gen_random_uuid(),
         "name"        VARCHAR(200) NOT NULL,
         "description" TEXT,
+        "resource"    VARCHAR(100),
+        "action"      VARCHAR(100),
         "created_at"  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
         "updated_at"  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
         CONSTRAINT "pk_permissions"      PRIMARY KEY ("id"),

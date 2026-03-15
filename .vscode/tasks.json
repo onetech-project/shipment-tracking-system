@@ -1,0 +1,12 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "run-controller-tests",
+      "type": "shell",
+      "command": "cd /workspace/apps/backend && npm test -- --testPathPattern='(controller|auth.service).spec' --no-coverage --forceExit > /workspace/test-results.txt 2>&1; echo \"EXITCODE:$?\" >> /workspace/test-results.txt",
+      "group": "test",
+      "presentation": { "reveal": "always" }
+    }
+  ]
+}

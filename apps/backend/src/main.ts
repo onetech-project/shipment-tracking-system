@@ -7,7 +7,11 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  app.use(cookieParser());
+  app.use(cookieParser.default());
+  app.enableCors({
+    origin: process.env.CORS_ORIGIN ?? 'http://localhost:3000',
+    credentials: true,
+  });
   app.setGlobalPrefix('api');
   app.useGlobalPipes(
     new ValidationPipe({
@@ -17,7 +21,7 @@ async function bootstrap() {
     }),
   );
 
-  const port = process.env.BACKEND_PORT ?? 3001;
+  const port = process.env.BACKEND_PORT ?? 4000;
   await app.listen(port);
   console.log(`Backend running on port ${port}`);
 }

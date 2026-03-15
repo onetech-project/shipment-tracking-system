@@ -6,9 +6,12 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { IsNull } from 'typeorm';
 import * as bcrypt from 'bcrypt';
+
+jest.mock('bcrypt');
 import { AuthService } from './auth.service';
 import { User } from '../users/entities/user.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
+import { Profile } from '../organizations/entities/profile.entity';
 
 function makeUser(overrides: Partial<User> = {}): User {
   return Object.assign(new User(), {
@@ -43,6 +46,10 @@ describe('AuthService', () => {
     update: jest.fn(),
   };
 
+  const profileRepo = {
+    findOne: jest.fn(),
+  };
+
   const jwtService = { sign: jest.fn(() => 'signed-token') };
 
   const config = {
@@ -58,6 +65,7 @@ describe('AuthService', () => {
         AuthService,
         { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: getRepositoryToken(RefreshToken), useValue: refreshTokenRepo },
+        { provide: getRepositoryToken(Profile), useValue: profileRepo },
         { provide: JwtService, useValue: jwtService },
         { provide: ConfigService, useValue: config },
         { provide: EventEmitter2, useValue: eventEmitter },
@@ -67,19 +75,22 @@ describe('AuthService', () => {
     service = module.get<AuthService>(AuthService);
     jest.clearAllMocks();
     refreshTokenRepo.create.mockImplementation((dto) => dto);
+    profileRepo.findOne.mockResolvedValue(null);
+    // Restore config.get to return the fallback value by default
+    config.get.mockImplementation((_key: string, fallback?: unknown) => fallback);
   });
 
   // ─── login ────────────────────────────────────────────────────────────────
 
   describe('login()', () => {
     it('returns tokens and user on valid credentials', async () => {
-      const user = makeUser();
+      const user = makeUser({ isSuperAdmin: true });
       userRepo.findOne.mockResolvedValue(user);
-      jest.spyOn(bcrypt, 'compare').mockResolvedValue(true as never);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
       userRepo.save.mockResolvedValue(user);
       refreshTokenRepo.save.mockResolvedValue({});
 
-      const result = await service.login('alice', 'pass', 'org-1');
+      const result = await service.login('alice', 'pass');
 
       expect(result.accessToken).toBe('signed-token');
       expect(result.refreshToken).toMatch(/[0-9a-f]{64}/);
@@ -90,15 +101,15 @@ describe('AuthService', () => {
     it('throws UnauthorizedException when user not found', async () => {
       userRepo.findOne.mockResolvedValue(null);
 
-      await expect(service.login('ghost', 'pass', 'org-1')).rejects.toThrow(
+      await expect(service.login('ghost', 'pass')).rejects.toThrow(
         new UnauthorizedException('INVALID_CREDENTIALS'),
       );
     });
 
     it('throws ForbiddenException when account is locked', async () => {
-      userRepo.findOne.mockResolvedValue(makeUser({ isLocked: true }));
+      userRepo.findOne.mockResolvedValue(makeUser({ isLocked: true, isSuperAdmin: false }));
 
-      await expect(service.login('alice', 'pass', 'org-1')).rejects.toThrow(
+      await expect(service.login('alice', 'pass')).rejects.toThrow(
         new ForbiddenException('ACCOUNT_LOCKED'),
       );
     });
@@ -106,11 +117,11 @@ describe('AuthService', () => {
     it('increments failedAttempts on wrong password', async () => {
       const user = makeUser({ failedAttempts: 2 });
       userRepo.findOne.mockResolvedValue(user);
-      jest.spyOn(bcrypt, 'compare').mockResolvedValue(false as never);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
       userRepo.save.mockResolvedValue(user);
       config.get.mockReturnValue(5);
 
-      await expect(service.login('alice', 'wrong', 'org-1')).rejects.toThrow(UnauthorizedException);
+      await expect(service.login('alice', 'wrong')).rejects.toThrow(UnauthorizedException);
 
       expect(userRepo.save).toHaveBeenCalledWith(expect.objectContaining({ failedAttempts: 3 }));
     });
@@ -118,11 +129,11 @@ describe('AuthService', () => {
     it('locks account when failedAttempts reaches LOGIN_MAX_ATTEMPTS', async () => {
       const user = makeUser({ failedAttempts: 4 });
       userRepo.findOne.mockResolvedValue(user);
-      jest.spyOn(bcrypt, 'compare').mockResolvedValue(false as never);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
       userRepo.save.mockResolvedValue(user);
       config.get.mockReturnValue(5);
 
-      await expect(service.login('alice', 'wrong', 'org-1')).rejects.toThrow(UnauthorizedException);
+      await expect(service.login('alice', 'wrong')).rejects.toThrow(UnauthorizedException);
 
       expect(userRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({ isLocked: true, failedAttempts: 5 }),
@@ -132,7 +143,7 @@ describe('AuthService', () => {
     it('throws UnauthorizedException when user is inactive', async () => {
       userRepo.findOne.mockResolvedValue(makeUser({ isActive: false }));
 
-      await expect(service.login('alice', 'pass', 'org-1')).rejects.toThrow(
+      await expect(service.login('alice', 'pass')).rejects.toThrow(
         new UnauthorizedException('INVALID_CREDENTIALS'),
       );
     });

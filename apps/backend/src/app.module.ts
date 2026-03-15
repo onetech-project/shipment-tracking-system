@@ -32,10 +32,10 @@ import { AuditModule } from './modules/audit/audit.module';
         LOGIN_MAX_ATTEMPTS: Joi.number().default(5),
         SESSION_INACTIVITY_MINUTES: Joi.number().default(30),
         INVITATION_EXPIRY_HOURS: Joi.number().default(72),
-        REDIS_HOST: Joi.string().default('localhost'),
+        REDIS_HOST: Joi.string().default('redis'),
         REDIS_PORT: Joi.number().default(6379),
         APP_URL: Joi.string().default('http://localhost:3000'),
-        BACKEND_PORT: Joi.number().default(3001),
+        BACKEND_PORT: Joi.number().default(4000),
         NODE_ENV: Joi.string().default('development'),
       }),
     }),
@@ -54,7 +54,7 @@ import { AuditModule } from './modules/audit/audit.module';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         connection: {
-          host: config.get<string>('REDIS_HOST', 'localhost'),
+          host: config.get<string>('REDIS_HOST', 'redis'),
           port: config.get<number>('REDIS_PORT', 6379),
         },
       }),

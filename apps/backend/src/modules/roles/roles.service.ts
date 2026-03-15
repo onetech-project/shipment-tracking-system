@@ -7,6 +7,7 @@ import { UserRole } from './entities/user-role.entity';
 import { RolePermission } from '../permissions/entities/role-permission.entity';
 import { PermissionEntity } from '../permissions/entities/permission.entity';
 import { CreateRoleDto, UpdateRoleDto, AssignPermissionsDto, AssignRoleDto } from './dto/role.dto';
+import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
 @Injectable()
 export class RolesService {
@@ -18,8 +19,9 @@ export class RolesService {
     private readonly eventEmitter: EventEmitter2,
   ) {}
 
-  findAll(organizationId: string): Promise<Role[]> {
-    return this.roleRepo.find({ where: { organizationId }, order: { name: 'ASC' } });
+  findAll(user: Pick<AuthenticatedUser, 'organizationId' | 'isSuperAdmin'>): Promise<Role[]> {
+    const where = user.isSuperAdmin ? {} : { organizationId: user.organizationId };
+    return this.roleRepo.find({ where, order: { name: 'ASC' } });
   }
 
   async findOne(id: string, organizationId: string): Promise<Role> {

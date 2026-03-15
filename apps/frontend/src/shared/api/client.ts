@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { accessTokenRef } from '@/features/auth/auth.context';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 
 export const apiClient = axios.create({
   baseURL: BASE_URL,

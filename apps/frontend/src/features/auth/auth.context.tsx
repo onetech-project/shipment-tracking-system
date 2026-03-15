@@ -1,5 +1,5 @@
 'use client';
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { apiClient } from '@/shared/api/client';
 
 /**
@@ -19,7 +19,8 @@ export interface AuthUser {
 interface AuthContextValue {
   user: AuthUser | null;
   accessToken: string | null;
-  login: (username: string, password: string, organizationId: string) => Promise<void>;
+  loading: boolean;
+  login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   setTokens: (token: string, user: AuthUser) => void;
 }
@@ -29,6 +30,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const setTokens = useCallback((token: string, u: AuthUser) => {
     accessTokenRef.current = token;
@@ -36,11 +38,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(u);
   }, []);
 
-  const login = useCallback(async (username: string, password: string, organizationId: string) => {
+  // Restore session from HttpOnly refresh cookie on every mount / page reload
+  useEffect(() => {
+    const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
+    import('axios').then(({ default: axios }) => {
+      axios
+        .post<{ accessToken: string }>(`${BASE_URL}/auth/refresh`, {}, { withCredentials: true })
+        .then((r) => {
+          const token = r.data.accessToken;
+          accessTokenRef.current = token;
+          setAccessToken(token);
+          return apiClient.get<AuthUser>('/auth/me', {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        })
+        .then((r) => setUser(r.data))
+        .catch(() => {
+          accessTokenRef.current = null;
+        })
+        .finally(() => setLoading(false));
+    });
+  }, []);
+
+  const login = useCallback(async (username: string, password: string) => {
     const res = await apiClient.post<{ accessToken: string; user: AuthUser }>('/auth/login', {
       username,
       password,
-      organizationId,
     });
     setTokens(res.data.accessToken, res.data.user);
   }, [setTokens]);
@@ -56,7 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, accessToken, login, logout, setTokens }}>
+    <AuthContext.Provider value={{ user, accessToken, loading, login, logout, setTokens }}>
       {children}
     </AuthContext.Provider>
   );

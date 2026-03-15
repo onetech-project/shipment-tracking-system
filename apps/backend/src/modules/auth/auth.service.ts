@@ -13,6 +13,7 @@ import * as crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { User } from '../users/entities/user.entity';
 import { RefreshToken } from './entities/refresh-token.entity';
+import { Profile } from '../organizations/entities/profile.entity';
 import { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { JwtPayload } from '@shared/auth';
 
@@ -21,6 +22,7 @@ export class AuthService {
   constructor(
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     @InjectRepository(RefreshToken) private readonly refreshTokenRepo: Repository<RefreshToken>,
+    @InjectRepository(Profile) private readonly profileRepo: Repository<Profile>,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
     private readonly eventEmitter: EventEmitter2,
@@ -29,7 +31,6 @@ export class AuthService {
   async login(
     username: string,
     password: string,
-    organizationId: string,
     ip?: string,
     userAgent?: string,
   ): Promise<{ accessToken: string; refreshToken: string; user: AuthenticatedUser }> {
@@ -53,7 +54,7 @@ export class AuthService {
       }
       await this.userRepo.save(user);
 
-      this.eventEmitter.emit('auth.login_failed', { userId: user.id, organizationId, ip });
+      this.eventEmitter.emit('auth.login_failed', { userId: user.id, ip });
       throw new UnauthorizedException('INVALID_CREDENTIALS');
     }
 
@@ -63,6 +64,13 @@ export class AuthService {
     user.lockedAt = null;
     user.lastLoginAt = new Date();
     await this.userRepo.save(user);
+
+    // Resolve organization: null for super admins, from profile for regular users
+    let organizationId: string | null = null;
+    if (!user.isSuperAdmin) {
+      const profile = await this.profileRepo.findOne({ where: { userId: user.id } });
+      organizationId = profile?.organizationId ?? null;
+    }
 
     const familyId = uuidv4();
     const { accessToken, refreshToken } = await this.issueTokenPair(
@@ -136,7 +144,7 @@ export class AuthService {
 
   private async issueTokenPair(
     user: User,
-    organizationId: string,
+    organizationId: string | null,
     familyId: string,
     ip?: string,
     userAgent?: string,
