@@ -154,3 +154,5 @@ docker-compose.override.yml
 *.key
 *.crt
 
+test-results/
+playwright-report/

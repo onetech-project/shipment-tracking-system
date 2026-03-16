@@ -50,6 +50,58 @@ pipeline {
             }
         }
 
+        stage('E2E Tests') {
+            when {
+                anyOf {
+                    branch 'main'
+                    branch 'develop'
+                    branch '001-auth-rbac-multi-organization'
+                }
+            }
+            environment {
+                PLAYWRIGHT_BASE_URL       = 'http://localhost:3000'
+                E2E_SUPER_ADMIN_EMAIL     = credentials('e2e-super-admin-email')
+                E2E_SUPER_ADMIN_PASSWORD  = credentials('e2e-super-admin-password')
+                DATABASE_URL              = credentials('e2e-database-url')
+                JWT_SECRET                = credentials('jwt-secret')
+                NEXT_PUBLIC_API_URL       = 'http://localhost:4000/api'
+            }
+            steps {
+                // Install frontend dependencies including Playwright
+                sh 'npm ci --workspace=apps/frontend'
+                // Install Playwright browser binaries (chromium only)
+                sh 'npx --prefix apps/frontend playwright install chromium --with-deps'
+                // Start backend and frontend in background, wait for readiness
+                sh '''
+                    npm run start:prod --workspace=apps/backend &
+                    BACKEND_PID=$!
+                    npm run start --workspace=apps/frontend &
+                    FRONTEND_PID=$!
+                    # Wait for services to be ready (max 60s each)
+                    timeout 60 bash -c "until curl -sf http://localhost:4000/api/health; do sleep 2; done"
+                    timeout 60 bash -c "until curl -sf http://localhost:3000; do sleep 2; done"
+                    # Run Playwright E2E tests
+                    npm run test:e2e --workspace=apps/frontend
+                    E2E_EXIT=$?
+                    kill $BACKEND_PID $FRONTEND_PID 2>/dev/null || true
+                    exit $E2E_EXIT
+                '''
+            }
+            post {
+                always {
+                    publishHTML(target: [
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'apps/frontend/playwright-report',
+                        reportFiles: 'index.html',
+                        reportName: 'Playwright E2E Report'
+                    ])
+                    junit allowEmptyResults: true, testResults: 'apps/frontend/test-results/**/*.xml'
+                }
+            }
+        }
+
         stage('Build') {
             parallel {
                 stage('Build Backend') {

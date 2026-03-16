@@ -35,6 +35,12 @@ export class FixSchemaMismatches20260314000011 implements MigrationInterface {
         ADD COLUMN IF NOT EXISTS "is_system" BOOLEAN NOT NULL DEFAULT false;
     `);
 
+    // ── invitations ────────────────────────────────────────────────────────────
+    await queryRunner.query(`
+      ALTER TABLE "invitations"
+        ADD COLUMN IF NOT EXISTS "invited_name" VARCHAR(255);
+    `);
+
     // ── profiles ───────────────────────────────────────────────────────────────
     await queryRunner.query(`
       ALTER TABLE "profiles"
@@ -57,6 +63,7 @@ export class FixSchemaMismatches20260314000011 implements MigrationInterface {
     await queryRunner.query(`ALTER TABLE "profiles" DROP COLUMN IF EXISTS "phone"`);
     await queryRunner.query(`ALTER TABLE "profiles" DROP COLUMN IF EXISTS "last_name"`);
     await queryRunner.query(`ALTER TABLE "profiles" DROP COLUMN IF EXISTS "first_name"`);
+    await queryRunner.query(`ALTER TABLE "invitations" DROP COLUMN IF EXISTS "invited_name"`);
 
     await queryRunner.query(`ALTER TABLE "roles" DROP COLUMN IF EXISTS "is_system"`);
     await queryRunner.query(`ALTER TABLE "roles" DROP COLUMN IF EXISTS "description"`);

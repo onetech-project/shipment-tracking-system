@@ -36,6 +36,7 @@ const mockService = {
   changePassword: jest.fn(),
   adminResetPassword: jest.fn(),
   unlockUser: jest.fn(),
+  inactivate: jest.fn(),
 };
 
 async function buildApp(
@@ -204,6 +205,28 @@ describe('UsersController (integration)', () => {
       mockService.unlockUser.mockRejectedValue(new NotFoundException('User not found'));
       const res = await request(app.getHttpServer()).patch(`/users/${TARGET_USER_ID}/unlock`);
       expect(res.status).toBe(404);
+    });
+  });
+
+  describe('PATCH /users/:id/inactivate', () => {
+    it('returns 204 on inactivate', async () => {
+      mockService.inactivate.mockResolvedValue(undefined);
+      const res = await request(app.getHttpServer()).patch(`/users/${TARGET_USER_ID}/inactivate`);
+      expect(res.status).toBe(204);
+      expect(mockService.inactivate).toHaveBeenCalledWith(TARGET_USER_ID, ORG_ID, USER_ID);
+    });
+
+    it('returns 404 when user not found', async () => {
+      mockService.inactivate.mockRejectedValue(new NotFoundException('User not found'));
+      const res = await request(app.getHttpServer()).patch(`/users/${TARGET_USER_ID}/inactivate`);
+      expect(res.status).toBe(404);
+    });
+
+    it('returns 403 when permission denied', async () => {
+      const restricted = await buildApp(makeAuthGuard(), DENY_GUARD);
+      const res = await request(restricted.getHttpServer()).patch(`/users/${TARGET_USER_ID}/inactivate`);
+      expect(res.status).toBe(403);
+      await restricted.close();
     });
   });
 });

@@ -100,34 +100,35 @@ describe('OrganizationsController (integration)', () => {
   });
 
   describe('POST /organizations', () => {
-    it('returns 201 on create', async () => {
+    it('returns 201 on create with auto-generated slug', async () => {
       mockService.create.mockResolvedValue(ORG);
       const res = await request(app.getHttpServer())
         .post('/organizations')
-        .send({ name: 'Acme Corp', slug: 'acme-corp' });
+        .send({ name: 'Acme Corp' });
       expect(res.status).toBe(201);
       expect(res.body.slug).toBe('acme-corp');
     });
 
-    it('returns 409 when name/slug already exists', async () => {
-      mockService.create.mockRejectedValue(new ConflictException('Organization name or slug already exists'));
+    it('returns 201 with optional address field', async () => {
+      mockService.create.mockResolvedValue({ ...ORG, address: '123 Main St' });
       const res = await request(app.getHttpServer())
         .post('/organizations')
-        .send({ name: 'Acme Corp', slug: 'acme-corp' });
-      expect(res.status).toBe(409);
+        .send({ name: 'Acme Corp', address: '123 Main St' });
+      expect(res.status).toBe(201);
     });
 
-    it('returns 400 when slug has invalid format', async () => {
+    it('returns 409 when name already exists', async () => {
+      mockService.create.mockRejectedValue(new ConflictException('Organization name already exists'));
       const res = await request(app.getHttpServer())
         .post('/organizations')
-        .send({ name: 'Acme Corp', slug: 'Acme Corp' });
-      expect(res.status).toBe(400);
+        .send({ name: 'Acme Corp' });
+      expect(res.status).toBe(409);
     });
 
     it('returns 400 when required fields missing', async () => {
       const res = await request(app.getHttpServer())
         .post('/organizations')
-        .send({ name: 'Only Name' });
+        .send({});
       expect(res.status).toBe(400);
     });
   });

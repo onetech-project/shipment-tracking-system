@@ -31,6 +31,7 @@ export class InvitationsService {
 
     const invitation = this.invitationRepo.create({
       email: dto.email,
+      invitedName: dto.name,
       organizationId,
       invitedBy,
       roleId: dto.roleId,

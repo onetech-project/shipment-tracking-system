@@ -51,6 +51,13 @@ export class UsersController {
     return this.service.deactivate(id, user.organizationId, user.id);
   }
 
+  @Patch(':id/inactivate')
+  @Authorize(Permission.UPDATE_USER)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  inactivate(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.inactivate(id, user.organizationId, user.id);
+  }
+
   @Patch(':id/password')
   @HttpCode(HttpStatus.NO_CONTENT)
   changePassword(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ChangePasswordDto, @CurrentUser() user: AuthenticatedUser) {

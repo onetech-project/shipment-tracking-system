@@ -97,7 +97,7 @@ Administrators create, update, and remove user accounts within their scope of au
 
 ---
 
-### User Story 6 - Account Security Enforcement (Priority: P3)
+### User Story 8 - Account Security Enforcement (Priority: P3)
 
 The system enforces security rules to protect user accounts from brute-force attacks by locking accounts after repeated failed login attempts and requiring administrator intervention to unlock them.
 
@@ -113,7 +113,7 @@ The system enforces security rules to protect user accounts from brute-force att
 
 ---
 
-### User Story 7 - Audit Logging for Critical Operations (Priority: P3)
+### User Story 9 - Audit Logging for Critical Operations (Priority: P3)
 
 The system records an audit trail of critical operations — including authentication events, role assignments, permission changes, organization actions, and user invitations — for security review and compliance purposes.
 
@@ -133,11 +133,13 @@ The system records an audit trail of critical operations — including authentic
 ### Edge Cases
 
 - What happens when a user belongs to an organization that is deactivated — are their active sessions terminated immediately?
-- How does the system handle an invitation sent to an email that already has an active account?
+- How does the system handle an invitation sent to an email that already has an active (or inactive) account?
 - What happens when a role is deleted — are permissions revoked immediately from all users holding that role?
 - How does the system behave when a user has conflicting permissions across multiple roles (e.g., one role allows and another does not)?
-- What happens when an Organization Admin's own account is deleted — are their admin actions rolled back?
+- What happens when an Organization Admin's own account is inactivated — are their in-flight admin operations blocked?
 - How is the refresh token rotation handled if a revoked token is replayed?
+- What happens if two organizations are created with the same name — how does slug uniqueness handle the collision?
+- What happens when an admin tries to inactivate their own account — is self-inactivation blocked?
 
 ## Requirements *(mandatory)*
 
@@ -156,39 +158,57 @@ The system records an audit trail of critical operations — including authentic
 - **FR-009**: The system MUST require administrator intervention to unlock a locked account.
 - **FR-010**: The system MUST record the timestamp of the last successful login and logout for each user.
 
+**Navigation & Settings Menu**
+
+- **FR-010a**: The Settings menu MUST only be visible in the navigation for users with the super-admin or admin role.
+- **FR-010b**: The Settings menu MUST contain the following sub-items for super-admin: Organizations, Roles, Users, Invitations, Permissions.
+- **FR-010c**: The Settings menu MUST contain the following sub-items for admin: Roles, Users, Invitations (Permissions sub-item MUST NOT be shown).
+- **FR-010d**: Users with roles other than super-admin or admin MUST NOT see the Settings menu. Direct URL access to any Settings page MUST return 403 Forbidden.
+
 **Organization Management**
 
-- **FR-011**: The system MUST allow Super Admin to create organizations with a name and address.
-- **FR-012**: The system MUST allow Super Admin to update organization details.
+- **FR-011**: The system MUST allow Super Admin to create organizations using only a Name and Address field.
+- **FR-011a**: The system MUST automatically generate a unique, URL-safe slug from the organization name upon creation (e.g., “Acme Corp” → “acme-corp”). If a slug collision occurs, append a numeric suffix.
+- **FR-011b**: The slug MUST NOT be re-generated when the organization name is updated after creation.
+- **FR-012**: The system MUST allow Super Admin to update organization details (name and address).
 - **FR-013**: The system MUST allow Super Admin to deactivate an organization, which revokes access for all its users.
+- **FR-013a**: Organization management pages MUST only be accessible to users with the super-admin role.
 - **FR-014**: Each user MUST belong to exactly one organization.
 
 **User Management**
 
-- **FR-015**: The system MUST allow Super Admin to create, update, and delete users across all organizations.
-- **FR-016**: The system MUST allow Organization Admin to create, update, and delete users within their own organization only.
-- **FR-017**: The system MUST allow administrators to assign one or more roles to a user.
+- **FR-015**: Users MUST only be added to the system through the invitation flow. No direct user-creation form is provided.
+- **FR-016**: The system MUST allow Super Admin to view and edit users across all organizations.
+- **FR-017**: The system MUST allow Organization Admin to view and edit users within their own organization only.
+- **FR-017a**: Editable user fields include: name (profile), role assignment, personal information (position, phone, email).
+- **FR-017b**: Administrators MUST be able to inactivate a user account, which immediately terminates all active sessions and prevents further login.
 - **FR-018**: The system MUST enforce that Organization Admin cannot manage users outside their own organization.
 
 **Invitation System**
 
 - **FR-019**: The system MUST allow Super Admin to invite users to any organization via email.
 - **FR-020**: The system MUST allow Organization Admin to invite users to their own organization via email.
+- **FR-020a**: The invitation form MUST capture: Name, Role, and Organization.
+- **FR-020b**: For super-admin users, the Organization field in the invitation form MUST be an active dropdown listing all organizations.
+- **FR-020c**: For admin users, the Organization field MUST be disabled and auto-populated with the logged-in user’s own organization.
 - **FR-021**: Invitation links MUST be single-use and expire after a configurable time period.
-- **FR-022**: Upon clicking a valid invitation link, the user MUST be prompted to set their password before the account is activated.
+- **FR-022**: Upon clicking a valid invitation link, the user MUST be prompted to set their password before the account is activated with the pre-assigned name, role, and organization.
 - **FR-023**: Expired or already-used invitation links MUST be rejected with a clear error message.
 
 **Role Management**
 
 - **FR-024**: The system MUST provide the following default roles: Super Admin, Admin, Owner, Manager, Staff.
 - **FR-025**: The system MUST allow administrators to create additional roles within the scope of their authority.
+- **FR-025a**: Role editing MUST support assigning and unassigning individual permissions via a checkbox-style interface.
+- **FR-025b**: Permission changes on a role MUST take effect immediately for all users holding that role.
 - **FR-026**: A user MUST be able to hold multiple roles simultaneously.
 - **FR-027**: Roles MUST be scoped to their organization (except Super Admin which is platform-wide).
 
 **Permission Management**
 
 - **FR-028**: Permissions MUST follow the naming format `<action>.<module>`, where actions are: `read`, `create`, `update`, `delete`.
-- **FR-029**: Only Super Admin MAY create new permission entries (master data).
+- **FR-029**: Only Super Admin MAY create or delete permission entries (master data).
+- **FR-029a**: The Permissions management page MUST only be accessible to super-admin. All other roles receive 403 Forbidden.
 - **FR-030**: Organization Admin MAY assign existing permissions to roles within their organization.
 - **FR-031**: The system MUST enforce permissions at both the API access layer and the service layer.
 
@@ -201,16 +221,16 @@ The system records an audit trail of critical operations — including authentic
 **Audit Logging**
 
 - **FR-035**: The system MUST log all authentication events (successful and failed logins, logouts).
-- **FR-036**: The system MUST log all role assignment and permission change events.
+- **FR-036**: The system MUST log all role assignment, permission assignment, and permission change events.
 - **FR-037**: The system MUST log all organization creation, update, and deactivation events.
-- **FR-038**: The system MUST log all user invitation events.
-- **FR-039**: Each audit log entry MUST include: the responsible user's ID, the action performed, the affected entity, and a precise timestamp.
+- **FR-038**: The system MUST log all user invitation events and user inactivation events.
+- **FR-039**: Each audit log entry MUST include: the responsible user’s ID, the action performed, the affected entity, and a precise timestamp.
 
 ### Key Entities *(include if feature involves data)*
 
 - **User**: Represents an authenticated identity. Holds credentials, security fields (lock status, login tracking, attempt count), and belongs to one organization.
 - **Profile**: Extended personal and organizational information for a user (name, date of birth, position, employee number, phone, email, join date).
-- **Organization**: A top-level tenant unit. Has a name and address. Contains users, roles, and scoped permissions.
+- **Organization**: A top-level tenant unit. Has a name and address. Slug is auto-generated from the name on creation and never regenerated. Contains users, roles, and scoped permissions.
 - **Role**: A named collection of permissions, scoped to an organization. Users may hold multiple roles.
 - **Permission**: A granular access right in `<action>.<module>` format. Stored as global master data; assignable to roles by Organization Admins.
 - **User-Role Mapping**: Links a user to one or more roles.
@@ -229,10 +249,13 @@ The system records an audit trail of critical operations — including authentic
 - **SC-004**: 100% of requests to protected resources are evaluated against the user's current permissions; no resource is accessible without an explicit permission grant.
 - **SC-005**: Multi-tenant isolation is enforced with zero cross-organization data leakage — verified through testing that users cannot access data from other organizations.
 - **SC-006**: Account lockout engages within the configured threshold of failed attempts with no bypass path.
-- **SC-007**: All critical operation types (login, logout, role assignment, org creation, invitation, permission change) produce verifiable audit log entries.
+- **SC-007**: All critical operation types (login, logout, role assignment, org creation, invitation, permission change, user inactivation) produce verifiable audit log entries.
 - **SC-008**: Expired or replayed invitation links and refresh tokens are rejected 100% of the time.
 - **SC-009**: Super Admin capabilities are exclusive — no other role can create organizations, create permissions, or manage users across organizations.
 - **SC-010**: The system supports multiple concurrent user sessions across different organizations without degradation in authorization correctness.
+- **SC-011**: The Settings menu and all sub-pages are invisible and inaccessible to roles other than super-admin and admin, verified by Playwright E2E tests for each role.
+- **SC-012**: Organization slugs are unique across the platform and are generated automatically without user input.
+- **SC-013**: The invitation Organization field is correctly disabled and pre-filled for admin users, and freely selectable for super-admin users — verified by Playwright E2E tests.
 
 ## Assumptions
 
@@ -246,3 +269,4 @@ The system records an audit trail of critical operations — including authentic
 - The audit log is append-only and not editable by any role, including Super Admin.
 - Super Admin accounts are provisioned at platform setup and are not organization-scoped.
 - Password hashing follows current security best practices; plaintext passwords are never stored or transmitted.
+- User accounts are inactivated rather than hard-deleted to preserve audit trail integrity. Inactivated users cannot log in and all active sessions are immediately terminated.

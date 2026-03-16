@@ -25,6 +25,9 @@ export class Invitation {
   @Column({ name: 'role_id', nullable: true })
   roleId: string;
 
+  @Column({ name: 'invited_name', length: 255, nullable: true })
+  invitedName: string;
+
   @Column({ name: 'token_hash', length: 64, unique: true })
   tokenHash: string;
 

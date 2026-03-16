@@ -30,7 +30,9 @@ export class InvitationsController {
   @Post()
   @Authorize(Permission.CREATE_INVITATION)
   create(@Body() dto: CreateInvitationDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.create(dto, user.organizationId, user.id);
+    // Super-admins may specify a target org; others are scoped to their own org
+    const orgId = (user.isSuperAdmin && dto.organizationId) ? dto.organizationId : user.organizationId;
+    return this.service.create(dto, orgId, user.id);
   }
 
   @Delete(':id')

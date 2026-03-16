@@ -1,0 +1,22 @@
+
+> backend@0.1.0 test
+> jest --testPathPattern=(controller|auth.service).spec --no-coverage --forceExit
+
+PASS src/modules/roles/roles.controller.spec.ts (12.656 s)
+(node:18021) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+PASS src/modules/organizations/organizations.controller.spec.ts
+PASS src/modules/invitations/invitations.controller.spec.ts
+PASS src/modules/auth/auth.controller.spec.ts (6.832 s)
+PASS src/modules/audit/audit.controller.spec.ts
+PASS src/modules/auth/auth.service.spec.ts
+PASS src/modules/permissions/permissions.controller.spec.ts
+PASS src/modules/users/users.controller.spec.ts
+
+Test Suites: 8 passed, 8 total
+Tests:       93 passed, 93 total
+Snapshots:   0 total
+Time:        31.464 s
+Ran all test suites matching /(controller|auth.service).spec/i.
+Force exiting Jest: Have you considered using `--detectOpenHandles` to detect async operations that kept running after all tests finished?
+EXITCODE:0

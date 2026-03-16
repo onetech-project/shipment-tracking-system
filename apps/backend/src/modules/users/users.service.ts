@@ -71,6 +71,15 @@ export class UsersService {
     return saved;
   }
 
+  async inactivate(id: string, organizationId: string, actorId: string): Promise<void> {
+    const user = await this.userRepo.findOne({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+    user.isActive = false;
+    await this.userRepo.save(user);
+    await this.authService.revokeAllTokens(id);
+    this.eventEmitter.emit('user.inactivated', { userId: id, organizationId, actorId });
+  }
+
   async deactivate(id: string, organizationId: string, actorId: string): Promise<void> {
     const user = await this.userRepo.findOne({ where: { id } });
     if (!user) throw new NotFoundException('User not found');

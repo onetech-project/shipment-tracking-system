@@ -18,6 +18,9 @@ export class Organization {
   @Column({ name: 'slug', unique: true })
   slug: string;
 
+  @Column({ nullable: true, type: 'text' })
+  address: string;
+
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 

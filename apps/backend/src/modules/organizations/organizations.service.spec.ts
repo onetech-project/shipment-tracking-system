@@ -6,6 +6,14 @@ import { OrganizationsService } from './organizations.service';
 import { Organization } from './entities/organization.entity';
 import { AuthService } from '../auth/auth.service';
 
+// Mock slug utilities so tests are deterministic
+jest.mock('../../common/utils/slug.util', () => ({
+  generateSlug: jest.fn((name: string) => name.toLowerCase().replace(/\s+/g, '-')),
+  ensureUniqueSlug: jest.fn(async (base: string) => base),
+}));
+
+import { generateSlug, ensureUniqueSlug } from '../../common/utils/slug.util';
+
 function makeOrg(overrides: Partial<Organization> = {}): Organization {
   return Object.assign(new Organization(), {
     id: 'org-1',
@@ -70,26 +78,54 @@ describe('OrganizationsService', () => {
   // ─── create ───────────────────────────────────────────────────────────────
 
   describe('create()', () => {
-    it('saves and returns a new organization', async () => {
-      const saved = makeOrg();
-      orgRepo.findOne.mockResolvedValue(null); // no duplicate
+    it('generates slug automatically from name', async () => {
+      const saved = makeOrg({ name: 'Acme Corp', slug: 'acme-corp' });
+      orgRepo.findOne.mockResolvedValue(null);
       orgRepo.save.mockResolvedValue(saved);
+      (generateSlug as jest.Mock).mockReturnValue('acme-corp');
+      (ensureUniqueSlug as jest.Mock).mockResolvedValue('acme-corp');
 
-      const result = await service.create({ name: 'Acme', slug: 'acme' });
+      const result = await service.create({ name: 'Acme Corp' });
 
+      expect(generateSlug).toHaveBeenCalledWith('Acme Corp');
+      expect(ensureUniqueSlug).toHaveBeenCalledWith('acme-corp', orgRepo);
       expect(orgRepo.save).toHaveBeenCalled();
-      expect(result).toBe(saved);
-      expect(eventEmitter.emit).toHaveBeenCalledWith('organization.created', { organizationId: 'org-1' });
+      expect(result.slug).toBe('acme-corp');
     });
 
-    it('throws ConflictException when name/slug already in use', async () => {
-      orgRepo.findOne.mockResolvedValue(makeOrg()); // duplicate found
+    it('appends numeric suffix on slug collision', async () => {
+      const saved = makeOrg({ name: 'Acme Corp', slug: 'acme-corp-2' });
+      orgRepo.findOne.mockResolvedValue(null);
+      orgRepo.save.mockResolvedValue(saved);
+      (generateSlug as jest.Mock).mockReturnValue('acme-corp');
+      (ensureUniqueSlug as jest.Mock).mockResolvedValue('acme-corp-2');
 
-      await expect(service.create({ name: 'Acme', slug: 'acme' })).rejects.toThrow(
-        new ConflictException('Organization name or slug already exists'),
+      const result = await service.create({ name: 'Acme Corp' });
+
+      expect(result.slug).toBe('acme-corp-2');
+    });
+
+    it('throws ConflictException when name already in use', async () => {
+      orgRepo.findOne.mockResolvedValue(makeOrg());
+
+      await expect(service.create({ name: 'Acme' })).rejects.toThrow(
+        new ConflictException('Organization name already exists'),
       );
 
       expect(orgRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('does NOT regenerate slug on update', async () => {
+      const org = makeOrg({ slug: 'acme' });
+      const updated = makeOrg({ name: 'New Name', slug: 'acme' });
+      orgRepo.findOne.mockResolvedValue(org);
+      orgRepo.save.mockResolvedValue(updated);
+
+      const result = await service.update('org-1', { name: 'New Name' });
+
+      // generateSlug should not have been called during update
+      expect(generateSlug).not.toHaveBeenCalled();
+      expect(result.slug).toBe('acme');
     });
   });
 

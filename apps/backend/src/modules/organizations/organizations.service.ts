@@ -5,6 +5,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Organization } from './entities/organization.entity';
 import { CreateOrganizationDto, UpdateOrganizationDto } from './dto/organization.dto';
 import { AuthService } from '../auth/auth.service';
+import { generateSlug, ensureUniqueSlug } from '../../common/utils/slug.util';
 
 @Injectable()
 export class OrganizationsService {
@@ -25,9 +26,11 @@ export class OrganizationsService {
   }
 
   async create(dto: CreateOrganizationDto): Promise<Organization> {
-    const existing = await this.orgRepo.findOne({ where: [{ name: dto.name }, { slug: dto.slug }] });
-    if (existing) throw new ConflictException('Organization name or slug already exists');
-    const org = this.orgRepo.create(dto);
+    const existing = await this.orgRepo.findOne({ where: { name: dto.name } });
+    if (existing) throw new ConflictException('Organization name already exists');
+    const baseSlug = generateSlug(dto.name);
+    const slug = await ensureUniqueSlug(baseSlug, this.orgRepo);
+    const org = this.orgRepo.create({ name: dto.name, address: dto.address, slug });
     const saved = await this.orgRepo.save(org);
     this.eventEmitter.emit('organization.created', { organizationId: saved.id });
     return saved;

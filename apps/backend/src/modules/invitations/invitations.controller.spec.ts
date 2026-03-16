@@ -90,10 +90,10 @@ describe('InvitationsController (integration)', () => {
       mockService.create.mockResolvedValue(INVITATION);
       const res = await request(app.getHttpServer())
         .post('/invitations')
-        .send({ email: 'newuser@example.com', roleId: ROLE_ID });
+        .send({ email: 'newuser@example.com', name: 'New User', roleId: ROLE_ID });
       expect(res.status).toBe(201);
       expect(mockService.create).toHaveBeenCalledWith(
-        { email: 'newuser@example.com', roleId: ROLE_ID },
+        { email: 'newuser@example.com', name: 'New User', roleId: ROLE_ID },
         ORG_ID,
         USER_ID,
       );
@@ -105,21 +105,21 @@ describe('InvitationsController (integration)', () => {
       );
       const res = await request(app.getHttpServer())
         .post('/invitations')
-        .send({ email: 'newuser@example.com', roleId: ROLE_ID });
+        .send({ email: 'newuser@example.com', name: 'X', roleId: ROLE_ID });
       expect(res.status).toBe(409);
     });
 
     it('returns 400 when email is invalid', async () => {
       const res = await request(app.getHttpServer())
         .post('/invitations')
-        .send({ email: 'not-an-email', roleId: ROLE_ID });
+        .send({ email: 'not-an-email', name: 'X', roleId: ROLE_ID });
       expect(res.status).toBe(400);
     });
 
     it('returns 400 when roleId is invalid UUID', async () => {
       const res = await request(app.getHttpServer())
         .post('/invitations')
-        .send({ email: 'user@example.com', roleId: 'not-a-uuid' });
+        .send({ email: 'user@example.com', name: 'X', roleId: 'not-a-uuid' });
       expect(res.status).toBe(400);
     });
   });

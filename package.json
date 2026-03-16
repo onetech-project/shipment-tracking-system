@@ -12,6 +12,7 @@
     "dev:frontend": "npm run dev --workspace=apps/frontend",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
+    "test:e2e": "npm run test:e2e --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "migration:run": "npm run migration:run --workspace=apps/backend",
     "migration:revert": "npm run migration:revert --workspace=apps/backend",

@@ -1,38 +1,27 @@
 <!--
   SYNC IMPACT REPORT
   ==================
-  Version Change: [UNVERSIONED / TEMPLATE] → 1.0.0
-  Bump Type: MINOR (initial ratification — all sections newly added)
+  Version Change: 1.0.0 → 1.1.0
+  Bump Type: MINOR (Section VI materially expanded: Playwright mandate added;
+             automation testing made mandatory for every feature)
 
-  Added Sections (17 principles):
-    I.    Repository Architecture
-    II.   Technology Stack
-    III.  Database
-    IV.   Core Engineering Principles (DRY, KISS, YAGNI)
-    V.    Modular Architecture
-    VI.   Testing Requirements
-    VII.  Fail-Safe and Fault-Tolerant Design
-    VIII. Retryable System
-    IX.   Idempotency
-    X.    Observability
-    XI.   Rate Limiting
-    XII.  Event-Driven Readiness
-    XIII. Cost Efficiency
-    XIV.  CI/CD and Automation
-    XV.   Security Baseline
-    XVI.  Documentation
-    XVII. Core Feature Reliability: OCR and QR Scanner
-
-  Removed Sections: None (initial adoption)
-  Modified Principles: None (initial adoption)
+  Added Sections: None
+  Removed Sections: None
+  Modified Principles:
+    VI. Testing Requirements — old: Unit + Integration only, tests declared mandatory
+                             → new: Unit + Integration + E2E (Playwright) mandatory;
+                               Playwright designated as primary automation tool;
+                               all automation tests MUST pass before merging.
 
   Templates Requiring Updates:
-    ✅ .specify/templates/plan-template.md  — "Constitution Check" gate is generic;
-                                              aligns with all 17 principles.
-    ✅ .specify/templates/spec-template.md  — Mandatory sections (FR, SC, Stories)
-                                              align with constitution requirements.
-    ✅ .specify/templates/tasks-template.md — Phase structure covers observability,
-                                              testing, retry, and CI/CD patterns.
+    ✅ .specify/templates/plan-template.md  — Testing hint updated to include
+                                              Playwright as primary E2E tool.
+    ✅ .specify/templates/tasks-template.md — "Tests OPTIONAL" note updated;
+                                              automation test tasks are now
+                                              mandatory per constitution.
+    ✅ .specify/templates/spec-template.md  — No structural change required;
+                                              Independent Test descriptors already
+                                              align with E2E verifiability.
     ✅ .github/prompts/*.prompt.md          — No CLAUDE-only or outdated agent
                                               references detected.
 
@@ -90,7 +79,6 @@ Required directory layout:
 apps/backend/
   package.json
   Dockerfile
-  Jenkinsfile
   src/
 ```
 
@@ -106,7 +94,6 @@ Required directory layout:
 apps/frontend/
   package.json
   Dockerfile
-  Jenkinsfile
   src/
 ```
 
@@ -190,17 +177,37 @@ Rules:
 
 ### VI. Testing Requirements
 
-Testing is mandatory.
+Testing is mandatory. Every feature MUST include automated tests covering
+unit, integration, and end-to-end (E2E) scenarios.
 
-Required test types: Unit Tests and Integration Tests.
+Required test types:
+
+- **Unit Tests** — test individual functions and service methods in isolation.
+- **Integration Tests** — test module interactions, database operations, and
+  API endpoints.
+- **E2E / Automation Tests** — test full user journeys through the system UI
+  using **Playwright** as the primary automation testing tool.
 
 Rules:
 
-1. Every feature MUST include automated tests.
-2. **All unit tests MUST pass before working on other features.**
-3. CI MUST fail when tests fail.
+1. Every feature MUST include unit, integration, and Playwright E2E tests.
+2. **All automation tests (unit, integration, and E2E) MUST pass before a
+   feature is considered complete or merged.**
+3. CI MUST fail when any test — including Playwright E2E tests — fails.
+4. Playwright tests MUST cover the critical user flows defined in the
+   feature's user stories.
+5. Playwright tests MUST be co-located with the feature or placed under
+   `apps/frontend/e2e/` and organized by feature.
 
 Tests MUST be deterministic, isolated, and reproducible.
+
+Playwright-specific requirements:
+
+- Page Object Model (POM) pattern SHOULD be used for maintainability.
+- Tests MUST NOT rely on hardcoded wait times (`page.waitForTimeout`);
+  use auto-waiting assertions instead.
+- Test fixtures MUST clean up database state to avoid cross-test pollution.
+- Headless mode MUST be used in CI; headed mode is permitted locally.
 
 ---
 
@@ -481,4 +488,4 @@ Complexity MUST be justified; simplicity is the default.
 Compliance review SHOULD be performed at the start of each plan cycle
 via the `Constitution Check` gate in `plan-template.md`.
 
-**Version**: 1.0.0 | **Ratified**: 2026-03-14 | **Last Amended**: 2026-03-14
+**Version**: 1.1.0 | **Ratified**: 2026-03-14 | **Last Amended**: 2026-03-16
