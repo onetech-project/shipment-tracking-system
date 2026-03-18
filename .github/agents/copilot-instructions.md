@@ -1,10 +1,11 @@
 # shipment-tracking-system Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2025-07-15
+Auto-generated from all feature plans. Last updated: 2026-03-18
 
 ## Active Technologies
 
 - TypeScript 5.x + NestJS 10.x + Next.js 14.x + PostgreSQL 16 + TypeORM (001-auth-rbac-multi-organization)
+- TypeScript 5.5.x + NestJS 10.x + Next.js 14.x + PostgreSQL 16 + TypeORM + BullMQ + pdf-parse/pdfjs-dist + jsqr (002-pdf-upload-qr-scan)
 
 ## Project Structure
 
@@ -20,6 +21,7 @@ apps/
         permissions/
         invitations/
         audit/
+        shipments/
       database/
         migrations/
   frontend/
@@ -30,11 +32,13 @@ apps/
         users/
         roles/
         invitations/
+        shipments/
       app/
 packages/
   shared/
     src/
       auth/
+      shipments/
 tests/
 ```
 
@@ -49,6 +53,7 @@ TypeScript: Follow standard conventions. Use strict mode. Prefer interfaces over
 ## Recent Changes
 
 - 001-auth-rbac-multi-organization: Added TypeScript 5.x + NestJS 10.x + Next.js 14.x + PostgreSQL 16 + TypeORM
+- 002-pdf-upload-qr-scan: Added async PDF shipment import (BullMQ, pdf-parse/pdfjs-dist), QR camera scan (jsqr), conflict review flow, and audit events
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->

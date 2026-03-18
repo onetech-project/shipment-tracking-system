@@ -18,6 +18,15 @@ export default function Navigation() {
       <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
         <li><Link href="/dashboard" style={linkStyle}>Dashboard</Link></li>
 
+        <li style={sectionStyle}>
+          <span style={{ color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Shipments</span>
+          <ul style={{ listStyle: 'none', padding: 0, margin: '0.5rem 0 0' }}>
+            <li><Link href="/shipments/upload" style={subLinkStyle}>Import PDF</Link></li>
+            <li><Link href="/shipments/history" style={subLinkStyle}>Upload History</Link></li>
+            <li><Link href="/shipments/scan" style={subLinkStyle}>QR Scan</Link></li>
+          </ul>
+        </li>
+
         {isAdminOrAbove && (
           <li style={sectionStyle}>
             <span style={{ color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Settings</span>

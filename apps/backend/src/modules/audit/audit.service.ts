@@ -99,4 +99,17 @@ export class AuditService {
   @OnEvent('invitation.cancelled') onInvitationCancelled(p: AuditPayload) {
     this.log('invitation.cancelled', p, 'invitation')
   }
+
+  @OnEvent('shipment.import.started') onImportStarted(p: AuditPayload) {
+    this.log('shipment.import.started', p, 'shipment_upload')
+  }
+  @OnEvent('shipment.import.completed') onImportCompleted(p: AuditPayload) {
+    this.log('shipment.import.completed', p, 'shipment_upload')
+  }
+  @OnEvent('shipment.import.partial') onImportPartial(p: AuditPayload) {
+    this.log('shipment.import.partial', p, 'shipment_upload')
+  }
+  @OnEvent('shipment.import.failed') onImportFailed(p: AuditPayload) {
+    this.log('shipment.import.failed', p, 'shipment_upload')
+  }
 }

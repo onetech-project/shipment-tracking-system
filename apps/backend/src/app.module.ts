@@ -18,6 +18,7 @@ import { RolesModule } from './modules/roles/roles.module';
 import { PermissionsModule } from './modules/permissions/permissions.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { ShipmentsModule } from './modules/shipments/shipments.module';
 
 @Module({
   imports: [
@@ -37,6 +38,9 @@ import { AuditModule } from './modules/audit/audit.module';
         APP_URL: Joi.string().default('http://localhost:3000'),
         BACKEND_PORT: Joi.number().default(4000),
         NODE_ENV: Joi.string().default('development'),
+        SHIPMENT_IMPORT_MAX_FILE_MB: Joi.number().default(10),
+        SHIPMENT_IMPORT_CONCURRENCY: Joi.number().default(3),
+        SHIPMENT_ID_REGEX: Joi.string().default('^[A-Z0-9-]{6,40}$'),
       }),
     }),
     TypeOrmModule.forRootAsync({
@@ -70,6 +74,7 @@ import { AuditModule } from './modules/audit/audit.module';
     PermissionsModule,
     InvitationsModule,
     AuditModule,
+    ShipmentsModule,
   ],
   controllers: [AppController],
   providers: [
