@@ -5,29 +5,48 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Unique,
-} from 'typeorm';
+  OneToMany,
+  AfterLoad,
+} from 'typeorm'
+import { RolePermission } from '../../permissions/entities/role-permission.entity'
+import { PermissionEntity } from '../../permissions/entities/permission.entity'
 
 @Entity('roles')
 @Unique(['name', 'organizationId'])
 export class Role {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id: string
 
   @Column()
-  name: string;
+  name: string
 
   @Column({ nullable: true })
-  description: string;
+  description: string
 
   @Column({ name: 'organization_id' })
-  organizationId: string;
+  organizationId: string
 
   @Column({ name: 'is_system', default: false })
-  isSystem: boolean;
+  isSystem: boolean
+
+  @Column({ name: 'is_default', nullable: false, default: false })
+  isDefault: boolean
 
   @CreateDateColumn({ name: 'created_at' })
-  createdAt: Date;
+  createdAt: Date
 
   @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt: Date;
+  updatedAt: Date
+
+  @OneToMany(() => RolePermission, (rolePermission) => rolePermission.role)
+  rolePermissions: RolePermission[]
+
+  permissions: PermissionEntity[]
+
+  @AfterLoad()
+  loadPermissions() {
+    if (this.rolePermissions) {
+      this.permissions = this.rolePermissions.map((rp) => rp.permission).filter(Boolean)
+    }
+  }
 }

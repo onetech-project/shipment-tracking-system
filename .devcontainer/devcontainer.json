@@ -29,5 +29,5 @@
 
   "postCreateCommand": "npm install",
 
-  "forwardPorts": [3000, 4000, 5432, 6379]
+  "forwardPorts": [3000, 4000, 5432, 6379, 1025, 8025]
 }

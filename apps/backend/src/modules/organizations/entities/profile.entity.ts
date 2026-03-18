@@ -7,47 +7,44 @@ import {
   ManyToOne,
   JoinColumn,
   OneToOne,
-} from 'typeorm';
-import { User } from '../../users/entities/user.entity';
-import { Organization } from '../../organizations/entities/organization.entity';
+} from 'typeorm'
+import { User } from '../../users/entities/user.entity'
+import { Organization } from '../../organizations/entities/organization.entity'
 
 @Entity('profiles')
 export class Profile {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id: string
 
   @Column({ name: 'user_id' })
-  userId: string;
+  userId: string
 
   @Column({ name: 'organization_id' })
-  organizationId: string;
+  organizationId: string
 
-  @Column({ name: 'first_name', nullable: true })
-  firstName: string;
-
-  @Column({ name: 'last_name', nullable: true })
-  lastName: string;
+  @Column({ name: 'name', nullable: true })
+  name: string
 
   @Column({ nullable: true })
-  email: string;
+  email: string
 
   @Column({ nullable: true })
-  phone: string;
+  phone: string
 
   @Column({ name: 'avatar_url', nullable: true })
-  avatarUrl: string;
+  avatarUrl: string
 
   @CreateDateColumn({ name: 'created_at' })
-  createdAt: Date;
+  createdAt: Date
 
   @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt: Date;
+  updatedAt: Date
 
   @OneToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })
-  user: User;
+  user: User
 
   @ManyToOne(() => Organization)
   @JoinColumn({ name: 'organization_id' })
-  organization: Organization;
+  organization: Organization
 }

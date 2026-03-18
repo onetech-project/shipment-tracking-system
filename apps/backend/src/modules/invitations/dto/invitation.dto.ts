@@ -1,23 +1,41 @@
-import { IsEmail, IsUUID, IsOptional, IsString, IsNotEmpty, MaxLength } from 'class-validator';
+import {
+  IsEmail,
+  IsUUID,
+  IsOptional,
+  IsString,
+  IsNotEmpty,
+  MaxLength,
+  MinLength,
+} from 'class-validator'
 
 export class CreateInvitationDto {
   @IsEmail()
-  email: string;
+  email: string
 
   @IsString()
   @IsNotEmpty()
   @MaxLength(255)
-  name: string;
+  name: string
 
   @IsOptional()
   @IsUUID()
-  roleId?: string;
+  roleId?: string
 
   @IsOptional()
   @IsUUID()
-  organizationId?: string;
+  organizationId?: string
 }
 
 export class AcceptInvitationDto {
-  token: string;
+  @IsString()
+  @IsNotEmpty()
+  token: string
+
+  @IsString()
+  @IsNotEmpty()
+  username: string
+
+  @IsString()
+  @MinLength(8)
+  password: string
 }
