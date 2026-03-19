@@ -1,34 +1,34 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Job } from 'bullmq';
-import { validate } from 'class-validator';
-import { plainToInstance } from 'class-transformer';
-import * as pdfParse from 'pdf-parse';
-import { Shipment } from '../entities/shipment.entity';
-import { ShipmentUpload, UploadStatus } from '../entities/shipment-upload.entity';
-import { ShipmentUploadError, UploadErrorType } from '../entities/shipment-upload-error.entity';
-import { ShipmentRowDto } from './dto/shipment-row.dto';
-import { SHIPMENT_IMPORT_QUEUE } from '../shipments.module';
+import { Processor, WorkerHost } from '@nestjs/bullmq'
+import { Logger } from '@nestjs/common'
+import { InjectRepository } from '@nestjs/typeorm'
+import { Repository } from 'typeorm'
+import { EventEmitter2 } from '@nestjs/event-emitter'
+import { Job } from 'bullmq'
+import { validate } from 'class-validator'
+import { plainToInstance } from 'class-transformer'
+import * as pdfParse from 'pdf-parse'
+import { Shipment } from '../entities/shipment.entity'
+import { ShipmentUpload, UploadStatus } from '../entities/shipment-upload.entity'
+import { ShipmentUploadError, UploadErrorType } from '../entities/shipment-upload-error.entity'
+import { ShipmentRowDto } from './dto/shipment-row.dto'
+import { SHIPMENT_IMPORT_QUEUE } from '../shipments.constants'
 
 interface ImportJobData {
-  uploadId: string;
-  fileBuffer: string; // base64-encoded
-  organizationId: string;
-  userId: string;
+  uploadId: string
+  fileBuffer: string // base64-encoded
+  organizationId: string
+  userId: string
 }
 
 // Sentinel strings that must appear in the parsed text for the template to be
 // considered valid. Adjust to match the actual internal PDF template headers.
-const TEMPLATE_MARKERS = ['Shipment ID', 'Origin', 'Destination', 'Status'];
+const TEMPLATE_MARKERS = ['Shipment ID', 'Origin', 'Destination', 'Status']
 
-const BATCH_SIZE = 100;
+const BATCH_SIZE = 100
 
 @Processor(SHIPMENT_IMPORT_QUEUE)
 export class ImportProcessor extends WorkerHost {
-  private readonly logger = new Logger(ImportProcessor.name);
+  private readonly logger = new Logger(ImportProcessor.name)
 
   constructor(
     @InjectRepository(ShipmentUpload)
@@ -37,54 +37,55 @@ export class ImportProcessor extends WorkerHost {
     private readonly shipmentRepo: Repository<Shipment>,
     @InjectRepository(ShipmentUploadError)
     private readonly errorRepo: Repository<ShipmentUploadError>,
-    private readonly eventEmitter: EventEmitter2,
+    private readonly eventEmitter: EventEmitter2
   ) {
-    super();
+    super()
   }
 
   async process(job: Job<ImportJobData>): Promise<void> {
-    const { uploadId, fileBuffer, organizationId, userId } = job.data;
+    const { uploadId, fileBuffer, organizationId, userId } = job.data
 
-    const upload = await this.uploadRepo.findOne({ where: { id: uploadId } });
+    const upload = await this.uploadRepo.findOne({ where: { id: uploadId } })
     if (!upload) {
-      this.logger.error(`Upload ${uploadId} not found — dropping job`);
-      return;
+      this.logger.error(`Upload ${uploadId} not found — dropping job`)
+      return
     }
 
     // Mark processing
-    upload.status = UploadStatus.PROCESSING;
-    upload.startedAt = new Date();
-    await this.uploadRepo.save(upload);
+    upload.status = UploadStatus.PROCESSING
+    upload.startedAt = new Date()
+    await this.uploadRepo.save(upload)
 
     this.eventEmitter.emit('shipment.import.started', {
       uploadId,
       organizationId,
       userId,
       filename: upload.originalFilename,
-    });
+    })
 
     try {
-      const buffer = Buffer.from(fileBuffer, 'base64');
-      const parsed = await pdfParse.default(buffer);
+      const buffer = Buffer.from(fileBuffer, 'base64')
+      const parsed = await pdfParse.default(buffer)
+      console.log(`Parsed PDF text for upload ${uploadId}:`, parsed.text)
 
       if (!this.isValidTemplate(parsed.text)) {
-        throw new Error('Unrecognized PDF template — cannot extract shipment rows');
+        throw new Error('Unrecognized PDF template — cannot extract shipment rows')
       }
 
-      const rows = this.parseRows(parsed.text);
-      upload.totalRowsDetected = rows.length;
+      const rows = this.parseRows(parsed.text)
+      upload.totalRowsDetected = rows.length
 
       // Validate all rows
-      const validRows: ShipmentRowDto[] = [];
-      const validationErrors: ShipmentUploadError[] = [];
+      const validRows: ShipmentRowDto[] = []
+      const validationErrors: ShipmentUploadError[] = []
 
       for (let i = 0; i < rows.length; i++) {
-        const dto = plainToInstance(ShipmentRowDto, rows[i]);
-        const errors = await validate(dto);
+        const dto = plainToInstance(ShipmentRowDto, rows[i])
+        const errors = await validate(dto)
         if (errors.length > 0) {
           for (const err of errors) {
-            const property = err.property;
-            const messages = Object.values(err.constraints ?? {}).join('; ');
+            const property = err.property
+            const messages = Object.values(err.constraints ?? {}).join('; ')
             validationErrors.push(
               this.errorRepo.create({
                 shipmentUploadId: uploadId,
@@ -93,46 +94,46 @@ export class ImportProcessor extends WorkerHost {
                 fieldName: property,
                 message: messages || `Validation failed for field '${property}'`,
                 incomingPayload: rows[i] as Record<string, unknown>,
-              }) as ShipmentUploadError,
-            );
+              }) as ShipmentUploadError
+            )
           }
         } else {
-          validRows.push(dto);
+          validRows.push(dto)
         }
       }
 
       // Save validation errors
       if (validationErrors.length > 0) {
-        await this.errorRepo.save(validationErrors);
-        upload.rowsFailed += validationErrors.length;
+        await this.errorRepo.save(validationErrors)
+        upload.rowsFailed += validationErrors.length
       }
 
       if (validRows.length === 0) {
-        upload.status = UploadStatus.FAILED;
-        upload.completedAt = new Date();
-        upload.durationMs = upload.completedAt.getTime() - upload.startedAt!.getTime();
-        await this.uploadRepo.save(upload);
-        this.eventEmitter.emit('shipment.import.failed', { uploadId, organizationId });
-        return;
+        upload.status = UploadStatus.FAILED
+        upload.completedAt = new Date()
+        upload.durationMs = upload.completedAt.getTime() - upload.startedAt!.getTime()
+        await this.uploadRepo.save(upload)
+        this.eventEmitter.emit('shipment.import.failed', { uploadId, organizationId })
+        return
       }
 
       // Preflight duplicate detection
-      const incomingIds = validRows.map((r) => r.shipmentId);
+      const incomingIds = validRows.map((r) => r.shipmentId)
       const existing = await this.shipmentRepo
         .createQueryBuilder('s')
         .where('s.organization_id = :organizationId', { organizationId })
         .andWhere('s.shipment_id IN (:...ids)', { ids: incomingIds })
         .select(['s.id', 's.shipment_id'])
-        .getMany();
+        .getMany()
 
-      const existingMap = new Map(existing.map((s) => [s.shipmentId, s.id]));
+      const existingMap = new Map(existing.map((s) => [s.shipmentId, s.id]))
 
-      const toInsert: Shipment[] = [];
-      const conflictErrors: ShipmentUploadError[] = [];
+      const toInsert: Shipment[] = []
+      const conflictErrors: ShipmentUploadError[] = []
 
       for (let i = 0; i < validRows.length; i++) {
-        const row = validRows[i];
-        const existingId = existingMap.get(row.shipmentId);
+        const row = validRows[i]
+        const existingId = existingMap.get(row.shipmentId)
 
         if (existingId) {
           conflictErrors.push(
@@ -143,8 +144,8 @@ export class ImportProcessor extends WorkerHost {
               message: `Shipment ID '${row.shipmentId}' already exists in the database.`,
               incomingPayload: row as unknown as Record<string, unknown>,
               existingShipmentId: existingId,
-            }) as ShipmentUploadError,
-          );
+            }) as ShipmentUploadError
+          )
         } else {
           toInsert.push(
             this.shipmentRepo.create({
@@ -159,42 +160,43 @@ export class ImportProcessor extends WorkerHost {
                 : null,
               contentsDescription: row.contentsDescription ?? null,
               lastImportUploadId: uploadId,
-            }) as Shipment,
-          );
+            }) as Shipment
+          )
         }
       }
 
       // Batch insert non-duplicates
       for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
-        const batch = toInsert.slice(i, i + BATCH_SIZE);
-        await this.shipmentRepo.save(batch);
+        const batch = toInsert.slice(i, i + BATCH_SIZE)
+        await this.shipmentRepo.save(batch)
       }
-      upload.rowsImported = toInsert.length;
+      upload.rowsImported = toInsert.length
 
       // Save conflict errors
       if (conflictErrors.length > 0) {
-        await this.errorRepo.save(conflictErrors);
-        upload.rowsConflicted = conflictErrors.length;
+        await this.errorRepo.save(conflictErrors)
+        upload.rowsConflicted = conflictErrors.length
       }
 
       // Determine terminal status
       if (conflictErrors.length > 0) {
-        upload.status = UploadStatus.AWAITING_CONFLICT_REVIEW;
+        upload.status = UploadStatus.AWAITING_CONFLICT_REVIEW
       } else if (validationErrors.length > 0) {
-        upload.status = UploadStatus.PARTIAL;
+        upload.status = UploadStatus.PARTIAL
       } else {
-        upload.status = UploadStatus.COMPLETED;
+        upload.status = UploadStatus.COMPLETED
       }
 
-      upload.completedAt = new Date();
-      upload.durationMs = upload.completedAt.getTime() - upload.startedAt!.getTime();
-      await this.uploadRepo.save(upload);
+      upload.completedAt = new Date()
+      upload.durationMs = upload.completedAt.getTime() - upload.startedAt!.getTime()
+      await this.uploadRepo.save(upload)
 
-      const eventName = upload.status === UploadStatus.COMPLETED
-        ? 'shipment.import.completed'
-        : upload.status === UploadStatus.PARTIAL
-          ? 'shipment.import.partial'
-          : 'shipment.import.completed'; // awaiting review is a sub-state of completed
+      const eventName =
+        upload.status === UploadStatus.COMPLETED
+          ? 'shipment.import.completed'
+          : upload.status === UploadStatus.PARTIAL
+            ? 'shipment.import.partial'
+            : 'shipment.import.completed' // awaiting review is a sub-state of completed
 
       this.eventEmitter.emit(eventName, {
         uploadId,
@@ -204,17 +206,17 @@ export class ImportProcessor extends WorkerHost {
         rowsImported: upload.rowsImported,
         rowsFailed: upload.rowsFailed,
         rowsConflicted: upload.rowsConflicted,
-      });
+      })
     } catch (err) {
-      this.logger.error(`Import failed for upload ${uploadId}: ${(err as Error).message}`);
-      upload.status = UploadStatus.FAILED;
-      upload.completedAt = new Date();
+      this.logger.error(`Import failed for upload ${uploadId}: ${(err as Error).message}`)
+      upload.status = UploadStatus.FAILED
+      upload.completedAt = new Date()
       if (upload.startedAt) {
-        upload.durationMs = upload.completedAt.getTime() - upload.startedAt.getTime();
+        upload.durationMs = upload.completedAt.getTime() - upload.startedAt.getTime()
       }
-      await this.uploadRepo.save(upload);
-      this.eventEmitter.emit('shipment.import.failed', { uploadId, organizationId, userId });
-      throw err; // allow BullMQ to retry
+      await this.uploadRepo.save(upload)
+      this.eventEmitter.emit('shipment.import.failed', { uploadId, organizationId, userId })
+      throw err // allow BullMQ to retry
     }
   }
 
@@ -223,7 +225,7 @@ export class ImportProcessor extends WorkerHost {
   // ---------------------------------------------------------------------------
 
   private isValidTemplate(text: string): boolean {
-    return TEMPLATE_MARKERS.every((marker) => text.includes(marker));
+    return TEMPLATE_MARKERS.every((marker) => text.includes(marker))
   }
 
   /**
@@ -235,22 +237,27 @@ export class ImportProcessor extends WorkerHost {
     const lines = text
       .split('\n')
       .map((l) => l.trim())
-      .filter((l) => l.includes('|'));
+      .filter((l) => l.includes('|'))
 
-    if (lines.length < 2) return [];
+    if (lines.length < 2) return []
 
-    const headers = lines[0]
-      .split('|')
-      .map((h) => h.trim().toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, ''));
+    const headers = lines[0].split('|').map((h) =>
+      h
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '_')
+        .replace(/_+/g, '_')
+        .replace(/^_|_$/g, '')
+    )
 
     return lines.slice(1).map((line) => {
-      const cells = line.split('|').map((c) => c.trim());
-      const obj: Record<string, string> = {};
+      const cells = line.split('|').map((c) => c.trim())
+      const obj: Record<string, string> = {}
       headers.forEach((header, idx) => {
-        obj[this.mapHeader(header)] = cells[idx] ?? '';
-      });
-      return obj;
-    });
+        obj[this.mapHeader(header)] = cells[idx] ?? ''
+      })
+      return obj
+    })
   }
 
   private mapHeader(raw: string): string {
@@ -264,7 +271,7 @@ export class ImportProcessor extends WorkerHost {
       estimated_delivery: 'estimatedDeliveryDate',
       contents: 'contentsDescription',
       contents_description: 'contentsDescription',
-    };
-    return map[raw] ?? raw;
+    }
+    return map[raw] ?? raw
   }
 }

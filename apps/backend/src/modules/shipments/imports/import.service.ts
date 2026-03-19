@@ -3,24 +3,24 @@ import {
   NotFoundException,
   ForbiddenException,
   ConflictException,
-} from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { InjectQueue } from '@nestjs/bullmq';
-import { Queue } from 'bullmq';
-import { Repository } from 'typeorm';
-import { createHash } from 'crypto';
-import { ShipmentUpload, UploadStatus } from '../entities/shipment-upload.entity';
-import { ShipmentUploadError } from '../entities/shipment-upload-error.entity';
-import { Shipment } from '../entities/shipment.entity';
-import { ConflictDecisionDto, ConflictAction } from './dto/resolve-conflict.dto';
+} from '@nestjs/common'
+import { InjectRepository } from '@nestjs/typeorm'
+import { InjectQueue } from '@nestjs/bullmq'
+import { Queue } from 'bullmq'
+import { Repository } from 'typeorm'
+import { createHash } from 'crypto'
+import { ShipmentUpload, UploadStatus } from '../entities/shipment-upload.entity'
+import { ShipmentUploadError } from '../entities/shipment-upload-error.entity'
+import { Shipment } from '../entities/shipment.entity'
+import { ConflictDecisionDto, ConflictAction } from './dto/resolve-conflict.dto'
 import {
   UploadInitiatedResponse,
   ImportStatusResponse,
   ImportErrorsResponse,
   ResolveConflictsResponse,
   UploadHistoryResponse,
-} from '@shared/shipments';
-import { SHIPMENT_IMPORT_QUEUE } from '../shipments.module';
+} from '@shared/shipments'
+import { SHIPMENT_IMPORT_QUEUE } from '../shipments.constants'
 
 @Injectable()
 export class ImportService {
@@ -32,63 +32,68 @@ export class ImportService {
     @InjectRepository(Shipment)
     private readonly shipmentRepo: Repository<Shipment>,
     @InjectQueue(SHIPMENT_IMPORT_QUEUE)
-    private readonly queue: Queue,
+    private readonly queue: Queue
   ) {}
 
   async createUploadRecord(
     organizationId: string,
     userId: string,
-    file: Express.Multer.File,
+    file: Express.Multer.File
   ): Promise<UploadInitiatedResponse> {
-    const fileHash = createHash('sha256').update(file.buffer).digest('hex');
+    try {
+      const fileHash = createHash('sha256').update(file.buffer).digest('hex')
 
-    // Idempotency: return existing upload if same org + hash is still active
-    const existing = await this.uploadRepo.findOne({
-      where: [
-        { organizationId, fileHash, status: UploadStatus.QUEUED },
-        { organizationId, fileHash, status: UploadStatus.PROCESSING },
-      ],
-    });
+      // Idempotency: return existing upload if same org + hash is still active
+      const existing = await this.uploadRepo.findOne({
+        where: [
+          { organizationId, fileHash, status: UploadStatus.QUEUED },
+          { organizationId, fileHash, status: UploadStatus.PROCESSING },
+        ],
+      })
 
-    if (existing) {
-      return {
-        uploadId: existing.id,
-        status: 'queued',
-        message: 'Duplicate file — returning existing queued import.',
-      };
-    }
+      if (existing) {
+        return {
+          uploadId: existing.id,
+          status: 'queued',
+          message: 'Duplicate file — returning existing queued import.',
+        }
+      }
 
-    const upload = this.uploadRepo.create({
-      organizationId,
-      uploadedByUserId: userId,
-      originalFilename: file.originalname,
-      fileHash,
-      status: UploadStatus.QUEUED,
-    });
-    const saved = await this.uploadRepo.save(upload);
-
-    await this.queue.add(
-      'process-pdf',
-      {
-        uploadId: saved.id,
-        fileBuffer: file.buffer.toString('base64'),
+      const upload = this.uploadRepo.create({
         organizationId,
-        userId,
-      },
-      { attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
-    );
+        uploadedByUserId: userId,
+        originalFilename: file.originalname,
+        fileHash,
+        status: UploadStatus.QUEUED,
+      })
+      const saved = await this.uploadRepo.save(upload)
 
-    return {
-      uploadId: saved.id,
-      status: 'queued',
-      message: 'Import queued. Poll GET /shipments/imports/:uploadId for progress.',
-    };
+      await this.queue.add(
+        'process-pdf',
+        {
+          uploadId: saved.id,
+          fileBuffer: file.buffer.toString('base64'),
+          organizationId,
+          userId,
+        },
+        { attempts: 3, backoff: { type: 'exponential', delay: 2000 } }
+      )
+
+      return {
+        uploadId: saved.id,
+        status: 'queued',
+        message: 'Import queued. Poll GET /shipments/imports/:uploadId for progress.',
+      }
+    } catch (error) {
+      console.log('Error creating upload record or queueing job:', error)
+      throw new ConflictException('Failed to initiate import. Please try again.')
+    }
   }
 
   async getStatus(uploadId: string, organizationId: string): Promise<ImportStatusResponse> {
-    const upload = await this.uploadRepo.findOne({ where: { id: uploadId } });
-    if (!upload) throw new NotFoundException('UPLOAD_NOT_FOUND');
-    if (upload.organizationId !== organizationId) throw new ForbiddenException('FORBIDDEN');
+    const upload = await this.uploadRepo.findOne({ where: { id: uploadId } })
+    if (!upload) throw new NotFoundException('UPLOAD_NOT_FOUND')
+    if (upload.organizationId !== organizationId) throw new ForbiddenException('FORBIDDEN')
 
     return {
       uploadId: upload.id,
@@ -101,15 +106,15 @@ export class ImportService {
       startedAt: upload.startedAt?.toISOString() ?? null,
       completedAt: upload.completedAt?.toISOString() ?? null,
       durationMs: upload.durationMs,
-    };
+    }
   }
 
   async getErrors(uploadId: string, organizationId: string): Promise<ImportErrorsResponse> {
-    const upload = await this.uploadRepo.findOne({ where: { id: uploadId } });
-    if (!upload) throw new NotFoundException('UPLOAD_NOT_FOUND');
-    if (upload.organizationId !== organizationId) throw new ForbiddenException('FORBIDDEN');
+    const upload = await this.uploadRepo.findOne({ where: { id: uploadId } })
+    if (!upload) throw new NotFoundException('UPLOAD_NOT_FOUND')
+    if (upload.organizationId !== organizationId) throw new ForbiddenException('FORBIDDEN')
 
-    const errors = await this.errorRepo.find({ where: { shipmentUploadId: uploadId } });
+    const errors = await this.errorRepo.find({ where: { shipmentUploadId: uploadId } })
 
     return {
       items: errors.map((e) => ({
@@ -123,42 +128,42 @@ export class ImportService {
         resolved: e.resolved,
         resolution: e.resolution as any,
       })),
-    };
+    }
   }
 
   async resolveConflicts(
     uploadId: string,
     organizationId: string,
-    decisions: ConflictDecisionDto[],
+    decisions: ConflictDecisionDto[]
   ): Promise<ResolveConflictsResponse> {
-    const upload = await this.uploadRepo.findOne({ where: { id: uploadId } });
-    if (!upload) throw new NotFoundException('UPLOAD_NOT_FOUND');
-    if (upload.organizationId !== organizationId) throw new ForbiddenException('FORBIDDEN');
+    const upload = await this.uploadRepo.findOne({ where: { id: uploadId } })
+    if (!upload) throw new NotFoundException('UPLOAD_NOT_FOUND')
+    if (upload.organizationId !== organizationId) throw new ForbiddenException('FORBIDDEN')
     if (upload.status !== UploadStatus.AWAITING_CONFLICT_REVIEW) {
-      throw new ConflictException('UPLOAD_NOT_AWAITING_REVIEW');
+      throw new ConflictException('UPLOAD_NOT_AWAITING_REVIEW')
     }
 
     const unconflictedErrors = await this.errorRepo.find({
       where: { shipmentUploadId: uploadId, errorType: 'duplicate', resolved: false },
-    });
+    })
 
-    const unconflictedIds = new Set(unconflictedErrors.map((e) => e.id));
-    const decisionMap = new Map(decisions.map((d) => [d.errorId, d.action]));
+    const unconflictedIds = new Set(unconflictedErrors.map((e) => e.id))
+    const decisionMap = new Map(decisions.map((d) => [d.errorId, d.action]))
 
     // Validate all unresolved duplicate errors have a decision
     for (const id of unconflictedIds) {
       if (!decisionMap.has(id)) {
-        throw new ConflictException('MISSING_DECISIONS');
+        throw new ConflictException('MISSING_DECISIONS')
       }
     }
 
     for (const error of unconflictedErrors) {
-      const action = decisionMap.get(error.id);
-      if (!action) continue;
+      const action = decisionMap.get(error.id)
+      if (!action) continue
 
       if (action === ConflictAction.OVERWRITE) {
         // Overwrite: update shipment with incoming payload
-        const payload = error.incomingPayload as Record<string, any>;
+        const payload = error.incomingPayload as Record<string, any>
         if (error.existingShipmentId && payload) {
           await this.shipmentRepo.save({
             id: error.existingShipmentId,
@@ -169,27 +174,27 @@ export class ImportService {
             estimatedDeliveryDate: payload['estimatedDeliveryDate'] ?? null,
             contentsDescription: payload['contentsDescription'] ?? null,
             lastImportUploadId: uploadId,
-          });
-          upload.rowsImported += 1;
+          })
+          upload.rowsImported += 1
         }
-        error.resolution = 'overwritten';
+        error.resolution = 'overwritten'
       } else {
-        error.resolution = 'skipped';
+        error.resolution = 'skipped'
       }
 
-      error.resolved = true;
-      upload.rowsConflicted -= 1;
+      error.resolved = true
+      upload.rowsConflicted -= 1
     }
 
-    await this.errorRepo.save(unconflictedErrors);
+    await this.errorRepo.save(unconflictedErrors)
 
     // Determine terminal status
-    upload.status = upload.rowsFailed > 0 ? UploadStatus.PARTIAL : UploadStatus.COMPLETED;
-    upload.completedAt = new Date();
+    upload.status = upload.rowsFailed > 0 ? UploadStatus.PARTIAL : UploadStatus.COMPLETED
+    upload.completedAt = new Date()
     if (upload.startedAt) {
-      upload.durationMs = upload.completedAt.getTime() - upload.startedAt.getTime();
+      upload.durationMs = upload.completedAt.getTime() - upload.startedAt.getTime()
     }
-    await this.uploadRepo.save(upload);
+    await this.uploadRepo.save(upload)
 
     return {
       uploadId: upload.id,
@@ -197,33 +202,33 @@ export class ImportService {
       rowsImported: upload.rowsImported,
       rowsFailed: upload.rowsFailed,
       rowsConflicted: upload.rowsConflicted,
-    };
+    }
   }
 
   async getHistory(
     organizationId: string,
     limit = 20,
-    cursor?: string,
+    cursor?: string
   ): Promise<UploadHistoryResponse> {
-    const pageLimit = Math.min(limit, 100);
+    const pageLimit = Math.min(limit, 100)
     const qb = this.uploadRepo
       .createQueryBuilder('u')
       .where('u.organization_id = :organizationId', { organizationId })
       .orderBy('u.created_at', 'DESC')
-      .limit(pageLimit + 1);
+      .limit(pageLimit + 1)
 
     if (cursor) {
-      const decoded = Buffer.from(cursor, 'base64').toString('utf-8');
-      qb.andWhere('u.created_at < :cursor', { cursor: decoded });
+      const decoded = Buffer.from(cursor, 'base64').toString('utf-8')
+      qb.andWhere('u.created_at < :cursor', { cursor: decoded })
     }
 
-    const rows = await qb.getMany();
-    const hasMore = rows.length > pageLimit;
-    const items = hasMore ? rows.slice(0, pageLimit) : rows;
+    const rows = await qb.getMany()
+    const hasMore = rows.length > pageLimit
+    const items = hasMore ? rows.slice(0, pageLimit) : rows
 
     const nextCursor = hasMore
       ? Buffer.from(items[items.length - 1].createdAt.toISOString()).toString('base64')
-      : null;
+      : null
 
     return {
       items: items.map((u) => ({
@@ -238,6 +243,6 @@ export class ImportService {
         completedAt: u.completedAt?.toISOString() ?? null,
       })),
       nextCursor,
-    };
+    }
   }
 }

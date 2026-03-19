@@ -8,7 +8,7 @@ import { ShipmentUpload, UploadStatus } from '../entities/shipment-upload.entity
 import { ShipmentUploadError, UploadErrorType } from '../entities/shipment-upload-error.entity';
 import { ImportProcessor } from './import.processor';
 import { ImportService } from './import.service';
-import { SHIPMENT_IMPORT_QUEUE } from '../shipments.module';
+import { SHIPMENT_IMPORT_QUEUE } from '../shipments.constants';
 
 // ---------------------------------------------------------------------------
 // Helpers
