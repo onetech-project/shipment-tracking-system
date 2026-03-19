@@ -102,3 +102,46 @@ export interface UploadHistoryResponse {
   items: UploadHistoryItem[];
   nextCursor: string | null;
 }
+
+// ——— Line Haul Trip (QR scan / list) ———
+
+export interface LinehaulTripItemResponse {
+  id: string;
+  toNumber: string;
+  weight: number | null;
+  destination: string | null;
+  dgType: string | null;
+  toType: string | null;
+}
+
+export interface LinehaulTripResponse {
+  id: string;
+  tripCode: string;
+  schedule: string | null;
+  origin: string;
+  destination: string;
+  vendor: string | null;
+  plateNumber: string | null;
+  driverName: string | null;
+  std: string | null;
+  sta: string | null;
+  ata: string | null;
+  totalWeight: number | null;
+  createdAt?: string;
+  itemCount?: number;
+}
+
+export interface LinehaulLookupResponse {
+  item: LinehaulTripItemResponse;
+  trip: LinehaulTripResponse;
+}
+
+export interface LinehaulTripsListResponse {
+  items: (LinehaulTripResponse & { itemCount: number; createdAt: string })[];
+  nextCursor: string | null;
+}
+
+export interface LinehaulTripDetailResponse {
+  trip: LinehaulTripResponse;
+  items: LinehaulTripItemResponse[];
+}

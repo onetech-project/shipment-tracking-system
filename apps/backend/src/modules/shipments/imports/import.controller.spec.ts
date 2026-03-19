@@ -147,6 +147,97 @@ describe('ImportController (integration)', () => {
       expect(res.body).toHaveProperty('nextCursor');
     });
 
+    it('returns history including both shipment and linehaul uploads', async () => {
+      const mixedHistory = {
+        items: [
+          {
+            uploadId: 'lh-upload-0000-4000-8000-000000000001',
+            originalFilename: 'linehaul-trip-march.pdf',
+            status: 'completed',
+            totalRowsDetected: 25,
+            rowsImported: 23,
+            rowsFailed: 2,
+            rowsConflicted: 0,
+            createdAt: new Date().toISOString(),
+            completedAt: new Date().toISOString(),
+          },
+          {
+            uploadId: UPLOAD_ID,
+            originalFilename: 'march-batch.pdf',
+            status: 'completed',
+            totalRowsDetected: 10,
+            rowsImported: 10,
+            rowsFailed: 0,
+            rowsConflicted: 0,
+            createdAt: new Date().toISOString(),
+            completedAt: null,
+          },
+        ],
+        nextCursor: null,
+      };
+      mockService.getHistory.mockResolvedValue(mixedHistory);
+
+      const res = await request(app.getHttpServer()).get('/shipments/imports/history');
+      expect(res.status).toBe(200);
+      expect(res.body.items).toHaveLength(2);
+      expect(res.body.items[0].originalFilename).toBe('linehaul-trip-march.pdf');
+      expect(res.body.items[0].rowsImported).toBe(23);
+      expect(res.body.items[0].rowsFailed).toBe(2);
+      expect(res.body.items[1].originalFilename).toBe('march-batch.pdf');
+    });
+
+    it('returns linehaul upload with partial status and correct counters', async () => {
+      const partialLinehaul = {
+        items: [
+          {
+            uploadId: 'lh-partial-0000-4000-8000-000000000001',
+            originalFilename: 'linehaul-partial.pdf',
+            status: 'partial',
+            totalRowsDetected: 15,
+            rowsImported: 12,
+            rowsFailed: 3,
+            rowsConflicted: 0,
+            createdAt: new Date().toISOString(),
+            completedAt: new Date().toISOString(),
+          },
+        ],
+        nextCursor: null,
+      };
+      mockService.getHistory.mockResolvedValue(partialLinehaul);
+
+      const res = await request(app.getHttpServer()).get('/shipments/imports/history');
+      expect(res.status).toBe(200);
+      expect(res.body.items[0].status).toBe('partial');
+      expect(res.body.items[0].totalRowsDetected).toBe(15);
+      expect(res.body.items[0].rowsImported).toBe(12);
+      expect(res.body.items[0].rowsFailed).toBe(3);
+    });
+
+    it('returns linehaul upload with awaiting_conflict_review for duplicate trip', async () => {
+      const conflictLinehaul = {
+        items: [
+          {
+            uploadId: 'lh-conflict-0000-4000-8000-000000000001',
+            originalFilename: 'linehaul-dup.pdf',
+            status: 'awaiting_conflict_review',
+            totalRowsDetected: 20,
+            rowsImported: 0,
+            rowsFailed: 0,
+            rowsConflicted: 1,
+            createdAt: new Date().toISOString(),
+            completedAt: new Date().toISOString(),
+          },
+        ],
+        nextCursor: null,
+      };
+      mockService.getHistory.mockResolvedValue(conflictLinehaul);
+
+      const res = await request(app.getHttpServer()).get('/shipments/imports/history');
+      expect(res.status).toBe(200);
+      expect(res.body.items[0].status).toBe('awaiting_conflict_review');
+      expect(res.body.items[0].rowsConflicted).toBe(1);
+    });
+
     it('returns 401 when unauthenticated', async () => {
       const unauthApp = await buildApp(UNAUTH_GUARD);
       const res = await request(unauthApp.getHttpServer()).get('/shipments/imports/history');

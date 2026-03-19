@@ -1,6 +1,7 @@
 'use client';
 import { useQrScanner } from '../hooks/useQrScanner';
 import ShipmentDetail from './ShipmentDetail';
+import LinehaulDetail from './LinehaulDetail';
 
 export default function QrScanner() {
   const { permissionState, scanResult, isLooking, videoRef, canvasRef, startScanner, reset } =
@@ -88,13 +89,17 @@ export default function QrScanner() {
       )}
 
       {/* Scan results */}
-      {scanResult?.type === 'found' && (
+      {scanResult?.type === 'shipment' && (
         <ShipmentDetail shipment={scanResult.shipment} onReset={reset} />
+      )}
+
+      {scanResult?.type === 'linehaul' && (
+        <LinehaulDetail data={scanResult.linehaul} onReset={reset} />
       )}
 
       {scanResult?.type === 'not-found' && (
         <div data-testid="shipment-not-found" style={{ marginTop: '1rem', color: '#ef4444' }}>
-          <strong>Shipment not found:</strong> <code>{scanResult.shipmentId}</code>
+          <strong>Not found:</strong> <code>{scanResult.value}</code>
           <br />
           <button onClick={reset} style={{ marginTop: '0.5rem', color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
             Scan again

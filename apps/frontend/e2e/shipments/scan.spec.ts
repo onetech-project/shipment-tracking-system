@@ -87,6 +87,11 @@ test.describe('QR Code Scanner', () => {
     const scanPage = new ScanPage(page);
     await scanPage.goto();
 
+    // Linehaul lookup returns 404 → falls back to shipment lookup
+    await page.route('**/api/shipments/linehaul/items/SHP-001', (route) =>
+      route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ code: 'TRIP_ITEM_NOT_FOUND' }) }),
+    );
+
     // Intercept the shipment API lookup to return a canned response
     await page.route('**/api/shipments/SHP-001', (route) =>
       route.fulfill({
@@ -116,6 +121,9 @@ test.describe('QR Code Scanner', () => {
   });
 
   test('shows not-found message for unknown shipment ID', async ({ page }) => {
+    await page.route('**/api/shipments/linehaul/items/SHP-UNKNOWN', (route) =>
+      route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ code: 'TRIP_ITEM_NOT_FOUND' }) }),
+    );
     await page.route('**/api/shipments/SHP-UNKNOWN', (route) =>
       route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ code: 'SHIPMENT_NOT_FOUND' }) }),
     );
@@ -142,5 +150,74 @@ test.describe('QR Code Scanner', () => {
     await page.context().clearCookies();
     await page.goto('/shipments/scan');
     await expect(page).toHaveURL(/\/login/);
+  });
+
+  test('shows linehaul detail when QR code matches a to_number', async ({ page }) => {
+    await page.route('**/api/shipments/linehaul/items/TO-2026031900001', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          item: {
+            id: 'a1b2c3d4-0000-4000-8000-000000000001',
+            toNumber: 'TO-2026031900001',
+            weight: 12.5,
+            destination: 'Bandung',
+            dgType: 'non-dg',
+            toType: 'REGULAR',
+          },
+          trip: {
+            id: 'e5f6g7h8-0000-4000-8000-000000000001',
+            tripCode: 'LT2026031901',
+            schedule: 'SCH-001',
+            origin: 'Jakarta',
+            destination: 'Bandung',
+            vendor: 'PT Vendor Logistics',
+            plateNumber: 'B1234XYZ',
+            driverName: 'Ahmad Bayu',
+            std: '2026-03-19T08:00:00.000Z',
+            sta: '2026-03-19T14:00:00.000Z',
+            ata: null,
+            totalWeight: 1250.0,
+          },
+        }),
+      }),
+    );
+
+    await page.goto('/shipments/scan');
+    await page.evaluate(() => {
+      window.dispatchEvent(new CustomEvent('__mock_qr_scan', { detail: 'TO-2026031900001' }));
+    });
+
+    await expect(page.locator('[data-testid="linehaul-detail"]')).toBeVisible({ timeout: 5000 });
+  });
+
+  test('falls back to shipment lookup when linehaul returns 404', async ({ page }) => {
+    await page.route('**/api/shipments/linehaul/items/SHP-001', (route) =>
+      route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ code: 'TRIP_ITEM_NOT_FOUND' }) }),
+    );
+    await page.route('**/api/shipments/SHP-001', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          id: 'f0000000-0000-4000-8000-000000000001',
+          shipmentId: 'SHP-001',
+          origin: 'Jakarta',
+          destination: 'Bandung',
+          status: 'pending',
+          carrier: null,
+          estimatedDeliveryDate: null,
+          contentsDescription: null,
+        }),
+      }),
+    );
+
+    await page.goto('/shipments/scan');
+    await page.evaluate(() => {
+      window.dispatchEvent(new CustomEvent('__mock_qr_scan', { detail: 'SHP-001' }));
+    });
+
+    await expect(page.locator('[data-testid="shipment-detail"]')).toBeVisible({ timeout: 5000 });
   });
 });

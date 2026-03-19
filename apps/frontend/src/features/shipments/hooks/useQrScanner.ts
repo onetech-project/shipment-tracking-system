@@ -1,16 +1,20 @@
 'use client';
 import { useState, useRef, useCallback, useEffect } from 'react';
 import jsQR from 'jsqr';
-import type { ShipmentResponse } from '@shared/shipments';
-import { lookupShipment } from '../api/shipments.api';
+import type { ShipmentResponse, LinehaulLookupResponse } from '@shared/shipments';
+import { lookupShipment, lookupLinehaulItem } from '../api/shipments.api';
 
 export type ScannerPermissionState = 'idle' | 'granted' | 'denied' | 'no-camera' | 'in-use';
 
 export type ScanResult =
-  | { type: 'found'; shipment: ShipmentResponse }
-  | { type: 'not-found'; shipmentId: string }
+  | { type: 'shipment'; shipment: ShipmentResponse }
+  | { type: 'linehaul'; linehaul: LinehaulLookupResponse }
+  | { type: 'not-found'; value: string }
   | { type: 'invalid-format'; raw: string }
   | null;
+
+// Keep backward-compat alias
+export type { ScanResult as QrScanResult };
 
 const SHIPMENT_ID_REGEX = /^[A-Z0-9-]{6,40}$/;
 const SCAN_COOLDOWN_MS = 800;
@@ -89,16 +93,31 @@ export function useQrScanner(): UseQrScanner {
 
     setIsLooking(true);
     try {
+      // Try linehaul lookup first
+      try {
+        const linehaul = await lookupLinehaulItem(id);
+        setScanResult({ type: 'linehaul', linehaul });
+        return;
+      } catch (lhErr: unknown) {
+        const lhStatus = (lhErr as any)?.response?.status;
+        if (lhStatus !== 404 && lhStatus !== 400) {
+          // Unexpected error — don't fall through
+          setScanResult({ type: 'not-found', value: id });
+          return;
+        }
+      }
+
+      // Fall back to shipment lookup
       const shipment = await lookupShipment(id);
-      setScanResult({ type: 'found', shipment });
+      setScanResult({ type: 'shipment', shipment });
     } catch (err: unknown) {
       const status = (err as any)?.response?.status;
       if (status === 404) {
-        setScanResult({ type: 'not-found', shipmentId: id });
+        setScanResult({ type: 'not-found', value: id });
       } else if (status === 400) {
         setScanResult({ type: 'invalid-format', raw: id });
       } else {
-        setScanResult({ type: 'not-found', shipmentId: id });
+        setScanResult({ type: 'not-found', value: id });
       }
     } finally {
       setIsLooking(false);

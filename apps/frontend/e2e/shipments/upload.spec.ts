@@ -66,6 +66,7 @@ class HistoryPage {
 
 const FIXTURE_PDF = path.join(__dirname, '../fixtures/valid-shipments.pdf');
 const FIXTURE_PDF_DUPLICATES = path.join(__dirname, '../fixtures/shipments-with-duplicates.pdf');
+const FIXTURE_LINEHAUL_PDF = path.join(__dirname, '../fixtures/linehaul-trip.pdf');
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -155,5 +156,39 @@ test.describe('Upload History', () => {
     // After at least one upload was made in a prior test, rows should exist.
     // In a clean environment the list may be empty — just verify no error.
     await expect(page.locator('[data-testid="history-empty"], [data-testid="history-row"]')).toBeVisible();
+  });
+});
+
+test.describe('Line Haul Trip PDF Upload', () => {
+  test.beforeEach(async ({ page }) => {
+    const loginPage = new LoginPage(page);
+    await loginPage.login();
+  });
+
+  test('uploads Line Haul Trip PDF and shows completed status', async ({ page }) => {
+    test.skip(
+      !require('fs').existsSync(FIXTURE_LINEHAUL_PDF),
+      'Linehaul fixture PDF not present — skipping in environments without fixtures',
+    );
+    const uploadPage = new UploadPage(page);
+    await uploadPage.goto();
+    await uploadPage.uploadFile(FIXTURE_LINEHAUL_PDF);
+    await uploadPage.waitForStatus('completed');
+    await expect(page.locator('[data-testid="rows-imported"]')).toContainText(/\d+/);
+  });
+
+  test('linehaul upload appears in history', async ({ page }) => {
+    test.skip(
+      !require('fs').existsSync(FIXTURE_LINEHAUL_PDF),
+      'Linehaul fixture PDF not present — skipping in environments without fixtures',
+    );
+    const uploadPage = new UploadPage(page);
+    await uploadPage.goto();
+    await uploadPage.uploadFile(FIXTURE_LINEHAUL_PDF);
+    await uploadPage.waitForStatus('completed');
+
+    const historyPage = new HistoryPage(page);
+    await historyPage.goto();
+    await expect(page.locator('[data-testid="history-row"]')).toHaveCount({ minimum: 1 } as any);
   });
 });

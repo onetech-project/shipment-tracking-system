@@ -8,6 +8,8 @@ import { ShipmentUpload, UploadStatus } from '../entities/shipment-upload.entity
 import { ShipmentUploadError, UploadErrorType } from '../entities/shipment-upload-error.entity';
 import { ImportProcessor } from './import.processor';
 import { ImportService } from './import.service';
+import { LinehaulParserService } from './linehaul/linehaul-parser.service';
+import { LinehaulImportService } from './linehaul/linehaul-import.service';
 import { SHIPMENT_IMPORT_QUEUE } from '../shipments.constants';
 
 // ---------------------------------------------------------------------------
@@ -72,6 +74,8 @@ describe('ImportProcessor (unit)', () => {
   let errorRepo: ReturnType<typeof makeErrorRepo>;
   let importService: ImportService;
   let eventEmitter: { emit: jest.Mock };
+  let linehaulParser: { parse: jest.Mock };
+  let linehaulImport: { import: jest.Mock };
 
   const UPLOAD_ID = 'upload-uuid-0001';
   const ORG_ID = 'org-uuid-0001';
@@ -102,6 +106,8 @@ describe('ImportProcessor (unit)', () => {
     shipmentRepo = makeShipmentRepo();
     errorRepo = makeErrorRepo();
     eventEmitter = { emit: jest.fn() };
+    linehaulParser = { parse: jest.fn().mockResolvedValue({ trip: {}, items: [] }) };
+    linehaulImport = { import: jest.fn().mockResolvedValue(undefined) };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -113,6 +119,8 @@ describe('ImportProcessor (unit)', () => {
         { provide: EventEmitter2, useValue: eventEmitter },
         { provide: ConfigService, useValue: { get: (_: string, d: unknown) => d } },
         { provide: getQueueToken(SHIPMENT_IMPORT_QUEUE), useValue: { add: jest.fn() } },
+        { provide: LinehaulParserService, useValue: linehaulParser },
+        { provide: LinehaulImportService, useValue: linehaulImport },
       ],
     }).compile();
 
@@ -193,6 +201,50 @@ Shipment ID | Origin | Destination | Status
       expect(eventEmitter.emit).toHaveBeenCalledWith(
         'shipment.import.completed',
         expect.objectContaining({ uploadId: UPLOAD_ID }),
+      );
+    });
+  });
+
+  describe('template detection', () => {
+    const makeJob = (fileBuffer: Buffer, uploadId = UPLOAD_ID) =>
+      ({ data: { uploadId, fileBuffer: fileBuffer.toString('base64'), organizationId: ORG_ID, userId: USER_ID } });
+
+    it('dispatches to linehaul parser when text contains "Nomor TO" and "Surat Jalan"', async () => {
+      const pdfParse = require('pdf-parse');
+      pdfParse.mockResolvedValueOnce({
+        text: 'Some header\nNomor TO\nSurat Jalan\nLT2026031901\nTO-001',
+      });
+
+      await processor.process(makeJob(Buffer.from('linehaul-pdf')) as any);
+
+      expect(linehaulParser.parse).toHaveBeenCalled();
+      expect(linehaulImport.import).toHaveBeenCalledWith(
+        expect.objectContaining({ uploadId: UPLOAD_ID, organizationId: ORG_ID }),
+      );
+    });
+
+    it('dispatches to shipment parser when existing TEMPLATE_MARKERS present', async () => {
+      // Default mock returns text with Shipment ID, Origin, etc.
+      await processor.process(makeJob(Buffer.from('valid-pdf-bytes')) as any);
+
+      // Should NOT call linehaul parser
+      expect(linehaulParser.parse).not.toHaveBeenCalled();
+      // Should process shipment rows normally
+      expect(shipmentRepo.save).toHaveBeenCalled();
+    });
+
+    it('rejects with INVALID_PDF when no template markers match', async () => {
+      const pdfParse = require('pdf-parse');
+      pdfParse.mockResolvedValueOnce({
+        text: 'Random document with no recognizable markers',
+      });
+
+      await expect(
+        processor.process(makeJob(Buffer.from('unknown-pdf')) as any),
+      ).rejects.toThrow('Unrecognized PDF template');
+
+      expect(uploadRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ status: UploadStatus.FAILED }),
       );
     });
   });

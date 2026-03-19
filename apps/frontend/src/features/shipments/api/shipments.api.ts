@@ -7,6 +7,9 @@ import type {
   ResolveConflictsResponse,
   UploadHistoryResponse,
   ShipmentResponse,
+  LinehaulLookupResponse,
+  LinehaulTripsListResponse,
+  LinehaulTripDetailResponse,
 } from '@shared/shipments';
 
 const BASE = '/shipments';
@@ -53,5 +56,29 @@ export async function getImportHistory(
 
 export async function lookupShipment(shipmentId: string): Promise<ShipmentResponse> {
   const { data } = await apiClient.get<ShipmentResponse>(`${BASE}/${encodeURIComponent(shipmentId)}`);
+  return data;
+}
+
+export async function lookupLinehaulItem(toNumber: string): Promise<LinehaulLookupResponse> {
+  const { data } = await apiClient.get<LinehaulLookupResponse>(
+    `${BASE}/linehaul/items/${encodeURIComponent(toNumber)}`,
+  );
+  return data;
+}
+
+export async function listLinehaulTrips(
+  limit = 20,
+  cursor?: string,
+): Promise<LinehaulTripsListResponse> {
+  const { data } = await apiClient.get<LinehaulTripsListResponse>(`${BASE}/linehaul/trips`, {
+    params: { limit, ...(cursor ? { cursor } : {}) },
+  });
+  return data;
+}
+
+export async function getLinehaulTrip(tripId: string): Promise<LinehaulTripDetailResponse> {
+  const { data } = await apiClient.get<LinehaulTripDetailResponse>(
+    `${BASE}/linehaul/trips/${encodeURIComponent(tripId)}`,
+  );
   return data;
 }

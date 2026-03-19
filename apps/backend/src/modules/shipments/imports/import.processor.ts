@@ -11,6 +11,8 @@ import { Shipment } from '../entities/shipment.entity'
 import { ShipmentUpload, UploadStatus } from '../entities/shipment-upload.entity'
 import { ShipmentUploadError, UploadErrorType } from '../entities/shipment-upload-error.entity'
 import { ShipmentRowDto } from './dto/shipment-row.dto'
+import { LinehaulParserService, LINEHAUL_MARKERS } from './linehaul/linehaul-parser.service'
+import { LinehaulImportService } from './linehaul/linehaul-import.service'
 import { SHIPMENT_IMPORT_QUEUE } from '../shipments.constants'
 
 interface ImportJobData {
@@ -37,7 +39,9 @@ export class ImportProcessor extends WorkerHost {
     private readonly shipmentRepo: Repository<Shipment>,
     @InjectRepository(ShipmentUploadError)
     private readonly errorRepo: Repository<ShipmentUploadError>,
-    private readonly eventEmitter: EventEmitter2
+    private readonly eventEmitter: EventEmitter2,
+    private readonly linehaulParser: LinehaulParserService,
+    private readonly linehaulImport: LinehaulImportService,
   ) {
     super()
   }
@@ -67,6 +71,20 @@ export class ImportProcessor extends WorkerHost {
       const buffer = Buffer.from(fileBuffer, 'base64')
       const parsed = await pdfParse.default(buffer)
       console.log(`Parsed PDF text for upload ${uploadId}:`, parsed.text)
+
+      // Template detection: check for linehaul markers first
+      if (this.isLinehaulTemplate(parsed.text)) {
+        this.logger.log(`Upload ${uploadId}: detected Line Haul Trip template`)
+        const result = await this.linehaulParser.parse(buffer)
+        await this.linehaulImport.import({
+          trip: result.trip,
+          items: result.items,
+          uploadId,
+          organizationId,
+          userId,
+        })
+        return
+      }
 
       if (!this.isValidTemplate(parsed.text)) {
         throw new Error('Unrecognized PDF template — cannot extract shipment rows')
@@ -226,6 +244,10 @@ export class ImportProcessor extends WorkerHost {
 
   private isValidTemplate(text: string): boolean {
     return TEMPLATE_MARKERS.every((marker) => text.includes(marker))
+  }
+
+  private isLinehaulTemplate(text: string): boolean {
+    return LINEHAUL_MARKERS.every((marker) => text.includes(marker))
   }
 
   /**
