@@ -377,6 +377,48 @@ export class LinehaulParserService {
       }
     }
 
+    // Fallback: extract origin/destination from route arrow pattern in trip name
+    // Handles OCR formats like "Kosambi DC > Batam DC" possibly split across lines
+    if (!dto.origin || !dto.destination) {
+      const fullText = lines.join(' ')
+      const routeMatch = fullText.match(
+        /([A-Z][A-Za-z\s]*?(?:DC|Hub|Warehouse))\s*[->»>]+\s*([A-Z][A-Za-z\s]*?(?:DC|Hub|Warehouse))\b/
+      )
+      if (routeMatch) {
+        if (!dto.origin) dto.origin = routeMatch[1].trim()
+        if (!dto.destination) dto.destination = routeMatch[2].trim()
+      }
+    }
+
+    // Fallback: look for standalone "Origin"/"Destination" labels followed by a
+    // location-like value on a nearby subsequent line
+    if (!dto.origin || !dto.destination) {
+      for (let i = 0; i < lines.length; i++) {
+        const stripped = lines[i]
+          .replace(/^[^A-Za-z]+/, '')
+          .trim()
+          .toLowerCase()
+        if (stripped === 'origin' && !dto.origin) {
+          for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
+            const locMatch = lines[j].match(/([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]*)*\s+DC)\b/)
+            if (locMatch) {
+              dto.origin = locMatch[1].trim()
+              break
+            }
+          }
+        } else if (stripped === 'destination' && !dto.destination) {
+          for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
+            const cleaned = lines[j].replace(/^[^A-Za-z]+/, '')
+            const locMatch = cleaned.match(/([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]*)*\s+DC)\b/)
+            if (locMatch) {
+              dto.destination = locMatch[1].trim()
+              break
+            }
+          }
+        }
+      }
+    }
+
     // Extract table items — parse OCR table rows with weight/destination
     // OCR output varies widely, so parse line-by-line for rows containing TO numbers
     const seen = new Set<string>()
@@ -413,6 +455,19 @@ export class LinehaulParserService {
       }
 
       items.push(item)
+    }
+
+    // Fallback: infer destination from item table data if all items share one
+    if (!dto.destination && items.length > 0) {
+      const destCounts = new Map<string, number>()
+      for (const item of items) {
+        if (item.destination) {
+          destCounts.set(item.destination, (destCounts.get(item.destination) ?? 0) + 1)
+        }
+      }
+      if (destCounts.size > 0) {
+        dto.destination = [...destCounts.entries()].sort((a, b) => b[1] - a[1])[0][0]
+      }
     }
 
     return { trip: dto, items }

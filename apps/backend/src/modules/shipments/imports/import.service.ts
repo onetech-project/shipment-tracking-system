@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   ConflictException,
+  InternalServerErrorException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { InjectQueue } from '@nestjs/bullmq'
@@ -12,6 +13,8 @@ import { createHash } from 'crypto'
 import { ShipmentUpload, UploadStatus } from '../entities/shipment-upload.entity'
 import { ShipmentUploadError } from '../entities/shipment-upload-error.entity'
 import { Shipment } from '../entities/shipment.entity'
+import { LinehaulTrip } from '../entities/linehaul-trip.entity'
+import { LinehaulTripItem } from '../entities/linehaul-trip-item.entity'
 import { ConflictDecisionDto, ConflictAction } from './dto/resolve-conflict.dto'
 import {
   UploadInitiatedResponse,
@@ -19,6 +22,7 @@ import {
   ImportErrorsResponse,
   ResolveConflictsResponse,
   UploadHistoryResponse,
+  ImportItemsResponse,
 } from '@shared/shipments'
 import { SHIPMENT_IMPORT_QUEUE } from '../shipments.constants'
 
@@ -31,6 +35,10 @@ export class ImportService {
     private readonly errorRepo: Repository<ShipmentUploadError>,
     @InjectRepository(Shipment)
     private readonly shipmentRepo: Repository<Shipment>,
+    @InjectRepository(LinehaulTrip)
+    private readonly tripRepo: Repository<LinehaulTrip>,
+    @InjectRepository(LinehaulTripItem)
+    private readonly tripItemRepo: Repository<LinehaulTripItem>,
     @InjectQueue(SHIPMENT_IMPORT_QUEUE)
     private readonly queue: Queue
   ) {}
@@ -162,20 +170,60 @@ export class ImportService {
       if (!action) continue
 
       if (action === ConflictAction.OVERWRITE) {
-        // Overwrite: update shipment with incoming payload
         const payload = error.incomingPayload as Record<string, any>
-        if (error.existingShipmentId && payload) {
-          await this.shipmentRepo.save({
-            id: error.existingShipmentId,
-            origin: payload['origin'],
-            destination: payload['destination'],
-            status: payload['status'],
-            carrier: payload['carrier'] ?? null,
-            estimatedDeliveryDate: payload['estimatedDeliveryDate'] ?? null,
-            contentsDescription: payload['contentsDescription'] ?? null,
-            lastImportUploadId: uploadId,
-          })
-          upload.rowsImported += 1
+        if (payload) {
+          const isLinehaul = payload['existingTripId'] && payload['trip'] && payload['items']
+
+          if (isLinehaul) {
+            // Overwrite linehaul trip: update trip fields, delete old items, insert new
+            const existingTripId = payload['existingTripId'] as string
+            const tripData = payload['trip']
+            const itemsData = payload['items'] as any[]
+            await this.tripRepo.save({
+              id: existingTripId,
+              tripCode: tripData['tripCode'],
+              schedule: tripData['schedule'] ?? null,
+              origin: tripData['origin'],
+              destination: tripData['destination'],
+              vendor: tripData['vendor'] ?? null,
+              plateNumber: tripData['plateNumber'] ?? null,
+              driverName: tripData['driverName'] ?? null,
+              std: tripData['std'] ? new Date(tripData['std']) : null,
+              sta: tripData['sta'] ? new Date(tripData['sta']) : null,
+              ata: tripData['ata'] ? new Date(tripData['ata']) : null,
+              totalWeight: tripData['totalWeight'] ?? null,
+              lastImportUploadId: uploadId,
+            })
+            // Remove old items (CASCADE doesn't apply to save-overwrite)
+            await this.tripItemRepo.delete({ linehaulTripId: existingTripId })
+            // Insert new items
+            for (const item of itemsData) {
+              await this.tripItemRepo.save(
+                this.tripItemRepo.create({
+                  linehaulTripId: existingTripId,
+                  toNumber: item['toNumber'],
+                  weight: item['weight'] ?? null,
+                  destination: item['destination'] ?? null,
+                  dgType: item['dgType'] ?? null,
+                  toType: item['toType'] ?? null,
+                })
+              )
+            }
+            upload.rowsImported += itemsData.length
+          } else if (error.existingShipmentId) {
+            // Overwrite generic shipment
+            await this.shipmentRepo.save({
+              id: error.existingShipmentId,
+              origin: payload['origin'],
+              destination: payload['destination'],
+              status: payload['status'],
+              carrier: payload['carrier'] ?? null,
+              estimatedDeliveryDate: payload['estimatedDeliveryDate'] ?? null,
+              contentsDescription: payload['contentsDescription'] ?? null,
+              lastImportUploadId: uploadId,
+            })
+            upload.rowsImported += 1
+          }
         }
         error.resolution = 'overwritten'
       } else {
@@ -241,8 +289,54 @@ export class ImportService {
         rowsConflicted: u.rowsConflicted,
         createdAt: u.createdAt.toISOString(),
         completedAt: u.completedAt?.toISOString() ?? null,
+        errorMessage: u.errorMessage ?? null,
       })),
       nextCursor,
+    }
+  }
+
+  async getImportItems(
+    uploadId: string,
+    organizationId: string,
+    page = 1,
+    limit = 20
+  ): Promise<ImportItemsResponse> {
+    const upload = await this.uploadRepo.findOne({ where: { id: uploadId } })
+    if (!upload) throw new NotFoundException('UPLOAD_NOT_FOUND')
+    if (upload.organizationId !== organizationId) throw new ForbiddenException('FORBIDDEN')
+
+    const pageLimit = Math.min(Math.max(limit, 1), 100)
+    const pageNumber = Math.max(page, 1)
+    const skip = (pageNumber - 1) * pageLimit
+
+    try {
+      const [rows, total] = await this.tripItemRepo
+        .createQueryBuilder('item')
+        .innerJoin('item.linehaulTrip', 'trip')
+        .where('trip.last_import_upload_id = :uploadId', { uploadId })
+        .andWhere('trip.organization_id = :organizationId', { organizationId })
+        .orderBy('item.toNumber', 'ASC')
+        .skip(skip)
+        .take(pageLimit)
+        .getManyAndCount()
+
+      return {
+        items: rows.map((r) => ({
+          id: r.id,
+          toNumber: r.toNumber,
+          weight: r.weight,
+          destination: r.destination,
+          dgType: r.dgType,
+          toType: r.toType,
+        })),
+        total,
+        page: pageNumber,
+        limit: pageLimit,
+        totalPages: Math.ceil(total / pageLimit),
+      }
+    } catch (error) {
+      console.log('Error retrieving import items:', error)
+      throw new InternalServerErrorException('Failed to retrieve import items. Please try again.')
     }
   }
 }

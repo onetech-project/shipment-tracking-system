@@ -65,6 +65,16 @@ export class ImportController {
     return this.service.getErrors(id, user.organizationId)
   }
 
+  @Get(':id/items')
+  async getItems(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,
+    @CurrentUser() user: AuthenticatedUser
+  ) {
+    return this.service.getImportItems(id, user.organizationId, page, limit)
+  }
+
   @Post(':id/conflicts/resolve')
   async resolveConflicts(
     @Param('id', ParseUUIDPipe) id: string,

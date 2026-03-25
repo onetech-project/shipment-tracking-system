@@ -241,6 +241,7 @@ export class ImportProcessor extends WorkerHost {
     } catch (err) {
       this.logger.error(`Import failed for upload ${uploadId}: ${(err as Error).message}`)
       upload.status = UploadStatus.FAILED
+      upload.errorMessage = (err as Error).message ?? 'Unknown error'
       upload.completedAt = new Date()
       if (upload.startedAt) {
         upload.durationMs = upload.completedAt.getTime() - upload.startedAt.getTime()

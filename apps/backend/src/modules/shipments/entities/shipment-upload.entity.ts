@@ -5,7 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
-} from 'typeorm';
+} from 'typeorm'
 
 export enum UploadStatus {
   QUEUED = 'queued',
@@ -20,47 +20,50 @@ export enum UploadStatus {
 @Index('idx_shipment_uploads_org_created', ['organizationId', 'createdAt'])
 export class ShipmentUpload {
   @PrimaryGeneratedColumn('uuid')
-  id: string;
+  id: string
 
   @Column({ name: 'organization_id', type: 'uuid' })
-  organizationId: string;
+  organizationId: string
 
   @Column({ name: 'uploaded_by_user_id', type: 'uuid' })
-  uploadedByUserId: string;
+  uploadedByUserId: string
 
   @Column({ name: 'original_filename', type: 'varchar', length: 255 })
-  originalFilename: string;
+  originalFilename: string
 
   @Column({ name: 'file_hash', type: 'char', length: 64 })
-  fileHash: string;
+  fileHash: string
 
   @Column({ type: 'varchar', length: 30, default: UploadStatus.QUEUED })
-  status: string;
+  status: string
 
   @Column({ name: 'total_rows_detected', type: 'int', default: 0 })
-  totalRowsDetected: number;
+  totalRowsDetected: number
 
   @Column({ name: 'rows_imported', type: 'int', default: 0 })
-  rowsImported: number;
+  rowsImported: number
 
   @Column({ name: 'rows_failed', type: 'int', default: 0 })
-  rowsFailed: number;
+  rowsFailed: number
 
   @Column({ name: 'rows_conflicted', type: 'int', default: 0 })
-  rowsConflicted: number;
+  rowsConflicted: number
 
   @Column({ name: 'started_at', type: 'timestamptz', nullable: true })
-  startedAt: Date | null;
+  startedAt: Date | null
 
   @Column({ name: 'completed_at', type: 'timestamptz', nullable: true })
-  completedAt: Date | null;
+  completedAt: Date | null
 
   @Column({ name: 'duration_ms', type: 'int', nullable: true })
-  durationMs: number | null;
+  durationMs: number | null
+
+  @Column({ name: 'error_message', type: 'text', nullable: true })
+  errorMessage: string | null
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
-  createdAt: Date;
+  createdAt: Date
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
-  updatedAt: Date;
+  updatedAt: Date
 }
