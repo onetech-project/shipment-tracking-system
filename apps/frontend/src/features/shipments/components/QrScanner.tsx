@@ -1,18 +1,18 @@
-'use client';
-import { useQrScanner } from '../hooks/useQrScanner';
-import ShipmentDetail from './ShipmentDetail';
-import LinehaulDetail from './LinehaulDetail';
+'use client'
+import { useQrScanner } from '../hooks/useQrScanner'
+import ShipmentDetail from './ShipmentDetail'
+import LinehaulDetail from './LinehaulDetail'
 
 export default function QrScanner() {
   const { permissionState, scanResult, isLooking, videoRef, canvasRef, startScanner, reset } =
-    useQrScanner();
+    useQrScanner()
 
   return (
     <div>
       {permissionState === 'idle' && (
         <div>
           <p style={{ color: '#64748b' }}>
-            Click the button below to start the camera and scan a shipment QR code.
+            Click the button below to allow camera access and scan a shipment QR code.
           </p>
           <button
             data-testid="start-scanner"
@@ -26,17 +26,39 @@ export default function QrScanner() {
               cursor: 'pointer',
             }}
           >
-            Start Scanner
+            Allow Camera &amp; Start Scanner
           </button>
         </div>
       )}
 
+      {permissionState === 'prompt' && (
+        <div
+          data-testid="permission-prompt"
+          style={{ color: '#64748b', padding: '1rem', textAlign: 'center' }}
+        >
+          <p>Requesting camera permission…</p>
+        </div>
+      )}
+
       {permissionState === 'denied' && (
-        <div data-testid="permission-denied" style={{ color: '#ef4444', padding: '1rem', background: '#fef2f2', borderRadius: 8 }}>
+        <div
+          data-testid="permission-denied"
+          style={{ color: '#ef4444', padding: '1rem', background: '#fef2f2', borderRadius: 8 }}
+        >
           <strong>Camera access denied.</strong>
           <p>
             Please enable camera access in your browser settings, then{' '}
-            <button onClick={reset} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>
+            <button
+              onClick={reset}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#3b82f6',
+                cursor: 'pointer',
+                padding: 0,
+                textDecoration: 'underline',
+              }}
+            >
               try again
             </button>
             .
@@ -45,16 +67,38 @@ export default function QrScanner() {
       )}
 
       {permissionState === 'no-camera' && (
-        <div data-testid="no-camera" style={{ color: '#f59e0b', padding: '1rem', background: '#fffbeb', borderRadius: 8 }}>
+        <div
+          data-testid="no-camera"
+          style={{ color: '#f59e0b', padding: '1rem', background: '#fffbeb', borderRadius: 8 }}
+        >
           <strong>No camera found.</strong>
           <p>Please connect a camera and try again.</p>
         </div>
       )}
 
       {permissionState === 'in-use' && (
-        <div data-testid="camera-in-use" style={{ color: '#f59e0b', padding: '1rem', background: '#fffbeb', borderRadius: 8 }}>
+        <div
+          data-testid="camera-in-use"
+          style={{ color: '#f59e0b', padding: '1rem', background: '#fffbeb', borderRadius: 8 }}
+        >
           <strong>Camera is already in use</strong> by another application.
-          <p>Close other apps using the camera and <button onClick={startScanner} style={{ background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}>try again</button>.</p>
+          <p>
+            Close other apps using the camera and{' '}
+            <button
+              onClick={startScanner}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#3b82f6',
+                cursor: 'pointer',
+                padding: 0,
+                textDecoration: 'underline',
+              }}
+            >
+              try again
+            </button>
+            .
+          </p>
         </div>
       )}
 
@@ -101,7 +145,17 @@ export default function QrScanner() {
         <div data-testid="shipment-not-found" style={{ marginTop: '1rem', color: '#ef4444' }}>
           <strong>Not found:</strong> <code>{scanResult.value}</code>
           <br />
-          <button onClick={reset} style={{ marginTop: '0.5rem', color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+          <button
+            onClick={reset}
+            style={{
+              marginTop: '0.5rem',
+              color: '#3b82f6',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: 0,
+            }}
+          >
             Scan again
           </button>
         </div>
@@ -111,11 +165,21 @@ export default function QrScanner() {
         <div data-testid="invalid-qr-format" style={{ marginTop: '1rem', color: '#f59e0b' }}>
           <strong>Unrecognised QR code:</strong> <code>{scanResult.raw}</code>
           <br />
-          <button onClick={reset} style={{ marginTop: '0.5rem', color: '#3b82f6', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+          <button
+            onClick={reset}
+            style={{
+              marginTop: '0.5rem',
+              color: '#3b82f6',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: 0,
+            }}
+          >
             Scan again
           </button>
         </div>
       )}
     </div>
-  );
+  )
 }

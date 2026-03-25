@@ -41,7 +41,7 @@ export class ImportProcessor extends WorkerHost {
     private readonly errorRepo: Repository<ShipmentUploadError>,
     private readonly eventEmitter: EventEmitter2,
     private readonly linehaulParser: LinehaulParserService,
-    private readonly linehaulImport: LinehaulImportService,
+    private readonly linehaulImport: LinehaulImportService
   ) {
     super()
   }
@@ -70,11 +70,24 @@ export class ImportProcessor extends WorkerHost {
     try {
       const buffer = Buffer.from(fileBuffer, 'base64')
       const parsed = await pdfParse.default(buffer)
-      console.log(`Parsed PDF text for upload ${uploadId}:`, parsed.text)
 
       // Template detection: check for linehaul markers first
       if (this.isLinehaulTemplate(parsed.text)) {
         this.logger.log(`Upload ${uploadId}: detected Line Haul Trip template`)
+        const result = await this.linehaulParser.parse(buffer)
+        await this.linehaulImport.import({
+          trip: result.trip,
+          items: result.items,
+          uploadId,
+          organizationId,
+          userId,
+        })
+        return
+      }
+
+      // Scanned/image PDF: no text extracted — try linehaul parser (has OCR)
+      if (!parsed.text.trim()) {
+        this.logger.log(`Upload ${uploadId}: no text content — attempting OCR-based parsing`)
         const result = await this.linehaulParser.parse(buffer)
         await this.linehaulImport.import({
           trip: result.trip,
@@ -247,7 +260,11 @@ export class ImportProcessor extends WorkerHost {
   }
 
   private isLinehaulTemplate(text: string): boolean {
-    return LINEHAUL_MARKERS.every((marker) => text.includes(marker))
+    // Chromium/Skia-generated PDFs split characters into separate text operations,
+    // producing fragments like "Nomor T\nO" or "Surat Jalan" with embedded newlines.
+    // Normalize by removing single newlines within words before checking markers.
+    const normalized = text.replace(/([A-Za-z])\n([A-Za-z])/g, '$1$2')
+    return LINEHAUL_MARKERS.every((marker) => normalized.includes(marker))
   }
 
   /**
