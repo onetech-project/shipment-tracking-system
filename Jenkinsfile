@@ -1,5 +1,10 @@
 pipeline {
-    agent any
+    agent {
+        docker {
+            image 'node:24'
+            args '-u root:root -v /var/run/docker.sock:/var/run/docker.sock'
+        }
+    }
 
     parameters {
         choice(
@@ -71,7 +76,8 @@ pipeline {
                     ====================================
                     Environment: ${params.TARGET_ENV}
                     Branch: ${env.BRANCH_NAME}
-                    Docker Image: ${env.APP_NAME}:${env.DOCKER_IMAGE_TAG}
+                    Backend Image: ${env.BACKEND_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG}
+                    Frontend Image: ${env.FRONTEND_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG}
                     Compose Dir: ${env.COMPOSE_DIR}
                     Backend Service Name: ${env.BACKEND_SERVICE_NAME}
                     Frontend Service Name: ${env.FRONTEND_SERVICE_NAME}
