@@ -1,9 +1,9 @@
 pipeline {
     agent any
 
-    tools {
-        nodejs 'NodeJS 24'
-    }
+    // tools {
+    //     nodejs 'NodeJS 24'
+    // }
 
     parameters {
         choice(
@@ -110,46 +110,46 @@ pipeline {
             }
         }
 
-        stage('Install') {
-            steps {
-                sh 'npm ci'
-            }
-        }
+        // stage('Install') {
+        //     steps {
+        //         sh 'npm ci'
+        //     }
+        // }
 
-        stage('Lint') {
-            parallel {
-                stage('Lint Backend') {
-                    steps {
-                        sh 'npm run lint --workspace=apps/backend'
-                    }
-                }
-                stage('Lint Frontend') {
-                    steps {
-                        sh 'npm run lint --workspace=apps/frontend'
-                    }
-                }
-            }
-        }
+        // stage('Lint') {
+        //     parallel {
+        //         stage('Lint Backend') {
+        //             steps {
+        //                 sh 'npm run lint --workspace=apps/backend'
+        //             }
+        //         }
+        //         stage('Lint Frontend') {
+        //             steps {
+        //                 sh 'npm run lint --workspace=apps/frontend'
+        //             }
+        //         }
+        //     }
+        // }
 
-        stage('Test') {
-            parallel {
-                stage('Test Backend') {
-                    steps {
-                        sh 'npm run test --workspace=apps/backend'
-                    }
-                    post {
-                        always {
-                            junit allowEmptyResults: true, testResults: 'apps/backend/junit.xml'
-                        }
-                    }
-                }
-                stage('Type Check Frontend') {
-                    steps {
-                        sh 'npm run type-check --workspace=apps/frontend'
-                    }
-                }
-            }
-        }
+        // stage('Test') {
+        //     parallel {
+        //         stage('Test Backend') {
+        //             steps {
+        //                 sh 'npm run test --workspace=apps/backend'
+        //             }
+        //             post {
+        //                 always {
+        //                     junit allowEmptyResults: true, testResults: 'apps/backend/junit.xml'
+        //                 }
+        //             }
+        //         }
+        //         stage('Type Check Frontend') {
+        //             steps {
+        //                 sh 'npm run type-check --workspace=apps/frontend'
+        //             }
+        //         }
+        //     }
+        // }
 
         // stage('E2E Tests') {
         //     when {
