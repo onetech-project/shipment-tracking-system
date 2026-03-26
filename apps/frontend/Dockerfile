@@ -14,6 +14,9 @@ RUN npm ci --workspace=apps/frontend --include-workspace-root
 # ── Stage 2: Build ────────────────────────────────────────
 FROM node:24.14.0-alpine AS builder
 
+# Build-time environment variables (CRA reads REACT_APP_* at build time)
+ARG NEXT_PUBLIC_API_URL
+
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -23,6 +26,7 @@ COPY package.json ./
 
 WORKDIR /app/apps/frontend
 
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build
