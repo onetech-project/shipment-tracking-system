@@ -63,7 +63,7 @@ pipeline {
                     // assign once, explicit
                     env.BRANCH_NAME = resolvedBranch
                     env.DOCKER_IMAGE_TAG = params.TARGET_ENV
-                    env.COMPOSE_DIR = "/home/ekasatyapuspita/shipment-tracking-system/${params.TARGET_ENV}"
+                    env.COMPOSE_DIR = "/var/sts-app/${params.TARGET_ENV}"
                     env.COMPOSE_FILE = 'docker-compose.yml'
                     env.BACKEND_SERVICE_NAME = params.TARGET_ENV == 'staging' ? 'stg-backend' : 'prod-backend'
                     env.FRONTEND_SERVICE_NAME = params.TARGET_ENV == 'staging' ? 'stg-frontend' : 'prod-frontend'
