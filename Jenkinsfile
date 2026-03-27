@@ -283,13 +283,13 @@ pipeline {
                                 echo "Current directory: \$(pwd)"
                                 
                                 # Stop and remove old containers
-                                docker-compose down ${env.BACKEND_SERVICE_NAME} || true
+                                docker compose down ${env.BACKEND_SERVICE_NAME} || true
                                 
                                 # Start backend service with new image
-                                docker-compose up -d ${env.BACKEND_SERVICE_NAME}
+                                docker compose up -d ${env.BACKEND_SERVICE_NAME}
                                 
                                 # Show running containers
-                                docker-compose ps ${env.BACKEND_SERVICE_NAME}
+                                docker compose ps ${env.BACKEND_SERVICE_NAME}
                                 
                                 echo "Backend deployment successful!"
                             """
@@ -310,13 +310,13 @@ pipeline {
                                 echo "Current directory: \$(pwd)"
                                 
                                 # Stop and remove old containers
-                                docker-compose down ${env.FRONTEND_SERVICE_NAME} || true
+                                docker compose down ${env.FRONTEND_SERVICE_NAME} || true
                                 
                                 # Start frontend service with new image
-                                docker-compose up -d ${env.FRONTEND_SERVICE_NAME}
+                                docker compose up -d ${env.FRONTEND_SERVICE_NAME}
                                 
                                 # Show running containers
-                                docker-compose ps ${env.FRONTEND_SERVICE_NAME}
+                                docker compose ps ${env.FRONTEND_SERVICE_NAME}
                                 
                                 echo "Frontend deployment successful!"
                             """
