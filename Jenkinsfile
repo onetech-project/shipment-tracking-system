@@ -252,7 +252,7 @@ pipeline {
                         
                         # Run database migrations
                         echo "Copying .env file from compose directory..."
-                        cp ${env.COMPOSE_DIR}/.env . || true
+                        cp ${env.COMPOSE_DIR}/.env ./apps/backend/.env || true
                     """
                     try {
                         sh 'npm run migration:run'
