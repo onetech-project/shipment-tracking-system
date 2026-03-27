@@ -343,7 +343,7 @@ pipeline {
                     echo "Frontend Docker Image: ${env.FRONTEND_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG}"
                     echo ""
                     echo "Running Containers:"
-                    docker-compose ps
+                    docker compose ps
                     echo "======================================"
                 """
             }
@@ -361,7 +361,7 @@ pipeline {
                     echo ""
                     echo "Container Logs (last 50 lines):"
                     cd ${env.COMPOSE_DIR} || exit 0
-                    docker-compose logs ${env.BACKEND_IMAGE_NAME} ${env.FRONTEND_IMAGE_NAME} --tail=50 || true
+                    docker compose logs ${env.BACKEND_IMAGE_NAME} ${env.FRONTEND_IMAGE_NAME} --tail=50 || true
                     echo "======================================"
                 """
             }
