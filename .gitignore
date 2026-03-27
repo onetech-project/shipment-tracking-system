@@ -156,3 +156,6 @@ docker-compose.override.yml
 
 test-results*
 playwright-report/
+
+*.pdf
+debug-*
