@@ -1,9 +1,9 @@
 pipeline {
     agent any
 
-    // tools {
-    //     nodejs 'NodeJS 24'
-    // }
+    tools {
+        nodejs 'NodeJS 24'
+    }
 
     parameters {
         choice(
@@ -110,11 +110,11 @@ pipeline {
             }
         }
 
-        // stage('Install') {
-        //     steps {
-        //         sh 'npm ci'
-        //     }
-        // }
+        stage('Install') {
+            steps {
+                sh 'npm ci --no-audit --no-fund --prefer-offline --progress=false --verbose'
+            }
+        }
 
         // stage('Lint') {
         //     parallel {
@@ -248,21 +248,11 @@ pipeline {
             steps {
                 script {
                     try {
-                        sh """
-                            cd ${env.COMPOSE_DIR}
-
-                            docker compose run --rm ${env.BACKEND_SERVICE_NAME} \
-                            npm run migration:run
-                        """
+                        sh 'npm run migration:run'
                     } catch (err) {
                         echo "Migration failed! Reverting..."
 
-                        sh """
-                            cd ${env.COMPOSE_DIR}
-
-                            docker compose run --rm ${env.BACKEND_SERVICE_NAME} \
-                            npm run migration:revert || true
-                        """
+                        sh 'npm run migration:revert || true'
 
                         error("Migration failed and rollback executed")
                     }
