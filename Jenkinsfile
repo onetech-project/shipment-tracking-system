@@ -247,6 +247,13 @@ pipeline {
         stage('Run Migration') {
             steps {
                 script {
+                    sh """
+                        set -euo pipefail
+                        
+                        # Run database migrations
+                        echo "Copying .env file from compose directory..."
+                        cp ${env.COMPOSE_DIR}/.env . || true
+                    """
                     try {
                         sh 'npm run migration:run'
                     } catch (err) {
