@@ -14,6 +14,9 @@ RUN npm ci --workspace=apps/frontend --include-workspace-root
 # ── Stage 2: Build ────────────────────────────────────────
 FROM node:24.14.0-alpine AS builder
 
+# Build-time environment variables (CRA reads REACT_APP_* at build time)
+ARG NEXT_PUBLIC_API_URL
+
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
@@ -23,6 +26,7 @@ COPY package.json ./
 
 WORKDIR /app/apps/frontend
 
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build
@@ -39,9 +43,10 @@ RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
 # Copy standalone output
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/apps/frontend/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/apps/frontend/.next/static apps/frontend/.next/static
-COPY --from=builder --chown=nextjs:nodejs /app/apps/frontend/public apps/frontend/public
+COPY --from=builder --chown=nextjs:nodejs /app/apps/frontend/.next/static ./.next/static
+# COPY --from=builder --chown=nextjs:nodejs /app/apps/frontend/public apps/frontend/public
 
 USER nextjs
 
@@ -50,4 +55,4 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["node", "apps/frontend/server.js"]
+CMD ["node", "server.js"]

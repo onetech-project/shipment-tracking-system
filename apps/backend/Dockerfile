@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # ── Stage 1: Build ────────────────────────────────────────
-FROM node:24.14.0-alpine AS builder
+FROM node:24.14.1-slim AS builder
 
 WORKDIR /app
 
@@ -22,11 +22,20 @@ WORKDIR /app/apps/backend
 RUN npm run build
 
 # ── Stage 2: Production ───────────────────────────────────
-FROM node:24.14.0-alpine AS production
+FROM node:24.14.1-slim AS production
 
 ENV NODE_ENV=production
 
 WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  tesseract-ocr \
+  tesseract-ocr-eng \
+  tesseract-ocr-osd \
+  poppler-utils \
+  imagemagick \
+  libzbar0 \
+  && rm -rf /var/lib/apt/lists/*
 
 # Copy workspace manifests for production install
 COPY package.json package-lock.json ./
