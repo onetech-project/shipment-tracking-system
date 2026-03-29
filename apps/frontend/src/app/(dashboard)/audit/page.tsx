@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { apiClient } from '@/shared/api/client';
+import { PageHeader } from '@/components/shared/page-header';
+import { Button } from '@/components/ui/button';
 
 interface AuditLog {
   id: string;
@@ -13,9 +15,6 @@ interface AuditLog {
   metadata?: Record<string, unknown>;
   createdAt: string;
 }
-
-const thStyle: React.CSSProperties = { padding: '.6rem .75rem', textAlign: 'left', background: '#f1f5f9', whiteSpace: 'nowrap' };
-const tdStyle: React.CSSProperties = { padding: '.6rem .75rem', borderBottom: '1px solid #e2e8f0', fontSize: '.875rem' };
 
 export default function AuditPage() {
   const [logs, setLogs] = useState<AuditLog[]>([]);
@@ -44,68 +43,69 @@ export default function AuditPage() {
 
   return (
     <div>
-      <div style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ margin: 0 }}>Audit Logs</h1>
-        <p style={{ color: '#64748b', marginTop: '.5rem', marginBottom: 0 }}>Total: {total} events</p>
-      </div>
-
-      {error && <p style={{ color: '#ef4444' }}>Error: {error}</p>}
+      <PageHeader
+        title="Audit Logs"
+        subtitle={`${total} total events`}
+      />
+      {error && <p className="mb-4 text-sm text-destructive">Error: {error}</p>}
 
       {loading ? (
-        <p>Loading…</p>
+        <p className="text-muted-foreground">Loading...</p>
       ) : (
         <>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
-              <thead>
+          <div className="overflow-x-auto rounded-md border">
+            <table className="w-full border-collapse text-sm min-w-[700px]">
+              <thead className="bg-muted/50">
                 <tr>
-                  <th style={thStyle}>Timestamp</th>
-                  <th style={thStyle}>Action</th>
-                  <th style={thStyle}>Resource</th>
-                  <th style={thStyle}>Actor ID</th>
-                  <th style={thStyle}>IP Address</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Timestamp</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Action</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Resource</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Actor ID</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">IP Address</th>
                 </tr>
               </thead>
               <tbody>
                 {logs.map((log) => (
-                  <tr key={log.id}>
-                    <td style={tdStyle}>{new Date(log.createdAt).toLocaleString()}</td>
-                    <td style={tdStyle}>
-                      <code style={{ background: '#f1f5f9', padding: '.1rem .4rem', borderRadius: 3, fontSize: '.75rem' }}>{log.action}</code>
+                  <tr key={log.id} className="border-t hover:bg-muted/30 motion-safe:transition-colors">
+                    <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{new Date(log.createdAt).toLocaleString()}</td>
+                    <td className="px-4 py-3">
+                      <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{log.action}</code>
                     </td>
-                    <td style={tdStyle}>
+                    <td className="px-4 py-3">
                       {log.resourceType
-                        ? <span><strong>{log.resourceType}</strong>{log.resourceId ? ` · ${log.resourceId.slice(0, 8)}…` : ''}</span>
+                        ? <span><strong>{log.resourceType}</strong>{log.resourceId ? ` · ${log.resourceId.slice(0, 8)}...` : ''}</span>
                         : '—'}
                     </td>
-                    <td style={{ ...tdStyle, color: '#475569' }}>{log.actorId ? log.actorId.slice(0, 8) + '…' : '—'}</td>
-                    <td style={tdStyle}>{log.ipAddress ?? '—'}</td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">{log.actorId ? log.actorId.slice(0, 8) + '...' : '—'}</td>
+                    <td className="px-4 py-3 text-xs">{log.ipAddress ?? '—'}</td>
                   </tr>
                 ))}
                 {logs.length === 0 && (
-                  <tr><td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>No audit logs found.</td></tr>
+                  <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No audit logs found.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
 
           {totalPages > 1 && (
-            <div style={{ display: 'flex', gap: '.5rem', alignItems: 'center', marginTop: '1rem' }}>
-              <button
+            <div className="mt-4 flex items-center gap-3">
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1}
-                style={{ padding: '.4rem .75rem', border: '1px solid #d1d5db', borderRadius: 4, cursor: page === 1 ? 'not-allowed' : 'pointer', opacity: page === 1 ? 0.5 : 1 }}
               >
-                ← Prev
-              </button>
-              <span style={{ color: '#64748b', fontSize: '.875rem' }}>Page {page} of {totalPages}</span>
-              <button
+                Prev
+              </Button>
+              <span className="text-sm text-muted-foreground">Page {page} of {totalPages}</span>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages}
-                style={{ padding: '.4rem .75rem', border: '1px solid #d1d5db', borderRadius: 4, cursor: page === totalPages ? 'not-allowed' : 'pointer', opacity: page === totalPages ? 0.5 : 1 }}
               >
-                Next →
-              </button>
+                Next
+              </Button>
             </div>
           )}
         </>

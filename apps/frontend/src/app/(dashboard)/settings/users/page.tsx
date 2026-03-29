@@ -5,6 +5,10 @@ import UserEditForm from '@/features/users/components/user-edit-form';
 import InactivateUserDialog from '@/features/users/components/inactivate-user-dialog';
 import UnlockUserDialog from '@/features/users/components/unlock-user-dialog';
 import { useAuth } from '@/features/auth/auth.context';
+import { PageHeader } from '@/components/shared/page-header';
+import { StatusBadge } from '@/components/shared/status-badge';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 interface UserProfile {
   name?: string;
@@ -28,10 +32,6 @@ type Modal =
   | { type: 'inactivate'; user: User }
   | { type: 'unlock'; user: User }
   | null;
-
-const btnSmall: React.CSSProperties = { padding: '.25rem .75rem', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: '.8rem' };
-const thStyle: React.CSSProperties = { padding: '.6rem .75rem', textAlign: 'left', background: '#f1f5f9' };
-const tdStyle: React.CSSProperties = { padding: '.6rem .75rem', borderBottom: '1px solid #e2e8f0' };
 
 export default function UsersSettingsPage() {
   const [users, setUsers] = useState<User[]>([]);
@@ -67,83 +67,72 @@ export default function UsersSettingsPage() {
     load();
   };
 
-  if (loading) return <p>Loading…</p>;
+  if (loading) return <p className="text-muted-foreground">Loading...</p>;
 
   return (
     <div>
-      <div style={{ marginBottom: '1.5rem' }}>
-        <h1 style={{ margin: 0 }}>Users</h1>
+      <PageHeader title="Users" />
+      {error && <p className="mb-4 text-sm text-destructive">Error: {error}</p>}
+
+      <div className="overflow-x-auto rounded-md border">
+        <table className="w-full border-collapse text-sm">
+          <thead className="bg-muted/50">
+            <tr>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Username</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Name</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Locked</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Last Login</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.map((u) => (
+              <tr key={u.id} className="border-t hover:bg-muted/30 motion-safe:transition-colors">
+                <td className="px-4 py-3 font-medium">{u.username}</td>
+                <td className="px-4 py-3">{u.profile?.name ?? '—'}</td>
+                <td className="px-4 py-3">
+                  <StatusBadge variant={u.isActive ? 'active' : 'inactive'} />
+                </td>
+                <td className="px-4 py-3">
+                  {u.isLocked ? <StatusBadge variant="locked" /> : <span className="text-muted-foreground">—</span>}
+                </td>
+                <td className="px-4 py-3 text-xs text-muted-foreground">
+                  {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '—'}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex flex-wrap gap-1">
+                    <Button size="sm" variant="outline" onClick={() => setModal({ type: 'edit', user: u })}>Edit</Button>
+                    {u.isActive && u.id !== currentUser?.id && (
+                      <Button size="sm" variant="destructive" onClick={() => setModal({ type: 'inactivate', user: u })}>Inactivate</Button>
+                    )}
+                    {u.isLocked && (
+                      <Button size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => setModal({ type: 'unlock', user: u })}>Unlock</Button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {users.length === 0 && (
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No users found.</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
-      {error && <p style={{ color: '#ef4444' }}>Error: {error}</p>}
-
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr>
-            <th style={thStyle}>Username</th>
-            <th style={thStyle}>Name</th>
-            <th style={thStyle}>Status</th>
-            <th style={thStyle}>Locked</th>
-            <th style={thStyle}>Last Login</th>
-            <th style={thStyle}>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {users.map((u) => (
-            <tr key={u.id}>
-              <td style={tdStyle}>{u.username}</td>
-              <td style={tdStyle}>{u.profile?.name ?? '—'}</td>
-              <td style={tdStyle}>
-                <span style={{ color: u.isActive ? '#16a34a' : '#dc2626', fontWeight: 500 }}>
-                  {u.isActive ? 'Active' : 'Inactive'}
-                </span>
-              </td>
-              <td style={tdStyle}>
-                {u.isLocked ? (
-                  <span style={{ color: '#dc2626', fontWeight: 500 }}>Locked</span>
-                ) : (
-                  <span style={{ color: '#64748b' }}>—</span>
-                )}
-              </td>
-              <td style={tdStyle}>
-                {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '—'}
-              </td>
-              <td style={tdStyle}>
-                <div style={{ display: 'flex', gap: '.25rem', flexWrap: 'wrap' }}>
-                  <button style={{ ...btnSmall, background: '#e2e8f0' }} onClick={() => setModal({ type: 'edit', user: u })}>
-                    Edit
-                  </button>
-                  {u.isActive && u.id !== currentUser?.id && (
-                    <button style={{ ...btnSmall, background: '#fee2e2', color: '#dc2626' }} onClick={() => setModal({ type: 'inactivate', user: u })}>
-                      Inactivate
-                    </button>
-                  )}
-                  {u.isLocked && (
-                    <button style={{ ...btnSmall, background: '#dcfce7', color: '#16a34a' }} onClick={() => setModal({ type: 'unlock', user: u })}>
-                      Unlock
-                    </button>
-                  )}
-                </div>
-              </td>
-            </tr>
-          ))}
-          {users.length === 0 && (
-            <tr><td colSpan={6} style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>No users found.</td></tr>
-          )}
-        </tbody>
-      </table>
-
       {modal?.type === 'edit' && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-          <div style={{ background: '#fff', borderRadius: 8, padding: '2rem', maxWidth: 480, width: '100%' }}>
-            <h2 style={{ marginTop: 0 }}>Edit User — {modal.user.username}</h2>
+        <Dialog open onOpenChange={(open) => { if (!open) setModal(null); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit User — {modal.user.username}</DialogTitle>
+            </DialogHeader>
             <UserEditForm
               initial={{ profile: modal.user.profile }}
               onSubmit={(data) => handleEdit(modal.user.id, data)}
               onCancel={() => setModal(null)}
             />
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
 
       {modal?.type === 'inactivate' && (

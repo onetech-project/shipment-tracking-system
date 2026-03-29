@@ -1,4 +1,7 @@
 'use client';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { AlertCircle } from 'lucide-react';
 import { useState } from 'react';
 
 interface InactivateUserDialogProps {
@@ -25,27 +28,28 @@ export default function InactivateUserDialog({ user, onConfirm, onClose }: Inact
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-      <div style={{ background: '#fff', borderRadius: 8, padding: '2rem', maxWidth: 420, width: '100%', boxShadow: '0 8px 24px rgba(0,0,0,0.15)' }}>
-        <h2 style={{ marginTop: 0, color: '#dc2626' }}>Inactivate User</h2>
-        <p>Are you sure you want to inactivate <strong>{user.username}</strong>?</p>
-        <p style={{ color: '#64748b', fontSize: '.875rem' }}>
-          The user will be signed out immediately and will not be able to log in until reactivated.
-        </p>
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="text-destructive">Inactivate User</DialogTitle>
+          <DialogDescription>
+            Are you sure you want to inactivate <strong>{user.username}</strong>?
+            The user will be signed out immediately and will not be able to log in until reactivated.
+          </DialogDescription>
+        </DialogHeader>
         {error && (
-          <div style={{ background: '#fee2e2', color: '#dc2626', padding: '.75rem', borderRadius: 4, marginBottom: '1rem', fontSize: '.875rem' }}>
+          <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+            <AlertCircle size={14} />
             {error}
           </div>
         )}
-        <div style={{ display: 'flex', gap: '.5rem', justifyContent: 'flex-end' }}>
-          <button onClick={onClose} disabled={loading} style={{ padding: '.5rem 1.25rem', background: '#e2e8f0', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
-            Cancel
-          </button>
-          <button onClick={handleConfirm} disabled={loading} style={{ padding: '.5rem 1.25rem', background: '#dc2626', color: '#fff', border: 'none', borderRadius: 4, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
+          <Button variant="destructive" onClick={handleConfirm} disabled={loading}>
             {loading ? 'Processing…' : 'Inactivate'}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

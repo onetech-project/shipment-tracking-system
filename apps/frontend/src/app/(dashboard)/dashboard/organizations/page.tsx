@@ -1,6 +1,12 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { apiClient } from '@/shared/api/client';
+import { PageHeader } from '@/components/shared/page-header';
+import { StatusBadge } from '@/components/shared/status-badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { FormField } from '@/components/shared/form-field';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 interface Organization { id: string; name: string; slug: string; isActive: boolean; createdAt: string; }
 
@@ -37,66 +43,53 @@ export default function OrganizationsPage() {
     }
   };
 
-  if (loading) return <p>Loading…</p>;
-  if (error) return <p style={{ color: 'red' }}>Error: {error}</p>;
+  if (loading) return <p className="text-muted-foreground">Loading...</p>;
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <h1 style={{ margin: 0 }}>Organizations</h1>
-        <button onClick={() => setShowModal(true)} style={{ padding: '.5rem 1rem', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-          + New Organization
-        </button>
-      </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr style={{ background: '#f1f5f9' }}>
-            <th style={{ padding: '.5rem', textAlign: 'left' }}>Name</th>
-            <th style={{ padding: '.5rem', textAlign: 'left' }}>Slug</th>
-            <th style={{ padding: '.5rem', textAlign: 'left' }}>Status</th>
-            <th style={{ padding: '.5rem', textAlign: 'left' }}>Created</th>
-          </tr>
-        </thead>
-        <tbody>
-          {orgs.map((o) => (
-            <tr key={o.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-              <td style={{ padding: '.5rem' }}>{o.name}</td>
-              <td style={{ padding: '.5rem' }}>{o.slug}</td>
-              <td style={{ padding: '.5rem' }}>{o.isActive ? 'Active' : 'Inactive'}</td>
-              <td style={{ padding: '.5rem' }}>{new Date(o.createdAt).toLocaleDateString()}</td>
+      <PageHeader title="Organizations" action={<Button onClick={() => setShowModal(true)}>+ New Organization</Button>} />
+      {error && <p className="mb-4 text-sm text-destructive">Error: {error}</p>}
+      <div className="overflow-x-auto rounded-md border">
+        <table className="w-full border-collapse text-sm">
+          <thead className="bg-muted/50">
+            <tr>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Name</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Slug</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Created</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {orgs.map((o) => (
+              <tr key={o.id} className="border-t hover:bg-muted/30 motion-safe:transition-colors">
+                <td className="px-4 py-3">{o.name}</td>
+                <td className="px-4 py-3"><code className="text-xs">{o.slug}</code></td>
+                <td className="px-4 py-3"><StatusBadge variant={o.isActive ? 'active' : 'inactive'} /></td>
+                <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(o.createdAt).toLocaleDateString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       {showModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-          <div style={{ background: '#fff', borderRadius: '8px', padding: '1.5rem', minWidth: '360px' }}>
-            <h2 style={{ marginTop: 0 }}>New Organization</h2>
-            <form onSubmit={handleSubmit}>
-              <div style={{ marginBottom: '.75rem' }}>
-                <label style={{ display: 'block', marginBottom: '.25rem' }}>Name</label>
-                <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  style={{ width: '100%', padding: '.4rem', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }} />
-              </div>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '.25rem' }}>Slug <small>(lowercase, hyphens only)</small></label>
-                <input required pattern="[a-z0-9-]+" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })}
-                  style={{ width: '100%', padding: '.4rem', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }} />
-              </div>
-              <div style={{ display: 'flex', gap: '.5rem', justifyContent: 'flex-end' }}>
-                <button type="button" onClick={() => { setShowModal(false); setForm({ name: '', slug: '' }); }}
-                  style={{ padding: '.4rem .9rem', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer', background: '#fff' }}>
-                  Cancel
-                </button>
-                <button type="submit" disabled={submitting}
-                  style={{ padding: '.4rem .9rem', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-                  {submitting ? 'Creating…' : 'Create'}
-                </button>
+        <Dialog open onOpenChange={(open) => { if (!open) setShowModal(false); }}>
+          <DialogContent>
+            <DialogHeader><DialogTitle>New Organization</DialogTitle></DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <FormField label="Name" htmlFor="no-name" required>
+                <Input id="no-name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              </FormField>
+              <FormField label="Slug (lowercase, hyphens only)" htmlFor="no-slug" required>
+                <Input id="no-slug" required pattern="[a-z0-9-]+" value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} />
+              </FormField>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => { setShowModal(false); setForm({ name: '', slug: '' }); }}>Cancel</Button>
+                <Button type="submit" disabled={submitting}>{submitting ? 'Creating...' : 'Create'}</Button>
               </div>
             </form>
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

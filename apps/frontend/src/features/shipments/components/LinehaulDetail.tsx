@@ -1,5 +1,7 @@
 'use client';
 import type { LinehaulLookupResponse } from '@shared/shipments';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 
 interface LinehaulDetailProps {
   data: LinehaulLookupResponse;
@@ -10,133 +12,119 @@ export default function LinehaulDetail({ data, onReset }: LinehaulDetailProps) {
   const { item, trip } = data;
 
   return (
-    <div
-      data-testid="linehaul-detail"
-      style={{
-        marginTop: '1.5rem',
-        border: '1px solid #e2e8f0',
-        borderRadius: 8,
-        padding: '1.5rem',
-        maxWidth: 480,
-        background: '#f8fafc',
-      }}
-    >
-      {/* Trip Item Card */}
-      <div style={{ marginBottom: '1rem' }}>
-        <h3 style={{ margin: '0 0 0.5rem', fontFamily: 'monospace' }}>{item.toNumber}</h3>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <tbody>
-            {item.weight != null && (
-              <tr>
-                <td style={{ padding: '0.25rem 0', color: '#64748b', width: '40%' }}>Weight</td>
-                <td style={{ padding: '0.25rem 0' }}>{item.weight}</td>
-              </tr>
-            )}
-            {item.destination && (
-              <tr>
-                <td style={{ padding: '0.25rem 0', color: '#64748b' }}>Destination</td>
-                <td style={{ padding: '0.25rem 0' }}>{item.destination}</td>
-              </tr>
-            )}
-            {item.dgType && (
-              <tr>
-                <td style={{ padding: '0.25rem 0', color: '#64748b' }}>DG Type</td>
-                <td style={{ padding: '0.25rem 0' }}>{item.dgType}</td>
-              </tr>
-            )}
-            {item.toType && (
-              <tr>
-                <td style={{ padding: '0.25rem 0', color: '#64748b' }}>TO Type</td>
-                <td style={{ padding: '0.25rem 0' }}>{item.toType}</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+    <Card data-testid="linehaul-detail" className="mt-6 max-w-md shadow-md">
+      <CardHeader className="pb-2">
+        <CardTitle className="font-mono text-base">{item.toNumber}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Trip Item */}
+        <div className="rounded-md border overflow-hidden">
+          <table className="w-full text-sm">
+            <tbody>
+              {item.weight != null && (
+                <tr className="border-b">
+                  <td className="px-4 py-2 text-muted-foreground w-2/5">Weight</td>
+                  <td className="px-4 py-2">{item.weight}</td>
+                </tr>
+              )}
+              {item.destination && (
+                <tr className="border-b">
+                  <td className="px-4 py-2 text-muted-foreground">Destination</td>
+                  <td className="px-4 py-2">{item.destination}</td>
+                </tr>
+              )}
+              {item.dgType && (
+                <tr className="border-b">
+                  <td className="px-4 py-2 text-muted-foreground">DG Type</td>
+                  <td className="px-4 py-2">{item.dgType}</td>
+                </tr>
+              )}
+              {item.toType && (
+                <tr>
+                  <td className="px-4 py-2 text-muted-foreground">TO Type</td>
+                  <td className="px-4 py-2">{item.toType}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
 
-      {/* Parent Trip Header (collapsible) */}
-      <details data-testid="linehaul-trip-header" style={{ borderTop: '1px solid #e2e8f0', paddingTop: '0.75rem' }}>
-        <summary style={{ cursor: 'pointer', fontWeight: 600, color: '#334155' }}>
-          Trip: {trip.tripCode}
-        </summary>
-        <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '0.5rem' }}>
-          <tbody>
-            {trip.schedule && (
-              <tr>
-                <td style={{ padding: '0.25rem 0', color: '#64748b', width: '40%' }}>Schedule</td>
-                <td style={{ padding: '0.25rem 0' }}>{trip.schedule}</td>
-              </tr>
-            )}
-            <tr>
-              <td style={{ padding: '0.25rem 0', color: '#64748b' }}>Origin</td>
-              <td style={{ padding: '0.25rem 0' }}>{trip.origin}</td>
-            </tr>
-            <tr>
-              <td style={{ padding: '0.25rem 0', color: '#64748b' }}>Destination</td>
-              <td style={{ padding: '0.25rem 0' }}>{trip.destination}</td>
-            </tr>
-            {trip.vendor && (
-              <tr>
-                <td style={{ padding: '0.25rem 0', color: '#64748b' }}>Vendor</td>
-                <td style={{ padding: '0.25rem 0' }}>{trip.vendor}</td>
-              </tr>
-            )}
-            {trip.plateNumber && (
-              <tr>
-                <td style={{ padding: '0.25rem 0', color: '#64748b' }}>Plate Number</td>
-                <td style={{ padding: '0.25rem 0' }}>{trip.plateNumber}</td>
-              </tr>
-            )}
-            {trip.driverName && (
-              <tr>
-                <td style={{ padding: '0.25rem 0', color: '#64748b' }}>Driver</td>
-                <td style={{ padding: '0.25rem 0' }}>{trip.driverName}</td>
-              </tr>
-            )}
-            {trip.std && (
-              <tr>
-                <td style={{ padding: '0.25rem 0', color: '#64748b' }}>STD</td>
-                <td style={{ padding: '0.25rem 0' }}>{new Date(trip.std).toLocaleString()}</td>
-              </tr>
-            )}
-            {trip.sta && (
-              <tr>
-                <td style={{ padding: '0.25rem 0', color: '#64748b' }}>STA</td>
-                <td style={{ padding: '0.25rem 0' }}>{new Date(trip.sta).toLocaleString()}</td>
-              </tr>
-            )}
-            {trip.ata && (
-              <tr>
-                <td style={{ padding: '0.25rem 0', color: '#64748b' }}>ATA</td>
-                <td style={{ padding: '0.25rem 0' }}>{new Date(trip.ata).toLocaleString()}</td>
-              </tr>
-            )}
-            {trip.totalWeight != null && (
-              <tr>
-                <td style={{ padding: '0.25rem 0', color: '#64748b' }}>Total Weight</td>
-                <td style={{ padding: '0.25rem 0' }}>{trip.totalWeight}</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </details>
+        {/* Parent Trip */}
+        <details data-testid="linehaul-trip-header" className="border rounded-md">
+          <summary className="cursor-pointer px-4 py-2 font-semibold text-sm select-none hover:bg-muted/30 motion-safe:transition-colors">
+            Trip: {trip.tripCode}
+          </summary>
+          <div className="border-t overflow-hidden">
+            <table className="w-full text-sm">
+              <tbody>
+                {trip.schedule && (
+                  <tr className="border-b">
+                    <td className="px-4 py-2 text-muted-foreground w-2/5">Schedule</td>
+                    <td className="px-4 py-2">{trip.schedule}</td>
+                  </tr>
+                )}
+                <tr className="border-b">
+                  <td className="px-4 py-2 text-muted-foreground">Origin</td>
+                  <td className="px-4 py-2">{trip.origin}</td>
+                </tr>
+                <tr className="border-b">
+                  <td className="px-4 py-2 text-muted-foreground">Destination</td>
+                  <td className="px-4 py-2">{trip.destination}</td>
+                </tr>
+                {trip.vendor && (
+                  <tr className="border-b">
+                    <td className="px-4 py-2 text-muted-foreground">Vendor</td>
+                    <td className="px-4 py-2">{trip.vendor}</td>
+                  </tr>
+                )}
+                {trip.plateNumber && (
+                  <tr className="border-b">
+                    <td className="px-4 py-2 text-muted-foreground">Plate Number</td>
+                    <td className="px-4 py-2">{trip.plateNumber}</td>
+                  </tr>
+                )}
+                {trip.driverName && (
+                  <tr className="border-b">
+                    <td className="px-4 py-2 text-muted-foreground">Driver</td>
+                    <td className="px-4 py-2">{trip.driverName}</td>
+                  </tr>
+                )}
+                {trip.std && (
+                  <tr className="border-b">
+                    <td className="px-4 py-2 text-muted-foreground">STD</td>
+                    <td className="px-4 py-2">{new Date(trip.std).toLocaleString()}</td>
+                  </tr>
+                )}
+                {trip.sta && (
+                  <tr className="border-b">
+                    <td className="px-4 py-2 text-muted-foreground">STA</td>
+                    <td className="px-4 py-2">{new Date(trip.sta).toLocaleString()}</td>
+                  </tr>
+                )}
+                {trip.ata && (
+                  <tr className="border-b">
+                    <td className="px-4 py-2 text-muted-foreground">ATA</td>
+                    <td className="px-4 py-2">{new Date(trip.ata).toLocaleString()}</td>
+                  </tr>
+                )}
+                {trip.totalWeight != null && (
+                  <tr>
+                    <td className="px-4 py-2 text-muted-foreground">Total Weight</td>
+                    <td className="px-4 py-2">{trip.totalWeight}</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </details>
 
-      {onReset && (
-        <button
-          data-testid="scan-again-button"
-          onClick={onReset}
-          style={{
-            marginTop: '1rem',
-            padding: '0.5rem 1rem',
-            border: '1px solid #cbd5e1',
-            borderRadius: 6,
-            background: '#fff',
-            cursor: 'pointer',
-          }}
-        >
-          Scan Again
-        </button>
-      )}
-    </div>
+        {onReset && (
+          <Button data-testid="scan-again-button" variant="outline" onClick={onReset}>
+            Scan Again
+          </Button>
+        )}
+      </CardContent>
+    </Card>
   );
 }
+

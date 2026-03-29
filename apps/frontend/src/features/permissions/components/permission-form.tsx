@@ -1,16 +1,17 @@
 'use client';
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { FormField } from '@/components/shared/form-field';
+import { AlertCircle } from 'lucide-react';
 
 interface PermissionFormProps {
   onSubmit: (data: { name: string; description?: string }) => Promise<void>;
   onCancel: () => void;
 }
 
-const inputStyle: React.CSSProperties = { width: '100%', padding: '.5rem', border: '1px solid #d1d5db', borderRadius: 4, boxSizing: 'border-box', fontSize: '.875rem' };
-const labelStyle: React.CSSProperties = { display: 'block', marginBottom: 4, fontWeight: 500, fontSize: '.875rem' };
-const fieldStyle: React.CSSProperties = { marginBottom: '1rem' };
-
 const ACTIONS = ['read', 'create', 'update', 'delete'];
+const selectCls = 'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2';
 
 export default function PermissionForm({ onSubmit, onCancel }: PermissionFormProps) {
   const [action, setAction] = useState('read');
@@ -37,40 +38,34 @@ export default function PermissionForm({ onSubmit, onCancel }: PermissionFormPro
   };
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit} className="space-y-4">
       {error && (
-        <div style={{ background: '#fee2e2', color: '#dc2626', padding: '.75rem', borderRadius: 4, marginBottom: '1rem', fontSize: '.875rem' }}>
+        <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+          <AlertCircle size={14} />
           {error}
         </div>
       )}
-
-      <div style={fieldStyle}>
-        <label style={labelStyle}>Action *</label>
-        <select style={inputStyle} value={action} onChange={(e) => setAction(e.target.value)}>
+      <FormField label="Action" htmlFor="perm-action" required>
+        <select id="perm-action" className={selectCls} value={action} onChange={(e) => setAction(e.target.value)}>
           {ACTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
         </select>
-      </div>
-
-      <div style={fieldStyle}>
-        <label style={labelStyle}>Module *</label>
-        <input style={inputStyle} value={module} onChange={(e) => setModule(e.target.value)} placeholder="e.g. shipment" maxLength={100} required />
-        <p style={{ color: '#64748b', fontSize: '.75rem', marginTop: 4 }}>
-          Preview: <code style={{ background: '#f1f5f9', padding: '0 .3rem' }}>{permissionName || '…'}</code>
-        </p>
-      </div>
-
-      <div style={fieldStyle}>
-        <label style={labelStyle}>Description</label>
-        <input style={inputStyle} value={description} onChange={(e) => setDescription(e.target.value)} maxLength={500} />
-      </div>
-
-      <div style={{ display: 'flex', gap: '.5rem', justifyContent: 'flex-end' }}>
-        <button type="button" onClick={onCancel} style={{ padding: '.5rem 1rem', background: '#e2e8f0', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
-          Cancel
-        </button>
-        <button type="submit" disabled={submitting} style={{ padding: '.5rem 1rem', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 4, cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1 }}>
-          {submitting ? 'Creating…' : 'Create Permission'}
-        </button>
+      </FormField>
+      <FormField label="Module" htmlFor="perm-module" required hint={permissionName ? `Preview: ${permissionName}` : undefined}>
+        <Input
+          id="perm-module"
+          value={module}
+          onChange={(e) => setModule(e.target.value)}
+          placeholder="e.g. shipment"
+          maxLength={100}
+          required
+        />
+      </FormField>
+      <FormField label="Description" htmlFor="perm-desc">
+        <Input id="perm-desc" value={description} onChange={(e) => setDescription(e.target.value)} maxLength={500} />
+      </FormField>
+      <div className="flex justify-end gap-2 pt-2">
+        <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
+        <Button type="submit" disabled={submitting}>{submitting ? 'Creating…' : 'Create Permission'}</Button>
       </div>
     </form>
   );

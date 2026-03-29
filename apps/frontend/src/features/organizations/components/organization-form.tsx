@@ -1,5 +1,9 @@
 'use client';
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { FormField } from '@/components/shared/form-field';
+import { AlertCircle } from 'lucide-react';
 
 interface OrgFormProps {
   initial?: { name: string; address?: string };
@@ -30,61 +34,33 @@ export default function OrganizationForm({ initial, onSubmit, onCancel, slug }: 
   };
 
   return (
-    <form onSubmit={handleSubmit} style={{ maxWidth: 480 }}>
+    <form onSubmit={handleSubmit} className="space-y-4">
       {error && (
-        <div style={{ background: '#fee2e2', color: '#dc2626', padding: '.75rem', borderRadius: 4, marginBottom: '1rem' }}>
+        <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+          <AlertCircle size={14} />
           {error}
         </div>
       )}
-
-      <div style={{ marginBottom: '1rem' }}>
-        <label htmlFor="org-name" style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Name *</label>
-        <input
-          id="org-name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          style={{ width: '100%', padding: '.5rem', border: '1px solid #d1d5db', borderRadius: 4, boxSizing: 'border-box' }}
-          required
-        />
-      </div>
-
-      <div style={{ marginBottom: '1rem' }}>
-        <label htmlFor="org-address" style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Address</label>
+      <FormField label="Name" htmlFor="org-name" required>
+        <Input id="org-name" value={name} onChange={(e) => setName(e.target.value)} required />
+      </FormField>
+      <FormField label="Address" htmlFor="org-address">
         <textarea
           id="org-address"
           value={address}
           onChange={(e) => setAddress(e.target.value)}
           rows={3}
-          style={{ width: '100%', padding: '.5rem', border: '1px solid #d1d5db', borderRadius: 4, boxSizing: 'border-box' }}
+          className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         />
-      </div>
-
+      </FormField>
       {slug && (
-        <div style={{ marginBottom: '1rem' }}>
-          <label style={{ display: 'block', marginBottom: 4, fontWeight: 500, color: '#64748b' }}>Slug (auto-generated)</label>
-          <input
-            value={slug}
-            readOnly
-            style={{ width: '100%', padding: '.5rem', border: '1px solid #e2e8f0', borderRadius: 4, background: '#f8fafc', color: '#64748b', boxSizing: 'border-box' }}
-          />
-        </div>
+        <FormField label="Slug (auto-generated)" htmlFor="org-slug">
+          <Input id="org-slug" value={slug} readOnly className="bg-muted text-muted-foreground" />
+        </FormField>
       )}
-
-      <div style={{ display: 'flex', gap: '0.5rem' }}>
-        <button
-          type="submit"
-          disabled={submitting}
-          style={{ padding: '.5rem 1.25rem', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 4, cursor: submitting ? 'not-allowed' : 'pointer' }}
-        >
-          {submitting ? 'Saving…' : 'Save'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          style={{ padding: '.5rem 1.25rem', background: '#e2e8f0', color: '#1e293b', border: 'none', borderRadius: 4, cursor: 'pointer' }}
-        >
-          Cancel
-        </button>
+      <div className="flex justify-end gap-2 pt-2">
+        <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
+        <Button type="submit" disabled={submitting}>{submitting ? 'Saving…' : 'Save'}</Button>
       </div>
     </form>
   );

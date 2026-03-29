@@ -1,6 +1,9 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { apiClient } from '@/shared/api/client';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 interface Permission {
   id: string;
@@ -51,7 +54,6 @@ export default function RolePermissionsPanel({ roleId, currentPermissionIds, onS
     }
   };
 
-  // Group permissions by module (e.g. "read.shipment" → "shipment")
   const grouped = allPermissions.reduce<Record<string, Permission[]>>((acc, p) => {
     const module = p.name.split('.')[1] ?? 'other';
     if (!acc[module]) acc[module] = [];
@@ -60,45 +62,50 @@ export default function RolePermissionsPanel({ roleId, currentPermissionIds, onS
   }, {});
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-      <div style={{ background: '#fff', borderRadius: 8, padding: '2rem', maxWidth: 560, width: '100%', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
-        <h2 style={{ marginTop: 0 }}>Edit Role Permissions</h2>
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Edit Role Permissions</DialogTitle>
+        </DialogHeader>
 
-        {error && <p style={{ color: '#ef4444', fontSize: '.875rem' }}>{error}</p>}
+        {error && <p className="text-sm text-destructive">{error}</p>}
 
-        {loading ? (
-          <p>Loading permissions…</p>
-        ) : (
-          <div style={{ overflowY: 'auto', flex: 1, borderTop: '1px solid #e2e8f0', paddingTop: '1rem' }}>
-            {Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([module, perms]) => (
-              <div key={module} style={{ marginBottom: '1rem' }}>
-                <p style={{ margin: '0 0 .5rem', fontWeight: 600, textTransform: 'capitalize', color: '#334155' }}>{module}</p>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '.25rem' }}>
+        <div className="flex-1 overflow-y-auto border-t pt-4 space-y-4">
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Loading permissions…</p>
+          ) : (
+            Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([module, perms]) => (
+              <div key={module}>
+                <p className="mb-2 text-sm font-semibold capitalize text-foreground">{module}</p>
+                <div className="grid grid-cols-2 gap-1">
                   {perms.map((p) => (
-                    <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '.4rem', cursor: 'pointer', fontSize: '.875rem' }}>
+                    <label key={p.id} className={cn(
+                      'flex items-center gap-2 cursor-pointer rounded px-2 py-1 text-xs',
+                      'hover:bg-muted motion-safe:transition-colors',
+                      selected.has(p.id) && 'bg-primary/10'
+                    )}>
                       <input
                         type="checkbox"
                         checked={selected.has(p.id)}
                         onChange={() => toggle(p.id)}
+                        className="accent-primary"
                       />
-                      <code style={{ color: '#475569' }}>{p.name}</code>
+                      <code className="text-muted-foreground">{p.name}</code>
                     </label>
                   ))}
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-
-        <div style={{ display: 'flex', gap: '.5rem', justifyContent: 'flex-end', paddingTop: '1rem', borderTop: '1px solid #e2e8f0', marginTop: '1rem' }}>
-          <button onClick={onClose} style={{ padding: '.5rem 1rem', background: '#e2e8f0', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
-            Cancel
-          </button>
-          <button onClick={handleSave} disabled={saving} style={{ padding: '.5rem 1rem', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 4, cursor: saving ? 'not-allowed' : 'pointer', opacity: saving ? 0.6 : 1 }}>
-            {saving ? 'Saving…' : `Save (${selected.size} selected)`}
-          </button>
+            ))
+          )}
         </div>
-      </div>
-    </div>
+
+        <DialogFooter className="border-t pt-4">
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? 'Saving…' : `Save (${selected.size} selected)`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
