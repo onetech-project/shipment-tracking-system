@@ -1,6 +1,11 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { apiClient } from '@/shared/api/client';
+import { PageHeader } from '@/components/shared/page-header';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { FormField } from '@/components/shared/form-field';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 interface Role { id: string; name: string; description: string; isSystem: boolean; createdAt: string; }
 
@@ -37,64 +42,51 @@ export default function RolesPage() {
     }
   };
 
-  if (loading) return <p>Loading…</p>;
-  if (error) return <p style={{ color: 'red' }}>Error: {error}</p>;
+  if (loading) return <p className="text-muted-foreground">Loading...</p>;
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <h1 style={{ margin: 0 }}>Roles</h1>
-        <button onClick={() => setShowModal(true)} style={{ padding: '.5rem 1rem', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-          + New Role
-        </button>
-      </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr style={{ background: '#f1f5f9' }}>
-            <th style={{ padding: '.5rem', textAlign: 'left' }}>Name</th>
-            <th style={{ padding: '.5rem', textAlign: 'left' }}>Description</th>
-            <th style={{ padding: '.5rem', textAlign: 'left' }}>System</th>
-          </tr>
-        </thead>
-        <tbody>
-          {roles.map((r) => (
-            <tr key={r.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-              <td style={{ padding: '.5rem' }}>{r.name}</td>
-              <td style={{ padding: '.5rem' }}>{r.description ?? '—'}</td>
-              <td style={{ padding: '.5rem' }}>{r.isSystem ? 'Yes' : 'No'}</td>
+      <PageHeader title="Roles" action={<Button onClick={() => setShowModal(true)}>+ New Role</Button>} />
+      {error && <p className="mb-4 text-sm text-destructive">Error: {error}</p>}
+      <div className="overflow-x-auto rounded-md border">
+        <table className="w-full border-collapse text-sm">
+          <thead className="bg-muted/50">
+            <tr>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Name</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Description</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">System</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {roles.map((r) => (
+              <tr key={r.id} className="border-t hover:bg-muted/30 motion-safe:transition-colors">
+                <td className="px-4 py-3">{r.name}</td>
+                <td className="px-4 py-3">{r.description ?? '—'}</td>
+                <td className="px-4 py-3">{r.isSystem ? 'Yes' : 'No'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       {showModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-          <div style={{ background: '#fff', borderRadius: '8px', padding: '1.5rem', minWidth: '360px' }}>
-            <h2 style={{ marginTop: 0 }}>New Role</h2>
-            <form onSubmit={handleSubmit}>
-              <div style={{ marginBottom: '.75rem' }}>
-                <label style={{ display: 'block', marginBottom: '.25rem' }}>Name</label>
-                <input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  style={{ width: '100%', padding: '.4rem', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }} />
-              </div>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '.25rem' }}>Description <small>(optional)</small></label>
-                <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}
-                  style={{ width: '100%', padding: '.4rem', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }} />
-              </div>
-              <div style={{ display: 'flex', gap: '.5rem', justifyContent: 'flex-end' }}>
-                <button type="button" onClick={() => { setShowModal(false); setForm({ name: '', description: '' }); }}
-                  style={{ padding: '.4rem .9rem', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer', background: '#fff' }}>
-                  Cancel
-                </button>
-                <button type="submit" disabled={submitting}
-                  style={{ padding: '.4rem .9rem', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-                  {submitting ? 'Creating…' : 'Create'}
-                </button>
+        <Dialog open onOpenChange={(open) => { if (!open) setShowModal(false); }}>
+          <DialogContent>
+            <DialogHeader><DialogTitle>New Role</DialogTitle></DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <FormField label="Name" htmlFor="nr-name" required>
+                <Input id="nr-name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+              </FormField>
+              <FormField label="Description (optional)" htmlFor="nr-desc">
+                <Input id="nr-desc" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+              </FormField>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => { setShowModal(false); setForm({ name: '', description: '' }); }}>Cancel</Button>
+                <Button type="submit" disabled={submitting}>{submitting ? 'Creating...' : 'Create'}</Button>
               </div>
             </form>
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

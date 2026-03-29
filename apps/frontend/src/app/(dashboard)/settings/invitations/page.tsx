@@ -3,6 +3,11 @@ import { useEffect, useState } from 'react';
 import { apiClient } from '@/shared/api/client';
 import InvitationForm from '@/features/invitations/components/invitation-form';
 import { usePermissions } from '@/shared/hooks/use-permissions';
+import { PageHeader } from '@/components/shared/page-header';
+import { StatusBadge } from '@/components/shared/status-badge';
+import type { StatusVariant } from '@/components/shared/status-badge';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 interface Invitation {
   id: string;
@@ -12,27 +17,17 @@ interface Invitation {
   createdAt: string;
 }
 
-interface Role {
-  id: string;
-  name: string;
-}
+interface Role { id: string; name: string; }
+interface Organization { id: string; name: string; }
 
-interface Organization {
-  id: string;
-  name: string;
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  pending: '#2563eb',
-  accepted: '#16a34a',
-  expired: '#64748b',
-  revoked: '#dc2626',
+const STATUS_VARIANT: Record<string, StatusVariant> = {
+  pending: 'pending',
+  accepted: 'active',
+  expired: 'inactive',
+  revoked: 'error',
 };
 
-const btnPrimary: React.CSSProperties = { padding: '.5rem 1rem', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' };
-const btnSmall: React.CSSProperties = { padding: '.25rem .75rem', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: '.8rem' };
-const thStyle: React.CSSProperties = { padding: '.6rem .75rem', textAlign: 'left', background: '#f1f5f9' };
-const tdStyle: React.CSSProperties = { padding: '.6rem .75rem', borderBottom: '1px solid #e2e8f0' };
+const selectCls = 'flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2';
 
 export default function InvitationsSettingsPage() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -79,22 +74,21 @@ export default function InvitationsSettingsPage() {
     load();
   };
 
-  if (loading) return <p>Loading…</p>;
+  if (loading) return <p className="text-muted-foreground">Loading...</p>;
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <h1 style={{ margin: 0 }}>Invitations</h1>
-        <button style={btnPrimary} onClick={() => setShowModal(true)}>+ Send Invitation</button>
-      </div>
+      <PageHeader
+        title="Invitations"
+        action={<Button onClick={() => setShowModal(true)}>+ Send Invitation</Button>}
+      />
+      {error && <p className="mb-4 text-sm text-destructive">Error: {error}</p>}
 
-      {error && <p style={{ color: '#ef4444' }}>Error: {error}</p>}
-
-      <div style={{ marginBottom: '1rem' }}>
+      <div className="mb-4">
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          style={{ padding: '.4rem .75rem', border: '1px solid #d1d5db', borderRadius: 4 }}
+          className={selectCls}
         >
           <option value="">All statuses</option>
           <option value="pending">Pending</option>
@@ -104,47 +98,47 @@ export default function InvitationsSettingsPage() {
         </select>
       </div>
 
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr>
-            <th style={thStyle}>Email</th>
-            <th style={thStyle}>Status</th>
-            <th style={thStyle}>Expires</th>
-            <th style={thStyle}>Sent</th>
-            <th style={thStyle}>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {invitations.map((inv) => (
-            <tr key={inv.id}>
-              <td style={tdStyle}>{inv.email}</td>
-              <td style={tdStyle}>
-                <span style={{ color: STATUS_COLORS[inv.status] ?? '#64748b', fontWeight: 500 }}>{inv.status}</span>
-              </td>
-              <td style={tdStyle}>{new Date(inv.expiresAt).toLocaleDateString()}</td>
-              <td style={tdStyle}>{new Date(inv.createdAt).toLocaleDateString()}</td>
-              <td style={tdStyle}>
-                {inv.status === 'pending' && (
-                  <button style={{ ...btnSmall, background: '#fee2e2', color: '#dc2626' }} onClick={() => handleCancel(inv.id)}>
-                    Cancel
-                  </button>
-                )}
-              </td>
+      <div className="overflow-x-auto rounded-md border">
+        <table className="w-full border-collapse text-sm">
+          <thead className="bg-muted/50">
+            <tr>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Email</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Expires</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Sent</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Actions</th>
             </tr>
-          ))}
-          {invitations.length === 0 && (
-            <tr><td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>No invitations found.</td></tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {invitations.map((inv) => (
+              <tr key={inv.id} className="border-t hover:bg-muted/30 motion-safe:transition-colors">
+                <td className="px-4 py-3">{inv.email}</td>
+                <td className="px-4 py-3">
+                  <StatusBadge variant={STATUS_VARIANT[inv.status] ?? 'inactive'} label={inv.status} />
+                </td>
+                <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(inv.expiresAt).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(inv.createdAt).toLocaleDateString()}</td>
+                <td className="px-4 py-3">
+                  {inv.status === 'pending' && (
+                    <Button size="sm" variant="destructive" onClick={() => handleCancel(inv.id)}>Cancel</Button>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {invitations.length === 0 && (
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No invitations found.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
 
       {showModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-          <div style={{ background: '#fff', borderRadius: 8, padding: '2rem', maxWidth: 480, width: '100%' }}>
-            <h2 style={{ marginTop: 0 }}>Send Invitation</h2>
+        <Dialog open onOpenChange={(open) => { if (!open) setShowModal(false); }}>
+          <DialogContent>
+            <DialogHeader><DialogTitle>Send Invitation</DialogTitle></DialogHeader>
             <InvitationForm roles={roles} organizations={organizations} isSuperAdmin={isSuperAdmin} onSubmit={handleSend} onCancel={() => setShowModal(false)} />
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );

@@ -1,8 +1,20 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { apiClient } from '@/shared/api/client';
+import { PageHeader } from '@/components/shared/page-header';
+import { StatusBadge } from '@/components/shared/status-badge';
+import type { StatusVariant } from '@/components/shared/status-badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 interface Invitation { id: string; email: string; status: string; expiresAt: string; createdAt: string; }
+
+const STATUS_VARIANT: Record<string, StatusVariant> = {
+  pending: 'pending',
+  accepted: 'active',
+  expired: 'inactive',
+  revoked: 'error',
+};
 
 export default function InvitationsPage() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -40,52 +52,52 @@ export default function InvitationsPage() {
     loadInvitations();
   };
 
-  if (loading) return <p>Loading…</p>;
-  if (error) return <p style={{ color: 'red' }}>Error: {error}</p>;
+  if (loading) return <p className="text-muted-foreground">Loading...</p>;
 
   return (
     <div>
-      <h1>Invitations</h1>
-      <form onSubmit={sendInvitation} style={{ marginBottom: '1.5rem', display: 'flex', gap: '.5rem' }}>
-        <input
+      <PageHeader title="Invitations" />
+      {error && <p className="mb-4 text-sm text-destructive">Error: {error}</p>}
+      <form onSubmit={sendInvitation} className="mb-6 flex gap-2">
+        <Input
           type="email"
           value={newEmail}
           onChange={(e) => setNewEmail(e.target.value)}
           placeholder="Email address"
           required
-          style={{ padding: '.5rem', flex: 1 }}
+          className="max-w-xs"
         />
-        <button type="submit" disabled={sending} style={{ padding: '.5rem 1rem', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 4 }}>
-          {sending ? 'Sending…' : 'Invite'}
-        </button>
+        <Button type="submit" disabled={sending}>{sending ? 'Sending...' : 'Invite'}</Button>
       </form>
 
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr style={{ background: '#f1f5f9' }}>
-            <th style={{ padding: '.5rem', textAlign: 'left' }}>Email</th>
-            <th style={{ padding: '.5rem', textAlign: 'left' }}>Status</th>
-            <th style={{ padding: '.5rem', textAlign: 'left' }}>Expires</th>
-            <th style={{ padding: '.5rem', textAlign: 'left' }}>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {invitations.map((inv) => (
-            <tr key={inv.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-              <td style={{ padding: '.5rem' }}>{inv.email}</td>
-              <td style={{ padding: '.5rem' }}>{inv.status}</td>
-              <td style={{ padding: '.5rem' }}>{new Date(inv.expiresAt).toLocaleDateString()}</td>
-              <td style={{ padding: '.5rem' }}>
-                {inv.status === 'pending' && (
-                  <button onClick={() => cancel(inv.id)} style={{ color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer' }}>
-                    Cancel
-                  </button>
-                )}
-              </td>
+      <div className="overflow-x-auto rounded-md border">
+        <table className="w-full border-collapse text-sm">
+          <thead className="bg-muted/50">
+            <tr>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Email</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Expires</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Actions</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {invitations.map((inv) => (
+              <tr key={inv.id} className="border-t hover:bg-muted/30 motion-safe:transition-colors">
+                <td className="px-4 py-3">{inv.email}</td>
+                <td className="px-4 py-3">
+                  <StatusBadge variant={STATUS_VARIANT[inv.status] ?? 'inactive'} label={inv.status} />
+                </td>
+                <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(inv.expiresAt).toLocaleDateString()}</td>
+                <td className="px-4 py-3">
+                  {inv.status === 'pending' && (
+                    <Button size="sm" variant="destructive" onClick={() => cancel(inv.id)}>Cancel</Button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

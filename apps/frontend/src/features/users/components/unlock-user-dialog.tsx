@@ -1,4 +1,7 @@
 'use client';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { AlertCircle } from 'lucide-react';
 import { useState } from 'react';
 
 interface UnlockUserDialogProps {
@@ -25,27 +28,28 @@ export default function UnlockUserDialog({ user, onConfirm, onClose }: UnlockUse
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-      <div style={{ background: '#fff', borderRadius: 8, padding: '2rem', maxWidth: 420, width: '100%', boxShadow: '0 8px 24px rgba(0,0,0,0.15)' }}>
-        <h2 style={{ marginTop: 0, color: '#16a34a' }}>Unlock User</h2>
-        <p>Unlock account for <strong>{user.username}</strong>?</p>
-        <p style={{ color: '#64748b', fontSize: '.875rem' }}>
-          This will reset the failed login counter and allow the user to sign in again.
-        </p>
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="text-green-700">Unlock User</DialogTitle>
+          <DialogDescription>
+            Unlock account for <strong>{user.username}</strong>?
+            This will reset the failed login counter and allow the user to sign in again.
+          </DialogDescription>
+        </DialogHeader>
         {error && (
-          <div style={{ background: '#fee2e2', color: '#dc2626', padding: '.75rem', borderRadius: 4, marginBottom: '1rem', fontSize: '.875rem' }}>
+          <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+            <AlertCircle size={14} />
             {error}
           </div>
         )}
-        <div style={{ display: 'flex', gap: '.5rem', justifyContent: 'flex-end' }}>
-          <button onClick={onClose} disabled={loading} style={{ padding: '.5rem 1.25rem', background: '#e2e8f0', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
-            Cancel
-          </button>
-          <button onClick={handleConfirm} disabled={loading} style={{ padding: '.5rem 1.25rem', background: '#16a34a', color: '#fff', border: 'none', borderRadius: 4, cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? 0.6 : 1 }}>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
+          <Button className="bg-green-600 hover:bg-green-700" onClick={handleConfirm} disabled={loading}>
             {loading ? 'Unlocking…' : 'Unlock'}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

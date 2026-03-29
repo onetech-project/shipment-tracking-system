@@ -2,6 +2,12 @@
 import { useEffect, useState } from 'react';
 import { apiClient } from '@/shared/api/client';
 import RolePermissionsPanel from '@/features/roles/components/role-permissions-panel';
+import { PageHeader } from '@/components/shared/page-header';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { FormField } from '@/components/shared/form-field';
+import { AlertCircle } from 'lucide-react';
 
 interface RolePermission {
   id: string;
@@ -20,12 +26,6 @@ type Modal =
   | { type: 'create' }
   | { type: 'edit-perms'; role: Role }
   | null;
-
-const btnPrimary: React.CSSProperties = { padding: '.5rem 1rem', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer' };
-const btnSmall: React.CSSProperties = { padding: '.25rem .75rem', border: 'none', borderRadius: 4, cursor: 'pointer', fontSize: '.8rem' };
-const thStyle: React.CSSProperties = { padding: '.6rem .75rem', textAlign: 'left', background: '#f1f5f9' };
-const tdStyle: React.CSSProperties = { padding: '.6rem .75rem', borderBottom: '1px solid #e2e8f0' };
-const inputStyle: React.CSSProperties = { width: '100%', padding: '.5rem', border: '1px solid #d1d5db', borderRadius: 4, boxSizing: 'border-box' };
 
 export default function RolesSettingsPage() {
   const [roles, setRoles] = useState<Role[]>([]);
@@ -75,78 +75,83 @@ export default function RolesSettingsPage() {
     }
   };
 
-  if (loading) return <p>Loading…</p>;
+  if (loading) return <p className="text-muted-foreground">Loading...</p>;
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-        <h1 style={{ margin: 0 }}>Roles</h1>
-        <button style={btnPrimary} onClick={() => setModal({ type: 'create' })}>+ New Role</button>
+      <PageHeader
+        title="Roles"
+        action={<Button onClick={() => setModal({ type: 'create' })}>+ New Role</Button>}
+      />
+      {error && <p className="mb-4 text-sm text-destructive">{error}</p>}
+
+      <div className="overflow-x-auto rounded-md border">
+        <table className="w-full border-collapse text-sm">
+          <thead className="bg-muted/50">
+            <tr>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Name</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Permissions</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Type</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Created</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {roles.map((role) => (
+              <tr key={role.id} className="border-t hover:bg-muted/30 motion-safe:transition-colors">
+                <td className="px-4 py-3"><code className="text-sm">{role.name}</code></td>
+                <td className="px-4 py-3">
+                  <div className="flex flex-wrap gap-1">
+                    {role.permissions?.slice(0, 5).map((p) => (
+                      <span key={p.id} className="rounded bg-blue-100 px-1.5 py-0.5 text-xs text-blue-700">{p.name}</span>
+                    ))}
+                    {role.permissions?.length > 5 && (
+                      <span className="text-xs text-muted-foreground">+{role.permissions.length - 5} more</span>
+                    )}
+                    {role.permissions?.length === 0 && <span className="text-xs text-muted-foreground">None</span>}
+                  </div>
+                </td>
+                <td className="px-4 py-3">
+                  {role.isSystem
+                    ? <span className="text-xs font-medium text-purple-600">System</span>
+                    : <span className="text-xs text-muted-foreground">Custom</span>}
+                </td>
+                <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(role.createdAt).toLocaleDateString()}</td>
+                <td className="px-4 py-3">
+                  <div className="flex gap-1">
+                    <Button size="sm" variant="outline" onClick={() => setModal({ type: 'edit-perms', role })}>Permissions</Button>
+                    {!role.isSystem && (
+                      <Button size="sm" variant="destructive" onClick={() => handleDelete(role.id, role.name)}>Delete</Button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {roles.length === 0 && (
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No roles found.</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
-      {error && <p style={{ color: '#ef4444' }}>{error}</p>}
-
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr>
-            <th style={thStyle}>Name</th>
-            <th style={thStyle}>Permissions</th>
-            <th style={thStyle}>Type</th>
-            <th style={thStyle}>Created</th>
-            <th style={thStyle}>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {roles.map((role) => (
-            <tr key={role.id}>
-              <td style={tdStyle}><code>{role.name}</code></td>
-              <td style={tdStyle}>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.2rem' }}>
-                  {role.permissions && role.permissions.slice(0, 5).map((p) => (
-                    <span key={p.id} style={{ background: '#dbeafe', color: '#1d4ed8', padding: '.1rem .4rem', borderRadius: 3, fontSize: '.75rem' }}>{p.name}</span>
-                  ))}
-                  {role.permissions && role.permissions.length > 5 && (
-                    <span style={{ color: '#64748b', fontSize: '.75rem' }}>+{role.permissions.length - 5} more</span>
-                  )}
-                  {role.permissions && role.permissions.length === 0 && <span style={{ color: '#94a3b8', fontSize: '.75rem' }}>None</span>}
-                </div>
-              </td>
-              <td style={tdStyle}>
-                {role.isSystem
-                  ? <span style={{ color: '#7c3aed', fontWeight: 500, fontSize: '.8rem' }}>System</span>
-                  : <span style={{ color: '#64748b', fontSize: '.8rem' }}>Custom</span>}
-              </td>
-              <td style={tdStyle}>{new Date(role.createdAt).toLocaleDateString()}</td>
-              <td style={tdStyle}>
-                <div style={{ display: 'flex', gap: '.25rem' }}>
-                  <button style={{ ...btnSmall, background: '#e2e8f0' }} onClick={() => setModal({ type: 'edit-perms', role })}>
-                    Permissions
-                  </button>
-                  {!role.isSystem && (
-                    <button style={{ ...btnSmall, background: '#fee2e2', color: '#dc2626' }} onClick={() => handleDelete(role.id, role.name)}>
-                      Delete
-                    </button>
-                  )}
-                </div>
-              </td>
-            </tr>
-          ))}
-          {roles.length === 0 && (
-            <tr><td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8' }}>No roles found.</td></tr>
-          )}
-        </tbody>
-      </table>
-
-      {/* Create Role Modal */}
       {modal?.type === 'create' && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-          <div style={{ background: '#fff', borderRadius: 8, padding: '2rem', maxWidth: 420, width: '100%' }}>
-            <h2 style={{ marginTop: 0 }}>New Role</h2>
-            <form onSubmit={handleCreate}>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: 4, fontWeight: 500, fontSize: '.875rem' }}>Role Name *</label>
-                <input
-                  style={inputStyle}
+        <Dialog open onOpenChange={(open) => { if (!open) setModal(null); }}>
+          <DialogContent>
+            <DialogHeader><DialogTitle>New Role</DialogTitle></DialogHeader>
+            <form onSubmit={handleCreate} className="space-y-4">
+              {error && (
+                <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+                  <AlertCircle size={14} />{error}
+                </div>
+              )}
+              <FormField
+                label="Role Name"
+                htmlFor="new-role-name"
+                required
+                hint="Lowercase letters, numbers, hyphens and underscores only."
+              >
+                <Input
+                  id="new-role-name"
                   value={newRoleName}
                   onChange={(e) => setNewRoleName(e.target.value)}
                   placeholder="e.g. warehouse-supervisor"
@@ -154,26 +159,20 @@ export default function RolesSettingsPage() {
                   title="Lowercase letters, numbers, hyphens and underscores only"
                   required
                 />
-                <p style={{ color: '#64748b', fontSize: '.75rem', marginTop: 4 }}>Lowercase letters, numbers, hyphens and underscores only.</p>
-              </div>
-              <div style={{ display: 'flex', gap: '.5rem', justifyContent: 'flex-end' }}>
-                <button type="button" onClick={() => setModal(null)} style={{ padding: '.5rem 1rem', background: '#e2e8f0', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
-                  Cancel
-                </button>
-                <button type="submit" disabled={creating} style={{ ...btnPrimary, opacity: creating ? 0.6 : 1 }}>
-                  {creating ? 'Creating…' : 'Create Role'}
-                </button>
+              </FormField>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setModal(null)}>Cancel</Button>
+                <Button type="submit" disabled={creating}>{creating ? 'Creating...' : 'Create Role'}</Button>
               </div>
             </form>
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
 
-      {/* Edit Permissions Panel */}
       {modal?.type === 'edit-perms' && (
         <RolePermissionsPanel
           roleId={modal.role.id}
-          currentPermissionIds={modal.role?.permissions && modal.role.permissions.map((p) => p.id)}
+          currentPermissionIds={modal.role?.permissions?.map((p) => p.id) ?? []}
           onSaved={() => { setModal(null); load(); }}
           onClose={() => setModal(null)}
         />

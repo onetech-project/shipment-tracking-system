@@ -1,15 +1,12 @@
 'use client';
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { FormField } from '@/components/shared/form-field';
+import { AlertCircle } from 'lucide-react';
 
-interface Role {
-  id: string;
-  name: string;
-}
-
-interface Organization {
-  id: string;
-  name: string;
-}
+interface Role { id: string; name: string; }
+interface Organization { id: string; name: string; }
 
 interface InvitationFormProps {
   roles: Role[];
@@ -19,11 +16,7 @@ interface InvitationFormProps {
   onCancel: () => void;
 }
 
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '.5rem', border: '1px solid #d1d5db', borderRadius: 4, boxSizing: 'border-box', fontSize: '.875rem',
-};
-const labelStyle: React.CSSProperties = { display: 'block', marginBottom: 4, fontWeight: 500, fontSize: '.875rem' };
-const fieldStyle: React.CSSProperties = { marginBottom: '1rem' };
+const selectCls = 'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2';
 
 export default function InvitationForm({ roles, organizations, isSuperAdmin = false, onSubmit, onCancel }: InvitationFormProps) {
   const [email, setEmail] = useState('');
@@ -54,52 +47,36 @@ export default function InvitationForm({ roles, organizations, isSuperAdmin = fa
   };
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={handleSubmit} className="space-y-4">
       {error && (
-        <div style={{ background: '#fee2e2', color: '#dc2626', padding: '.75rem', borderRadius: 4, marginBottom: '1rem', fontSize: '.875rem' }}>
+        <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+          <AlertCircle size={14} />
           {error}
         </div>
       )}
-
-      <div style={fieldStyle}>
-        <label style={labelStyle}>Email *</label>
-        <input type="email" style={inputStyle} value={email} onChange={(e) => setEmail(e.target.value)} required />
-      </div>
-
-      <div style={fieldStyle}>
-        <label style={labelStyle}>Full Name *</label>
-        <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} maxLength={255} required />
-      </div>
-
-      <div style={fieldStyle}>
-        <label style={labelStyle}>Role (optional)</label>
-        <select style={inputStyle} value={roleId} onChange={(e) => setRoleId(e.target.value)}>
+      <FormField label="Email" htmlFor="inv-email" required>
+        <Input id="inv-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+      </FormField>
+      <FormField label="Full Name" htmlFor="inv-name" required>
+        <Input id="inv-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={255} required />
+      </FormField>
+      <FormField label="Role (optional)" htmlFor="inv-role">
+        <select id="inv-role" className={selectCls} value={roleId} onChange={(e) => setRoleId(e.target.value)}>
           <option value="">— No role assigned —</option>
-          {roles.map((r) => (
-            <option key={r.id} value={r.id}>{r.name}</option>
-          ))}
+          {roles.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
         </select>
-      </div>
-
+      </FormField>
       {isSuperAdmin && (
-        <div style={fieldStyle}>
-          <label style={labelStyle}>Organization (Super Admin only)</label>
-          <select style={inputStyle} value={organizationId} onChange={(e) => setOrganizationId(e.target.value)}>
+        <FormField label="Organization (Super Admin only)" htmlFor="inv-org">
+          <select id="inv-org" className={selectCls} value={organizationId} onChange={(e) => setOrganizationId(e.target.value)}>
             <option value="">— No organization assigned —</option>
-            {organizations.map((o) => (
-              <option key={o.id} value={o.id}>{o.name}</option>
-            ))}
+            {organizations.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
-        </div>
+        </FormField>
       )}
-
-      <div style={{ display: 'flex', gap: '.5rem', justifyContent: 'flex-end' }}>
-        <button type="button" onClick={onCancel} style={{ padding: '.5rem 1rem', background: '#e2e8f0', border: 'none', borderRadius: 4, cursor: 'pointer' }}>
-          Cancel
-        </button>
-        <button type="submit" disabled={submitting} style={{ padding: '.5rem 1rem', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: 4, cursor: submitting ? 'not-allowed' : 'pointer', opacity: submitting ? 0.6 : 1 }}>
-          {submitting ? 'Sending…' : 'Send Invitation'}
-        </button>
+      <div className="flex justify-end gap-2 pt-2">
+        <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
+        <Button type="submit" disabled={submitting}>{submitting ? 'Sending…' : 'Send Invitation'}</Button>
       </div>
     </form>
   );

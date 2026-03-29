@@ -1,6 +1,12 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { apiClient } from '@/shared/api/client';
+import { PageHeader } from '@/components/shared/page-header';
+import { StatusBadge } from '@/components/shared/status-badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { FormField } from '@/components/shared/form-field';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 interface User { id: string; username: string; isActive: boolean; isLocked: boolean; lastLoginAt: string; createdAt: string; }
 
@@ -41,81 +47,65 @@ export default function UsersPage() {
     }
   };
 
-  if (loading) return <p>Loading…</p>;
-  if (error) return <p style={{ color: 'red' }}>Error: {error}</p>;
+  if (loading) return <p className="text-muted-foreground">Loading...</p>;
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-        <h1 style={{ margin: 0 }}>Users</h1>
-        <button onClick={() => setShowModal(true)} style={{ padding: '.5rem 1rem', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-          + New User
-        </button>
-      </div>
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr style={{ background: '#f1f5f9' }}>
-            <th style={{ padding: '.5rem', textAlign: 'left' }}>Username</th>
-            <th style={{ padding: '.5rem', textAlign: 'left' }}>Status</th>
-            <th style={{ padding: '.5rem', textAlign: 'left' }}>Locked</th>
-            <th style={{ padding: '.5rem', textAlign: 'left' }}>Last Login</th>
-          </tr>
-        </thead>
-        <tbody>
-          {users.map((u) => (
-            <tr key={u.id} style={{ borderBottom: '1px solid #e2e8f0' }}>
-              <td style={{ padding: '.5rem' }}>{u.username}</td>
-              <td style={{ padding: '.5rem' }}>{u.isActive ? 'Active' : 'Inactive'}</td>
-              <td style={{ padding: '.5rem' }}>{u.isLocked ? 'Locked' : '—'}</td>
-              <td style={{ padding: '.5rem' }}>{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '—'}</td>
+      <PageHeader
+        title="Users"
+        action={<Button onClick={() => setShowModal(true)}>+ New User</Button>}
+      />
+      {error && <p className="mb-4 text-sm text-destructive">Error: {error}</p>}
+      <div className="overflow-x-auto rounded-md border">
+        <table className="w-full border-collapse text-sm">
+          <thead className="bg-muted/50">
+            <tr>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Username</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Locked</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Last Login</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {users.map((u) => (
+              <tr key={u.id} className="border-t hover:bg-muted/30 motion-safe:transition-colors">
+                <td className="px-4 py-3">{u.username}</td>
+                <td className="px-4 py-3"><StatusBadge variant={u.isActive ? 'active' : 'inactive'} /></td>
+                <td className="px-4 py-3">{u.isLocked ? <StatusBadge variant="locked" /> : <span className="text-muted-foreground">—</span>}</td>
+                <td className="px-4 py-3 text-xs text-muted-foreground">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       {showModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
-          <div style={{ background: '#fff', borderRadius: '8px', padding: '1.5rem', minWidth: '360px' }}>
-            <h2 style={{ marginTop: 0 }}>New User</h2>
-            <form onSubmit={handleSubmit}>
-              <div style={{ marginBottom: '.75rem' }}>
-                <label style={{ display: 'block', marginBottom: '.25rem' }}>Username</label>
-                <input required value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })}
-                  style={{ width: '100%', padding: '.4rem', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }} />
-              </div>
-              <div style={{ marginBottom: '.75rem' }}>
-                <label style={{ display: 'block', marginBottom: '.25rem' }}>Password <small>(min 8 chars)</small></label>
-                <input required type="password" minLength={8} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  style={{ width: '100%', padding: '.4rem', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }} />
-              </div>
-              <div style={{ marginBottom: '.75rem' }}>
-                <label style={{ display: 'block', marginBottom: '.25rem' }}>Email <small>(optional)</small></label>
-                <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  style={{ width: '100%', padding: '.4rem', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }} />
-              </div>
-              <div style={{ marginBottom: '.75rem' }}>
-                <label style={{ display: 'block', marginBottom: '.25rem' }}>First Name <small>(optional)</small></label>
-                <input value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })}
-                  style={{ width: '100%', padding: '.4rem', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }} />
-              </div>
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ display: 'block', marginBottom: '.25rem' }}>Last Name <small>(optional)</small></label>
-                <input value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })}
-                  style={{ width: '100%', padding: '.4rem', border: '1px solid #cbd5e1', borderRadius: '4px', boxSizing: 'border-box' }} />
-              </div>
-              <div style={{ display: 'flex', gap: '.5rem', justifyContent: 'flex-end' }}>
-                <button type="button" onClick={() => { setShowModal(false); setForm({ username: '', password: '', email: '', firstName: '', lastName: '' }); }}
-                  style={{ padding: '.4rem .9rem', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer', background: '#fff' }}>
-                  Cancel
-                </button>
-                <button type="submit" disabled={submitting}
-                  style={{ padding: '.4rem .9rem', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>
-                  {submitting ? 'Creating…' : 'Create'}
-                </button>
+        <Dialog open onOpenChange={(open) => { if (!open) setShowModal(false); }}>
+          <DialogContent>
+            <DialogHeader><DialogTitle>New User</DialogTitle></DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <FormField label="Username" htmlFor="nu-username" required>
+                <Input id="nu-username" required value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
+              </FormField>
+              <FormField label="Password (min 8 chars)" htmlFor="nu-password" required>
+                <Input id="nu-password" required type="password" minLength={8} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+              </FormField>
+              <FormField label="Email (optional)" htmlFor="nu-email">
+                <Input id="nu-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+              </FormField>
+              <FormField label="First Name (optional)" htmlFor="nu-fn">
+                <Input id="nu-fn" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} />
+              </FormField>
+              <FormField label="Last Name (optional)" htmlFor="nu-ln">
+                <Input id="nu-ln" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} />
+              </FormField>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => { setShowModal(false); setForm({ username: '', password: '', email: '', firstName: '', lastName: '' }); }}>Cancel</Button>
+                <Button type="submit" disabled={submitting}>{submitting ? 'Creating...' : 'Create'}</Button>
               </div>
             </form>
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );
