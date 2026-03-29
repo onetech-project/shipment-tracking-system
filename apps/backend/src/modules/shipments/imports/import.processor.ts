@@ -1,5 +1,6 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq'
-import { Logger } from '@nestjs/common'
+import { Logger, OnModuleInit } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { EventEmitter2 } from '@nestjs/event-emitter'
@@ -29,7 +30,7 @@ const TEMPLATE_MARKERS = ['Shipment ID', 'Origin', 'Destination', 'Status']
 const BATCH_SIZE = 100
 
 @Processor(SHIPMENT_IMPORT_QUEUE)
-export class ImportProcessor extends WorkerHost {
+export class ImportProcessor extends WorkerHost implements OnModuleInit {
   private readonly logger = new Logger(ImportProcessor.name)
 
   constructor(
@@ -41,9 +42,15 @@ export class ImportProcessor extends WorkerHost {
     private readonly errorRepo: Repository<ShipmentUploadError>,
     private readonly eventEmitter: EventEmitter2,
     private readonly linehaulParser: LinehaulParserService,
-    private readonly linehaulImport: LinehaulImportService
+    private readonly linehaulImport: LinehaulImportService,
+    private readonly config: ConfigService
   ) {
     super()
+  }
+
+  onModuleInit() {
+    const concurrency = this.config.get<number>('SHIPMENT_IMPORT_CONCURRENCY', 3)
+    this.worker.concurrency = concurrency
   }
 
   async process(job: Job<ImportJobData>): Promise<void> {
@@ -136,7 +143,9 @@ export class ImportProcessor extends WorkerHost {
       // Save validation errors
       if (validationErrors.length > 0) {
         await this.errorRepo.save(validationErrors)
-        upload.rowsFailed += validationErrors.length
+        // Count distinct row numbers — a single row may produce multiple field errors
+        const distinctFailedRows = new Set(validationErrors.map((e) => e.rowNumber)).size
+        upload.rowsFailed += distinctFailedRows
       }
 
       if (validRows.length === 0) {

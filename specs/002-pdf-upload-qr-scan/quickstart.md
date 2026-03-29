@@ -114,7 +114,7 @@ npm run dev:frontend   # Next.js on localhost:3000
 Verify backend is healthy:
 
 ```bash
-curl http://localhost:3001/health
+curl http://localhost:3001/api/health
 # {"status":"ok"}
 ```
 
@@ -126,13 +126,13 @@ curl http://localhost:3001/health
 
 ```bash
 # Authenticate first (from feature 001)
-TOKEN=$(curl -s -X POST http://localhost:3001/auth/login \
+TOKEN=$(curl -s -X POST http://localhost:3001/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"admin@example.com","password":"Admin123!"}' \
   | jq -r '.accessToken')
 
 # Upload a PDF
-UPLOAD=$(curl -s -X POST http://localhost:3001/shipments/imports \
+UPLOAD=$(curl -s -X POST http://localhost:3001/api/shipments/imports \
   -H "Authorization: Bearer $TOKEN" \
   -F "file=@/path/to/shipments.pdf")
 
@@ -145,7 +145,7 @@ UPLOAD_ID=$(echo $UPLOAD | jq -r '.uploadId')
 ### 6b — Poll Import Status
 
 ```bash
-curl http://localhost:3001/shipments/imports/$UPLOAD_ID \
+curl http://localhost:3001/api/shipments/imports/$UPLOAD_ID \
   -H "Authorization: Bearer $TOKEN"
 # {"status":"completed","rowsImported":50,"rowsFailed":0,"rowsConflicted":0,...}
 ```
@@ -153,14 +153,14 @@ curl http://localhost:3001/shipments/imports/$UPLOAD_ID \
 ### 6c — View Conflicts (if status is `awaiting_conflict_review`)
 
 ```bash
-curl http://localhost:3001/shipments/imports/$UPLOAD_ID/errors \
+curl http://localhost:3001/api/shipments/imports/$UPLOAD_ID/errors \
   -H "Authorization: Bearer $TOKEN"
 ```
 
 ### 6d — Resolve Conflicts
 
 ```bash
-curl -X POST http://localhost:3001/shipments/imports/$UPLOAD_ID/conflicts/resolve \
+curl -X POST http://localhost:3001/api/shipments/imports/$UPLOAD_ID/conflicts/resolve \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"decisions":[{"errorId":"<uuid>","action":"overwrite"},{"errorId":"<uuid>","action":"skip"}]}'
@@ -170,7 +170,7 @@ curl -X POST http://localhost:3001/shipments/imports/$UPLOAD_ID/conflicts/resolv
 
 ```bash
 # Upload a Line Haul Trip PDF (auto-detected by template markers)
-UPLOAD=$(curl -s -X POST http://localhost:3001/shipments/imports \
+UPLOAD=$(curl -s -X POST http://localhost:3001/api/shipments/imports \
   -H "Authorization: Bearer $TOKEN" \
   -F "file=@/path/to/linehaul-trip.pdf")
 
@@ -183,7 +183,7 @@ The import processor auto-detects Line Haul Trip PDFs by the presence of "Nomor 
 ### 6f — Lookup Trip Item by TO Number (QR Scan)
 
 ```bash
-curl http://localhost:3001/shipments/linehaul/items/TO-2026031900001 \
+curl http://localhost:3001/api/shipments/linehaul/items/TO-2026031900001 \
   -H "Authorization: Bearer $TOKEN"
 # {"item":{"toNumber":"TO-2026031900001","weight":12.5,...},"trip":{"tripCode":"LT2026031901",...}}
 ```
@@ -191,7 +191,7 @@ curl http://localhost:3001/shipments/linehaul/items/TO-2026031900001 \
 ### 6g — Lookup Shipment by ID (existing QR Scan)
 
 ```bash
-curl http://localhost:3001/shipments/SHP-1001 \
+curl http://localhost:3001/api/shipments/SHP-1001 \
   -H "Authorization: Bearer $TOKEN"
 # {"shipmentId":"SHP-1001","origin":"Jakarta","destination":"Bandung",...}
 ```

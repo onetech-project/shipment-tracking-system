@@ -17,12 +17,15 @@ export type ScanResult =
   | { type: 'linehaul'; linehaul: LinehaulLookupResponse }
   | { type: 'not-found'; value: string }
   | { type: 'invalid-format'; raw: string }
+  | { type: 'scan-error'; message: string }
   | null
 
 // Keep backward-compat alias
 export type { ScanResult as QrScanResult }
 
 const SHIPMENT_ID_REGEX = /^[A-Z0-9-]{6,40}$/
+// Linehaul TO-numbers may contain underscores and lowercase letters (length 3–50)
+const LINEHAUL_ID_REGEX = /^[A-Za-z0-9_-]{3,50}$/
 const SCAN_COOLDOWN_MS = 800
 const ID_COOLDOWN_MS = 5000
 
@@ -87,7 +90,8 @@ export function useQrScanner(): UseQrScanner {
   async function handleDecode(decoded: string) {
     const id = extractShipmentId(decoded)
 
-    if (!SHIPMENT_ID_REGEX.test(id)) {
+    // Reject anything that doesn't look like an identifier at all
+    if (!LINEHAUL_ID_REGEX.test(id)) {
       setScanResult({ type: 'invalid-format', raw: decoded })
       return
     }
@@ -100,7 +104,7 @@ export function useQrScanner(): UseQrScanner {
 
     setIsLooking(true)
     try {
-      // Try linehaul lookup first
+      // Try linehaul lookup first (accepts broader format)
       try {
         const linehaul = await lookupLinehaulItem(id)
         setScanResult({ type: 'linehaul', linehaul })
@@ -108,10 +112,17 @@ export function useQrScanner(): UseQrScanner {
       } catch (lhErr: unknown) {
         const lhStatus = (lhErr as any)?.response?.status
         if (lhStatus !== 404 && lhStatus !== 400) {
-          // Unexpected error — don't fall through
-          setScanResult({ type: 'not-found', value: id })
+          // Unexpected server/network error — surface a retryable error state
+          setScanResult({ type: 'scan-error', message: 'Could not reach server. Please try again.' })
           return
         }
+        // 404/400 means not a linehaul item — fall through to shipment lookup
+      }
+
+      // Only attempt shipment lookup if the format matches the stricter regex
+      if (!SHIPMENT_ID_REGEX.test(id)) {
+        setScanResult({ type: 'not-found', value: id })
+        return
       }
 
       // Fall back to shipment lookup
@@ -124,7 +135,7 @@ export function useQrScanner(): UseQrScanner {
       } else if (status === 400) {
         setScanResult({ type: 'invalid-format', raw: id })
       } else {
-        setScanResult({ type: 'not-found', value: id })
+        setScanResult({ type: 'scan-error', message: 'Could not reach server. Please try again.' })
       }
     } finally {
       setIsLooking(false)

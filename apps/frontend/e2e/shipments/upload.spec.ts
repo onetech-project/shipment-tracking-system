@@ -31,9 +31,18 @@ class UploadPage {
   }
 
   async waitForStatus(status: string, timeoutMs = 15_000) {
+    const STATUS_LABELS: Record<string, string | RegExp> = {
+      completed: 'Completed',
+      failed: 'Failed',
+      processing: 'Processing',
+      queued: 'Queued',
+      partial: 'Partial',
+      awaiting_conflict_review: /Action Required/i,
+    };
+    const expected = STATUS_LABELS[status] ?? status;
     await expect(
       this.page.locator(`[data-testid="import-status"]`),
-    ).toContainText(status, { timeout: timeoutMs });
+    ).toContainText(expected, { timeout: timeoutMs });
   }
 
   async waitForConflictReview() {
@@ -121,7 +130,7 @@ test.describe('Shipment PDF Upload', () => {
     await uploadPage.uploadFile(FIXTURE_PDF_DUPLICATES);
     await uploadPage.waitForStatus('awaiting_conflict_review');
     await uploadPage.waitForConflictReview();
-    await expect(page.locator('[data-testid="conflict-row"]')).toHaveCount({ minimum: 1 } as any);
+    await expect(page.locator('[data-testid="conflict-row"]').first()).toBeVisible();
   });
 
   test('resolves conflicts and reaches completed status', async ({ page }) => {
@@ -189,6 +198,6 @@ test.describe('Line Haul Trip PDF Upload', () => {
 
     const historyPage = new HistoryPage(page);
     await historyPage.goto();
-    await expect(page.locator('[data-testid="history-row"]')).toHaveCount({ minimum: 1 } as any);
+    await expect(page.locator('[data-testid="history-row"]').first()).toBeVisible();
   });
 });

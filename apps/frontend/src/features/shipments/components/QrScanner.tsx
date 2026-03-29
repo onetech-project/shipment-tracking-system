@@ -180,6 +180,26 @@ export default function QrScanner() {
           </button>
         </div>
       )}
+
+      {scanResult?.type === 'scan-error' && (
+        <div data-testid="scan-error" style={{ marginTop: '1rem', color: '#ef4444', background: '#fef2f2', padding: '0.75rem', borderRadius: 6 }}>
+          <strong>Error:</strong> {scanResult.message}
+          <br />
+          <button
+            onClick={reset}
+            style={{
+              marginTop: '0.5rem',
+              color: '#3b82f6',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: 0,
+            }}
+          >
+            Try again
+          </button>
+        </div>
+      )}
     </div>
   )
 }
