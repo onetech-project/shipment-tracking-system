@@ -1,24 +1,25 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { EventEmitterModule } from '@nestjs/event-emitter';
-import { ClsModule } from 'nestjs-cls';
-import { BullModule } from '@nestjs/bullmq';
-import { ThrottlerModule } from '@nestjs/throttler';
-import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
-import * as Joi from 'joi';
-import { HttpExceptionFilter } from './common/filters/http-exception.filter';
-import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
-import { TenantClsInterceptor } from './common/interceptors/tenant-cls.interceptor';
-import { AppController } from './app.controller';
-import { AuthModule } from './modules/auth/auth.module';
-import { OrganizationsModule } from './modules/organizations/organizations.module';
-import { UsersModule } from './modules/users/users.module';
-import { RolesModule } from './modules/roles/roles.module';
-import { PermissionsModule } from './modules/permissions/permissions.module';
-import { InvitationsModule } from './modules/invitations/invitations.module';
-import { AuditModule } from './modules/audit/audit.module';
-import { ShipmentsModule } from './modules/shipments/shipments.module';
+import { Module } from '@nestjs/common'
+import { ConfigModule, ConfigService } from '@nestjs/config'
+import { TypeOrmModule } from '@nestjs/typeorm'
+import { EventEmitterModule } from '@nestjs/event-emitter'
+import { ClsModule } from 'nestjs-cls'
+import { BullModule } from '@nestjs/bullmq'
+import { ThrottlerModule } from '@nestjs/throttler'
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core'
+import * as Joi from 'joi'
+import { HttpExceptionFilter } from './common/filters/http-exception.filter'
+import { JwtAuthGuard } from './common/guards/jwt-auth.guard'
+import { TenantClsInterceptor } from './common/interceptors/tenant-cls.interceptor'
+import { AppController } from './app.controller'
+import { AuthModule } from './modules/auth/auth.module'
+import { OrganizationsModule } from './modules/organizations/organizations.module'
+import { UsersModule } from './modules/users/users.module'
+import { RolesModule } from './modules/roles/roles.module'
+import { PermissionsModule } from './modules/permissions/permissions.module'
+import { InvitationsModule } from './modules/invitations/invitations.module'
+import { AuditModule } from './modules/audit/audit.module'
+import { ShipmentsModule } from './modules/shipments/shipments.module'
+import { SheetSyncModule } from './modules/sheet-sync/sheet-sync.module'
 
 @Module({
   imports: [
@@ -41,6 +42,18 @@ import { ShipmentsModule } from './modules/shipments/shipments.module';
         SHIPMENT_IMPORT_MAX_FILE_MB: Joi.number().default(10),
         SHIPMENT_IMPORT_CONCURRENCY: Joi.number().default(3),
         SHIPMENT_ID_REGEX: Joi.string().default('^[A-Z0-9-]{6,40}$'),
+        // Google Sheets Sync
+        GOOGLE_APPLICATION_CREDENTIALS: Joi.string().optional(),
+        SHEET_ID: Joi.string().optional(),
+        SHEET_TAB_NAME: Joi.string().default('Sheet1'),
+        SHEET_SYNC_TABLE: Joi.string()
+          .pattern(/^[a-z_][a-z0-9_]*$/i)
+          .optional(),
+        SHEET_SYNC_PK_COLUMN: Joi.string()
+          .pattern(/^[a-z_][a-z0-9_]*$/i)
+          .optional(),
+        SHEET_SYNC_INTERVAL_MS: Joi.number().min(5000).default(15000),
+        FRONTEND_ORIGIN: Joi.string().uri().optional(),
       }),
     }),
     TypeOrmModule.forRootAsync({
@@ -75,6 +88,7 @@ import { ShipmentsModule } from './modules/shipments/shipments.module';
     InvitationsModule,
     AuditModule,
     ShipmentsModule,
+    SheetSyncModule,
   ],
   controllers: [AppController],
   providers: [

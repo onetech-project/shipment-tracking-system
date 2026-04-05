@@ -1,2 +1,3 @@
-export * from './auth';
-export * from './shipments';
+export * from './auth'
+export * from './shipments'
+export * from './sync'
