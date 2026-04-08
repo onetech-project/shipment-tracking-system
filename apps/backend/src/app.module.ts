@@ -19,6 +19,7 @@ import { PermissionsModule } from './modules/permissions/permissions.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { ShipmentsModule } from './modules/shipments/shipments.module';
+import { AirShipmentsModule } from './modules/air-shipments/air-shipments.module';
 
 @Module({
   imports: [
@@ -41,6 +42,12 @@ import { ShipmentsModule } from './modules/shipments/shipments.module';
         SHIPMENT_IMPORT_MAX_FILE_MB: Joi.number().default(10),
         SHIPMENT_IMPORT_CONCURRENCY: Joi.number().default(3),
         SHIPMENT_ID_REGEX: Joi.string().default('^[A-Z0-9-]{6,40}$'),
+        // Air Shipments / Google Sheets sync
+        GOOGLE_CREDENTIALS_PATH: Joi.string().required(),
+        GOOGLE_SHEET_ID: Joi.string().required(),
+        SHEET_CONFIG_PATH: Joi.string().required(),
+        SYNC_INTERVAL_MS: Joi.number().default(15000),
+        WEBSOCKET_CORS_ORIGIN: Joi.string().default('http://localhost:3000'),
       }),
     }),
     TypeOrmModule.forRootAsync({
@@ -75,6 +82,7 @@ import { ShipmentsModule } from './modules/shipments/shipments.module';
     InvitationsModule,
     AuditModule,
     ShipmentsModule,
+    AirShipmentsModule,
   ],
   controllers: [AppController],
   providers: [

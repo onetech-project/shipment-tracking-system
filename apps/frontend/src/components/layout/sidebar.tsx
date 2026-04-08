@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import {
   LayoutDashboard, Upload, History, QrCode, Users, Shield,
-  Building2, Mail, Key, ClipboardList, LogOut,
+  Building2, Mail, Key, ClipboardList, LogOut, Plane,
 } from 'lucide-react';
 
 interface NavLinkProps {
@@ -49,6 +49,16 @@ export function Sidebar({ onNavClick }: SidebarProps) {
       </div>
       <div className="flex flex-1 flex-col gap-1 overflow-y-auto">
         <NavLink href="/dashboard" icon={<LayoutDashboard size={16} />} label="Dashboard" onClick={onNavClick} />
+        <div className="mt-4">
+          <p className="mb-1 px-3 text-[0.65rem] font-semibold uppercase tracking-widest text-sidebar-muted">Air Shipments</p>
+          <div className="flex flex-col gap-1">
+            <NavLink href="/air-shipments/cgk" icon={<Plane size={16} />} label="CGK" onClick={onNavClick} />
+            <NavLink href="/air-shipments/sub" icon={<Plane size={16} />} label="SUB" onClick={onNavClick} />
+            <NavLink href="/air-shipments/sda" icon={<Plane size={16} />} label="SDA" onClick={onNavClick} />
+            <NavLink href="/air-shipments/rate" icon={<Plane size={16} />} label="Rate" onClick={onNavClick} />
+            <NavLink href="/air-shipments/routes" icon={<Plane size={16} />} label="Routes" onClick={onNavClick} />
+          </div>
+        </div>
         <div className="mt-4">
           <p className="mb-1 px-3 text-[0.65rem] font-semibold uppercase tracking-widest text-sidebar-muted">Shipments</p>
           <div className="flex flex-col gap-1">
