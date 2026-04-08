@@ -182,6 +182,13 @@ export class SheetSyncService implements OnModuleInit, OnModuleDestroy {
 
         // Change detection — compare against existing row
         const existing = existingRows[String(pkVal)]
+
+        // US2 — skip rows locked in the DB (takes precedence over sheet data)
+        if (existing && existing['is_locked'] === true) {
+          result.skippedLocked += 1
+          continue
+        }
+
         if (existing) {
           let changed = false
           for (const col of columnMap.valid) {
