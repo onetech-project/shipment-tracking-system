@@ -68,6 +68,7 @@ pipeline {
                     env.BACKEND_SERVICE_NAME = params.TARGET_ENV == 'staging' ? 'stg-backend' : 'prod-backend'
                     env.FRONTEND_SERVICE_NAME = params.TARGET_ENV == 'staging' ? 'stg-frontend' : 'prod-frontend'
                     env.NEXT_PUBLIC_API_URL = params.TARGET_ENV == 'staging' ? 'https://staging.ekasatyapuspita.com/api' : 'https://ekasatyapuspita.com/api'
+                    env.NEXT_PUBLIC_WS_URL = params.TARGET_ENV == 'staging' ? 'https://staging.ekasatyapuspita.com' : 'https://ekasatyapuspita.com'
 
                     echo """
                     ====================================
@@ -81,6 +82,7 @@ pipeline {
                     Backend Service Name: ${env.BACKEND_SERVICE_NAME}
                     Frontend Service Name: ${env.FRONTEND_SERVICE_NAME}
                     Public API URL: ${env.NEXT_PUBLIC_API_URL}
+                    WS URL: ${env.NEXT_PUBLIC_WS_URL}
                     ====================================
                     """
                 }
