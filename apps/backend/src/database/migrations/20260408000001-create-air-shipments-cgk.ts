@@ -1,7 +1,7 @@
-import { MigrationInterface, QueryRunner } from 'typeorm';
+import { MigrationInterface, QueryRunner } from 'typeorm'
 
 export class CreateAirShipmentsCgk20260408000001 implements MigrationInterface {
-  name = 'CreateAirShipmentsCgk20260408000001';
+  name = 'CreateAirShipmentsCgk20260408000001'
 
   async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
@@ -68,15 +68,15 @@ export class CreateAirShipmentsCgk20260408000001 implements MigrationInterface {
         "late_duration_sla"                       TEXT,
         "late_duration_tjph"                      TEXT,
         CONSTRAINT "pk_air_shipments_cgk" PRIMARY KEY ("id"),
-        CONSTRAINT "uq_air_shipments_cgk_to_number" UNIQUE ("to_number")
+        CONSTRAINT "uq_air_shipments_cgk_to_number" UNIQUE ("lt_number", "to_number")
       );
 
-      CREATE INDEX "idx_air_shipments_cgk_to_number"   ON "air_shipments_cgk" ("to_number");
+      CREATE INDEX "idx_air_shipments_cgk_to_number"   ON "air_shipments_cgk" ("lt_number", "to_number");
       CREATE INDEX "idx_air_shipments_cgk_last_synced" ON "air_shipments_cgk" ("last_synced_at");
-    `);
+    `)
   }
 
   async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP TABLE IF EXISTS "air_shipments_cgk"`);
+    await queryRunner.query(`DROP TABLE IF EXISTS "air_shipments_cgk"`)
   }
 }

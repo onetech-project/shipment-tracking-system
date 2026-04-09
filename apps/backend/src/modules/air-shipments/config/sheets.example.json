@@ -3,27 +3,27 @@
     "sheetName": "CompileAirCGK",
     "tableName": "air_shipments_cgk",
     "headerRow": 1,
-    "uniqueKey": "to_number",
+    "uniqueKey": ["lt_number", "to_number"],
     "skipNullCols": true
   },
   {
     "sheetName": "SUB",
     "tableName": "air_shipments_sub",
     "headerRow": 4,
-    "uniqueKey": "to_number",
+    "uniqueKey": ["lt_number", "to_number"],
     "skipNullCols": true
   },
   {
     "sheetName": "SDA",
     "tableName": "air_shipments_sda",
     "headerRow": 4,
-    "uniqueKey": "to_number",
+    "uniqueKey": ["lt_number", "to_number"],
     "skipNullCols": true
   },
   {
     "sheetName": "Data",
     "tableName": "rate_per_station",
-    "headerRow": 1,
+    "headerRow": 2,
     "uniqueKey": ["origin_dc", "destination_dc"],
     "skipNullCols": true
   },
