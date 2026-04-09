@@ -40,8 +40,18 @@ const FROZEN_LEFT: Record<string, number> = FROZEN_COLS.reduce(
 );
 
 const FROZEN_WIDTH: Record<string, number> = Object.fromEntries(
-  FROZEN_COLS.map((c) => [c.key, c.width]),
+  FROZEN_COLS.map((c) => [c.key, c.width])
 );
+
+function resolveColumns(tableName: string | undefined, rows: AirShipmentRow[], visibleColumns?: string[]): string[] {
+  let cols: string[] = [];
+  if (tableName && COLUMN_KEYS[tableName]) cols = COLUMN_KEYS[tableName];
+  else if (rows.length > 0) cols = Object.keys(rows[0]);
+  if (visibleColumns) {
+    cols = cols.filter((col) => visibleColumns.includes(col));
+  }
+  return cols;
+}
 
 const isFrozen = (col: string, tableName?: string): boolean =>
   (tableName?.startsWith('air_shipments_') ?? false) && col in FROZEN_LEFT;
@@ -54,20 +64,13 @@ interface AirShipmentTableProps {
   onSort: (col: string, order: SortOrder) => void;
   onPageChange: (page: number) => void;
   tableName?: string;
+  visibleColumns?: string[];
 }
 
-/** Resolve ordered column keys: use table config when available, fall back to keys from data. */
-function resolveColumns(tableName: string | undefined, rows: AirShipmentRow[]): string[] {
-  if (tableName && COLUMN_KEYS[tableName]) {
-    return COLUMN_KEYS[tableName];
-  }
-  // Fallback: derive from first row, id first
-  const keys = rows.length > 0 ? Object.keys(rows[0]) : [];
-  return ['id', ...keys.filter((k) => k !== 'id')];
-}
 
-export function AirShipmentTable({ data, meta, sortBy, sortOrder, onSort, onPageChange, tableName }: AirShipmentTableProps) {
-  const columns = resolveColumns(tableName, data);
+
+export function AirShipmentTable({ data, meta, sortBy, sortOrder, onSort, onPageChange, tableName, visibleColumns }: AirShipmentTableProps) {
+  const columns = resolveColumns(tableName, data, visibleColumns);
 
   const handleHeaderClick = (col: string) => {
     if (col === sortBy) {

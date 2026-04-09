@@ -141,33 +141,67 @@ export class AirShipmentsService {
   // US3 — Paginated REST query methods (FR-035–FR-037)
   // ──────────────────────────────────────────────────
 
+
   private async paginatedQuery<T extends object>(
     repo: Repository<T>,
-    { page, limit, sortBy, sortOrder }: { page: number; limit: number; sortBy: string; sortOrder: 'asc' | 'desc' },
+    {
+      page,
+      limit,
+      sortBy,
+      sortOrder,
+      search,
+    }: {
+      page: number;
+      limit: number;
+      sortBy: string;
+      sortOrder: 'asc' | 'desc';
+      search?: string;
+    },
+    tableName?: string,
   ) {
     // Guard against sorting by a column that doesn't exist on this entity (avoids DB 500)
     const columns = repo.metadata.columns.map((c) => c.propertyName);
     const safeSortBy = columns.includes(sortBy) ? sortBy : 'id';
 
+    // Searchable fields for air shipments tables
+    const SEARCHABLE_FIELDS = [
+      'to_number',
+      'lt_number',
+      'flight_no',
+      'nopol_pickup',
+      'driver_name_pickup',
+      'actual_airline_name',
+    ];
+
+    let where: any = undefined;
+    if (search && typeof search === 'string' && search.trim() &&
+      ['air_shipments_cgk', 'air_shipments_sub', 'air_shipments_sda'].includes(tableName || '')) {
+      // Use ILike for case-insensitive partial match
+      const { ILike } = require('typeorm');
+      where = SEARCHABLE_FIELDS.map((field) => ({ [field]: ILike(`%${search}%`) }));
+    }
+
     const [data, total] = await repo.findAndCount({
       skip: (page - 1) * limit,
       take: limit,
       order: { [safeSortBy]: sortOrder.toUpperCase() } as any,
+      ...(where ? { where } : {}),
     });
     return { data, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
-  findAllCgk(query: { page: number; limit: number; sortBy: string; sortOrder: 'asc' | 'desc' }) {
-    return this.paginatedQuery(this.cgkRepo, query);
-  }
 
-  findAllSub(query: { page: number; limit: number; sortBy: string; sortOrder: 'asc' | 'desc' }) {
-    return this.paginatedQuery(this.subRepo, query);
-  }
+    findAllCgk(query: { page: number; limit: number; sortBy: string; sortOrder: 'asc' | 'desc'; search?: string }) {
+      return this.paginatedQuery(this.cgkRepo, query, 'air_shipments_cgk');
+    }
 
-  findAllSda(query: { page: number; limit: number; sortBy: string; sortOrder: 'asc' | 'desc' }) {
-    return this.paginatedQuery(this.sdaRepo, query);
-  }
+    findAllSub(query: { page: number; limit: number; sortBy: string; sortOrder: 'asc' | 'desc'; search?: string }) {
+      return this.paginatedQuery(this.subRepo, query, 'air_shipments_sub');
+    }
+
+    findAllSda(query: { page: number; limit: number; sortBy: string; sortOrder: 'asc' | 'desc'; search?: string }) {
+      return this.paginatedQuery(this.sdaRepo, query, 'air_shipments_sda');
+    }
 
   findAllRate(query: { page: number; limit: number; sortBy: string; sortOrder: 'asc' | 'desc' }) {
     return this.paginatedQuery(this.rateRepo, query);

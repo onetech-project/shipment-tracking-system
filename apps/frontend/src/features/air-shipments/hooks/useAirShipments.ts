@@ -14,6 +14,7 @@ interface QueryState {
   limit: number;
   sortBy: string;
   sortOrder: SortOrder;
+  search?: string;
 }
 
 interface UseAirShipmentsResult {
@@ -23,6 +24,7 @@ interface UseAirShipmentsResult {
   query: QueryState;
   setPage: (page: number) => void;
   setSort: (sortBy: string, sortOrder: SortOrder) => void;
+  setSearch: (search: string) => void;
 }
 
 export function useAirShipments(
@@ -34,7 +36,7 @@ export function useAirShipments(
   const [data, setData] = useState<AirShipmentsResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState<QueryState>({ page: 1, limit: 50, sortBy: defaultSortBy, sortOrder: 'asc' });
+  const [query, setQuery] = useState<QueryState>({ page: 1, limit: 50, sortBy: defaultSortBy, sortOrder: 'asc', search: '' });
 
   const fetchData = useCallback(async (q: QueryState) => {
     setIsLoading(true);
@@ -46,6 +48,9 @@ export function useAirShipments(
         sortBy: q.sortBy,
         sortOrder: q.sortOrder,
       });
+      if (q.search && q.search.trim()) {
+        params.set('search', q.search.trim());
+      }
       const res = await apiClient.get<AirShipmentsResponse>(`${endpoint}?${params}`);
       setData(res.data);
     } catch (err: unknown) {
@@ -72,6 +77,7 @@ export function useAirShipments(
     (sortBy: string, sortOrder: SortOrder) => setQuery((q) => ({ ...q, sortBy, sortOrder, page: 1 })),
     [],
   );
+  const setSearch = useCallback((search: string) => setQuery((q) => ({ ...q, search, page: 1 })), []);
 
-  return { data, isLoading, error, query, setPage, setSort };
+  return { data, isLoading, error, query, setPage, setSort, setSearch };
 }

@@ -25,8 +25,17 @@ export class SchedulerService implements OnApplicationShutdown {
     private readonly schedulerRegistry: SchedulerRegistry,
   ) {}
 
+  // Using @Interval decorator for automatic scheduling; the method will be called every SYNC_INTERVAL_MS
+  // can be disabled by GOOGLE_SHEETS_ENABLED=false in .env
+  private readonly googleSheetsEnabled = process.env.GOOGLE_SHEETS_ENABLED === 'true';
+
   @Interval(INTERVAL_NAME, SYNC_INTERVAL_MS)
   async tick(): Promise<void> {
+    if (!this.googleSheetsEnabled) {
+      this.logger.warn('[scheduler] Google Sheets integration is disabled — skipping sync');
+      return;
+    }
+
     if (this.isSyncing) {
       this.consecutiveSkips++;
       this.logger.warn(

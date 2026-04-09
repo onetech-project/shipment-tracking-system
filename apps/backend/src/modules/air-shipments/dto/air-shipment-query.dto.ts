@@ -22,4 +22,8 @@ export class AirShipmentQueryDto {
   @IsOptional()
   @IsIn(['asc', 'desc'])
   sortOrder: 'asc' | 'desc' = 'asc';
+
+  @IsOptional()
+  @IsString()
+  search?: string;
 }
