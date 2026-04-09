@@ -2,6 +2,7 @@ import 'reflect-metadata'
 import { NestFactory } from '@nestjs/core'
 import { ValidationPipe } from '@nestjs/common'
 import * as cookieParser from 'cookie-parser'
+import { IoAdapter } from '@nestjs/platform-socket.io'
 import { AppModule } from './app.module'
 
 async function bootstrap() {
@@ -11,6 +12,7 @@ async function bootstrap() {
     .map((origin) => origin.trim())
 
   app.use(cookieParser.default()) // For cross-origin cookies (e.g. session)
+  app.useWebSocketAdapter(new IoAdapter(app))
   app.enableCors({
     origin: whitelist,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',

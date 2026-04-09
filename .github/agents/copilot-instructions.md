@@ -1,8 +1,10 @@
 # shipment-tracking-system Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-03-29
+Auto-generated from all feature plans. Last updated: 2026-04-08
 
 ## Active Technologies
+- TypeScript 5.x, Node.js ≥ 20 LTS + NestJS 10.4, TypeORM 0.3.20, googleapis, @nestjs/schedule, @nestjs/websockets, @nestjs/platform-socket.io, socket.io (backend), socket.io-client (frontend) (004-google-sheets-postgresql-sync)
+- PostgreSQL 16.x — air_shipments_cgk, air_shipments_sub, air_shipments_sda, rate_per_station, route_master tables (004-google-sheets-postgresql-sync)
 - TypeScript 5.x, Node.js ≥ 20 LTS + NestJS 10.4, TypeORM 0.3.20, BullMQ, pdf2json (new), pdf-parse (existing), jsQR (frontend) (002-pdf-upload-qr-scan)
 - PostgreSQL 16.x (TypeORM migrations), Redis 7.x (BullMQ) (002-pdf-upload-qr-scan)
 - TypeScript 5.5, Next.js 14 (App Router), React 18 (003-modern-dashboard-ui)
@@ -55,6 +57,7 @@ npm test && npm run lint
 TypeScript: Follow standard conventions. Use strict mode. Prefer interfaces over types for object shapes. NestJS modules with providers/controllers/services pattern. TypeORM entities with decorators. Jest for unit and e2e tests.
 
 ## Recent Changes
+- 004-google-sheets-postgresql-sync: Added googleapis, @nestjs/schedule, @nestjs/websockets, @nestjs/platform-socket.io, socket.io (backend), socket.io-client (frontend); new AirShipmentsModule with sync service, WebSocket gateway, and five dashboard pages
 - 003-modern-dashboard-ui: Added TypeScript 5.5, Next.js 14 (App Router), React 18
 - 002-pdf-upload-qr-scan: Added TypeScript 5.x, Node.js ≥ 20 LTS + NestJS 10.4, TypeORM 0.3.20, BullMQ, pdf2json (new), pdf-parse (existing), jsQR (frontend)
 
