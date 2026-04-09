@@ -16,6 +16,7 @@ FROM node:24.14.0-alpine AS builder
 
 # Build-time environment variables (CRA reads REACT_APP_* at build time)
 ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_WS_URL
 
 WORKDIR /app
 

@@ -233,7 +233,11 @@ pipeline {
                                 set -euo pipefail
                                 
                                 # Build frontend Docker image
-                                docker build -t ${env.FRONTEND_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG} -f apps/frontend/Dockerfile --build-arg NEXT_PUBLIC_API_URL='${env.NEXT_PUBLIC_API_URL}' .
+                                docker build \
+                                -t ${env.FRONTEND_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG} \
+                                -f apps/frontend/Dockerfile \
+                                --build-arg NEXT_PUBLIC_API_URL='${env.NEXT_PUBLIC_API_URL}' \
+                                --build-arg NEXT_PUBLIC_WS_URL='${env.NEXT_PUBLIC_WS_URL}' .
                                 
                                 # Verify image was created
                                 docker images ${env.FRONTEND_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG}
