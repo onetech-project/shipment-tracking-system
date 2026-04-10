@@ -8,9 +8,6 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import {
   LayoutDashboard,
-  Upload,
-  History,
-  QrCode,
   Users,
   Shield,
   Building2,
@@ -91,31 +88,7 @@ export function Sidebar({ onNavClick }: SidebarProps) {
             )}
           </div>
         </div>
-        <div className="mt-4">
-          <p className="mb-1 px-3 text-[0.65rem] font-semibold uppercase tracking-widest text-sidebar-muted">
-            Shipments
-          </p>
-          <div className="flex flex-col gap-1">
-            <NavLink
-              href="/shipments/upload"
-              icon={<Upload size={16} />}
-              label="Import PDF"
-              onClick={onNavClick}
-            />
-            <NavLink
-              href="/shipments/history"
-              icon={<History size={16} />}
-              label="Upload History"
-              onClick={onNavClick}
-            />
-            <NavLink
-              href="/shipments/scan"
-              icon={<QrCode size={16} />}
-              label="QR Scan"
-              onClick={onNavClick}
-            />
-          </div>
-        </div>
+        {/* Shipments navigation removed */}
         {isAdminOrAbove && (
           <div className="mt-4">
             <p className="mb-1 px-3 text-[0.65rem] font-semibold uppercase tracking-widest text-sidebar-muted">

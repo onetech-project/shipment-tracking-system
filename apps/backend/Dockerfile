@@ -28,14 +28,12 @@ ENV NODE_ENV=production
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-  tesseract-ocr \
-  tesseract-ocr-eng \
-  tesseract-ocr-osd \
-  poppler-utils \
-  imagemagick \
-  libzbar0 \
-  && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y tzdata
+
+# Set timezone
+ENV TZ=Asia/Jakarta
+RUN ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime && echo ${TZ} > /etc/timezone
+RUN date
 
 # Copy workspace manifests for production install
 COPY package.json package-lock.json ./
