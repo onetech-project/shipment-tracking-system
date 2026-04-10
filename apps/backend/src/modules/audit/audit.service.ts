@@ -112,4 +112,17 @@ export class AuditService {
   @OnEvent('shipment.import.failed') onImportFailed(p: AuditPayload) {
     this.log('shipment.import.failed', p, 'shipment_upload')
   }
+
+  @OnEvent('google_sheet_config.created')
+  onGoogleSheetConfigCreated(p: AuditPayload) {
+    this.log('create.google_sheet_config', p, 'google_sheet_config')
+  }
+  @OnEvent('google_sheet_config.updated')
+  onGoogleSheetConfigUpdated(p: AuditPayload) {
+    this.log('update.google_sheet_config', p, 'google_sheet_config')
+  }
+  @OnEvent('google_sheet_config.deleted')
+  onGoogleSheetConfigDeleted(p: AuditPayload) {
+    this.log('delete.google_sheet_config', p, 'google_sheet_config')
+  }
 }

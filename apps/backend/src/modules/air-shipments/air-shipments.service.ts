@@ -9,6 +9,10 @@ import { AirShipmentSda } from './entities/air-shipment-sda.entity'
 import { RatePerStation } from './entities/rate-per-station.entity'
 import { RouteMaster } from './entities/route-master.entity'
 import { ChunkError, RowError, SheetResult } from './sheet-config.interface'
+import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
+import { GoogleSheetSheetConfig } from './entities/google-sheet-sheet-config.entity'
+import { GoogleSheetConfigDto } from './dto/google-sheet-config.dto'
+import { EventEmitter2 } from '@nestjs/event-emitter'
 
 /** System-managed columns that are never diff-compared against sheet data */
 const SYSTEM_COLUMNS = new Set(['id', 'is_locked', 'last_synced_at', 'created_at', 'updated_at'])
@@ -25,7 +29,12 @@ export class AirShipmentsService {
     @InjectRepository(AirShipmentSub) private readonly subRepo: Repository<AirShipmentSub>,
     @InjectRepository(AirShipmentSda) private readonly sdaRepo: Repository<AirShipmentSda>,
     @InjectRepository(RatePerStation) private readonly rateRepo: Repository<RatePerStation>,
-    @InjectRepository(RouteMaster) private readonly routeRepo: Repository<RouteMaster>
+    @InjectRepository(RouteMaster) private readonly routeRepo: Repository<RouteMaster>,
+    @InjectRepository(GoogleSheetConfig)
+    private readonly googleSheetConfigRepo: Repository<GoogleSheetConfig>,
+    @InjectRepository(GoogleSheetSheetConfig)
+    private readonly googleSheetSheetConfigRepo: Repository<GoogleSheetSheetConfig>,
+    private readonly eventEmitter: EventEmitter2 // inject EventEmitter2
   ) {
     this.repoMap = new Map<string, Repository<any>>([
       ['air_shipments_cgk', this.cgkRepo],
@@ -53,8 +62,7 @@ export class AirShipmentsService {
    */
   async runSyncCycle(): Promise<{ affectedTables: string[]; totalUpserted: number }> {
     const startedAt = Date.now()
-    const configs = this.sheetsService.getConfigs()
-    const results = await this.sheetsService.fetchAllSheets(configs)
+    const results = await this.sheetsService.fetchAllSheets()
 
     const sheetResults = await Promise.all(results.map((sheet) => this.processSingleSheet(sheet)))
 
@@ -361,5 +369,105 @@ export class AirShipmentsService {
 
   findAllRoutes(query: { page: number; limit: number; sortBy: string; sortOrder: 'asc' | 'desc' }) {
     return this.paginatedQuery(this.routeRepo, query)
+  }
+
+  async getGoogleSheetConfig(): Promise<GoogleSheetConfig | null> {
+    const config = await this.googleSheetConfigRepo.find({
+      take: 1,
+      relations: ['sheetConfigs'],
+    })
+    return config.length > 0 ? config[0] : null
+  }
+
+  async createGoogleSheetConfig(
+    dto: GoogleSheetConfigDto,
+    actorId?: string,
+    ip?: string,
+    userAgent?: string
+  ): Promise<GoogleSheetConfig> {
+    const sheetId = this.extractSheetId(dto.sheetLink)
+    const config = this.googleSheetConfigRepo.create({
+      ...dto,
+      sheetId,
+      // sheetConfigs: dto.sheetConfigs.map((sc) => ({ ...sc, skipNullCols: true })),
+    })
+    const saved = await this.googleSheetConfigRepo.save(config)
+    this.eventEmitter.emit('google_sheet_config.created', {
+      actorId,
+      resourceId: saved.id,
+      ip,
+      userAgent,
+      after: saved,
+      before: null,
+    })
+    return saved
+  }
+
+  async updateGoogleSheetConfig(
+    id: string,
+    dto: GoogleSheetConfigDto,
+    actorId?: string,
+    ip?: string,
+    userAgent?: string
+  ): Promise<GoogleSheetConfig> {
+    const sheetId = this.extractSheetId(dto.sheetLink)
+    const prev = await this.googleSheetConfigRepo.findOne({
+      where: { id },
+      relations: ['sheetConfigs'],
+    })
+    // const sheetConfigs = dto.sheetConfigs
+    // delete dto.sheetConfigs // remove sheetConfigs from dto to avoid confusion in update
+    await this.googleSheetConfigRepo.update(id, { ...dto, sheetId })
+    // await this.googleSheetSheetConfigRepo.delete({ googleSheetConfig: { id } })
+    const saved = await this.googleSheetConfigRepo.findOne({
+      where: { id },
+      relations: ['sheetConfigs'],
+    })
+    // config.sheetConfigs = sheetConfigs.map((sc) =>
+    //   this.googleSheetSheetConfigRepo.create({
+    //     ...sc,
+    //     skipNullCols: true,
+    //     googleSheetConfig: config,
+    //   })
+    // )
+    // const saved = await this.googleSheetConfigRepo.save(config)
+    this.eventEmitter.emit('google_sheet_config.updated', {
+      actorId,
+      resourceId: id,
+      ip,
+      userAgent,
+      after: saved,
+      before: prev,
+    })
+    this.eventEmitter.emit('gsheetConfig.updated', saved) // Emit event khusus untuk SheetsService agar reload config di scheduler
+    return saved
+  }
+
+  async deleteGoogleSheetConfig(
+    id: string,
+    actorId?: string,
+    ip?: string,
+    userAgent?: string
+  ): Promise<void> {
+    const prev = await this.googleSheetConfigRepo.findOne({
+      where: { id },
+      relations: ['sheetConfigs'],
+    })
+    await this.googleSheetConfigRepo.delete(id)
+    this.eventEmitter.emit('google_sheet_config.deleted', {
+      actorId,
+      resourceId: id,
+      ip,
+      userAgent,
+      after: null,
+      before: prev,
+    })
+  }
+
+  private extractSheetId(link: string): string {
+    // Extracts the sheet ID from a Google Sheet link
+    const match = link.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
+    if (!match) throw new Error('Invalid Google Sheet link')
+    return match[1]
   }
 }

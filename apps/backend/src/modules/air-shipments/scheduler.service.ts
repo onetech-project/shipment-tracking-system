@@ -1,10 +1,10 @@
 import { Injectable, Logger, OnApplicationShutdown } from '@nestjs/common'
-import { Interval, SchedulerRegistry } from '@nestjs/schedule'
+import { SchedulerRegistry } from '@nestjs/schedule'
 import { AirShipmentsService } from './air-shipments.service'
+import { OnEvent } from '@nestjs/event-emitter'
+import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
 
 const INTERVAL_NAME = 'air-shipments-sync'
-const SYNC_INTERVAL_MS = parseInt(process.env.SYNC_INTERVAL_MS ?? '15000', 10)
-
 /**
  * Concurrency-safe polling scheduler (US4 / FR-001–FR-005).
  *
@@ -26,16 +26,31 @@ export class SchedulerService implements OnApplicationShutdown {
   ) {}
 
   // Using @Interval decorator for automatic scheduling; the method will be called every SYNC_INTERVAL_MS
-  // can be disabled by GOOGLE_SHEETS_ENABLED=false in .env
-  private readonly googleSheetsEnabled = process.env.GOOGLE_SHEETS_ENABLED === 'true'
+  // can be disabled by config
+  private INTERVAL_SYNC_MS // Default to 15 seconds if not set
 
-  @Interval(INTERVAL_NAME, SYNC_INTERVAL_MS)
-  async tick(): Promise<void> {
-    if (!this.googleSheetsEnabled) {
-      this.logger.warn('[scheduler] Google Sheets integration is disabled — skipping sync')
+  @OnEvent('gsheetConfig.ready') handleConfigReady(config: GoogleSheetConfig) {
+    this.logger.log('Received gsheetConfig.ready event, initializing scheduler...')
+    if (!config) {
+      this.logger.warn('No Google Sheet config found during scheduler initialization')
       return
     }
 
+    this.INTERVAL_SYNC_MS = (config?.syncInterval || 15) * 1000
+
+    if (!config.enabled) {
+      this.logger.warn(
+        '[scheduler] Google Sheets integration is disabled — scheduler will not start'
+      )
+      return
+    }
+
+    const intervalRef = setInterval(() => this.tick(), this.INTERVAL_SYNC_MS)
+    this.schedulerRegistry.addInterval(INTERVAL_NAME, intervalRef)
+    this.logger.log(`[scheduler] Initialized with interval of ${this.INTERVAL_SYNC_MS}ms`)
+  }
+
+  async tick(): Promise<void> {
     if (this.isSyncing) {
       this.consecutiveSkips++
       this.logger.warn(`[scheduler] Sync still in progress — skip #${this.consecutiveSkips}`)
@@ -74,7 +89,7 @@ export class SchedulerService implements OnApplicationShutdown {
       // Resume the interval if it was paused
       if (waspaused) {
         this.isPaused = false
-        const intervalRef = setInterval(() => this.tick(), SYNC_INTERVAL_MS)
+        const intervalRef = setInterval(() => this.tick(), this.INTERVAL_SYNC_MS)
         try {
           this.schedulerRegistry.addInterval(INTERVAL_NAME, intervalRef)
           this.logger.log('[scheduler] Interval resumed')
@@ -91,6 +106,44 @@ export class SchedulerService implements OnApplicationShutdown {
       this.schedulerRegistry.deleteInterval(INTERVAL_NAME)
     } catch (_err) {
       // Interval may not exist if already deleted; ignore
+    }
+  }
+
+  @OnEvent('gsheetConfig.updated') handleConfigUpdate(newConfig: GoogleSheetConfig) {
+    this.logger.log('Received gsheetConfig.updated event, updating scheduler config...')
+    if (!newConfig) {
+      this.logger.warn('No Google Sheet config found during scheduler update')
+      return
+    }
+
+    if (!newConfig.enabled) {
+      this.logger.warn('Google Sheet sync disabled in config, stopping scheduler')
+      try {
+        this.schedulerRegistry.deleteInterval(INTERVAL_NAME)
+        this.logger.log('[scheduler] Interval stopped due to config update')
+      } catch (_err) {
+        // Interval may already be deleted; ignore
+      }
+      return
+    }
+
+    const newIntervalMs = (newConfig.syncInterval || 15) * 1000
+    if (newIntervalMs === this.INTERVAL_SYNC_MS) {
+      this.logger.log('Sync interval unchanged, no update needed')
+      return
+    }
+
+    // Update the interval timing by restarting the interval with the new timing
+    try {
+      if (this.schedulerRegistry.doesExist('interval', INTERVAL_NAME)) {
+        this.schedulerRegistry.deleteInterval(INTERVAL_NAME)
+      }
+      const intervalRef = setInterval(() => this.tick(), newIntervalMs)
+      this.schedulerRegistry.addInterval(INTERVAL_NAME, intervalRef)
+      this.logger.log(`[scheduler] Sync interval updated to ${newIntervalMs}ms`)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.logger.error(`[scheduler] Failed to update sync interval: ${message}`)
     }
   }
 }

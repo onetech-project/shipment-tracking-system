@@ -1,23 +1,25 @@
-'use client';
-import moment from 'moment';
-import { AirShipmentRow, PaginationMeta, SortOrder } from '../types';
-import { colLabel, COLUMN_KEYS } from '../columns.config';
+'use client'
+import moment from 'moment'
+import { AirShipmentRow, PaginationMeta, SortOrder } from '../types'
+import { colLabel, COLUMN_KEYS } from '../columns.config'
 
-const DATETIME_COLS = new Set(['last_synced_at', 'created_at', 'updated_at']);
+const DATETIME_COLS = new Set(['last_synced_at', 'created_at', 'updated_at'])
 
 /** Format a cell value for display. */
 function formatCell(col: string, value: unknown): string {
   if (col === 'date' && value) {
-    const parsed = moment(String(value), [
-      'DD/MM/YYYY', 'YYYY-MM-DD', 'MM/DD/YYYY', 'D/M/YYYY', 'D-MMM-YYYY', moment.ISO_8601,
-    ], true);
-    if (parsed.isValid()) return parsed.format('DD-MMM-YYYY');
+    const parsed = moment(
+      String(value),
+      ['DD/MM/YYYY', 'YYYY-MM-DD', 'MM/DD/YYYY', 'D/M/YYYY', 'D-MMM-YYYY', moment.ISO_8601],
+      true
+    )
+    if (parsed.isValid()) return parsed.format('DD-MMM-YYYY')
   }
   if (DATETIME_COLS.has(col) && value) {
-    const parsed = moment(String(value));
-    if (parsed.isValid()) return parsed.format('DD MMM YYYY HH:mm:ss');
+    const parsed = moment(String(value))
+    if (parsed.isValid()) return parsed.format('DD MMM YYYY HH:mm:ss')
   }
-  return String(value ?? '');
+  return String(value ?? '')
 }
 
 /**
@@ -25,65 +27,75 @@ function formatCell(col: string, value: unknown): string {
  * These columns must appear first in the rendered column list for offsets to be correct.
  */
 const FROZEN_COLS: { key: string; width: number }[] = [
-  { key: 'date',        width: 110 },
-  { key: 'vendor',      width: 130 },
-  { key: 'origin',      width: 100 },
-  { key: 'destination', width: 140 },
-];
+  { key: 'date', width: 110 },
+  { key: 'lt_number', width: 150 },
+  { key: 'to_number', width: 170 },
+]
 
 const FROZEN_LEFT: Record<string, number> = FROZEN_COLS.reduce(
   (acc, col, idx) => {
-    acc[col.key] = FROZEN_COLS.slice(0, idx).reduce((s, c) => s + c.width, 0);
-    return acc;
+    acc[col.key] = FROZEN_COLS.slice(0, idx).reduce((s, c) => s + c.width, 0)
+    return acc
   },
-  {} as Record<string, number>,
-);
+  {} as Record<string, number>
+)
 
 const FROZEN_WIDTH: Record<string, number> = Object.fromEntries(
   FROZEN_COLS.map((c) => [c.key, c.width])
-);
+)
 
-function resolveColumns(tableName: string | undefined, rows: AirShipmentRow[], visibleColumns?: string[]): string[] {
-  let cols: string[] = [];
-  if (tableName && COLUMN_KEYS[tableName]) cols = COLUMN_KEYS[tableName];
-  else if (rows.length > 0) cols = Object.keys(rows[0]);
+function resolveColumns(
+  tableName: string | undefined,
+  rows: AirShipmentRow[],
+  visibleColumns?: string[]
+): string[] {
+  let cols: string[] = []
+  if (tableName && COLUMN_KEYS[tableName]) cols = COLUMN_KEYS[tableName]
+  else if (rows.length > 0) cols = Object.keys(rows[0])
   if (visibleColumns) {
-    cols = cols.filter((col) => visibleColumns.includes(col));
+    cols = cols.filter((col) => visibleColumns.includes(col))
   }
-  return cols;
+  return cols
 }
 
 const isFrozen = (col: string, tableName?: string): boolean =>
-  (tableName?.startsWith('air_shipments_') ?? false) && col in FROZEN_LEFT;
+  (tableName?.startsWith('air_shipments_') ?? false) && col in FROZEN_LEFT
 
 interface AirShipmentTableProps {
-  data: AirShipmentRow[];
-  meta: PaginationMeta;
-  sortBy: string;
-  sortOrder: SortOrder;
-  onSort: (col: string, order: SortOrder) => void;
-  onPageChange: (page: number) => void;
-  tableName?: string;
-  visibleColumns?: string[];
+  data: AirShipmentRow[]
+  meta: PaginationMeta
+  sortBy: string
+  sortOrder: SortOrder
+  onSort: (col: string, order: SortOrder) => void
+  onPageChange: (page: number) => void
+  tableName?: string
+  visibleColumns?: string[]
 }
 
-
-
-export function AirShipmentTable({ data, meta, sortBy, sortOrder, onSort, onPageChange, tableName, visibleColumns }: AirShipmentTableProps) {
-  const columns = resolveColumns(tableName, data, visibleColumns);
+export function AirShipmentTable({
+  data,
+  meta,
+  sortBy,
+  sortOrder,
+  onSort,
+  onPageChange,
+  tableName,
+  visibleColumns,
+}: AirShipmentTableProps) {
+  const columns = resolveColumns(tableName, data, visibleColumns)
 
   const handleHeaderClick = (col: string) => {
     if (col === sortBy) {
-      onSort(col, sortOrder === 'asc' ? 'desc' : 'asc');
+      onSort(col, sortOrder === 'asc' ? 'desc' : 'asc')
     } else {
-      onSort(col, 'asc');
+      onSort(col, 'asc')
     }
-  };
+  }
 
   const sortIndicator = (col: string) => {
-    if (col !== sortBy) return null;
-    return sortOrder === 'asc' ? ' ↑' : ' ↓';
-  };
+    if (col !== sortBy) return null
+    return sortOrder === 'asc' ? ' ↑' : ' ↓'
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -101,7 +113,9 @@ export function AirShipmentTable({ data, meta, sortBy, sortOrder, onSort, onPage
                           left: FROZEN_LEFT[col],
                           minWidth: FROZEN_WIDTH[col],
                           maxWidth: FROZEN_WIDTH[col],
-                          ...(col === 'destination' ? { boxShadow: '2px 0 0 0 hsl(var(--border))' } : {}),
+                          ...(col === FROZEN_COLS[FROZEN_COLS.length - 1].key
+                            ? { boxShadow: '2px 0 0 0 hsl(var(--border))' }
+                            : {}),
                         }
                       : undefined
                   }
@@ -119,7 +133,10 @@ export function AirShipmentTable({ data, meta, sortBy, sortOrder, onSort, onPage
           <tbody className="divide-y divide-border">
             {data.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="px-4 py-6 text-center text-muted-foreground">
+                <td
+                  colSpan={columns.length}
+                  className="px-4 py-6 text-center text-muted-foreground"
+                >
                   No records found.
                 </td>
               </tr>
@@ -135,7 +152,9 @@ export function AirShipmentTable({ data, meta, sortBy, sortOrder, onSort, onPage
                               left: FROZEN_LEFT[col],
                               minWidth: FROZEN_WIDTH[col],
                               maxWidth: FROZEN_WIDTH[col],
-                              ...(col === 'destination' ? { boxShadow: '2px 0 0 0 hsl(var(--border))' } : {}),
+                              ...(col === FROZEN_COLS[FROZEN_COLS.length - 1].key
+                                ? { boxShadow: '2px 0 0 0 hsl(var(--border))' }
+                                : {}),
                             }
                           : undefined
                       }
@@ -179,5 +198,5 @@ export function AirShipmentTable({ data, meta, sortBy, sortOrder, onSort, onPage
         </div>
       </div>
     </div>
-  );
+  )
 }

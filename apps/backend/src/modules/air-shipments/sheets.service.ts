@@ -1,43 +1,59 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
+import { Injectable, Logger, OnApplicationBootstrap, OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
-import { readFileSync } from 'fs'
 import { google, sheets_v4 } from 'googleapis'
 import { normalizeHeader, makeUniqueHeaders } from './normalizer'
 import { coerceValue } from './coercer'
 import { SheetConfig, SheetResult } from './sheet-config.interface'
+import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
+import { InjectRepository } from '@nestjs/typeorm'
+import { Repository } from 'typeorm'
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter'
 
 const READONLY_SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly'
 const RETRY_DELAYS_MS = [2000, 4000, 6000]
 
 @Injectable()
-export class SheetsService implements OnModuleInit {
+export class SheetsService implements OnApplicationBootstrap {
   private readonly logger = new Logger(SheetsService.name)
-  private configs: SheetConfig[] = []
+  private gsheetConfig: GoogleSheetConfig
+  private sheetConfigs: SheetConfig[] = []
   private sheetsApi!: sheets_v4.Sheets
   private spreadsheetId!: string
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    @InjectRepository(GoogleSheetConfig)
+    private readonly googleSheetConfigRepo: Repository<GoogleSheetConfig>,
+    private readonly eventEmitter: EventEmitter2
+  ) {}
 
-  onModuleInit(): void {
-    this.spreadsheetId = this.config.getOrThrow<string>('GOOGLE_SHEET_ID')
+  async onApplicationBootstrap(): Promise<void> {
+    // this.spreadsheetId = this.config.getOrThrow<string>('GOOGLE_SHEET_ID')
     const credentialsPath = this.config.getOrThrow<string>('GOOGLE_CREDENTIALS_PATH')
-    const configPath = this.config.getOrThrow<string>('SHEET_CONFIG_PATH')
+    // const configPath = this.config.getOrThrow<string>('SHEET_CONFIG_PATH')
 
     // Load and validate sheet config once at startup (FR-010)
-    let rawConfig: unknown
     try {
-      rawConfig = JSON.parse(readFileSync(configPath, 'utf-8'))
+      this.gsheetConfig = await this.googleSheetConfigRepo.findOne({
+        where: { enabled: true },
+        relations: ['sheetConfigs'],
+      })
+      this.sheetConfigs = this.gsheetConfig?.sheetConfigs.map((c) => ({
+        sheetName: c.sheetName,
+        tableName: c.tableName,
+        headerRow: c.headerRow,
+        uniqueKey: c.uniqueKey,
+        skipNullCols: c.skipNullCols,
+      }))
+      this.spreadsheetId = this.gsheetConfig?.sheetId
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
-      throw new Error(
-        `[SheetsService] Failed to load sheet config from "${configPath}": ${message}`
-      )
+      this.logger.warn(`[SheetsService] Failed to load sheet config from DB: ${message}`)
     }
 
-    if (!Array.isArray(rawConfig) || rawConfig.length === 0) {
-      throw new Error(`[SheetsService] Sheet config at "${configPath}" must be a non-empty array`)
+    if (!Array.isArray(this.sheetConfigs) || this.sheetConfigs.length === 0) {
+      this.logger.warn(`[SheetsService] Sheet config from DB must be a non-empty array`)
     }
-    this.configs = rawConfig as SheetConfig[]
 
     // Initialize Google Sheets API client
     const auth = new google.auth.GoogleAuth({
@@ -45,19 +61,49 @@ export class SheetsService implements OnModuleInit {
       scopes: [READONLY_SCOPE],
     })
     this.sheetsApi = google.sheets({ version: 'v4', auth })
-    this.logger.log(`Sheet config loaded: ${this.configs.length} sheets configured`)
+    if (this.gsheetConfig && this.sheetConfigs) {
+      this.logger.log(`Google Sheet config loaded: ${this.sheetConfigs.length} sheets configured`)
+      this.eventEmitter.emit('gsheetConfig.ready', this.gsheetConfig)
+    }
   }
 
-  getConfigs(): SheetConfig[] {
-    return this.configs
+  @OnEvent('gsheetConfig.updated') onConfigUpdate(newConfig: GoogleSheetConfig) {
+    this.logger.log('Google Sheet config updated event received, reloading config...')
+    try {
+      if (newConfig) {
+        this.gsheetConfig = newConfig
+        this.sheetConfigs = newConfig.sheetConfigs.map((c) => ({
+          sheetName: c.sheetName,
+          tableName: c.tableName,
+          headerRow: c.headerRow,
+          uniqueKey: c.uniqueKey,
+          skipNullCols: c.skipNullCols,
+        }))
+        this.spreadsheetId = newConfig.sheetId
+        this.logger.log(`Sheet config reloaded: ${this.sheetConfigs.length} sheets configured`)
+      } else {
+        this.logger.warn('No enabled Google Sheet config found during reload')
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.logger.error(`[SheetsService] Failed to reload sheet config from DB: ${message}`)
+    }
+  }
+
+  getGsheetConfig(): GoogleSheetConfig {
+    return this.gsheetConfig
+  }
+
+  getSheetConfigs(): SheetConfig[] {
+    return this.sheetConfigs
   }
 
   /**
    * Fetch all configured sheets in a single batchGet call (FR-006).
    * Returns normalized SheetResult[] with headers and coerced row objects.
    */
-  async fetchAllSheets(configs: SheetConfig[]): Promise<SheetResult[]> {
-    const ranges = configs.map((c) => `${c.sheetName}!A:ZZ`)
+  async fetchAllSheets(): Promise<SheetResult[]> {
+    const ranges = this.sheetConfigs.map((c) => `${c.sheetName}!A:ZZ`)
 
     let valueRanges: sheets_v4.Schema$ValueRange[]
 
@@ -75,7 +121,7 @@ export class SheetsService implements OnModuleInit {
         `[SheetsService] Google Sheets API error: ${message}`,
         err instanceof Error ? err.stack : undefined
       )
-      return configs.map((c) => ({
+      return this.sheetConfigs.map((c) => ({
         sheetName: c.sheetName,
         tableName: c.tableName,
         uniqueKey: c.uniqueKey,
@@ -86,8 +132,8 @@ export class SheetsService implements OnModuleInit {
 
     const results: SheetResult[] = []
 
-    for (let i = 0; i < configs.length; i++) {
-      const cfg = configs[i]
+    for (let i = 0; i < this.sheetConfigs.length; i++) {
+      const cfg = this.sheetConfigs[i]
       let data = (valueRanges[i]?.values ?? []) as unknown[][]
 
       // Per-sheet empty-response retry with backoff (FR-008)

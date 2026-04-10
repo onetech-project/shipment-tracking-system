@@ -14,6 +14,7 @@ export interface AuthUser {
   organizationId: string
   isSuperAdmin: boolean
   roles: string[]
+  permissions: string[]
 }
 
 interface AuthContextValue {
