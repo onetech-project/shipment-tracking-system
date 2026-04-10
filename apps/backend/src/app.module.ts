@@ -18,7 +18,7 @@ import { RolesModule } from './modules/roles/roles.module'
 import { PermissionsModule } from './modules/permissions/permissions.module'
 import { InvitationsModule } from './modules/invitations/invitations.module'
 import { AuditModule } from './modules/audit/audit.module'
-import { ShipmentsModule } from './modules/shipments/shipments.module'
+// ...existing code...
 import { AirShipmentsModule } from './modules/air-shipments/air-shipments.module'
 
 @Module({
@@ -81,7 +81,7 @@ import { AirShipmentsModule } from './modules/air-shipments/air-shipments.module
     PermissionsModule,
     InvitationsModule,
     AuditModule,
-    ShipmentsModule,
+    // ...existing code...
     AirShipmentsModule,
   ],
   controllers: [AppController],

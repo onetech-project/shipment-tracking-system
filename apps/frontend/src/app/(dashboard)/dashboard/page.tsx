@@ -1,13 +1,15 @@
-'use client';
-import { Upload, History, QrCode } from 'lucide-react';
-import { useAuth } from '@/features/auth/auth.context';
-import { PageHeader } from '@/components/shared/page-header';
-import { ActionCard } from '@/components/shared/action-card';
-import { StatusBadge } from '@/components/shared/status-badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+'use client'
+import { Plane, ClipboardList, Settings } from 'lucide-react'
+import { useAuth } from '@/features/auth/auth.context'
+import { PageHeader } from '@/components/shared/page-header'
+import { ActionCard } from '@/components/shared/action-card'
+import { StatusBadge } from '@/components/shared/status-badge'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { usePermissions } from '@/shared/hooks/use-permissions'
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user } = useAuth()
+  const { hasPermission } = usePermissions()
 
   return (
     <div>
@@ -19,15 +21,39 @@ export default function DashboardPage() {
         <CardContent className="flex flex-wrap items-center gap-3">
           {user?.isSuperAdmin && <StatusBadge variant="active" label="Super Admin" />}
           {user?.organizationId && (
-            <span className="text-sm text-muted-foreground">Organization: {user.organizationId}</span>
+            <span className="text-sm text-muted-foreground">
+              Organization: {user.organizationId}
+            </span>
           )}
         </CardContent>
       </Card>
       <section className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        <ActionCard href="/shipments/upload" icon={Upload} title="Upload Shipments" description="Import a PDF file to bulk-load shipment records." data-testid="action-card-upload" />
-        <ActionCard href="/shipments/history" icon={History} title="Upload History" description="Review past import jobs and their outcomes." data-testid="action-card-history" />
-        <ActionCard href="/shipments/scan" icon={QrCode} title="QR Scan" description="Use your camera to look up a shipment by QR code." data-testid="action-card-scan" />
+        <ActionCard
+          href="/air-shipments/cgk"
+          title="Shipments"
+          icon={Plane}
+          description="View Air Shipments Table"
+          data-testid="action-card-cgk"
+        />
+        {hasPermission('read.google_sheet_config') && (
+          <ActionCard
+            href="/air-shipments/google-sheet-config"
+            title="Google Sheet Config"
+            icon={ClipboardList}
+            description="Manage Google Sheet Configurations"
+            data-testid="action-card-google-sheet-config"
+          />
+        )}
+        <ActionCard
+          href="#"
+          title="Coming Soon..."
+          icon={Settings}
+          description="More features coming soon!"
+          data-testid="action-card-coming-soon"
+          disabled
+        />
+        {/* Shipments action cards removed */}
       </section>
     </div>
-  );
+  )
 }
