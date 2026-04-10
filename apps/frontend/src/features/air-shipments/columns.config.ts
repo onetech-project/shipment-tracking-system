@@ -3,15 +3,14 @@
  * Labels are auto-derived as uppercase words; override via COLUMN_LABELS if needed.
  */
 
-const SHIPMENT_SYSTEM = ['id', 'is_locked', 'last_synced_at', 'created_at', 'updated_at'];
+const SHIPMENT_SYSTEM = ['id', 'is_locked', 'last_synced_at', 'created_at', 'updated_at']
 
 const SHIPMENT_APP_SHARED = [
   'date',
-  'vendor',
-  'origin',
-  'destination',
   'lt_number',
   'to_number',
+  'origin',
+  'destination',
   'gross_weight',
   'qty_parcel',
   'remarks',
@@ -43,7 +42,8 @@ const SHIPMENT_APP_SHARED = [
   'completed_time',
   'helper_time_departure',
   'helper_ptpdtd',
-];
+  'vendor',
+]
 
 const CGK_EXTRA_APP = [
   'helper_ptpdtd_2',
@@ -62,7 +62,7 @@ const CGK_EXTRA_APP = [
   'remarks_tjph',
   'late_duration_sla',
   'late_duration_tjph',
-];
+]
 
 export const COLUMN_KEYS: Record<string, string[]> = {
   air_shipments_cgk: [...SHIPMENT_APP_SHARED, ...CGK_EXTRA_APP, ...SHIPMENT_SYSTEM],
@@ -102,9 +102,13 @@ export const COLUMN_KEYS: Record<string, string[]> = {
     'created_at',
     'updated_at',
   ],
-};
+}
 
 /** Convert snake_case key to a human-readable uppercase label. */
 export function colLabel(key: string): string {
-  return key.replace(/_/g, ' ').toUpperCase();
+  return key.replace(/_/g, ' ').toUpperCase()
 }
+
+// Always-visible (frozen) columns for CGK, SDA, SUB
+export const FROZEN_KEYS = ['date', 'lt_number', 'to_number']
+export const airShipmentTable = ['air_shipments_cgk', 'air_shipments_sda', 'air_shipments_sub']

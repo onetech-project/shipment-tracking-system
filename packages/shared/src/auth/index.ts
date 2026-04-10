@@ -1,15 +1,19 @@
 // ── JWT Payload ───────────────────────────────────────────────────────────────
 export interface JwtPayload {
   /** User UUID */
-  sub: string;
+  sub: string
   /** Organization UUID (null for super_admin) */
-  org_id: string | null;
+  org_id: string | null
   /** Platform-wide super admin bypass flag */
-  is_super_admin: boolean;
+  is_super_admin: boolean
+  /** User's role IDs */
+  roles?: string[]
+  /** User's permissions (can be loaded separately if needed) */
+  permissions?: string[]
   /** Token issued-at (seconds) */
-  iat?: number;
+  iat?: number
   /** Token expiration (seconds) */
-  exp?: number;
+  exp?: number
 }
 
 // ── Permission Keys ───────────────────────────────────────────────────────────
@@ -52,36 +56,42 @@ export enum Permission {
 
   // Audit
   READ_AUDIT = 'read.audit',
+
+  // Google Sheet Config (for Air Shipments module)
+  READ_GOOGLE_SHEET_CONFIG = 'read.google_sheet_config',
+  CREATE_GOOGLE_SHEET_CONFIG = 'create.google_sheet_config',
+  UPDATE_GOOGLE_SHEET_CONFIG = 'update.google_sheet_config',
+  DELETE_GOOGLE_SHEET_CONFIG = 'delete.google_sheet_config',
 }
 
 // ── Auth Response DTOs ────────────────────────────────────────────────────────
 export interface AuthUserDto {
-  id: string;
-  username: string;
-  organizationId: string | null;
-  isSuperAdmin: boolean;
-  roles: string[];
+  id: string
+  username: string
+  organizationId: string | null
+  isSuperAdmin: boolean
+  roles: string[]
 }
 
 export interface LoginResponseDto {
-  accessToken: string;
-  user: AuthUserDto;
+  accessToken: string
+  user: AuthUserDto
 }
 
 export interface RefreshResponseDto {
-  accessToken: string;
+  accessToken: string
 }
 
 // ── Profile ───────────────────────────────────────────────────────────────────
 export interface ProfileDto {
-  id: string;
-  name: string;
-  position: string | null;
-  employeeNumber: string | null;
-  email: string | null;
-  phoneNumber: string | null;
+  id: string
+  name: string
+  position: string | null
+  employeeNumber: string | null
+  email: string | null
+  phoneNumber: string | null
 }
 
 export interface MeResponseDto extends AuthUserDto {
-  profile: ProfileDto | null;
+  profile: ProfileDto | null
 }

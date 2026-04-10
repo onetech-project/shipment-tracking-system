@@ -1,78 +1,87 @@
-'use client';
-import { useAirShipments } from '@/features/air-shipments/hooks/useAirShipments';
-import { useSyncNotification } from '@/features/air-shipments/hooks/useSyncNotification';
-import { AirShipmentTable } from '@/features/air-shipments/components/AirShipmentTable';
-import { SyncStatusBadge } from '@/features/air-shipments/components/SyncStatusBadge';
-import { TableSkeleton } from '@/features/air-shipments/components/TableSkeleton';
-import { SortOrder } from '@/features/air-shipments/types';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { COLUMN_KEYS, colLabel } from '../columns.config';
+'use client'
+import { useAirShipments } from '@/features/air-shipments/hooks/useAirShipments'
+import { useSyncNotification } from '@/features/air-shipments/hooks/useSyncNotification'
+import { AirShipmentTable } from '@/features/air-shipments/components/AirShipmentTable'
+import { SyncStatusBadge } from '@/features/air-shipments/components/SyncStatusBadge'
+import { TableSkeleton } from '@/features/air-shipments/components/TableSkeleton'
+import { SortOrder } from '@/features/air-shipments/types'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { COLUMN_KEYS, FROZEN_KEYS, colLabel } from '../columns.config'
 
 interface AirShipmentsPageProps {
-  endpoint: string;
-  tableName: string;
-  title: string;
-  defaultSortBy?: string;
+  endpoint: string
+  tableName: string
+  title: string
+  defaultSortBy?: string
 }
 
-export function AirShipmentsPage({ endpoint, tableName, title, defaultSortBy = 'date' }: AirShipmentsPageProps) {
-  const { isConnected, lastSyncAt, affectedTables } = useSyncNotification();
-  const { data, isLoading, query, setPage, setSort, setSearch } = useAirShipments(endpoint, tableName, affectedTables, defaultSortBy);
+export function AirShipmentsPage({
+  endpoint,
+  tableName,
+  title,
+  defaultSortBy = 'date',
+}: AirShipmentsPageProps) {
+  const { isConnected, lastSyncAt, affectedTables } = useSyncNotification()
+  const { data, isLoading, query, setPage, setSort, setSearch } = useAirShipments(
+    endpoint,
+    tableName,
+    affectedTables,
+    defaultSortBy
+  )
 
   // Search state with debounce
-  const [searchInput, setSearchInput] = useState('');
+  const [searchInput, setSearchInput] = useState('')
   useEffect(() => {
     const handler = setTimeout(() => {
-      setSearch(searchInput);
-    }, 700);
-    return () => clearTimeout(handler);
-  }, [searchInput, setSearch]);
+      setSearch(searchInput)
+    }, 700)
+    return () => clearTimeout(handler)
+  }, [searchInput, setSearch])
 
   // Column visibility state
-  // Always-visible (frozen) columns for CGK, SDA, SUB
-  const FROZEN_KEYS = ['date', 'vendor', 'origin', 'destination'];
-  const isAirShipmentTable = ['air_shipments_cgk', 'air_shipments_sda', 'air_shipments_sub'].includes(tableName);
-  const allColumns = useMemo(() => COLUMN_KEYS[tableName] || [], [tableName]);
-  const frozenColumns = isAirShipmentTable ? FROZEN_KEYS : [];
-  const toggleableColumns = allColumns.filter((col) => !frozenColumns.includes(col));
-  const [visibleColumns, setVisibleColumns] = useState<string[]>([...frozenColumns, ...toggleableColumns]);
+  const isAirShipmentTable = tableName.startsWith('air_shipments_')
+  const allColumns = useMemo(() => COLUMN_KEYS[tableName] || [], [tableName])
+  const frozenColumns = isAirShipmentTable ? FROZEN_KEYS : []
+  const toggleableColumns = allColumns.filter((col) => !frozenColumns.includes(col))
+  const [visibleColumns, setVisibleColumns] = useState<string[]>([
+    ...frozenColumns,
+    ...toggleableColumns,
+  ])
   useEffect(() => {
-    setVisibleColumns([...frozenColumns, ...toggleableColumns]);
+    setVisibleColumns([...frozenColumns, ...toggleableColumns])
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allColumns, tableName]);
+  }, [allColumns, tableName])
 
   // Dropdown state for column toggle
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
   // Close dropdown on outside click
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setDropdownOpen(false);
+        setDropdownOpen(false)
       }
     }
     if (dropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('mousedown', handleClickOutside)
     } else {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('mousedown', handleClickOutside)
     }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [dropdownOpen]);
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [dropdownOpen])
 
   const handleColumnToggle = (col: string) => {
-    if (frozenColumns.includes(col)) return;
+    if (frozenColumns.includes(col)) return
     setVisibleColumns((prev) =>
-      prev.includes(col)
-        ? prev.filter((c) => c !== col)
-        : [...prev, col]
-    );
-  };
+      prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col]
+    )
+  }
 
-  const handleSort = (col: string, order: SortOrder) => setSort(col, order);
+  const handleSort = (col: string, order: SortOrder) => setSort(col, order)
 
   // Determine if search should be shown
-  const showSearch = !/rate|route/i.test(title);
+  const showSearch = !/rate|route/i.test(title)
 
   return (
     <div className="flex flex-col gap-4">
@@ -105,7 +114,12 @@ export function AirShipmentsPage({ endpoint, tableName, title, defaultSortBy = '
           >
             <span className="font-medium">Columns</span>
             <svg width="14" height="14" viewBox="0 0 20 20" fill="none" className="ml-1">
-              <path d="M5 8L10 13L15 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              <path
+                d="M5 8L10 13L15 8"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
             </svg>
           </button>
           {dropdownOpen && (
@@ -128,7 +142,9 @@ export function AirShipmentsPage({ endpoint, tableName, title, defaultSortBy = '
                       onChange={() => handleColumnToggle(col)}
                       className="accent-accent h-3 w-3 rounded border border-border focus:ring-1 focus:ring-accent"
                     />
-                    <span className="truncate" title={colLabel(col)}>{colLabel(col)}</span>
+                    <span className="truncate" title={colLabel(col)}>
+                      {colLabel(col)}
+                    </span>
                   </label>
                 ))}
               </div>
@@ -152,5 +168,5 @@ export function AirShipmentsPage({ endpoint, tableName, title, defaultSortBy = '
         />
       ) : null}
     </div>
-  );
+  )
 }

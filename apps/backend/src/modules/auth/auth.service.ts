@@ -1,6 +1,6 @@
 import { Injectable, UnauthorizedException, ForbiddenException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository, IsNull } from 'typeorm'
+import { Repository, IsNull, In } from 'typeorm'
 import { JwtService } from '@nestjs/jwt'
 import { ConfigService } from '@nestjs/config'
 import { EventEmitter2 } from '@nestjs/event-emitter'
@@ -12,6 +12,8 @@ import { RefreshToken } from './entities/refresh-token.entity'
 import { Profile } from '../organizations/entities/profile.entity'
 import { AuthenticatedUser } from '../../common/decorators/current-user.decorator'
 import { JwtPayload } from '@shared/auth'
+import { UserRole } from '../roles/entities/user-role.entity'
+import { Role } from '../roles/entities/role.entity'
 
 @Injectable()
 export class AuthService {
@@ -19,6 +21,8 @@ export class AuthService {
     @InjectRepository(User) private readonly userRepo: Repository<User>,
     @InjectRepository(RefreshToken) private readonly refreshTokenRepo: Repository<RefreshToken>,
     @InjectRepository(Profile) private readonly profileRepo: Repository<Profile>,
+    @InjectRepository(UserRole) private readonly userRoleRepo: Repository<UserRole>,
+    @InjectRepository(Role) private readonly roleRepo: Repository<Role>,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
     private readonly eventEmitter: EventEmitter2
@@ -69,8 +73,11 @@ export class AuthService {
     }
 
     const familyId = uuidv4()
+    const { roleNames, permissions } = await this.getUserRoleAndPermissionNames(user.id)
     const { accessToken, refreshToken } = await this.issueTokenPair(
       user,
+      roleNames,
+      permissions,
       organizationId,
       familyId,
       ip,
@@ -82,7 +89,8 @@ export class AuthService {
       username: user.username,
       organizationId,
       isSuperAdmin: user.isSuperAdmin ?? false,
-      roles: [],
+      roles: roleNames,
+      permissions,
     }
 
     this.eventEmitter.emit('auth.login', { userId: user.id, organizationId, ip })
@@ -105,8 +113,12 @@ export class AuthService {
       throw new UnauthorizedException('USER_INACTIVE')
     }
 
+    const { roleNames, permissions } = await this.getUserRoleAndPermissionNames(user.id)
+
     return this.issueTokenPair(
       user,
+      roleNames,
+      permissions,
       tokenRecord.organizationId,
       tokenRecord.familyId,
       ip,
@@ -140,6 +152,8 @@ export class AuthService {
 
   private async issueTokenPair(
     user: User,
+    roles: string[],
+    permissions: string[],
     organizationId: string | null,
     familyId: string,
     ip?: string,
@@ -149,6 +163,8 @@ export class AuthService {
       sub: user.id,
       org_id: organizationId,
       is_super_admin: user.isSuperAdmin ?? false,
+      roles,
+      permissions,
     }
 
     const accessToken = this.jwtService.sign(payload, {
@@ -194,5 +210,21 @@ export class AuthService {
       d: 24 * 60 * 60 * 1000,
     }
     return amount * multipliers[unit]
+  }
+
+  private async getUserRoleAndPermissionNames(
+    userId: string
+  ): Promise<{ roleNames: string[]; permissions: string[] }> {
+    const userRoles = await this.userRoleRepo.find({
+      where: { userId },
+    })
+    const roleIds = userRoles.map((ur) => ur.roleId)
+    const roles = await this.roleRepo.find({
+      where: { id: In(roleIds) },
+      relations: ['rolePermissions', 'rolePermissions.permission'],
+    })
+    const roleNames = roles.map((r) => r.name)
+    const permissions = roles.flatMap((r) => r.permissions.map((p) => p.name))
+    return { roleNames, permissions }
   }
 }

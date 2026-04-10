@@ -1,25 +1,25 @@
-import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { EventEmitterModule } from '@nestjs/event-emitter';
-import { ClsModule } from 'nestjs-cls';
-import { BullModule } from '@nestjs/bullmq';
-import { ThrottlerModule } from '@nestjs/throttler';
-import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
-import * as Joi from 'joi';
-import { HttpExceptionFilter } from './common/filters/http-exception.filter';
-import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
-import { TenantClsInterceptor } from './common/interceptors/tenant-cls.interceptor';
-import { AppController } from './app.controller';
-import { AuthModule } from './modules/auth/auth.module';
-import { OrganizationsModule } from './modules/organizations/organizations.module';
-import { UsersModule } from './modules/users/users.module';
-import { RolesModule } from './modules/roles/roles.module';
-import { PermissionsModule } from './modules/permissions/permissions.module';
-import { InvitationsModule } from './modules/invitations/invitations.module';
-import { AuditModule } from './modules/audit/audit.module';
-import { ShipmentsModule } from './modules/shipments/shipments.module';
-import { AirShipmentsModule } from './modules/air-shipments/air-shipments.module';
+import { Module } from '@nestjs/common'
+import { ConfigModule, ConfigService } from '@nestjs/config'
+import { TypeOrmModule } from '@nestjs/typeorm'
+import { EventEmitterModule } from '@nestjs/event-emitter'
+import { ClsModule } from 'nestjs-cls'
+import { BullModule } from '@nestjs/bullmq'
+import { ThrottlerModule } from '@nestjs/throttler'
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core'
+import * as Joi from 'joi'
+import { HttpExceptionFilter } from './common/filters/http-exception.filter'
+import { JwtAuthGuard } from './common/guards/jwt-auth.guard'
+import { TenantClsInterceptor } from './common/interceptors/tenant-cls.interceptor'
+import { AppController } from './app.controller'
+import { AuthModule } from './modules/auth/auth.module'
+import { OrganizationsModule } from './modules/organizations/organizations.module'
+import { UsersModule } from './modules/users/users.module'
+import { RolesModule } from './modules/roles/roles.module'
+import { PermissionsModule } from './modules/permissions/permissions.module'
+import { InvitationsModule } from './modules/invitations/invitations.module'
+import { AuditModule } from './modules/audit/audit.module'
+import { ShipmentsModule } from './modules/shipments/shipments.module'
+import { AirShipmentsModule } from './modules/air-shipments/air-shipments.module'
 
 @Module({
   imports: [
@@ -44,9 +44,9 @@ import { AirShipmentsModule } from './modules/air-shipments/air-shipments.module
         SHIPMENT_ID_REGEX: Joi.string().default('^[A-Z0-9-]{6,40}$'),
         // Air Shipments / Google Sheets sync
         GOOGLE_CREDENTIALS_PATH: Joi.string().required(),
-        GOOGLE_SHEET_ID: Joi.string().required(),
-        SHEET_CONFIG_PATH: Joi.string().required(),
-        SYNC_INTERVAL_MS: Joi.number().default(15000),
+        // GOOGLE_SHEET_ID: Joi.string().required(),
+        // SHEET_CONFIG_PATH: Joi.string().required(),
+        // SYNC_INTERVAL_MS: Joi.number().default(15000),
         WEBSOCKET_CORS_ORIGIN: Joi.string().default('http://localhost:3000'),
       }),
     }),
