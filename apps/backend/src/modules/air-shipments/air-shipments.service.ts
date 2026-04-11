@@ -130,11 +130,31 @@ export class AirShipmentsService {
     let noChangeSkipped = 0
     const rowsToUpsert: Record<string, unknown>[] = []
 
+    // Get all entity columns for this table (excluding extra_fields)
+    const entityColumns = repo.metadata.columns
+      .map((c) => c.propertyName)
+      .filter((c) => c !== 'extra_fields')
+
     for (const incomingRow of rows) {
       if (incomingRow['is_locked'] === true) {
         lockedSkipped++
         continue
       }
+
+      // Split known and unknown fields
+      const regularFields: Record<string, unknown> = {}
+      const extraFields: Record<string, unknown> = {}
+      for (const [k, v] of Object.entries(incomingRow)) {
+        if (entityColumns.includes(k) && k !== 'extra_fields') {
+          regularFields[k] = v
+        } else if (!SYSTEM_COLUMNS.has(k)) {
+          extraFields[k] = v
+        }
+      }
+      if (Object.keys(extraFields).length > 0) {
+        regularFields['extra_fields'] = extraFields
+      }
+      regularFields['last_synced_at'] = new Date()
 
       const existing = existingMap.get(rowKey(incomingRow))
       if (existing) {
@@ -149,12 +169,16 @@ export class AirShipmentsService {
         }
       }
 
-      rowsToUpsert.push({ ...incomingRow, last_synced_at: new Date() })
+      rowsToUpsert.push(regularFields)
     }
 
     // Batch upsert in chunks
     const CHUNK_SIZE = 500
-    const updateColumns = headers.filter((h) => !keyColumns.includes(h) && !SYSTEM_COLUMNS.has(h))
+    // Only include columns present in the entity plus 'extra_fields' in updateColumns for upsert
+    const updateColumns = [
+      ...entityColumns,
+      'extra_fields',
+    ]
     for (let i = 0; i < rowsToUpsert.length; i += CHUNK_SIZE) {
       const chunk = rowsToUpsert.slice(i, i + CHUNK_SIZE)
 

@@ -6,7 +6,7 @@ import { SyncStatusBadge } from '@/features/air-shipments/components/SyncStatusB
 import { TableSkeleton } from '@/features/air-shipments/components/TableSkeleton'
 import { SortOrder } from '@/features/air-shipments/types'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { COLUMN_KEYS, FROZEN_KEYS, colLabel } from '../columns.config'
+import { COLUMN_KEYS, FROZEN_KEYS, colLabel, SHIPMENT_SYSTEM } from '../columns.config'
 
 interface AirShipmentsPageProps {
   endpoint: string
@@ -40,15 +40,36 @@ export function AirShipmentsPage({
 
   // Column visibility state
   const isAirShipmentTable = tableName.startsWith('air_shipments_')
-  const allColumns = useMemo(() => COLUMN_KEYS[tableName] || [], [tableName])
+  // Compute all columns including extra_fields keys from data
+const allColumns = useMemo(() => {
+  const baseCols = COLUMN_KEYS[tableName] || []
+  // Collect all unique extra_fields keys from data
+  const extraFieldKeys = new Set<string>()
+  if (Array.isArray(data?.data)) {
+    for (const row of data.data) {
+      if (row.extra_fields && typeof row.extra_fields === 'object') {
+        Object.keys(row.extra_fields).forEach((k) => extraFieldKeys.add(k))
+      }
+    }
+  }
+  // Add extra_fields keys if not already present
+  const all = [...baseCols]
+  for (const key of extraFieldKeys) {
+    if (!all.includes(key)) all.push(key)
+  }
+  return all
+}, [tableName, data])
   const frozenColumns = isAirShipmentTable ? FROZEN_KEYS : []
   const toggleableColumns = allColumns.filter((col) => !frozenColumns.includes(col))
   const [visibleColumns, setVisibleColumns] = useState<string[]>([
     ...frozenColumns,
-    ...toggleableColumns,
+    ...toggleableColumns.filter((col) => !SHIPMENT_SYSTEM.includes(col)),
   ])
   useEffect(() => {
-    setVisibleColumns([...frozenColumns, ...toggleableColumns])
+    setVisibleColumns([
+      ...frozenColumns,
+      ...toggleableColumns.filter((col) => !SHIPMENT_SYSTEM.includes(col)),
+    ])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allColumns, tableName])
 

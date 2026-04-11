@@ -78,6 +78,9 @@ export class AirShipmentCgk {
   @Column({ type: 'text', nullable: true }) rate_spx_after_pph_disc: string | null;
   @Column({ type: 'text', nullable: true }) amount_revenue: string | null;
   @Column({ type: 'text', nullable: true }) additional_amount_packing_kayu: string | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  extra_fields: Record<string, string> | null;
   @Column({ type: 'text', nullable: true }) concat_route: string | null;
   @Column({ type: 'text', nullable: true }) sla: string | null;
   @Column({ type: 'text', nullable: true }) tjph: string | null;

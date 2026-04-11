@@ -68,4 +68,7 @@ export class AirShipmentSda {
   @Column({ type: 'text', nullable: true }) completed_time: string | null;
   @Column({ type: 'numeric', nullable: true }) helper_time_departure: number | null;
   @Column({ type: 'text', nullable: true }) helper_ptpdtd: string | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  extra_fields: Record<string, string> | null;
 }

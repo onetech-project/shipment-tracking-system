@@ -162,5 +162,6 @@ playwright-report/
 
 *.pdf
 debug-*
+debug*
 
 serviceaccount.json

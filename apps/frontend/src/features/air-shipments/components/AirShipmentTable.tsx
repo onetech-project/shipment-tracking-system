@@ -50,8 +50,21 @@ function resolveColumns(
   visibleColumns?: string[]
 ): string[] {
   let cols: string[] = []
-  if (tableName && COLUMN_KEYS[tableName]) cols = COLUMN_KEYS[tableName]
+  if (tableName && COLUMN_KEYS[tableName]) cols = [...COLUMN_KEYS[tableName]]
   else if (rows.length > 0) cols = Object.keys(rows[0])
+
+  // Collect all unique extra_fields keys from all rows
+  const extraFieldKeys = new Set<string>()
+  for (const row of rows) {
+    if (row.extra_fields && typeof row.extra_fields === 'object') {
+      Object.keys(row.extra_fields).forEach((k) => extraFieldKeys.add(k))
+    }
+  }
+  // Add extra_fields keys if not already present
+  for (const key of extraFieldKeys) {
+    if (!cols.includes(key)) cols.push(key)
+  }
+
   if (visibleColumns) {
     cols = cols.filter((col) => visibleColumns.includes(col))
   }
@@ -163,7 +176,7 @@ export function AirShipmentTable({
                         isFrozen(col, tableName) ? 'sticky z-10 bg-background' : '',
                       ].join(' ')}
                     >
-                      {formatCell(col, row[col])}
+                      {row[col] !== undefined ? formatCell(col, row[col]) : row.extra_fields && row.extra_fields[col] !== undefined ? formatCell(col, row.extra_fields[col]) : ''}
                     </td>
                   ))}
                 </tr>
