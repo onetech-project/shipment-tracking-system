@@ -176,7 +176,14 @@ export function AirShipmentTable({
                         isFrozen(col, tableName) ? 'sticky z-10 bg-background' : '',
                       ].join(' ')}
                     >
-                      {row[col] !== undefined ? formatCell(col, row[col]) : row.extra_fields && row.extra_fields[col] !== undefined ? formatCell(col, row.extra_fields[col]) : ''}
+                      {row[col] !== undefined
+                        ? formatCell(col, row[col])
+                        : row.extra_fields &&
+                            typeof row.extra_fields === 'object' &&
+                            row.extra_fields !== null &&
+                            Object.prototype.hasOwnProperty.call(row.extra_fields, col)
+                          ? formatCell(col, (row.extra_fields as Record<string, unknown>)[col])
+                          : ''}
                     </td>
                   ))}
                 </tr>

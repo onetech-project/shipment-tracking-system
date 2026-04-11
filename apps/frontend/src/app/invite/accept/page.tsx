@@ -11,7 +11,7 @@ import { AlertCircle, CheckCircle2 } from 'lucide-react'
 function AcceptInvitationForm() {
   const params = useSearchParams()
   const router = useRouter()
-  const token = params.get('token')
+  const token = params?.get('token')
 
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -41,7 +41,10 @@ function AcceptInvitationForm() {
       setTimeout(() => router.replace('/login'), 3000)
     } catch (e: unknown) {
       setStatus('form')
-      setMessage((e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Invalid or expired invitation')
+      setMessage(
+        (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+          'Invalid or expired invitation'
+      )
     }
   }
 
@@ -70,13 +73,35 @@ function AcceptInvitationForm() {
         </div>
       )}
       <FormField label="Username" htmlFor="acc-username" required>
-        <Input id="acc-username" value={username} onChange={(e) => setUsername(e.target.value)} required autoComplete="username" />
+        <Input
+          id="acc-username"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          required
+          autoComplete="username"
+        />
       </FormField>
       <FormField label="Password" htmlFor="acc-password" required>
-        <Input id="acc-password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} autoComplete="new-password" />
+        <Input
+          id="acc-password"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          minLength={8}
+          autoComplete="new-password"
+        />
       </FormField>
       <FormField label="Confirm password" htmlFor="acc-confirm" required>
-        <Input id="acc-confirm" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required minLength={8} autoComplete="new-password" />
+        <Input
+          id="acc-confirm"
+          type="password"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          required
+          minLength={8}
+          autoComplete="new-password"
+        />
       </FormField>
       <Button type="submit" disabled={status === 'submitting'} className="w-full">
         {status === 'submitting' ? 'Creating account...' : 'Create account'}
