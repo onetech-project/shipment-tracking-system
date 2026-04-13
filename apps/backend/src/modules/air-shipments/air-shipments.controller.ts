@@ -5,6 +5,7 @@ import {
   UseGuards,
   Logger,
   InternalServerErrorException,
+  Patch,
 } from '@nestjs/common'
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
 import { AirShipmentsService } from './air-shipments.service'
@@ -105,5 +106,14 @@ export class AirShipmentsController {
   @Authorize(Permission.DELETE_GOOGLE_SHEET_CONFIG)
   async deleteGoogleSheetConfig(@Param('id') id: string): Promise<void> {
     return this.service.deleteGoogleSheetConfig(id)
+  }
+
+  @Patch(':tableName/:id/lock')
+  async lockRow(
+    @Param('tableName') tableName: string,
+    @Param('id') id: string,
+    @Body('locked') locked: boolean
+  ): Promise<string> {
+    return this.service.lockRow(tableName, id, locked)
   }
 }

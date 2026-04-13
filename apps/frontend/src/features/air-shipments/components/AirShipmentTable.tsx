@@ -1,12 +1,13 @@
 'use client'
 import moment from 'moment'
-import { AirShipmentRow, PaginationMeta, SortOrder } from '../types'
+import { AirShipmentRow, CellProps, PaginationMeta, SortOrder } from '../types'
 import { colLabel, COLUMN_KEYS } from '../columns.config'
 
 const DATETIME_COLS = new Set(['last_synced_at', 'created_at', 'updated_at'])
 
 /** Format a cell value for display. */
-function formatCell(col: string, value: unknown): string {
+function formatCell(props: CellProps): string | JSX.Element {
+  const { id, col, value, additional } = props
   if (col === 'date' && value) {
     const parsed = moment(
       String(value),
@@ -18,6 +19,16 @@ function formatCell(col: string, value: unknown): string {
   if (DATETIME_COLS.has(col) && value) {
     const parsed = moment(String(value))
     if (parsed.isValid()) return parsed.format('DD MMM YYYY HH:mm:ss')
+  }
+  if (col === 'is_locked') {
+    return (
+      <input
+        type="checkbox"
+        checked={Boolean(value)}
+        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/50"
+        onChange={() => additional?.onToggleLock?.(id ?? '', !Boolean(value))}
+      />
+    )
   }
   return String(value ?? '')
 }
@@ -81,6 +92,7 @@ interface AirShipmentTableProps {
   sortOrder: SortOrder
   onSort: (col: string, order: SortOrder) => void
   onPageChange: (page: number) => void
+  onToggleLock?: (id: string, locked: boolean) => void
   tableName?: string
   visibleColumns?: string[]
 }
@@ -92,6 +104,7 @@ export function AirShipmentTable({
   sortOrder,
   onSort,
   onPageChange,
+  onToggleLock,
   tableName,
   visibleColumns,
 }: AirShipmentTableProps) {
@@ -177,12 +190,22 @@ export function AirShipmentTable({
                       ].join(' ')}
                     >
                       {row[col] !== undefined
-                        ? formatCell(col, row[col])
+                        ? formatCell({
+                            id: row.id,
+                            col,
+                            value: row[col],
+                            additional: { onToggleLock },
+                          })
                         : row.extra_fields &&
                             typeof row.extra_fields === 'object' &&
                             row.extra_fields !== null &&
                             Object.prototype.hasOwnProperty.call(row.extra_fields, col)
-                          ? formatCell(col, (row.extra_fields as Record<string, unknown>)[col])
+                          ? formatCell({
+                              id: row.id,
+                              col,
+                              value: (row.extra_fields as Record<string, unknown>)[col],
+                              additional: { onToggleLock },
+                            })
                           : ''}
                     </td>
                   ))}

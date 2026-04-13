@@ -136,10 +136,15 @@ export class AirShipmentsService {
       .filter((c) => c !== 'extra_fields')
 
     for (const incomingRow of rows) {
-      if (incomingRow['is_locked'] === true) {
+      const existing = existingMap.get(rowKey(incomingRow))
+
+      // ✅ Cek is_locked dari DB (existing row), bukan dari sheet
+      // Kalau row belum ada di DB (existing undefined), berarti INSERT baru → tidak di-skip
+      if (existing && existing['is_locked'] === true) {
         lockedSkipped++
         continue
       }
+
 
       // Split known and unknown fields
       const regularFields: Record<string, unknown> = {}
@@ -156,7 +161,6 @@ export class AirShipmentsService {
       }
       regularFields['last_synced_at'] = new Date()
 
-      const existing = existingMap.get(rowKey(incomingRow))
       if (existing) {
         const hasChanges = Object.keys(incomingRow).some(
           (k) =>
@@ -175,10 +179,7 @@ export class AirShipmentsService {
     // Batch upsert in chunks
     const CHUNK_SIZE = 500
     // Only include columns present in the entity plus 'extra_fields' in updateColumns for upsert
-    const updateColumns = [
-      ...entityColumns,
-      'extra_fields',
-    ]
+    const updateColumns = [...entityColumns, 'extra_fields']
     for (let i = 0; i < rowsToUpsert.length; i += CHUNK_SIZE) {
       const chunk = rowsToUpsert.slice(i, i + CHUNK_SIZE)
 
@@ -322,38 +323,54 @@ export class AirShipmentsService {
     },
     tableName?: string
   ) {
-    // Guard against sorting by a column that doesn't exist on this entity (avoids DB 500)
     const columns = repo.metadata.columns.map((c) => c.propertyName)
     const safeSortBy = columns.includes(sortBy) ? sortBy : 'id'
 
-    // Searchable fields for air shipments tables
-    const SEARCHABLE_FIELDS = [
-      'to_number',
-      'lt_number',
+    const DIRECT_SEARCHABLE = ['to_number', 'lt_number']
+    const JSONB_SEARCHABLE = [
       'flight_no',
       'nopol_pickup',
       'driver_name_pickup',
       'actual_airline_name',
     ]
 
-    let where: any = undefined
-    if (
-      search &&
-      typeof search === 'string' &&
-      search.trim() &&
-      ['air_shipments_cgk', 'air_shipments_sub', 'air_shipments_sda'].includes(tableName || '')
-    ) {
-      // Use ILike for case-insensitive partial match
-      const { ILike } = require('typeorm')
-      where = SEARCHABLE_FIELDS.map((field) => ({ [field]: ILike(`%${search}%`) }))
+    const isAirShipmentTable = [
+      'air_shipments_cgk',
+      'air_shipments_sub',
+      'air_shipments_sda',
+    ].includes(tableName || '')
+
+    const alias = 'entity'
+    const qb = repo.createQueryBuilder(alias)
+
+    if (search && typeof search === 'string' && search.trim() && isAirShipmentTable) {
+      const conditions: string[] = []
+
+      // Regular columns — direct ILIKE
+      for (const field of DIRECT_SEARCHABLE) {
+        conditions.push(`${alias}.${field} ILIKE :search`)
+      }
+
+      // JSONB fields — cast via ->>
+      for (const field of JSONB_SEARCHABLE) {
+        conditions.push(`${alias}.extra_fields->>'${field}' ILIKE :search`)
+      }
+
+      qb.where(`(${conditions.join(' OR ')})`, { search: `%${search}%` })
     }
 
-    const [data, total] = await repo.findAndCount({
-      skip: (page - 1) * limit,
-      take: limit,
-      order: { [safeSortBy]: sortOrder.toUpperCase() } as any,
-      ...(where ? { where } : {}),
-    })
+    // Handle sort: JSONB field vs regular column
+    const isJsonbSort = !columns.includes(sortBy)
+    if (isJsonbSort) {
+      qb.orderBy(`${alias}.extra_fields->>'${sortBy}'`, sortOrder.toUpperCase() as 'ASC' | 'DESC')
+    } else {
+      qb.orderBy(`${alias}.${safeSortBy}`, sortOrder.toUpperCase() as 'ASC' | 'DESC')
+    }
+
+    qb.skip((page - 1) * limit).take(limit)
+
+    const [data, total] = await qb.getManyAndCount()
+
     return { data, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } }
   }
 
@@ -493,5 +510,19 @@ export class AirShipmentsService {
     const match = link.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/)
     if (!match) throw new Error('Invalid Google Sheet link')
     return match[1]
+  }
+
+  async lockRow(tableName: string, id: string, locked: boolean): Promise<string> {
+    const repo = this.repoFor(tableName)
+    await repo.update(id, { is_locked: locked })
+    this.eventEmitter.emit('shipment_row.lock_changed', {
+      actorId: undefined,
+      resourceId: id,
+      ip: undefined,
+      userAgent: undefined,
+      after: { is_locked: locked },
+      before: { is_locked: !locked },
+    })
+    return `Row with id ${id} in table ${tableName} has been ${locked ? 'locked' : 'unlocked'}.`
   }
 }

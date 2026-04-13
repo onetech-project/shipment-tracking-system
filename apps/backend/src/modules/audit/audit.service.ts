@@ -100,19 +100,6 @@ export class AuditService {
     this.log('invitation.cancelled', p, 'invitation')
   }
 
-  @OnEvent('shipment.import.started') onImportStarted(p: AuditPayload) {
-    this.log('shipment.import.started', p, 'shipment_upload')
-  }
-  @OnEvent('shipment.import.completed') onImportCompleted(p: AuditPayload) {
-    this.log('shipment.import.completed', p, 'shipment_upload')
-  }
-  @OnEvent('shipment.import.partial') onImportPartial(p: AuditPayload) {
-    this.log('shipment.import.partial', p, 'shipment_upload')
-  }
-  @OnEvent('shipment.import.failed') onImportFailed(p: AuditPayload) {
-    this.log('shipment.import.failed', p, 'shipment_upload')
-  }
-
   @OnEvent('google_sheet_config.created')
   onGoogleSheetConfigCreated(p: AuditPayload) {
     this.log('create.google_sheet_config', p, 'google_sheet_config')
@@ -124,5 +111,10 @@ export class AuditService {
   @OnEvent('google_sheet_config.deleted')
   onGoogleSheetConfigDeleted(p: AuditPayload) {
     this.log('delete.google_sheet_config', p, 'google_sheet_config')
+  }
+
+  @OnEvent('shipment_row.lock_changed')
+  onShipmentRowLockChanged(p: AuditPayload) {
+    this.log('shipment_row.lock_changed', p, 'shipment_row')
   }
 }

@@ -7,6 +7,7 @@ import { TableSkeleton } from '@/features/air-shipments/components/TableSkeleton
 import { SortOrder } from '@/features/air-shipments/types'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { COLUMN_KEYS, FROZEN_KEYS, colLabel, SHIPMENT_SYSTEM } from '../columns.config'
+import { lockAirShipmentRow } from '@/features/air-shipments/hooks/useAirShipments'
 
 interface AirShipmentsPageProps {
   endpoint: string
@@ -40,35 +41,43 @@ export function AirShipmentsPage({
 
   // Column visibility state
   const isAirShipmentTable = tableName.startsWith('air_shipments_')
+
   // Compute all columns including extra_fields keys from data
-const allColumns = useMemo(() => {
-  const baseCols = COLUMN_KEYS[tableName] || []
-  // Collect all unique extra_fields keys from data
-  const extraFieldKeys = new Set<string>()
-  if (Array.isArray(data?.data)) {
-    for (const row of data.data) {
-      if (row.extra_fields && typeof row.extra_fields === 'object') {
-        Object.keys(row.extra_fields).forEach((k) => extraFieldKeys.add(k))
+  const allColumns = useMemo(() => {
+    const baseCols = COLUMN_KEYS[tableName] || []
+    // Collect all unique extra_fields keys from data
+    const extraFieldKeys = new Set<string>()
+    if (Array.isArray(data?.data)) {
+      for (const row of data.data) {
+        if (row.extra_fields && typeof row.extra_fields === 'object') {
+          Object.keys(row.extra_fields).forEach((k) => extraFieldKeys.add(k))
+        }
       }
     }
-  }
-  // Add extra_fields keys if not already present
-  const all = [...baseCols]
-  for (const key of extraFieldKeys) {
-    if (!all.includes(key)) all.push(key)
-  }
-  return all
-}, [tableName, data])
+    // Add extra_fields keys if not already present
+    const all = [...baseCols]
+    for (const key of extraFieldKeys) {
+      if (!all.includes(key)) all.push(key)
+    }
+
+    for (const col of baseCols) {
+      if (SHIPMENT_SYSTEM.includes(col)) continue // Always include system columns
+      if (FROZEN_KEYS.includes(col)) continue // Always include frozen columns
+      if (!extraFieldKeys.has(col)) all.splice(all.indexOf(col), 1) // Remove base column if not in extra_fields keys
+    }
+    return all
+  }, [tableName, data])
+
   const frozenColumns = isAirShipmentTable ? FROZEN_KEYS : []
   const toggleableColumns = allColumns.filter((col) => !frozenColumns.includes(col))
   const [visibleColumns, setVisibleColumns] = useState<string[]>([
     ...frozenColumns,
-    ...toggleableColumns.filter((col) => !SHIPMENT_SYSTEM.includes(col)),
+    ...toggleableColumns,
   ])
   useEffect(() => {
     setVisibleColumns([
       ...frozenColumns,
-      ...toggleableColumns.filter((col) => !SHIPMENT_SYSTEM.includes(col)),
+      ...toggleableColumns,
     ])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allColumns, tableName])
@@ -103,6 +112,19 @@ const allColumns = useMemo(() => {
 
   // Determine if search should be shown
   const showSearch = !/rate|route/i.test(title)
+
+  const [lockState, setLockState] = useState<Record<string, boolean>>({})
+  const handleToggleLock = async (id: string, locked: boolean) => {
+    setLockState((prev) => ({ ...prev, [id]: locked }))
+    try {
+      await lockAirShipmentRow(tableName, id, locked)
+    } catch (error) {
+      setLockState((prev) => ({ ...prev, [id]: !locked }))
+      // Optionally show a toast/notification here
+      window.alert(`Failed to ${locked ? 'lock' : 'unlock'} row: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
 
   return (
     <div className="flex flex-col gap-4">
@@ -178,7 +200,11 @@ const allColumns = useMemo(() => {
         <TableSkeleton />
       ) : data ? (
         <AirShipmentTable
-          data={data.data}
+          data={
+            data.data.map((row) =>
+              row.id in lockState ? { ...row, is_locked: lockState[row.id] } : row
+            )
+          }
           meta={data.meta}
           sortBy={query.sortBy}
           sortOrder={query.sortOrder}
@@ -186,6 +212,7 @@ const allColumns = useMemo(() => {
           onPageChange={setPage}
           tableName={tableName}
           visibleColumns={visibleColumns}
+          onToggleLock={handleToggleLock}
         />
       ) : null}
     </div>

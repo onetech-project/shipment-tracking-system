@@ -3,7 +3,7 @@
  * Labels are auto-derived as uppercase words; override via COLUMN_LABELS if needed.
  */
 
-export const SHIPMENT_SYSTEM = ['id', 'is_locked', 'last_synced_at', 'created_at', 'updated_at']
+export const SHIPMENT_SYSTEM = ['is_locked', 'id', 'last_synced_at', 'created_at', 'updated_at']
 
 const SHIPMENT_APP_SHARED = [
   'date',
