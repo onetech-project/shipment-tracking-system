@@ -1,32 +1,83 @@
 # Permissions Module
 
-Manages the global permission master list. Only super-admins can create or delete permissions.
+Manages the global permission master list. This module is exported as `@Global()` and available to all other modules without explicit import.
+
+## Location
+
+`apps/backend/src/modules/permissions/`
 
 ## Key Concepts
 
-- **Permission name format**: `<action>.<module>` (e.g., `read.user`, `create.organization`). Valid actions: `read`, `create`, `update`, `delete`.
+- **Global module**: Decorated with `@Global()`, exported automatically. No need to import in other modules.
+- **Permission name format**: `<action>.<module>` (e.g., `read.user`, `create.organization`). Enforced by DB CHECK constraint.
 - **Global permissions**: Permissions are not scoped to an organization — they are shared across all organizations.
-- **Super-admin only mutations**: Only super-admins can create or delete permissions. Any authenticated user can list permissions.
-- **Seeded defaults**: A set of default permissions is seeded at startup via `RbacSeederService` using TypeORM migrations.
+- **Live DB checks**: `getPermissionsForUser(userId, orgId)` performs a live SQL join through `user_roles → role_permissions → permissions`. Results are cached per-request in the CLS context for performance.
+- **Auto-seeding**: On application bootstrap (`onApplicationBootstrap`), all permission values from the `Permission` enum (`@shared/auth`) are seeded into the database. Ensures permission list is always in sync with code.
+- **Super admin bypass**: Super admins skip all permission checks in `RbacGuard`.
+
+## Entities
+
+### Permission
+
+Table: `permissions`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID | Primary key |
+| `name` | string | Permission name (unique, format: `action.module`) |
+| `description` | string | Permission description |
+| `resource` | string | Resource identifier |
+| `action` | string | Action identifier |
+| `createdAt` | Date | Creation timestamp |
+
+### RolePermission
+
+Table: `role_permissions`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `roleId` | UUID | FK to roles |
+| `permissionId` | UUID | FK to permissions |
+| `assignedAt` | Date | Assignment timestamp |
+| `assignedBy` | UUID | User who made the assignment |
+
+Composite primary key: `[roleId, permissionId]`
 
 ## Endpoints
 
-| Method | Path | Auth | Permission | Description |
-|--------|------|------|-----------|-------------|
-| GET | `/permissions` | JWT | (any) | List all permissions (paginated, filterable by name) |
-| GET | `/permissions/:id` | JWT | (any) | Get a single permission |
-| POST | `/permissions` | JWT | `create.permission` (super-admin) | Create a new permission |
-| DELETE | `/permissions/:id` | JWT | `delete.permission` (super-admin) | Delete a permission |
+All paths have `/api` prefix.
 
-## Default Permission Set (seeded)
+| Method | Path | Permission | Description |
+|--------|------|-----------|-------------|
+| GET | `/permissions` | `read_permission` | List all permissions |
+| GET | `/permissions/:id` | `read_permission` | Get a single permission by ID |
 
-Actions × Modules where modules are: `user`, `role`, `permission`, `organization`, `invitation`, `audit`.
+Note: Create/delete permission endpoints are not exposed via REST. Permissions are managed through the `Permission` enum in code and auto-seeded on bootstrap.
 
-Full set: `read.user`, `create.user`, `update.user`, `delete.user`, `read.role`, `create.role`, `update.role`, `delete.role`, `read.permission`, `create.permission`, `update.permission`, `delete.permission`, `read.organization`, `create.organization`, `update.organization`, `delete.organization`, `read.invitation`, `create.invitation`, `delete.invitation`, `read.audit`.
+## Permission List (28 total)
 
-## Domain Events
+| Resource | Permissions |
+|----------|------------|
+| `shipment` | `read.shipment`, `create.shipment`, `update.shipment`, `delete.shipment` |
+| `user` | `read.user`, `create.user`, `update.user`, `delete.user` |
+| `role` | `read.role`, `create.role`, `update.role`, `delete.role` |
+| `permission` | `read.permission`, `create.permission`, `update.permission`, `delete.permission` |
+| `organization` | `read.organization`, `create.organization`, `update.organization`, `delete.organization` |
+| `invitation` | `read.invitation`, `create.invitation`, `update.invitation`, `delete.invitation` |
+| `audit` | `read.audit` |
+| `google_sheet_config` | `read.google_sheet_config`, `create.google_sheet_config`, `update.google_sheet_config`, `delete.google_sheet_config` |
 
-| Event | Payload |
-|-------|---------|
-| `permission.created` | `{ permissionId, name, actorId }` |
-| `permission.deleted` | `{ permissionId, name, actorId }` |
+Defined in: `packages/shared/src/auth/index.ts`
+
+## File Structure
+
+```
+permissions/
+├── permissions.module.ts        # @Global() module
+├── permissions.controller.ts
+├── permissions.service.ts       # Auto-seeds on bootstrap, live DB permission checks
+├── entities/
+│   ├── permission.entity.ts     # permissions table
+│   └── role-permission.entity.ts # role_permissions table
+└── README.md
+```

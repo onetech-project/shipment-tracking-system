@@ -2,49 +2,71 @@
 
 Records immutable audit log entries for all critical operations via domain events. Writes are fire-and-forget and do not block the originating request.
 
+## Location
+
+`apps/backend/src/modules/audit/`
+
 ## Key Concepts
 
-- **Event-driven**: `AuditService` subscribes to domain events from all other modules via `@OnEvent()` decorators.
-- **Non-blocking**: Audit writes are executed asynchronously and do not impact response latency.
+- **Event-driven**: `AuditService` subscribes to ALL domain events from all other modules via `@OnEvent()` decorators. No module needs to explicitly call the audit service.
+- **Non-blocking**: Audit writes are executed asynchronously (fire-and-forget). Errors are logged but do not impact business logic or response latency.
 - **Immutable**: Audit records are insert-only. No update or delete endpoints exist.
-- **Partitioned table**: The `audit_logs` PostgreSQL table is range-partitioned by month for query performance.
-- **Super-admin read access**: Only super-admins can query the audit log.
+- **Super-admin read access**: Querying the audit log requires `read_audit` permission.
+- **Pagination**: Default 50 items per page. Returns `[AuditLog[], total]` tuple.
+
+## Entity
+
+Table: `audit_logs`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | UUID | Primary key |
+| `actorId` | UUID | ID of the user performing the action (nullable for public actions) |
+| `action` | string | Action type (e.g., `auth.login`, `user.created`) |
+| `resourceType` | string | Type of resource affected (e.g., `User`, `Organization`) |
+| `resourceId` | string | ID of the affected resource (nullable) |
+| `metadata` | JSONB | Additional context (IP, changes, role IDs, etc.) |
+| `ipAddress` | string | Client IP address |
+| `userAgent` | string | Client user agent |
+| `createdAt` | Date | Event timestamp |
 
 ## Endpoints
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/audit` | Super-Admin | List audit logs (paginated, returns `[AuditLog[], total]`) |
+All paths have `/api` prefix.
+
+| Method | Path | Permission | Description |
+|--------|------|-----------|-------------|
+| GET | `/audit` | `read_audit` | List audit logs (paginated, returns `[AuditLog[], total]`) |
 
 ### Query Parameters
 
-| Param | Type | Description |
-|-------|------|-------------|
-| `page` | number | Page number (default: 1) |
-| `limit` | number | Items per page (default: 50, max: 200) |
-| `action` | string | Filter by action type |
-| `entityType` | string | Filter by entity type |
-| `userId` | string | Filter by actor user ID |
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `page` | number | `1` | Page number |
+| `limit` | number | `50` | Items per page |
 
-## Audit Action Types (19 total)
+## Audited Events
 
-| Category | Actions |
-|----------|---------|
-| Auth | `auth.login.success`, `auth.login.failed`, `auth.login.locked`, `auth.logout`, `auth.token.refreshed` |
-| Organizations | `org.created`, `org.updated`, `org.deactivated` |
-| Users | `user.updated`, `user.inactivated`, `user.unlocked`, `user.role_changed` |
-| Invitations | `invitation.sent`, `invitation.accepted`, `invitation.cancelled` |
-| Roles | `role.created`, `role.updated`, `role.deleted`, `role.permissions_updated` |
-| Permissions | `permission.created`, `permission.deleted` |
+The `AuditService` subscribes to the following event categories:
 
-## Audit Log Record Fields
+| Category | Events |
+|----------|--------|
+| **Auth** | `auth.login`, `auth.login_failed`, `auth.logout`, `auth.logout_all` |
+| **Organization** | `organization.created`, `organization.updated`, `organization.deactivated` |
+| **User** | `user.created`, `user.updated`, `user.deactivated`, `user.password_changed`, `user.password_reset`, `user.unlocked` |
+| **Role** | `role.created`, `role.updated`, `role.deleted`, `role.assigned`, `role.revoked`, `role.permissions_updated` |
+| **Invitation** | `invitation.created`, `invitation.cancelled` |
+| **Google Sheet Config** | `google_sheet_config.created`, `google_sheet_config.updated`, `google_sheet_config.deleted` |
+| **Shipment Row** | `shipment_row.lock_changed` |
 
-| Field | Description |
-|-------|-------------|
-| `id` | UUID primary key |
-| `action` | One of the 19 action types above |
-| `userId` | ID of the user performing the action (nullable for public actions) |
-| `entityType` | Type of entity affected (e.g., `User`, `Organization`) |
-| `entityId` | ID of the affected entity |
-| `metadata` | JSONB — additional context (IP, changes, role IDs, etc.) |
-| `createdAt` | Timestamp of the event |
+## File Structure
+
+```
+audit/
+├── audit.module.ts
+├── audit.controller.ts
+├── audit.service.ts             # Subscribes to all domain events, fire-and-forget writes
+├── entities/
+│   └── audit-log.entity.ts      # audit_logs table
+└── README.md
+```

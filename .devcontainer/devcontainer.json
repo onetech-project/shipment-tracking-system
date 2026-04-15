@@ -23,12 +23,13 @@
         "cweijan.vscode-database-client2",
         "cweijan.dbclient-jdbc",
         "christian-kohler.npm-intellisense",
-        "ms-vscode.js-debug"
-      ]
-    }
+        "ms-vscode.js-debug",
+        "qwenlm.qwen-code-vscode-ide-companion",
+      ],
+    },
   },
 
   "postCreateCommand": "npm install",
 
-  "forwardPorts": [3000, 4000, 5432, 6379, 1025, 8025]
+  "forwardPorts": [3000, 4000, 5432, 6379, 1025, 8025],
 }
