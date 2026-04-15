@@ -9,6 +9,7 @@ const SHIPMENT_APP_SHARED = [
   'date',
   'lt_number',
   'to_number',
+  'is_locked',
   'origin',
   'destination',
   'gross_weight',
@@ -65,11 +66,12 @@ const CGK_EXTRA_APP = [
 ]
 
 export const COLUMN_KEYS: Record<string, string[]> = {
-  air_shipments_cgk: [...SHIPMENT_APP_SHARED, ...CGK_EXTRA_APP, ...SHIPMENT_SYSTEM],
-  air_shipments_sub: [...SHIPMENT_APP_SHARED, ...SHIPMENT_SYSTEM],
-  air_shipments_sda: [...SHIPMENT_APP_SHARED, ...SHIPMENT_SYSTEM],
+  air_shipments_cgk: [...new Set([...SHIPMENT_APP_SHARED, ...CGK_EXTRA_APP, ...SHIPMENT_SYSTEM])],
+  air_shipments_sub: [...new Set([...SHIPMENT_APP_SHARED, ...SHIPMENT_SYSTEM])],
+  air_shipments_sda: [...new Set([...SHIPMENT_APP_SHARED, ...SHIPMENT_SYSTEM])],
   rate_per_station: [
     // 'id',
+    'is_locked',
     'dc',
     'station',
     'origin_city',
@@ -85,19 +87,18 @@ export const COLUMN_KEYS: Record<string, string[]> = {
     'rate_spx_after_pph_disc',
     'sla',
     'lost_treshold',
-    'is_locked',
     'last_synced_at',
     'created_at',
     'updated_at',
   ],
   route_master: [
     // 'id',
+    'is_locked',
     'origin',
     'destination',
     'concat',
     'sla',
     'tjph',
-    'is_locked',
     'last_synced_at',
     'created_at',
     'updated_at',
@@ -110,5 +111,5 @@ export function colLabel(key: string): string {
 }
 
 // Always-visible (frozen) columns for CGK, SDA, SUB
-export const FROZEN_KEYS = ['date', 'lt_number', 'to_number']
+export const FROZEN_KEYS = ['date', 'lt_number', 'to_number', 'is_locked']
 export const airShipmentTable = ['air_shipments_cgk', 'air_shipments_sda', 'air_shipments_sub']

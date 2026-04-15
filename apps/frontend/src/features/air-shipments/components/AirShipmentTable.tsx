@@ -7,7 +7,7 @@ const DATETIME_COLS = new Set(['last_synced_at', 'created_at', 'updated_at'])
 
 /** Format a cell value for display. */
 function formatCell(props: CellProps): string | JSX.Element {
-  const { id, col, value, additional } = props
+  const { id, col, value, additional, index } = props
   if (col === 'date' && value) {
     const parsed = moment(
       String(value),
@@ -37,21 +37,23 @@ function formatCell(props: CellProps): string | JSX.Element {
  * Columns frozen on horizontal scroll, in left-to-right order with fixed widths (px).
  * These columns must appear first in the rendered column list for offsets to be correct.
  */
-const FROZEN_COLS: { key: string; width: number }[] = [
+const FROZEN_COLS: { key: string; width: number | undefined }[] = [
+  { key: '#', width: undefined },
   { key: 'date', width: 110 },
   { key: 'lt_number', width: 150 },
   { key: 'to_number', width: 170 },
+  { key: 'is_locked', width: undefined },
 ]
 
 const FROZEN_LEFT: Record<string, number> = FROZEN_COLS.reduce(
   (acc, col, idx) => {
-    acc[col.key] = FROZEN_COLS.slice(0, idx).reduce((s, c) => s + c.width, 0)
+    acc[col.key] = FROZEN_COLS.slice(0, idx).reduce((s, c) => s + (c.width ?? 0), 0)
     return acc
   },
   {} as Record<string, number>
 )
 
-const FROZEN_WIDTH: Record<string, number> = Object.fromEntries(
+const FROZEN_WIDTH: Record<string, number | undefined> = Object.fromEntries(
   FROZEN_COLS.map((c) => [c.key, c.width])
 )
 
@@ -79,11 +81,16 @@ function resolveColumns(
   if (visibleColumns) {
     cols = cols.filter((col) => visibleColumns.includes(col))
   }
-  return cols
+  return ['#', ...cols]
 }
 
 const isFrozen = (col: string, tableName?: string): boolean =>
   (tableName?.startsWith('air_shipments_') ?? false) && col in FROZEN_LEFT
+
+const scrollToTop = () => {
+  const container = document.getElementById('table-container')
+  if (container) container.scrollTo({ top: 0, behavior: 'smooth' })
+}
 
 interface AirShipmentTableProps {
   data: AirShipmentRow[]
@@ -125,7 +132,7 @@ export function AirShipmentTable({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="overflow-auto rounded-md border max-h-[70vh]">
+      <div id="table-container" className="overflow-auto rounded-md border max-h-[70vh]">
         <table className="min-w-full divide-y divide-border text-sm">
           <thead className="bg-muted sticky top-0 z-20">
             <tr>
@@ -187,8 +194,10 @@ export function AirShipmentTable({
                       className={[
                         'whitespace-nowrap px-4 py-2',
                         isFrozen(col, tableName) ? 'sticky z-10 bg-background' : '',
+                        col === 'is_locked' ? 'text-center' : '',
                       ].join(' ')}
                     >
+                      {col === '#' ? (meta.page - 1) * meta.limit + data.indexOf(row) + 1 : ''}
                       {row[col] !== undefined
                         ? formatCell({
                             id: row.id,
@@ -217,7 +226,7 @@ export function AirShipmentTable({
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
+      <div className="flex items-center justify-between text-sm">
         <span>
           {meta.total === 0
             ? 'No records'
@@ -225,14 +234,20 @@ export function AirShipmentTable({
         </span>
         <div className="flex gap-2">
           <button
-            onClick={() => onPageChange(meta.page - 1)}
+            onClick={() => {
+              scrollToTop()
+              onPageChange(meta.page - 1)
+            }}
             disabled={meta.page <= 1}
             className="rounded border px-3 py-1 disabled:opacity-40 hover:bg-muted"
           >
             Previous
           </button>
           <button
-            onClick={() => onPageChange(meta.page + 1)}
+            onClick={() => {
+              scrollToTop()
+              onPageChange(meta.page + 1)
+            }}
             disabled={meta.page >= meta.totalPages}
             className="rounded border px-3 py-1 disabled:opacity-40 hover:bg-muted"
           >
