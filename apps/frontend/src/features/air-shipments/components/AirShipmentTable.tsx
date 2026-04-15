@@ -7,7 +7,7 @@ const DATETIME_COLS = new Set(['last_synced_at', 'created_at', 'updated_at'])
 
 /** Format a cell value for display. */
 function formatCell(props: CellProps): string | JSX.Element {
-  const { id, col, value, additional, index } = props
+  const { id, col, value, additional } = props
   if (col === 'date' && value) {
     const parsed = moment(
       String(value),
