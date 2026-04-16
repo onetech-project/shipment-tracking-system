@@ -12,6 +12,8 @@ import { AuthService } from './auth.service'
 import { User } from '../users/entities/user.entity'
 import { RefreshToken } from './entities/refresh-token.entity'
 import { Profile } from '../organizations/entities/profile.entity'
+import { UserRole } from '../roles/entities/user-role.entity'
+import { Role } from '../roles/entities/role.entity'
 
 function makeUser(overrides: Partial<User> = {}): User {
   return Object.assign(new User(), {
@@ -50,6 +52,14 @@ describe('AuthService', () => {
     findOne: jest.fn(),
   }
 
+  const userRoleRepo = {
+    find: jest.fn().mockResolvedValue([]),
+  }
+
+  const roleRepo = {
+    find: jest.fn().mockResolvedValue([]),
+  }
+
   const jwtService = { sign: jest.fn(() => 'signed-token') }
 
   const config = {
@@ -66,6 +76,8 @@ describe('AuthService', () => {
         { provide: getRepositoryToken(User), useValue: userRepo },
         { provide: getRepositoryToken(RefreshToken), useValue: refreshTokenRepo },
         { provide: getRepositoryToken(Profile), useValue: profileRepo },
+        { provide: getRepositoryToken(UserRole), useValue: userRoleRepo },
+        { provide: getRepositoryToken(Role), useValue: roleRepo },
         { provide: JwtService, useValue: jwtService },
         { provide: ConfigService, useValue: config },
         { provide: EventEmitter2, useValue: eventEmitter },
