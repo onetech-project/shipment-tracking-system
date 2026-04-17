@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/playwright:v1.58.2-noble
+FROM mcr.microsoft.com/devcontainers/javascript-node:24
 
 RUN apt-get update && apt-get install -y \
   tzdata \
