@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnApplicationBootstrap, OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
+import { DataSource } from 'typeorm'
 import { google, sheets_v4 } from 'googleapis'
 import { normalizeHeader, makeUniqueHeaders } from './normalizer'
 import { coerceValue } from './coercer'
@@ -18,14 +19,48 @@ export class SheetsService implements OnApplicationBootstrap {
   private gsheetConfig: GoogleSheetConfig
   private sheetConfigs: SheetConfig[] = []
   private sheetsApi!: sheets_v4.Sheets
+  private tableSchemas: Map<string, string[]> = new Map()
   private spreadsheetId!: string
 
   constructor(
     private readonly config: ConfigService,
     @InjectRepository(GoogleSheetConfig)
     private readonly googleSheetConfigRepo: Repository<GoogleSheetConfig>,
-    private readonly eventEmitter: EventEmitter2
+    private readonly eventEmitter: EventEmitter2,
+    private readonly dataSource: DataSource
   ) {}
+
+  /**
+   * Reload table schemas from information_schema for tables matching air_shipment_%.
+   * If `tables` is provided, reload only those tables.
+   */
+  async reloadTableSchemas(tables?: string[]): Promise<void> {
+    try {
+      if (Array.isArray(tables) && tables.length > 0) {
+        for (const t of tables) {
+          const rows: { column_name: string }[] = await this.dataSource.query(
+            `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position`,
+            [t]
+          )
+          this.tableSchemas.set(t, rows.map((r) => r.column_name))
+        }
+      } else {
+        const rows: { table_name: string; column_name: string }[] = await this.dataSource.query(
+          `SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name LIKE 'air_shipment_%' ORDER BY table_name, ordinal_position`
+        )
+        this.tableSchemas.clear()
+        for (const r of rows) {
+          const arr = this.tableSchemas.get(r.table_name) ?? []
+          arr.push(r.column_name)
+          this.tableSchemas.set(r.table_name, arr)
+        }
+      }
+      this.logger.log('[SheetsService] reloadTableSchemas completed')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.logger.warn(`[SheetsService] Failed to reload table schemas: ${message}`)
+    }
+  }
 
   async onApplicationBootstrap(): Promise<void> {
     // this.spreadsheetId = this.config.getOrThrow<string>('GOOGLE_SHEET_ID')

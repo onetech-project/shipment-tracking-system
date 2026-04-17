@@ -8,6 +8,7 @@ import { AirShipmentSda } from './entities/air-shipment-sda.entity'
 import { RatePerStation } from './entities/rate-per-station.entity'
 import { RouteMaster } from './entities/route-master.entity'
 import { SheetsService } from './sheets.service'
+import { DynamicTableService } from './dynamic-table.service'
 import { AirShipmentsService } from './air-shipments.service'
 import { AirShipmentsController } from './air-shipments.controller'
 import { SyncNotificationGateway } from './sync-notification.gateway'
@@ -30,7 +31,7 @@ import { GoogleSheetSheetConfig } from './entities/google-sheet-sheet-config.ent
     ]),
   ],
   controllers: [AirShipmentsController],
-  providers: [SheetsService, AirShipmentsService, SyncNotificationGateway, SchedulerService],
-  exports: [AirShipmentsService],
+  providers: [SheetsService, DynamicTableService, AirShipmentsService, SyncNotificationGateway, SchedulerService],
+  exports: [AirShipmentsService, DynamicTableService],
 })
 export class AirShipmentsModule {}
