@@ -150,6 +150,33 @@ export class AirShipmentsService {
     return { affectedTables, totalUpserted }
   }
 
+  /** Run sync for a single configured table (used by per-table scheduler). */
+  async runSyncForTable(tableName: string) {
+    const startedAt = Date.now()
+    try {
+      const results = await this.sheetsService.fetchAllSheets()
+      const sheet = results.find((s) => s.tableName === tableName)
+      if (!sheet) {
+        this.logger.warn(`[sync] No sheet configured with tableName="${tableName}"`) 
+        return { tableName, upserted: 0, rowErrors: [], chunkErrors: [] }
+      }
+
+      const res = await this.processSingleSheet(sheet)
+
+      if (res.upserted > 0 && this.gateway) {
+        this.gateway.notifyClients({ affectedTables: [tableName], totalUpserted: res.upserted, syncedAt: new Date().toISOString() })
+      }
+
+      const durationMs = Date.now() - startedAt
+      this.logger.log(`[sync] Single-table sync for ${tableName} finished in ${durationMs}ms — ${res.upserted} upserted`)
+      return res
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.logger.error(`[sync] Single-table sync for ${tableName} failed: ${message}`, err instanceof Error ? err.stack : undefined)
+      return { tableName, upserted: 0, rowErrors: [], chunkErrors: [] }
+    }
+  }
+
   private async processSingleSheet(sheet: SheetResult): Promise<{
     tableName: string
     upserted: number
