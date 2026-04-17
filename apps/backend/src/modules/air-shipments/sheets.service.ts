@@ -42,7 +42,10 @@ export class SheetsService implements OnApplicationBootstrap {
             `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position`,
             [t]
           )
-          this.tableSchemas.set(t, rows.map((r) => r.column_name))
+          this.tableSchemas.set(
+            t,
+            rows.map((r) => r.column_name)
+          )
         }
       } else {
         const rows: { table_name: string; column_name: string }[] = await this.dataSource.query(

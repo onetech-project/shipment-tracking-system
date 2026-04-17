@@ -118,14 +118,14 @@ export class AirShipmentsController {
   }
 
   @Get(':tableName')
-  async findAllDynamic(
-    @Param('tableName') tableName: string,
-    @Query() query: AirShipmentQueryDto
-  ) {
+  async findAllDynamic(@Param('tableName') tableName: string, @Query() query: AirShipmentQueryDto) {
     try {
       return await this.service.findAllForTable(tableName, query as any)
     } catch (err: unknown) {
-      this.logger.error(`[GET /air-shipments/${tableName}]`, err instanceof Error ? err.stack : String(err))
+      this.logger.error(
+        `[GET /air-shipments/${tableName}]`,
+        err instanceof Error ? err.stack : String(err)
+      )
       throw new InternalServerErrorException()
     }
   }

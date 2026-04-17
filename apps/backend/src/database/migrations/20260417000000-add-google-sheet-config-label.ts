@@ -4,7 +4,9 @@ export class AddGoogleSheetConfigLabel20260417000000 implements MigrationInterfa
   name = 'AddGoogleSheetConfigLabel20260417000000'
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE "google_sheet_config" ADD COLUMN IF NOT EXISTS "label" TEXT`)
+    await queryRunner.query(
+      `ALTER TABLE "google_sheet_config" ADD COLUMN IF NOT EXISTS "label" TEXT`
+    )
 
     // Backfill reasonable label for existing rows using id prefix
     await queryRunner.query(`

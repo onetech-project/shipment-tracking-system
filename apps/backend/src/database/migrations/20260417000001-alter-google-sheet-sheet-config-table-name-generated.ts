@@ -13,8 +13,12 @@ export class AlterGoogleSheetSheetConfigTableNameGenerated20260417000001 impleme
     `)
 
     // Drop plain text column if it exists, then rename generated column
-    await queryRunner.query(`ALTER TABLE "google_sheet_sheet_config" DROP COLUMN IF EXISTS "table_name"`)
-    await queryRunner.query(`ALTER TABLE "google_sheet_sheet_config" RENAME COLUMN "table_name_new" TO "table_name"`)
+    await queryRunner.query(
+      `ALTER TABLE "google_sheet_sheet_config" DROP COLUMN IF EXISTS "table_name"`
+    )
+    await queryRunner.query(
+      `ALTER TABLE "google_sheet_sheet_config" RENAME COLUMN "table_name_new" TO "table_name"`
+    )
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
@@ -25,7 +29,11 @@ export class AlterGoogleSheetSheetConfigTableNameGenerated20260417000001 impleme
         'air_shipment_' || lower(regexp_replace("sheet_name", '[^a-zA-Z0-9]', '_', 'g'))
       )
     `)
-    await queryRunner.query(`ALTER TABLE "google_sheet_sheet_config" DROP COLUMN IF EXISTS "table_name"`)
-    await queryRunner.query(`ALTER TABLE "google_sheet_sheet_config" RENAME COLUMN "table_name_text" TO "table_name"`)
+    await queryRunner.query(
+      `ALTER TABLE "google_sheet_sheet_config" DROP COLUMN IF EXISTS "table_name"`
+    )
+    await queryRunner.query(
+      `ALTER TABLE "google_sheet_sheet_config" RENAME COLUMN "table_name_text" TO "table_name"`
+    )
   }
 }

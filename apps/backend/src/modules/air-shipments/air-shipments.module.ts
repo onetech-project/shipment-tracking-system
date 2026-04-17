@@ -31,7 +31,13 @@ import { GoogleSheetSheetConfig } from './entities/google-sheet-sheet-config.ent
     ]),
   ],
   controllers: [AirShipmentsController],
-  providers: [SheetsService, DynamicTableService, AirShipmentsService, SyncNotificationGateway, SchedulerService],
+  providers: [
+    SheetsService,
+    DynamicTableService,
+    AirShipmentsService,
+    SyncNotificationGateway,
+    SchedulerService,
+  ],
   exports: [AirShipmentsService, DynamicTableService],
 })
 export class AirShipmentsModule {}

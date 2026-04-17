@@ -18,10 +18,8 @@ export class SchedulerService implements OnApplicationShutdown {
   private readonly logger = new Logger(SchedulerService.name)
   // Per-table scheduling state
   private intervals: Map<string, NodeJS.Timeout> = new Map()
-  private state: Map<
-    string,
-    { isSyncing: boolean; consecutiveSkips: number; isPaused: boolean }
-  > = new Map()
+  private state: Map<string, { isSyncing: boolean; consecutiveSkips: number; isPaused: boolean }> =
+    new Map()
 
   constructor(
     private readonly airShipmentsService: AirShipmentsService,
@@ -44,7 +42,9 @@ export class SchedulerService implements OnApplicationShutdown {
     }
 
     if (!config.enabled) {
-      this.logger.warn('[scheduler] Google Sheets integration is disabled — scheduler will not start')
+      this.logger.warn(
+        '[scheduler] Google Sheets integration is disabled — scheduler will not start'
+      )
       return
     }
 
@@ -53,7 +53,9 @@ export class SchedulerService implements OnApplicationShutdown {
     for (const sc of config.sheetConfigs ?? []) {
       this.addIntervalForTable(sc.tableName, intervalMs)
     }
-    this.logger.log(`[scheduler] Initialized with ${this.intervals.size} per-table interval(s) at ${intervalMs}ms`)    
+    this.logger.log(
+      `[scheduler] Initialized with ${this.intervals.size} per-table interval(s) at ${intervalMs}ms`
+    )
   }
 
   private addIntervalForTable(tableName: string, intervalMs: number) {
@@ -79,11 +81,17 @@ export class SchedulerService implements OnApplicationShutdown {
   }
 
   private async tickFor(tableName: string): Promise<void> {
-    const st = this.state.get(tableName) ?? { isSyncing: false, consecutiveSkips: 0, isPaused: false }
+    const st = this.state.get(tableName) ?? {
+      isSyncing: false,
+      consecutiveSkips: 0,
+      isPaused: false,
+    }
 
     if (st.isSyncing) {
       st.consecutiveSkips++
-      this.logger.warn(`[scheduler:${tableName}] Sync still in progress — skip #${st.consecutiveSkips}`)
+      this.logger.warn(
+        `[scheduler:${tableName}] Sync still in progress — skip #${st.consecutiveSkips}`
+      )
       // Pause the interval after 2 consecutive skips
       if (st.consecutiveSkips >= 2 && !st.isPaused) {
         st.isPaused = true
@@ -181,7 +189,8 @@ export class SchedulerService implements OnApplicationShutdown {
     for (const [tableName, intervalRef] of this.intervals.entries()) {
       try {
         const key = `${INTERVAL_NAME}:${tableName}`
-        if (this.schedulerRegistry.doesExist('interval', key)) this.schedulerRegistry.deleteInterval(key)
+        if (this.schedulerRegistry.doesExist('interval', key))
+          this.schedulerRegistry.deleteInterval(key)
       } catch (_err) {
         // ignore
       }
@@ -207,7 +216,8 @@ export class SchedulerService implements OnApplicationShutdown {
       for (const tableName of Array.from(this.intervals.keys())) {
         try {
           const key = `${INTERVAL_NAME}:${tableName}`
-          if (this.schedulerRegistry.doesExist('interval', key)) this.schedulerRegistry.deleteInterval(key)
+          if (this.schedulerRegistry.doesExist('interval', key))
+            this.schedulerRegistry.deleteInterval(key)
         } catch (_err) {
           // ignore
         }
@@ -230,7 +240,8 @@ export class SchedulerService implements OnApplicationShutdown {
       if (!newTables.has(existingTable)) {
         try {
           const key = `${INTERVAL_NAME}:${existingTable}`
-          if (this.schedulerRegistry.doesExist('interval', key)) this.schedulerRegistry.deleteInterval(key)
+          if (this.schedulerRegistry.doesExist('interval', key))
+            this.schedulerRegistry.deleteInterval(key)
         } catch (_err) {
           // ignore
         }

@@ -9,7 +9,8 @@ export class AppLogger implements LoggerService {
   private readonly fileLogger: PinoLogger
 
   constructor() {
-    const level = process.env.LOG_LEVEL || (process.env.NODE_ENV === 'development' ? 'debug' : 'info')
+    const level =
+      process.env.LOG_LEVEL || (process.env.NODE_ENV === 'development' ? 'debug' : 'info')
 
     // Ensure logs directory exists
     const logsDir = process.env.LOG_DIR || join(process.cwd(), 'logs')
@@ -23,14 +24,17 @@ export class AppLogger implements LoggerService {
     // We require dynamically to avoid TS type issues if types are not present
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const rfs = require('rotating-file-stream')
-    const fileStream = rfs.createStream((time: any) => {
-      if (!time) return 'app.log'
-      const date = new Date(time)
-      const yyyy = date.getFullYear()
-      const mm = String(date.getMonth() + 1).padStart(2, '0')
-      const dd = String(date.getDate()).padStart(2, '0')
-      return `app-${yyyy}-${mm}-${dd}.log`
-    }, { interval: '1d', path: logsDir, compress: 'gzip' })
+    const fileStream = rfs.createStream(
+      (time: any) => {
+        if (!time) return 'app.log'
+        const date = new Date(time)
+        const yyyy = date.getFullYear()
+        const mm = String(date.getMonth() + 1).padStart(2, '0')
+        const dd = String(date.getDate()).padStart(2, '0')
+        return `app-${yyyy}-${mm}-${dd}.log`
+      },
+      { interval: '1d', path: logsDir, compress: 'gzip' }
+    )
 
     // Console logger (stdout)
     this.consoleLogger = pino({ level })

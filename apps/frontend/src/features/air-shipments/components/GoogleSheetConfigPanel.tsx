@@ -88,7 +88,10 @@ export function GoogleSheetConfigPanel() {
       // If sheetName changed and tableName is empty or equals previous normalized, auto-normalize
       if (field === 'sheetName' && typeof value === 'string') {
         const newTable = normalizeTableName(value)
-        if (!existing.tableName || existing.tableName === normalizeTableName(existing.sheetName || '')) {
+        if (
+          !existing.tableName ||
+          existing.tableName === normalizeTableName(existing.sheetName || '')
+        ) {
           existing.tableName = newTable
         }
         existing.sheetName = value
@@ -178,7 +181,9 @@ export function GoogleSheetConfigPanel() {
           headerRow: s.headerRow,
           uniqueKey: Array.isArray(s.uniqueKey)
             ? s.uniqueKey
-            : String(s.uniqueKey || '').split(',').map((x: string) => x.trim()),
+            : String(s.uniqueKey || '')
+                .split(',')
+                .map((x: string) => x.trim()),
           skipNullCols: s.skipNullCols,
         })),
       }

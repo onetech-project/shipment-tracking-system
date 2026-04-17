@@ -37,7 +37,7 @@ export class AirShipmentsService {
     private readonly googleSheetSheetConfigRepo: Repository<GoogleSheetSheetConfig>,
     private readonly dynamicTableService: DynamicTableService,
     private readonly eventEmitter: EventEmitter2, // inject EventEmitter2
-    private readonly dataSource: DataSource,
+    private readonly dataSource: DataSource
   ) {
     this.repoMap = new Map<string, Repository<any>>([
       ['air_shipments_cgk', this.cgkRepo],
@@ -54,7 +54,13 @@ export class AirShipmentsService {
    */
   async findAllForTable(
     tableName: string,
-    { page = 1, limit = 50, sortBy = 'id', sortOrder = 'asc', search }: { page: number; limit: number; sortBy: string; sortOrder: 'asc' | 'desc'; search?: string }
+    {
+      page = 1,
+      limit = 50,
+      sortBy = 'id',
+      sortOrder = 'asc',
+      search,
+    }: { page: number; limit: number; sortBy: string; sortOrder: 'asc' | 'desc'; search?: string }
   ) {
     // Basic validation: only allow tables with air_shipments_ prefix
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
@@ -77,7 +83,9 @@ export class AirShipmentsService {
     if (search && String(search).trim()) {
       const s = `%${String(search).trim()}%`
       const textCols = columns // choose text-like columns heuristically
-        .filter((c) => c !== 'extra_fields' && c !== 'id' && c !== 'is_locked' && c !== 'last_synced_at')
+        .filter(
+          (c) => c !== 'extra_fields' && c !== 'id' && c !== 'is_locked' && c !== 'last_synced_at'
+        )
         .slice(0, 5) // limit to first few to avoid huge queries
       const orConds = textCols.map((c, idx) => `${c}::text ILIKE $${params.length + idx + 1}`)
       params.push(...textCols.map(() => s))
@@ -94,7 +102,10 @@ export class AirShipmentsService {
       [...params, limit, offset]
     )
 
-    const countRes = await this.dataSource.query(`SELECT count(*)::int FROM "${tableName}" ${whereSql}`, params)
+    const countRes = await this.dataSource.query(
+      `SELECT count(*)::int FROM "${tableName}" ${whereSql}`,
+      params
+    )
     const total = countRes?.[0]?.count ?? 0
 
     return { data: rows, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } }
@@ -158,7 +169,7 @@ export class AirShipmentsService {
       const results = await this.sheetsService.fetchAllSheets()
       const sheet = results.find((s) => s.tableName === tableName)
       if (!sheet) {
-        this.logger.warn(`[sync] No sheet configured with tableName="${tableName}"`) 
+        this.logger.warn(`[sync] No sheet configured with tableName="${tableName}"`)
         return { tableName, upserted: 0, rowErrors: [], chunkErrors: [] }
       }
 
@@ -174,11 +185,16 @@ export class AirShipmentsService {
       }
 
       const durationMs = Date.now() - startedAt
-      this.logger.log(`[sync] Single-table sync for ${tableName} finished in ${durationMs}ms — ${res.upserted} upserted`)
+      this.logger.log(
+        `[sync] Single-table sync for ${tableName} finished in ${durationMs}ms — ${res.upserted} upserted`
+      )
       return res
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
-      this.logger.error(`[sync] Single-table sync for ${tableName} failed: ${message}`, err instanceof Error ? err.stack : undefined)
+      this.logger.error(
+        `[sync] Single-table sync for ${tableName} failed: ${message}`,
+        err instanceof Error ? err.stack : undefined
+      )
       return { tableName, upserted: 0, rowErrors: [], chunkErrors: [] }
     }
   }
@@ -232,7 +248,6 @@ export class AirShipmentsService {
         lockedSkipped++
         continue
       }
-
 
       // Split known and unknown fields
       const regularFields: Record<string, unknown> = {}
@@ -593,7 +608,9 @@ export class AirShipmentsService {
         void Promise.allSettled(toEnsure.map((s) => this.dynamicTableService.ensureTable(s as any)))
       }
     } catch (err) {
-      this.logger.warn(`[Sync] Failed to ensure tables after config update: ${err instanceof Error ? err.message : String(err)}`)
+      this.logger.warn(
+        `[Sync] Failed to ensure tables after config update: ${err instanceof Error ? err.message : String(err)}`
+      )
     }
     // config.sheetConfigs = sheetConfigs.map((sc) =>
     //   this.googleSheetSheetConfigRepo.create({

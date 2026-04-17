@@ -3,28 +3,28 @@
  *
  * socket.io-client is mocked to avoid actual network connections.
  */
-import React from 'react';
-import { render, act } from '@testing-library/react';
-import { useSyncNotification } from './useSyncNotification';
+import React from 'react'
+import { render, act } from '@testing-library/react'
+import { useSyncNotification } from './useSyncNotification'
 
 // Mock socket.io-client
-const mockOn = jest.fn();
-const mockOff = jest.fn();
-const mockDisconnect = jest.fn();
+const mockOn = jest.fn()
+const mockOff = jest.fn()
+const mockDisconnect = jest.fn()
 const mockSocket = {
   on: mockOn,
   off: mockOff,
   disconnect: mockDisconnect,
   connected: false,
-};
+}
 jest.mock('socket.io-client', () => ({
   io: jest.fn(() => mockSocket),
-}));
+}))
 
 describe('useSyncNotification', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
-  });
+    jest.clearAllMocks()
+  })
 
   function renderUseSyncNotification() {
     const result: { current: any } = { current: undefined }
@@ -77,7 +77,11 @@ describe('useSyncNotification', () => {
     const syncHandler = mockOn.mock.calls.find(([event]) => event === 'sync:update')?.[1]
     expect(syncHandler).toBeDefined()
 
-    const payload = { affectedTables: ['air_shipments_cgk'], totalUpserted: 5, syncedAt: '2026-04-08T12:00:00.000Z' }
+    const payload = {
+      affectedTables: ['air_shipments_cgk'],
+      totalUpserted: 5,
+      syncedAt: '2026-04-08T12:00:00.000Z',
+    }
     act(() => {
       syncHandler(payload)
     })

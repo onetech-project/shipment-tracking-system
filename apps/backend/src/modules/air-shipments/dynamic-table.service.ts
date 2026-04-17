@@ -8,7 +8,10 @@ import { quoteIdentifier } from '@shared/quoteIdentifier'
 export class DynamicTableService {
   private readonly logger = new Logger(DynamicTableService.name)
 
-  constructor(private readonly dataSource: DataSource, private readonly sheetsService: SheetsService) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly sheetsService: SheetsService
+  ) {}
 
   /**
    * Ensure the physical Postgres table exists for a sheet config.

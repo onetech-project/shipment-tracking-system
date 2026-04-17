@@ -26,7 +26,11 @@ describe('AirShipmentsController', () => {
   })
 
   it('createGoogleSheetConfig delegates to service', async () => {
-    const dto = { sheetLink: 'https://docs.google.com/spreadsheets/d/ABC', syncInterval: 15, enabled: true }
+    const dto = {
+      sheetLink: 'https://docs.google.com/spreadsheets/d/ABC',
+      syncInterval: 15,
+      enabled: true,
+    }
     const res = await controller.createGoogleSheetConfig(dto as any)
     expect(service.createGoogleSheetConfig).toHaveBeenCalledWith(dto)
     expect(res).toEqual({ id: 'cfg-1' })
