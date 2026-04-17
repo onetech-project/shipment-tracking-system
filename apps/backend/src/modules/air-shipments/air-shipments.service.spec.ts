@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing'
 import { getRepositoryToken } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
+import { Repository, DataSource } from 'typeorm'
 import { AirShipmentsService } from './air-shipments.service'
 import { SheetsService } from './sheets.service'
 import { DynamicTableService } from './dynamic-table.service'
@@ -108,6 +108,7 @@ describe('AirShipmentsService — runSyncCycle()', () => {
         { provide: getRepositoryToken(GoogleSheetConfig), useValue: makeRepo() },
         { provide: getRepositoryToken(GoogleSheetSheetConfig), useValue: makeRepo() },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+        { provide: DataSource, useValue: { query: jest.fn().mockResolvedValue([]) } },
       ],
     }).compile()
 

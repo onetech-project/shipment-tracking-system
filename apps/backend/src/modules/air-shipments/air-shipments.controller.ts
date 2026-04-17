@@ -116,4 +116,17 @@ export class AirShipmentsController {
   ): Promise<string> {
     return this.service.lockRow(tableName, id, locked)
   }
+
+  @Get(':tableName')
+  async findAllDynamic(
+    @Param('tableName') tableName: string,
+    @Query() query: AirShipmentQueryDto
+  ) {
+    try {
+      return await this.service.findAllForTable(tableName, query as any)
+    } catch (err: unknown) {
+      this.logger.error(`[GET /air-shipments/${tableName}]`, err instanceof Error ? err.stack : String(err))
+      throw new InternalServerErrorException()
+    }
+  }
 }

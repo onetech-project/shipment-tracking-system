@@ -1,6 +1,6 @@
-import { Injectable, Logger, Optional } from '@nestjs/common'
+import { Injectable, Logger, Optional, BadRequestException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
+import { Repository, DataSource } from 'typeorm'
 import { SheetsService } from './sheets.service'
 import { DynamicTableService } from './dynamic-table.service'
 import { SyncNotificationGateway } from './sync-notification.gateway'
@@ -36,7 +36,8 @@ export class AirShipmentsService {
     @InjectRepository(GoogleSheetSheetConfig)
     private readonly googleSheetSheetConfigRepo: Repository<GoogleSheetSheetConfig>,
     private readonly dynamicTableService: DynamicTableService,
-    private readonly eventEmitter: EventEmitter2 // inject EventEmitter2
+    private readonly eventEmitter: EventEmitter2, // inject EventEmitter2
+    private readonly dataSource: DataSource,
   ) {
     this.repoMap = new Map<string, Repository<any>>([
       ['air_shipments_cgk', this.cgkRepo],
@@ -45,6 +46,58 @@ export class AirShipmentsService {
       ['rate_per_station', this.rateRepo],
       ['route_master', this.routeRepo],
     ])
+  }
+
+  /**
+   * Paginated read for dynamic air_shipment_* tables.
+   * Allows basic paging and sorting. Validates table name to prevent SQL injection.
+   */
+  async findAllForTable(
+    tableName: string,
+    { page = 1, limit = 50, sortBy = 'id', sortOrder = 'asc', search }: { page: number; limit: number; sortBy: string; sortOrder: 'asc' | 'desc'; search?: string }
+  ) {
+    // Basic validation: only allow tables with air_shipments_ prefix
+    if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
+      throw new BadRequestException('Invalid table name')
+    }
+
+    // Load columns from information_schema
+    const cols: { column_name: string }[] = await this.dataSource.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position`,
+      [tableName]
+    )
+    const columns = cols.map((c) => c.column_name)
+
+    const safeSortBy = columns.includes(sortBy) ? sortBy : 'id'
+    const offset = (page - 1) * limit
+
+    // Basic search support: search against text columns and extra_fields JSONB via ILIKE
+    const whereClauses: string[] = []
+    const params: any[] = []
+    if (search && String(search).trim()) {
+      const s = `%${String(search).trim()}%`
+      const textCols = columns // choose text-like columns heuristically
+        .filter((c) => c !== 'extra_fields' && c !== 'id' && c !== 'is_locked' && c !== 'last_synced_at')
+        .slice(0, 5) // limit to first few to avoid huge queries
+      const orConds = textCols.map((c, idx) => `${c}::text ILIKE $${params.length + idx + 1}`)
+      params.push(...textCols.map(() => s))
+      // extra_fields JSONB text search
+      orConds.push(`${'extra_fields'}::text ILIKE $${params.length + 1}`)
+      params.push(s)
+      whereClauses.push(`(${orConds.join(' OR ')})`)
+    }
+
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
+
+    const rows = await this.dataSource.query(
+      `SELECT * FROM "${tableName}" ${whereSql} ORDER BY "${safeSortBy}" ${sortOrder.toUpperCase()} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset]
+    )
+
+    const countRes = await this.dataSource.query(`SELECT count(*)::int FROM "${tableName}" ${whereSql}`, params)
+    const total = countRes?.[0]?.count ?? 0
+
+    return { data: rows, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } }
   }
 
   /** Returns the TypeORM Repository for a given table name. */
