@@ -144,6 +144,7 @@ export class AirShipmentsService {
         affectedTables,
         totalUpserted,
         syncedAt: new Date().toISOString(),
+        spreadsheetLabel: this.sheetsService.getGsheetConfig()?.label,
       })
     }
 
@@ -164,7 +165,12 @@ export class AirShipmentsService {
       const res = await this.processSingleSheet(sheet)
 
       if (res.upserted > 0 && this.gateway) {
-        this.gateway.notifyClients({ affectedTables: [tableName], totalUpserted: res.upserted, syncedAt: new Date().toISOString() })
+        this.gateway.notifyClients({
+          affectedTables: [tableName],
+          totalUpserted: res.upserted,
+          syncedAt: new Date().toISOString(),
+          spreadsheetLabel: this.sheetsService.getGsheetConfig()?.label,
+        })
       }
 
       const durationMs = Date.now() - startedAt

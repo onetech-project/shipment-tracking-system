@@ -5,22 +5,24 @@ import { apiClient } from '@/shared/api/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { FormField } from '@/components/shared/form-field'
+import { normalizeTableName } from '../utils/normalizeTableName'
 
-// interface SheetConfig {
-//   id?: string
-//   sheetName: string
-//   tableName: string
-//   headerRow: number
-//   uniqueKey: string[]
-//   skipNullCols: boolean
-// }
+interface SheetConfig {
+  id?: string
+  sheetName: string
+  tableName: string
+  headerRow: number
+  uniqueKey: string[]
+  skipNullCols: boolean
+}
 
 interface GoogleSheetConfig {
   id?: string
+  label?: string
   sheetLink: string
   syncInterval: number
   enabled: boolean
-  // sheetConfigs: SheetConfig[]
+  sheetConfigs?: SheetConfig[]
 }
 
 export function GoogleSheetConfigPanel() {
@@ -32,7 +34,7 @@ export function GoogleSheetConfigPanel() {
     sheetLink: '',
     syncInterval: 15,
     enabled: false,
-    // sheetConfigs: [],
+    sheetConfigs: [],
   } as GoogleSheetConfig)
 
   useEffect(() => {
@@ -41,16 +43,18 @@ export function GoogleSheetConfigPanel() {
       .then((res) =>
         setForm({
           id: res.data.id,
+          label: res.data.label,
           sheetLink: res.data.sheetLink,
-          syncInterval: res.data.syncInterval,
-          enabled: res.data.enabled,
-          // sheetConfigs: res.data.sheetConfigs.map((c: SheetConfig) => ({
-          //   sheetName: c.sheetName,
-          //   tableName: c.tableName,
-          //   headerRow: c.headerRow,
-          //   uniqueKey: Array.isArray(c.uniqueKey) ? c.uniqueKey : JSON.parse(c.uniqueKey),
-          //   skipNullCols: c.skipNullCols,
-          // })),
+          syncInterval: res.data.syncInterval ?? 15,
+          enabled: res.data.enabled ?? false,
+          sheetConfigs: (res.data.sheetConfigs || []).map((c: any) => ({
+            id: c.id,
+            sheetName: c.sheetName,
+            tableName: c.tableName,
+            headerRow: c.headerRow ?? 1,
+            uniqueKey: Array.isArray(c.uniqueKey) ? c.uniqueKey : JSON.parse(c.uniqueKey || '[]'),
+            skipNullCols: !!c.skipNullCols,
+          })),
         })
       )
       .catch(() => setForm({} as GoogleSheetConfig)) // set empty form if no config found or error occurs
@@ -69,6 +73,56 @@ export function GoogleSheetConfigPanel() {
 
   const handleChange = (field: keyof GoogleSheetConfig, value: string | number | boolean) => {
     setForm((prev) => (prev ? { ...prev, [field]: value } : prev))
+  }
+
+  const handleSheetConfigChange = (
+    idx: number,
+    field: keyof SheetConfig,
+    value: string | number | boolean | string[]
+  ) => {
+    setForm((prev) => {
+      if (!prev) return prev
+      const sheetConfigs = [...(prev.sheetConfigs || [])]
+      const existing = { ...(sheetConfigs[idx] || {}) }
+
+      // If sheetName changed and tableName is empty or equals previous normalized, auto-normalize
+      if (field === 'sheetName' && typeof value === 'string') {
+        const newTable = normalizeTableName(value)
+        if (!existing.tableName || existing.tableName === normalizeTableName(existing.sheetName || '')) {
+          existing.tableName = newTable
+        }
+        existing.sheetName = value
+      } else if (field === 'uniqueKey' && typeof value === 'string') {
+        existing.uniqueKey = (value as string).split(',').map((s) => s.trim())
+      } else {
+        ;(existing as any)[field] = value
+      }
+
+      sheetConfigs[idx] = existing as SheetConfig
+      return { ...prev, sheetConfigs }
+    })
+  }
+
+  const handleAddSheet = () => {
+    setForm((prev) =>
+      prev
+        ? {
+            ...prev,
+            sheetConfigs: [
+              ...(prev.sheetConfigs || []),
+              { sheetName: '', tableName: '', headerRow: 1, uniqueKey: [''], skipNullCols: true },
+            ],
+          }
+        : prev
+    )
+  }
+
+  const handleRemoveSheet = (idx: number) => {
+    setForm((prev) => {
+      if (!prev) return prev
+      const sheetConfigs = (prev.sheetConfigs || []).filter((_, i) => i !== idx)
+      return { ...prev, sheetConfigs }
+    })
   }
 
   // const handleSheetConfigChange = (
@@ -111,31 +165,49 @@ export function GoogleSheetConfigPanel() {
     setLoading(true)
     setError(null)
     let endpoint: string
-    let method: 'post' | 'put' // using POST for both create and update for simplicity
+    let method: 'post' | 'put'
     try {
+      const payload: any = {
+        label: form.label,
+        sheetLink: form.sheetLink,
+        syncInterval: form.syncInterval,
+        enabled: form.enabled,
+        sheetConfigs: (form.sheetConfigs || []).map((s: any) => ({
+          sheetName: s.sheetName,
+          tableName: s.tableName,
+          headerRow: s.headerRow,
+          uniqueKey: Array.isArray(s.uniqueKey)
+            ? s.uniqueKey
+            : String(s.uniqueKey || '').split(',').map((x: string) => x.trim()),
+          skipNullCols: s.skipNullCols,
+        })),
+      }
+
       if (form.id) {
         endpoint = `/air-shipments/google-sheet-config/${form.id}`
         method = 'put'
-        delete form.id // remove id from payload for update
       } else {
         endpoint = '/air-shipments/google-sheet-config'
         method = 'post'
       }
-      await apiClient[method](endpoint, form)
+
+      await apiClient[method](endpoint, payload)
       const res = await apiClient.get('/air-shipments/google-sheet-config')
       setEditMode(false)
       setForm({
         id: res.data.id,
+        label: res.data.label,
         sheetLink: res.data.sheetLink,
         syncInterval: res.data.syncInterval,
         enabled: res.data.enabled,
-        // sheetConfigs: res.data.sheetConfigs.map((c: SheetConfig) => ({
-        //   sheetName: c.sheetName,
-        //   tableName: c.tableName,
-        //   headerRow: c.headerRow,
-        //   uniqueKey: Array.isArray(c.uniqueKey) ? c.uniqueKey : JSON.parse(c.uniqueKey),
-        //   skipNullCols: c.skipNullCols,
-        // })),
+        sheetConfigs: (res.data.sheetConfigs || []).map((c: any) => ({
+          id: c.id,
+          sheetName: c.sheetName,
+          tableName: c.tableName,
+          headerRow: c.headerRow,
+          uniqueKey: Array.isArray(c.uniqueKey) ? c.uniqueKey : JSON.parse(c.uniqueKey || '[]'),
+          skipNullCols: c.skipNullCols,
+        })),
       })
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e)
@@ -152,6 +224,13 @@ export function GoogleSheetConfigPanel() {
     <div>
       <h2 className="text-lg font-medium mb-5">Google Sheet Integration Config</h2>
       <div className="space-y-4">
+        <FormField label="Label" required>
+          <Input
+            value={form?.label || ''}
+            onChange={(e) => handleChange('label', e.target.value)}
+            disabled={!editMode}
+          />
+        </FormField>
         <FormField label="Google Sheet Link" required>
           <Input
             value={form?.sheetLink || ''}
@@ -175,7 +254,7 @@ export function GoogleSheetConfigPanel() {
             disabled={!editMode}
           />
         </FormField>
-        {/* <div>
+        <div>
           <div className="flex flex-col">
             <span className="font-semibold">Sheet Configs</span>
           </div>
@@ -208,19 +287,18 @@ export function GoogleSheetConfigPanel() {
                 </FormField>
                 <FormField label="Unique Key (comma separated)" required>
                   <Input
-                    value={sheet.uniqueKey.join(',')}
-                    onChange={(e) =>
-                      handleSheetConfigChange(
-                        idx,
-                        'uniqueKey',
-                        e.target.value.split(',').map((s) => s.trim())
-                      )
-                    }
+                    value={sheet.uniqueKey?.join(',') || ''}
+                    onChange={(e) => handleSheetConfigChange(idx, 'uniqueKey', e.target.value)}
                     disabled={!editMode}
                   />
                 </FormField>
                 <FormField label="Skip Null Cols">
-                  <input type="checkbox" checked={sheet.skipNullCols} disabled />
+                  <input
+                    type="checkbox"
+                    checked={!!sheet.skipNullCols}
+                    onChange={(e) => handleSheetConfigChange(idx, 'skipNullCols', e.target.checked)}
+                    disabled={!editMode}
+                  />
                 </FormField>
                 <Button
                   className="ms-auto my-auto"
@@ -239,7 +317,7 @@ export function GoogleSheetConfigPanel() {
               + Add Sheet
             </Button>
           </div>
-        </div> */}
+        </div>
         {editMode ? (
           <div className="flex gap-2 mt-4">
             <Button onClick={handleSave} disabled={!editMode}>

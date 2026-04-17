@@ -1,4 +1,4 @@
-import { IsArray, IsDateString, IsNumber, IsString } from 'class-validator';
+import { IsArray, IsDateString, IsNumber, IsString, IsOptional } from 'class-validator';
 
 export class SyncNotificationDto {
   @IsArray()
@@ -10,4 +10,8 @@ export class SyncNotificationDto {
 
   @IsDateString()
   syncedAt!: string;
+
+  @IsOptional()
+  @IsString()
+  spreadsheetLabel?: string
 }

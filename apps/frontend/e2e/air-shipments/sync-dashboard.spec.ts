@@ -17,11 +17,12 @@ test.describe('Air Shipments Dashboard', () => {
     await loginAndNavigate(page, '/air-shipments/cgk');
     const nav = page.locator('[data-sidebar]');
     await expect(nav.getByText(/air shipments/i)).toBeVisible();
-    await expect(nav.getByRole('link', { name: 'CGK' })).toBeVisible();
-    await expect(nav.getByRole('link', { name: 'SUB' })).toBeVisible();
-    await expect(nav.getByRole('link', { name: 'SDA' })).toBeVisible();
-    await expect(nav.getByRole('link', { name: 'Rate' })).toBeVisible();
-    await expect(nav.getByRole('link', { name: 'Routes' })).toBeVisible();
+    // Station links are rendered in the page content navigation
+    await expect(page.getByRole('link', { name: 'CGK' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'SUB' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'SDA' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Rate' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Routes' })).toBeVisible();
   });
 
   test('CGK page renders a table with pagination controls', async ({ page }) => {

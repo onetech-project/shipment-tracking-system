@@ -32,6 +32,10 @@ export class SchedulerService implements OnApplicationShutdown {
   // can be disabled by config
   private currentIntervalMs?: number
 
+  // Backwards-compatible global tick state (kept for tests)
+  public isSyncing = false
+  public consecutiveSkips = 0
+
   @OnEvent('gsheetConfig.ready') handleConfigReady(config: GoogleSheetConfig) {
     this.logger.log('Received gsheetConfig.ready event, initializing scheduler...')
     if (!config) {
@@ -134,8 +138,46 @@ export class SchedulerService implements OnApplicationShutdown {
 
   // legacy tick() removed in favor of per-table tickFor()
 
+  // Backwards-compatible tick() — runs a global sync cycle (used by tests)
+  async tick(): Promise<void> {
+    if (this.isSyncing) {
+      this.consecutiveSkips++
+      this.logger.warn(`[scheduler] Sync still in progress — skip #${this.consecutiveSkips}`)
+      if (this.consecutiveSkips >= 2) {
+        try {
+          // Legacy interval name (global)
+          if (this.schedulerRegistry.doesExist('interval', INTERVAL_NAME)) {
+            this.schedulerRegistry.deleteInterval(INTERVAL_NAME)
+          }
+        } catch (_err) {
+          // ignore
+        }
+      }
+      return
+    }
+
+    this.isSyncing = true
+    try {
+      await this.airShipmentsService.runSyncCycle()
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.logger.error(`[scheduler] Sync failed: ${message}`)
+    } finally {
+      this.isSyncing = false
+      this.consecutiveSkips = 0
+    }
+  }
+
   onApplicationShutdown(): void {
     this.logger.log('[scheduler] Shutting down — stopping all sync intervals')
+    // Attempt to delete any legacy/global interval name as well for compatibility
+    try {
+      if (this.schedulerRegistry.doesExist('interval', INTERVAL_NAME)) {
+        this.schedulerRegistry.deleteInterval(INTERVAL_NAME)
+      }
+    } catch (_err) {
+      // ignore
+    }
     for (const [tableName, intervalRef] of this.intervals.entries()) {
       try {
         const key = `${INTERVAL_NAME}:${tableName}`

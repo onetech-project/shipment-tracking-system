@@ -4,9 +4,13 @@ import { ValidationPipe } from '@nestjs/common'
 import * as cookieParser from 'cookie-parser'
 import { IoAdapter } from '@nestjs/platform-socket.io'
 import { AppModule } from './app.module'
+import { AppLogger } from './common/logging/app-logger.service'
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule)
+  // Use custom AppLogger (pino) as Nest's logger
+  const appLogger = app.get(AppLogger)
+  app.useLogger(appLogger)
   const whitelist = (process.env.CORS_ORIGIN ?? 'http://localhost:3000')
     .split(',')
     .map((origin) => origin.trim())
