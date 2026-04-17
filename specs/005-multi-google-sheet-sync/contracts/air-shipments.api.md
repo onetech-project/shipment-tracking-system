@@ -9,13 +9,13 @@
 
 ## Query Parameters
 
-| Param      | Type   | Default | Description |
-| ---------- | ------ | ------- | ----------- |
-| `page`     | number | `1`     | 1-based page index |
-| `limit`    | number | `50`    | Rows per page (max 200) |
-| `sortBy`   | string | `id`    | Column name to sort by (must be a known column) |
-| `sortOrder`| string | `asc`   | `asc` or `desc` |
-| `search`   | string | —       | Optional full-text-like search (implemented as `ILIKE` across TEXT columns)
+| Param       | Type   | Default | Description                                                                 |
+| ----------- | ------ | ------- | --------------------------------------------------------------------------- |
+| `page`      | number | `1`     | 1-based page index                                                          |
+| `limit`     | number | `50`    | Rows per page (max 200)                                                     |
+| `sortBy`    | string | `id`    | Column name to sort by (must be a known column)                             |
+| `sortOrder` | string | `asc`   | `asc` or `desc`                                                             |
+| `search`    | string | —       | Optional full-text-like search (implemented as `ILIKE` across TEXT columns) |
 
 ---
 
@@ -23,7 +23,9 @@
 
 ```json
 {
-  "data": [ /* row objects */ ],
+  "data": [
+    /* row objects */
+  ],
   "meta": {
     "page": 1,
     "limit": 50,
@@ -34,6 +36,7 @@
 ```
 
 Each row object includes:
+
 - Fixed system columns: `id`, `is_locked`, `last_synced_at`, `created_at`, `updated_at`
 - Dedicated unique-key columns (e.g., `to_number`) as top-level fields
 - `extra_data` JSON object containing all remaining unknown columns from the sheet

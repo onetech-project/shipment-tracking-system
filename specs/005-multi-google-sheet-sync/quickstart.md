@@ -46,6 +46,7 @@ npm run migration:run
 ```
 
 This should create/alter:
+
 - `google_sheet_config` (adds `label` column)
 - `google_sheet_sheet_config` (adds GENERATED `table_name` column)
 

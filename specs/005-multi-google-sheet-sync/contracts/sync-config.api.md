@@ -10,11 +10,13 @@
 ## Endpoints
 
 ### `GET /sync-config/spreadsheets`
+
 List all spreadsheet configs with nested sheets.
 
 **Query params**: none
 
 **Response 200**:
+
 ```json
 [
   {
@@ -43,9 +45,11 @@ List all spreadsheet configs with nested sheets.
 ---
 
 ### `POST /sync-config/spreadsheets`
+
 Create a spreadsheet config.
 
 **Body**:
+
 ```json
 {
   "label": "Delivery Feeds",
@@ -60,6 +64,7 @@ Create a spreadsheet config.
 ---
 
 ### `PATCH /sync-config/spreadsheets/:id`
+
 Update spreadsheet config fields (label, interval_seconds, is_enabled).
 
 **Body**: partial of POST body
@@ -69,6 +74,7 @@ Update spreadsheet config fields (label, interval_seconds, is_enabled).
 ---
 
 ### `DELETE /sync-config/spreadsheets/:id`
+
 Deletes the spreadsheet config and cascades to `google_sheet_sheet_config` rows.
 
 **Note**: Per spec, PostgreSQL tables created for sheets are NOT dropped automatically.
@@ -78,6 +84,7 @@ Deletes the spreadsheet config and cascades to `google_sheet_sheet_config` rows.
 ---
 
 ### `GET /sync-config/spreadsheets/:id/sheets`
+
 List sheets for a spreadsheet.
 
 **Response 200**: array of sheet objects (same shape as nested sheets above).
@@ -85,9 +92,11 @@ List sheets for a spreadsheet.
 ---
 
 ### `POST /sync-config/spreadsheets/:id/sheets`
+
 Create a sheet config. This triggers `DynamicTableService.ensureTable()` after DB save.
 
 **Body**:
+
 ```json
 {
   "sheet_name": "Delivery Routes",
@@ -102,6 +111,7 @@ Create a sheet config. This triggers `DynamicTableService.ensureTable()` after D
 ---
 
 ### `PATCH /sync-config/sheets/:id`
+
 Update a sheet config. If `unique_keys` change, API triggers `DynamicTableService.ensureTable()` to add missing columns and constraints.
 
 **Body**: partial sheet object
@@ -111,6 +121,7 @@ Update a sheet config. If `unique_keys` change, API triggers `DynamicTableServic
 ---
 
 ### `DELETE /sync-config/sheets/:id`
+
 Delete sheet config (does not drop the underlying PostgreSQL table).
 
 **Response 204**: no content

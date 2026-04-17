@@ -25,6 +25,9 @@ export class GoogleSheetConfig {
   @Column({ name: 'enabled', type: 'boolean', default: true })
   enabled: boolean
 
+  @Column({ name: 'label', type: 'text' })
+  label: string
+
   @OneToMany(() => GoogleSheetSheetConfig, (sheetConfig) => sheetConfig.googleSheetConfig, {
     cascade: true,
   })

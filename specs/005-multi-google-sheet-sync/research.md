@@ -10,6 +10,7 @@ This document records architectural decisions and alternatives considered for th
 ## Topic A — Table Identifier Generation & Safety
 
 ### A1 — `table_name` generation
+
 - Decision: Use the same `GENERATED ALWAYS` expression in DB and the backend normalization function:
 
   `'air_shipment_' || lower(regexp_replace(sheet_name, '[^a-zA-Z0-9]', '_', 'g'))`
@@ -17,6 +18,7 @@ This document records architectural decisions and alternatives considered for th
   Rationale: Keeps UI preview and DB column consistent. Edge cases (leading/trailing underscores, repeated `_`) handled in normalization helper.
 
 ### A2 — Quoting & identifier safety
+
 - Decision: Implement an internal quoting/validation helper rather than introducing a dependency. Helper will:
   - Validate the normalized identifier matches `^[a-z][a-z0-9_]*$` and length <= 200
   - Quote identifiers by wrapping with double-quotes and escaping inner double-quotes

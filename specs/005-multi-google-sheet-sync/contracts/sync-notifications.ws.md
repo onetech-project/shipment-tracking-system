@@ -16,10 +16,10 @@ Emitted after a successful sync cycle (one or more spreadsheets processed). Incl
 
 ```ts
 interface SheetUpdatedPayload {
-  spreadsheetLabel: string; // human label from google_sheet_config
-  tables: string[];         // e.g., ["air_shipment_delivery_routes"]
-  totalUpserted: number;    // total rows upserted in this cycle across the tables
-  syncedAt: string;         // ISO 8601 UTC timestamp
+  spreadsheetLabel: string // human label from google_sheet_config
+  tables: string[] // e.g., ["air_shipment_delivery_routes"]
+  totalUpserted: number // total rows upserted in this cycle across the tables
+  syncedAt: string // ISO 8601 UTC timestamp
 }
 ```
 

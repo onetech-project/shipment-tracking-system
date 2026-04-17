@@ -3,6 +3,7 @@ import { getRepositoryToken } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { AirShipmentsService } from './air-shipments.service'
 import { SheetsService } from './sheets.service'
+import { DynamicTableService } from './dynamic-table.service'
 import { AirShipmentCgk } from './entities/air-shipment-cgk.entity'
 import { AirShipmentSub } from './entities/air-shipment-sub.entity'
 import { AirShipmentSda } from './entities/air-shipment-sda.entity'
@@ -50,6 +51,7 @@ const makeRepo = (): Partial<Repository<any>> => ({
 describe('AirShipmentsService — runSyncCycle()', () => {
   let service: AirShipmentsService
   let sheetsService: jest.Mocked<SheetsService>
+  let dynamicTableService: jest.Mocked<DynamicTableService>
 
   beforeEach(async () => {
     sheetsService = {
@@ -97,6 +99,7 @@ describe('AirShipmentsService — runSyncCycle()', () => {
       providers: [
         AirShipmentsService,
         { provide: SheetsService, useValue: sheetsService },
+        { provide: DynamicTableService, useValue: { ensureTable: jest.fn().mockResolvedValue({ success: true }) } },
         { provide: getRepositoryToken(AirShipmentCgk), useValue: makeRepo() },
         { provide: getRepositoryToken(AirShipmentSub), useValue: makeRepo() },
         { provide: getRepositoryToken(AirShipmentSda), useValue: makeRepo() },
@@ -109,6 +112,84 @@ describe('AirShipmentsService — runSyncCycle()', () => {
     }).compile()
 
     service = module.get<AirShipmentsService>(AirShipmentsService)
+    dynamicTableService = module.get(DynamicTableService) as any
+  })
+
+  it('createGoogleSheetConfig triggers ensureTable for provided sheetConfigs', async () => {
+    const googleSheetConfigRepo = (service as any).googleSheetConfigRepo
+    const saved = {
+      id: 'cfg-1',
+      sheetLink: 'https://docs.google.com/spreadsheets/d/ABC123',
+      sheetId: 'ABC123',
+      syncInterval: 15,
+      enabled: true,
+      label: 'My Sheet',
+      sheetConfigs: [
+        {
+          id: 'sc-1',
+          sheetName: 'Sheet1',
+          tableName: 'air_shipments_sheet1',
+          headerRow: 1,
+          uniqueKey: ['to_number'],
+          skipNullCols: true,
+        },
+      ],
+    }
+
+    googleSheetConfigRepo.save = jest.fn().mockResolvedValue(saved)
+    ;(service as any).googleSheetSheetConfigRepo.create = jest.fn((o: any) => ({ ...o, id: 'sc-1' }))
+    ;(service as any).googleSheetConfigRepo.create = jest.fn((o: any) => ({ ...o, id: 'cfg-1' }))
+
+    const dto = {
+      sheetLink: 'https://docs.google.com/spreadsheets/d/ABC123',
+      syncInterval: 15,
+      enabled: true,
+      label: 'My Sheet',
+      sheetConfigs: [
+        { sheetName: 'Sheet1', tableName: 'air_shipments_sheet1', headerRow: 1, uniqueKey: ['to_number'] },
+      ],
+    }
+
+    await service.createGoogleSheetConfig(dto as any)
+    expect(dynamicTableService.ensureTable).toHaveBeenCalledTimes(1)
+    expect(dynamicTableService.ensureTable).toHaveBeenCalledWith(expect.objectContaining({ tableName: 'air_shipments_sheet1' }))
+  })
+
+  it('updateGoogleSheetConfig triggers ensureTable for new or changed sheetConfigs', async () => {
+    const googleSheetConfigRepo = (service as any).googleSheetConfigRepo
+    const prev = {
+      id: 'cfg-1',
+      sheetLink: 'https://docs.google.com/spreadsheets/d/ABC123',
+      sheetId: 'ABC123',
+      syncInterval: 15,
+      enabled: true,
+      label: 'Old',
+      sheetConfigs: [
+        { id: 'sc-1', sheetName: 'Sheet1', tableName: 'air_shipments_sheet1', uniqueKey: ['to_number'] },
+      ],
+    }
+
+    const updated = {
+      id: 'cfg-1',
+      sheetLink: 'https://docs.google.com/spreadsheets/d/ABC123',
+      sheetId: 'ABC123',
+      syncInterval: 15,
+      enabled: true,
+      label: 'New',
+      sheetConfigs: [
+        // changed uniqueKey should trigger ensureTable
+        { id: 'sc-1', sheetName: 'Sheet1', tableName: 'air_shipments_sheet1', uniqueKey: ['to_number', 'status'] },
+      ],
+    }
+
+    googleSheetConfigRepo.findOne = jest.fn()
+      .mockResolvedValueOnce(prev) // prev returned when reading previous
+      .mockResolvedValueOnce(updated) // saved returned after update
+    googleSheetConfigRepo.update = jest.fn().mockResolvedValue({})
+
+    await service.updateGoogleSheetConfig('cfg-1', { sheetLink: updated.sheetLink, syncInterval: 15, enabled: true, label: 'New', sheetConfigs: updated.sheetConfigs } as any)
+
+    expect(dynamicTableService.ensureTable).toHaveBeenCalled()
   })
 
   it('skips a sheet when uniqueKey column is missing from normalized headers', async () => {

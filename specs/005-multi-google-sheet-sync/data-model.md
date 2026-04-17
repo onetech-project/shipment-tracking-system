@@ -10,37 +10,39 @@ This feature introduces two persistent config tables plus dynamically-created pe
 ## 1. Config Tables (persistent)
 
 ### `google_sheet_config`
+
 Stores one row per Google Spreadsheet (workbook).
 
-| Column       | Type    | Constraints | Notes |
-|--------------|---------|-------------|-------|
-| `id`         | UUID    | PK, DEFAULT gen_random_uuid() | Internal PK |
-| `spreadsheet_id` | TEXT | NOT NULL, UNIQUE | Google Sheets spreadsheet ID (from URL)
-| `label`      | TEXT    | NOT NULL    | Admin-provided human label for UI and logs
-| `interval_seconds` | INTEGER | NOT NULL DEFAULT 15 | Sync interval per-spreadsheet (seconds)
-| `is_enabled` | BOOLEAN | NOT NULL DEFAULT true | Enable/disable spreadsheet sync
-| `created_at` | TIMESTAMPTZ | NOT NULL DEFAULT NOW() | Created timestamp
-| `updated_at` | TIMESTAMPTZ | NOT NULL DEFAULT NOW() | Updated timestamp
+| Column             | Type        | Constraints                   | Notes                                      |
+| ------------------ | ----------- | ----------------------------- | ------------------------------------------ |
+| `id`               | UUID        | PK, DEFAULT gen_random_uuid() | Internal PK                                |
+| `spreadsheet_id`   | TEXT        | NOT NULL, UNIQUE              | Google Sheets spreadsheet ID (from URL)    |
+| `label`            | TEXT        | NOT NULL                      | Admin-provided human label for UI and logs |
+| `interval_seconds` | INTEGER     | NOT NULL DEFAULT 15           | Sync interval per-spreadsheet (seconds)    |
+| `is_enabled`       | BOOLEAN     | NOT NULL DEFAULT true         | Enable/disable spreadsheet sync            |
+| `created_at`       | TIMESTAMPTZ | NOT NULL DEFAULT NOW()        | Created timestamp                          |
+| `updated_at`       | TIMESTAMPTZ | NOT NULL DEFAULT NOW()        | Updated timestamp                          |
 
 Notes: add `label TEXT NOT NULL` via migration per spec.
 
 ### `google_sheet_sheet_config`
+
 Stores one row per sheet/tab inside a spreadsheet.
 
-| Column       | Type    | Constraints | Notes |
-|--------------|---------|-------------|-------|
-| `id`         | UUID    | PK, DEFAULT gen_random_uuid() | Internal PK |
-| `spreadsheet_id` | UUID REFERENCES `google_sheet_config`(id) ON DELETE CASCADE | NOT NULL | Parent spreadsheet row |
-| `sheet_name` | TEXT    | NOT NULL    | Sheet/tab name in Google Sheets |
-| `table_name` | TEXT    | NOT NULL GENERATED ALWAYS AS (
-  'air_shipment_' || lower(regexp_replace(sheet_name, '[^a-zA-Z0-9]', '_', 'g'))
-) STORED | Auto-derived, read-only preview in UI |
-| `unique_keys` | TEXT[] | NOT NULL DEFAULT '{}'
-| `header_row` | INTEGER | NOT NULL DEFAULT 1 | 1-based header row index |
-| `is_enabled` | BOOLEAN | NOT NULL DEFAULT true | Enable/disable per-sheet sync |
-| `status`     | TEXT    | NULLABLE    | optional runtime status (e.g., `not-ready`, `ready`, `error`) |
-| `created_at` | TIMESTAMPTZ | NOT NULL DEFAULT NOW() | Created timestamp |
-| `updated_at` | TIMESTAMPTZ | NOT NULL DEFAULT NOW() | Updated timestamp
+| Column           | Type                                                        | Constraints                                                 | Notes                                                         |
+| ---------------- | ----------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------- |
+| `id`             | UUID                                                        | PK, DEFAULT gen_random_uuid()                               | Internal PK                                                   |
+| `spreadsheet_id` | UUID REFERENCES `google_sheet_config`(id) ON DELETE CASCADE | NOT NULL                                                    | Parent spreadsheet row                                        |
+| `sheet_name`     | TEXT                                                        | NOT NULL                                                    | Sheet/tab name in Google Sheets                               |
+| `table_name`     | TEXT                                                        | NOT NULL GENERATED ALWAYS AS (                              |
+| 'air*shipment*'  |                                                             | lower(regexp*replace(sheet_name, '[^a-zA-Z0-9]', '*', 'g')) |
+| ) STORED         | Auto-derived, read-only preview in UI                       |
+| `unique_keys`    | TEXT[]                                                      | NOT NULL DEFAULT '{}'                                       |
+| `header_row`     | INTEGER                                                     | NOT NULL DEFAULT 1                                          | 1-based header row index                                      |
+| `is_enabled`     | BOOLEAN                                                     | NOT NULL DEFAULT true                                       | Enable/disable per-sheet sync                                 |
+| `status`         | TEXT                                                        | NULLABLE                                                    | optional runtime status (e.g., `not-ready`, `ready`, `error`) |
+| `created_at`     | TIMESTAMPTZ                                                 | NOT NULL DEFAULT NOW()                                      | Created timestamp                                             |
+| `updated_at`     | TIMESTAMPTZ                                                 | NOT NULL DEFAULT NOW()                                      | Updated timestamp                                             |
 
 Notes: the `table_name` GENERATED expression must match the normalization logic used in the backend quoting/validation helper.
 
@@ -78,6 +80,7 @@ CREATE INDEX IF NOT EXISTS idx_<table_name>_extra_gin ON <table_name> USING GIN 
 ```
 
 Implementation notes:
+
 - Table creation and column additions must be idempotent: use `CREATE TABLE IF NOT EXISTS` and `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`.
 - Use a strict identifier validation and quoting helper when interpolating identifiers into SQL (double-quote and escape double-quotes) — never directly interpolate raw user input.
 - After successful creation/update, the backend must call `SheetsService.reloadTableSchemas()` so DB-driven `knownColumns` are refreshed.

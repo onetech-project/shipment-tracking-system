@@ -2,6 +2,7 @@ import { Injectable, Logger, Optional } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { SheetsService } from './sheets.service'
+import { DynamicTableService } from './dynamic-table.service'
 import { SyncNotificationGateway } from './sync-notification.gateway'
 import { AirShipmentCgk } from './entities/air-shipment-cgk.entity'
 import { AirShipmentSub } from './entities/air-shipment-sub.entity'
@@ -34,6 +35,7 @@ export class AirShipmentsService {
     private readonly googleSheetConfigRepo: Repository<GoogleSheetConfig>,
     @InjectRepository(GoogleSheetSheetConfig)
     private readonly googleSheetSheetConfigRepo: Repository<GoogleSheetSheetConfig>,
+    private readonly dynamicTableService: DynamicTableService,
     private readonly eventEmitter: EventEmitter2 // inject EventEmitter2
   ) {
     this.repoMap = new Map<string, Repository<any>>([
@@ -427,12 +429,31 @@ export class AirShipmentsService {
     userAgent?: string
   ): Promise<GoogleSheetConfig> {
     const sheetId = this.extractSheetId(dto.sheetLink)
+    const sheetEntities = (dto.sheetConfigs ?? []).map((sc) =>
+      this.googleSheetSheetConfigRepo.create({
+        sheetName: sc.sheetName,
+        tableName: sc.tableName,
+        headerRow: sc.headerRow,
+        uniqueKey: sc.uniqueKey,
+        skipNullCols: sc.skipNullCols ?? true,
+      })
+    )
+
     const config = this.googleSheetConfigRepo.create({
       ...dto,
       sheetId,
-      // sheetConfigs: dto.sheetConfigs.map((sc) => ({ ...sc, skipNullCols: true })),
+      sheetConfigs: sheetEntities,
     })
+
     const saved = await this.googleSheetConfigRepo.save(config)
+
+    // Fire-and-forget table creation for sheets; do not block API response on failures
+    if (Array.isArray(saved.sheetConfigs)) {
+      void Promise.allSettled(
+        saved.sheetConfigs.map((sc) => this.dynamicTableService.ensureTable(sc as any))
+      )
+    }
+
     this.eventEmitter.emit('google_sheet_config.created', {
       actorId,
       resourceId: saved.id,
@@ -441,6 +462,7 @@ export class AirShipmentsService {
       after: saved,
       before: null,
     })
+
     return saved
   }
 
@@ -464,6 +486,29 @@ export class AirShipmentsService {
       where: { id },
       relations: ['sheetConfigs'],
     })
+    // Determine which sheet configs are new or changed (uniqueKey change)
+    try {
+      const prevMap = new Map<string, any>()
+      for (const p of prev?.sheetConfigs ?? []) prevMap.set(p.id, p)
+
+      const toEnsure: any[] = []
+      for (const sc of saved?.sheetConfigs ?? []) {
+        const prevSc = sc.id ? prevMap.get(sc.id) : undefined
+        if (!prevSc) {
+          toEnsure.push(sc)
+          continue
+        }
+        const prevKeys = Array.isArray(prevSc.uniqueKey) ? prevSc.uniqueKey : prevSc.uniqueKey || []
+        const newKeys = Array.isArray(sc.uniqueKey) ? sc.uniqueKey : sc.uniqueKey || []
+        if (JSON.stringify(prevKeys) !== JSON.stringify(newKeys)) toEnsure.push(sc)
+      }
+
+      if (toEnsure.length > 0) {
+        void Promise.allSettled(toEnsure.map((s) => this.dynamicTableService.ensureTable(s as any)))
+      }
+    } catch (err) {
+      this.logger.warn(`[Sync] Failed to ensure tables after config update: ${err instanceof Error ? err.message : String(err)}`)
+    }
     // config.sheetConfigs = sheetConfigs.map((sc) =>
     //   this.googleSheetSheetConfigRepo.create({
     //     ...sc,
