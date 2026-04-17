@@ -7,7 +7,7 @@
 ## Content Quality
 
 - [x] No implementation details (languages, frameworks, APIs)
-	- Evidence: Spec uses conceptual terms ("persistent storage", "backing storage") and avoids framework/API specifics.
+  - Evidence: Spec uses conceptual terms ("persistent storage", "backing storage") and avoids framework/API specifics.
 - [x] Focused on user value and business needs
 - [x] Written for non-technical stakeholders
 - [x] All mandatory sections completed
@@ -16,7 +16,7 @@
 
 - [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
-	- Evidence: Each functional requirement includes an acceptance statement.
+  - Evidence: Each functional requirement includes an acceptance statement.
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
 - [x] All acceptance scenarios are defined

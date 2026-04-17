@@ -5,7 +5,7 @@
 **Status**: Draft
 **Input**: User description: "Multi Google Sheet Sync — Configuration UI, Dynamic Table Creation & Async Multi-Sheet Processing"
 
-## User Scenarios & Testing *(mandatory)*
+## User Scenarios & Testing _(mandatory)_
 
 ### User Story 1 - Admin: Manage Google Sheet Configs (Priority: P1)
 
@@ -14,10 +14,12 @@ An admin can add and maintain Google Spreadsheet sync configurations so the prod
 Why this priority: This enables non-developers to onboard new shipment sources and is the primary business value of the feature.
 
 Independent Test:
+
 - Using the Admin UI, create a new Spreadsheet entry with at least one Sheet entry and save.
 - Verify the spreadsheet and its sheets appear in the config list and the Air Shipments UI after the next scheduler run.
 
 Acceptance Scenarios:
+
 1. Given the Admin is on the Google Sheet Config page, When they add a new spreadsheet (label, URL, interval, enabled) and add one or more sheets with a unique key and header row, Then the config is persisted and the system schedules syncs for enabled sheets.
 2. Given a sheet's "Table Name" preview is shown while editing, When the admin types a Sheet Name, Then the preview updates immediately to show the derived table identifier.
 3. Given an admin deletes a spreadsheet config, When they confirm the deletion, Then the config is removed from the list and a warning explains that persisted data in the system will remain.
@@ -31,10 +33,12 @@ End users access the Air Shipments section to view shipments coming from configu
 Why this priority: This is the primary consumer-facing outcome: data entered in spreadsheets becomes visible in the app.
 
 Independent Test:
+
 - Enable at least one sheet and ensure the sync has run at least once.
 - As an end user, navigate to Air Shipments and verify a tab appears for each enabled sheet and that the table shows paginated, sortable rows for that sheet.
 
 Acceptance Scenarios:
+
 1. Given at least one enabled sheet config exists, When an end user opens Air Shipments, Then a tab appears for each enabled sheet and selecting a tab shows data for that sheet.
 2. Given no enabled sheets exist, When a user opens Air Shipments, Then the UI shows an empty state with a prominent link to Google Sheet Config.
 
@@ -45,9 +49,11 @@ Acceptance Scenarios:
 An operator can confirm sync cycles run per configured intervals and that failures in one spreadsheet do not affect other spreadsheets.
 
 Independent Test:
+
 - Trigger sync cycles and inspect logs and monitoring output to confirm per-spreadsheet cycles, error isolation, and summary metrics are recorded.
 
 Acceptance Scenarios:
+
 1. Given multiple enabled spreadsheets with different intervals, When the scheduler runs, Then each spreadsheet runs independently according to its interval and a failure in one does not stop others.
 2. Given a spreadsheet returns an API error (e.g., permission error), When that cycle fails, Then the system logs the error with spreadsheet label and continues other spreadsheet cycles.
 
@@ -61,7 +67,7 @@ Acceptance Scenarios:
 - A sheet's normalized table identifier becomes invalid after extreme sheet name input.
 - Network/transient API quota errors occur during fetch.
 
-## Requirements *(mandatory)*
+## Requirements _(mandatory)_
 
 ### Functional Requirements
 
@@ -110,7 +116,7 @@ Acceptance Scenarios:
 - **FR-015**: Configuration Read Model — The sync runtime must read spreadsheet and sheet configs from persistent storage at runtime and on each scheduler evaluation to pick up changes without requiring a full application restart.
   - Acceptance: Adding/updating a config is reflected in scheduler behavior within one global tick.
 
-### Key Entities *(include if feature involves data)*
+### Key Entities _(include if feature involves data)_
 
 - **SpreadsheetConfig**: Represents a Google Spreadsheet to sync.
   - Attributes: label, spreadsheetUrl, intervalSeconds, isEnabled
@@ -120,7 +126,7 @@ Acceptance Scenarios:
 
 - **SheetData (backing storage)**: Per-sheet storage that contains system-level metadata (id, timestamps, lock flag), dedicated unique-key fields, and a structured field for all other columns.
 
-## Success Criteria *(mandatory)*
+## Success Criteria _(mandatory)_
 
 - **SC-001**: Onboard Speed — An admin can create a spreadsheet and at least one sheet config and see the corresponding Air Shipments tab and data within 60 seconds after initial sync (assuming the sheet contains rows and network is healthy).
 
@@ -148,4 +154,4 @@ Acceptance Scenarios:
 
 ---
 
-*Next steps*: run the project feature-creation script to create the branch & scaffold (script failed previously), or create the feature branch manually and proceed to planning.
+_Next steps_: run the project feature-creation script to create the branch & scaffold (script failed previously), or create the feature branch manually and proceed to planning.
