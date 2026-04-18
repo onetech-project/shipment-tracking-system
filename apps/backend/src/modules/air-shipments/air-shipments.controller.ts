@@ -80,7 +80,7 @@ export class AirShipmentsController {
   @Get('google-sheet-config')
   @UseGuards(RbacGuard)
   @Authorize(Permission.READ_GOOGLE_SHEET_CONFIG)
-  async getGoogleSheetConfig(): Promise<GoogleSheetConfig | null> {
+  async getGoogleSheetConfig(): Promise<GoogleSheetConfig[]> {
     return this.service.getGoogleSheetConfig()
   }
 

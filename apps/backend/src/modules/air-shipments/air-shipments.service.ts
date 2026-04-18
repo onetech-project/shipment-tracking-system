@@ -515,12 +515,11 @@ export class AirShipmentsService {
     return this.paginatedQuery(this.routeRepo, query)
   }
 
-  async getGoogleSheetConfig(): Promise<GoogleSheetConfig | null> {
+  async getGoogleSheetConfig(): Promise<GoogleSheetConfig[]> {
     const config = await this.googleSheetConfigRepo.find({
-      take: 1,
       relations: ['sheetConfigs'],
     })
-    return config.length > 0 ? config[0] : null
+    return config
   }
 
   async createGoogleSheetConfig(
@@ -579,11 +578,11 @@ export class AirShipmentsService {
       where: { id },
       relations: ['sheetConfigs'],
     })
-    // const sheetConfigs = dto.sheetConfigs
-    // delete dto.sheetConfigs // remove sheetConfigs from dto to avoid confusion in update
+    const sheetConfigs = dto.sheetConfigs
+    delete dto.sheetConfigs // remove sheetConfigs from dto to avoid confusion in update
     await this.googleSheetConfigRepo.update(id, { ...dto, sheetId })
-    // await this.googleSheetSheetConfigRepo.delete({ googleSheetConfig: { id } })
-    const saved = await this.googleSheetConfigRepo.findOne({
+    await this.googleSheetSheetConfigRepo.delete({ googleSheetConfig: { id } })
+    const config = await this.googleSheetConfigRepo.findOne({
       where: { id },
       relations: ['sheetConfigs'],
     })
@@ -593,7 +592,7 @@ export class AirShipmentsService {
       for (const p of prev?.sheetConfigs ?? []) prevMap.set(p.id, p)
 
       const toEnsure: any[] = []
-      for (const sc of saved?.sheetConfigs ?? []) {
+      for (const sc of config?.sheetConfigs ?? []) {
         const prevSc = sc.id ? prevMap.get(sc.id) : undefined
         if (!prevSc) {
           toEnsure.push(sc)
@@ -612,14 +611,14 @@ export class AirShipmentsService {
         `[Sync] Failed to ensure tables after config update: ${err instanceof Error ? err.message : String(err)}`
       )
     }
-    // config.sheetConfigs = sheetConfigs.map((sc) =>
-    //   this.googleSheetSheetConfigRepo.create({
-    //     ...sc,
-    //     skipNullCols: true,
-    //     googleSheetConfig: config,
-    //   })
-    // )
-    // const saved = await this.googleSheetConfigRepo.save(config)
+    config.sheetConfigs = sheetConfigs.map((sc) =>
+      this.googleSheetSheetConfigRepo.create({
+        ...sc,
+        skipNullCols: true,
+        googleSheetConfig: config,
+      })
+    )
+    const saved = await this.googleSheetConfigRepo.save(config)
     this.eventEmitter.emit('google_sheet_config.updated', {
       actorId,
       resourceId: id,
