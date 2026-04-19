@@ -1,7 +1,7 @@
 'use client'
 import moment from 'moment'
 import { AirShipmentRow, CellProps, PaginationMeta, SortOrder } from '../types'
-import { colLabel, COLUMN_KEYS } from '../columns.config'
+import { colLabel, FROZEN_KEYS } from '../columns.config'
 
 const DATETIME_COLS = new Set(['last_synced_at', 'created_at', 'updated_at'])
 
@@ -33,60 +33,6 @@ function formatCell(props: CellProps): string | JSX.Element {
   return String(value ?? '')
 }
 
-/**
- * Columns frozen on horizontal scroll, in left-to-right order with fixed widths (px).
- * These columns must appear first in the rendered column list for offsets to be correct.
- */
-const FROZEN_COLS: { key: string; width: number | undefined }[] = [
-  { key: '#', width: undefined },
-  { key: 'date', width: 110 },
-  { key: 'lt_number', width: 150 },
-  { key: 'to_number', width: 170 },
-  { key: 'is_locked', width: undefined },
-]
-
-const FROZEN_LEFT: Record<string, number> = FROZEN_COLS.reduce(
-  (acc, col, idx) => {
-    acc[col.key] = FROZEN_COLS.slice(0, idx).reduce((s, c) => s + (c.width ?? 0), 0)
-    return acc
-  },
-  {} as Record<string, number>
-)
-
-const FROZEN_WIDTH: Record<string, number | undefined> = Object.fromEntries(
-  FROZEN_COLS.map((c) => [c.key, c.width])
-)
-
-function resolveColumns(
-  tableName: string | undefined,
-  rows: AirShipmentRow[],
-  visibleColumns?: string[]
-): string[] {
-  let cols: string[] = []
-  if (tableName && COLUMN_KEYS[tableName]) cols = [...COLUMN_KEYS[tableName]]
-  else if (rows.length > 0) cols = Object.keys(rows[0])
-
-  // Collect all unique extra_fields keys from all rows
-  const extraFieldKeys = new Set<string>()
-  for (const row of rows) {
-    if (row.extra_fields && typeof row.extra_fields === 'object') {
-      Object.keys(row.extra_fields).forEach((k) => extraFieldKeys.add(k))
-    }
-  }
-  // Add extra_fields keys if not already present
-  for (const key of extraFieldKeys) {
-    if (!cols.includes(key)) cols.push(key)
-  }
-
-  if (visibleColumns) {
-    cols = cols.filter((col) => visibleColumns.includes(col))
-  }
-  return ['#', ...cols]
-}
-
-const isFrozen = (col: string, tableName?: string): boolean =>
-  (tableName?.startsWith('air_shipments_') ?? false) && col in FROZEN_LEFT
-
 const scrollToTop = () => {
   const container = document.getElementById('table-container')
   if (container) container.scrollTo({ top: 0, behavior: 'smooth' })
@@ -100,8 +46,7 @@ interface AirShipmentTableProps {
   onSort: (col: string, order: SortOrder) => void
   onPageChange: (page: number) => void
   onToggleLock?: (id: string, locked: boolean) => void
-  tableName?: string
-  visibleColumns?: string[]
+  visibleColumns?: Record<string, boolean>
 }
 
 export function AirShipmentTable({
@@ -112,10 +57,12 @@ export function AirShipmentTable({
   onSort,
   onPageChange,
   onToggleLock,
-  tableName,
   visibleColumns,
 }: AirShipmentTableProps) {
-  const columns = resolveColumns(tableName, data, visibleColumns)
+  const columns = visibleColumns
+    ? Object.keys(visibleColumns).filter((col) => visibleColumns[col])
+    : []
+  console.log(visibleColumns) // For debugging column visibility issues
 
   const handleHeaderClick = (col: string) => {
     if (col === sortBy) {
@@ -129,6 +76,31 @@ export function AirShipmentTable({
     if (col !== sortBy) return null
     return sortOrder === 'asc' ? ' ↑' : ' ↓'
   }
+  /**
+   * Columns frozen on horizontal scroll, in left-to-right order with fixed widths (px).
+   * These columns must appear first in the rendered column list for offsets to be correct.
+   */
+  const FROZEN_COLS: { key: string; width: number | undefined }[] = [
+    { key: '#', width: 50 },
+    ...FROZEN_KEYS.filter((key) => visibleColumns?.[key]).map((key) => ({
+      key,
+      width: key === 'is_locked' ? 100 : 170,
+    })),
+  ]
+
+  const FROZEN_LEFT: Record<string, number> = FROZEN_COLS.reduce(
+    (acc, col, idx) => {
+      acc[col.key] = FROZEN_COLS.slice(0, idx).reduce((s, c) => s + (c.width ?? 0), 0)
+      return acc
+    },
+    {} as Record<string, number>
+  )
+
+  const FROZEN_WIDTH: Record<string, number | undefined> = Object.fromEntries(
+    FROZEN_COLS.map((c) => [c.key, c.width])
+  )
+
+  const isFrozen = (col: string): boolean => col in FROZEN_LEFT
 
   return (
     <div className="flex flex-col gap-4">
@@ -136,12 +108,22 @@ export function AirShipmentTable({
         <table className="min-w-full divide-y divide-border text-sm">
           <thead className="bg-muted sticky top-0 z-20">
             <tr>
+              <th
+                style={{
+                  left: FROZEN_LEFT['#'],
+                  minWidth: FROZEN_WIDTH['#'],
+                  maxWidth: FROZEN_WIDTH['#'],
+                }}
+                className="sticky z-30 bg-muted whitespace-nowrap px-4 py-2 text-left font-medium text-muted-foreground"
+              >
+                #
+              </th>
               {columns.map((col) => (
                 <th
                   key={col}
                   onClick={() => handleHeaderClick(col)}
                   style={
-                    isFrozen(col, tableName)
+                    isFrozen(col)
                       ? {
                           left: FROZEN_LEFT[col],
                           minWidth: FROZEN_WIDTH[col],
@@ -154,7 +136,7 @@ export function AirShipmentTable({
                   }
                   className={[
                     'cursor-pointer select-none whitespace-nowrap px-4 py-2 text-left font-medium text-muted-foreground hover:text-foreground',
-                    isFrozen(col, tableName) ? 'sticky z-30 bg-muted' : '',
+                    isFrozen(col) ? 'sticky z-30 bg-muted' : '',
                   ].join(' ')}
                 >
                   {colLabel(col)}
@@ -176,11 +158,21 @@ export function AirShipmentTable({
             ) : (
               data.map((row) => (
                 <tr key={row.id} className="hover:bg-muted/30">
+                  <td
+                    style={{
+                      left: FROZEN_LEFT['#'],
+                      minWidth: FROZEN_WIDTH['#'],
+                      maxWidth: FROZEN_WIDTH['#'],
+                    }}
+                    className="sticky z-10 bg-background text-center"
+                  >
+                    {(meta.page - 1) * meta.limit + data.indexOf(row) + 1}
+                  </td>
                   {columns.map((col) => (
                     <td
                       key={col}
                       style={
-                        isFrozen(col, tableName)
+                        isFrozen(col)
                           ? {
                               left: FROZEN_LEFT[col],
                               minWidth: FROZEN_WIDTH[col],
@@ -193,11 +185,10 @@ export function AirShipmentTable({
                       }
                       className={[
                         'whitespace-nowrap px-4 py-2',
-                        isFrozen(col, tableName) ? 'sticky z-10 bg-background' : '',
+                        isFrozen(col) ? 'sticky z-10 bg-background' : '',
                         col === 'is_locked' ? 'text-center' : '',
                       ].join(' ')}
                     >
-                      {col === '#' ? (meta.page - 1) * meta.limit + data.indexOf(row) + 1 : ''}
                       {row[col] !== undefined
                         ? formatCell({
                             id: row.id,

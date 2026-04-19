@@ -41,7 +41,7 @@ export class DynamicTableService {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         last_synced_at TIMESTAMPTZ,
-        extra_data JSONB DEFAULT '{}'::jsonb
+        extra_fields JSONB DEFAULT '{}'::jsonb
       )`
 
       await this.dataSource.query(createSql)
@@ -83,10 +83,10 @@ export class DynamicTableService {
         }
       }
 
-      // 4) Create GIN index on extra_data
+      // 4) Create GIN index on extra_fields
       const idxName = `idx_${tableName}_extra_gin`
       const qIdx = quoteIdentifier(idxName)
-      const createIndexSql = `CREATE INDEX IF NOT EXISTS ${qIdx} ON ${qTable} USING GIN (extra_data)`
+      const createIndexSql = `CREATE INDEX IF NOT EXISTS ${qIdx} ON ${qTable} USING GIN (extra_fields)`
       await this.dataSource.query(createIndexSql)
 
       // 5) Refresh in-memory table schemas so runtime can pick up new columns

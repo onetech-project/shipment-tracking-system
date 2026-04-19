@@ -3,8 +3,9 @@ import { SchedulerRegistry } from '@nestjs/schedule'
 import { AirShipmentsService } from './air-shipments.service'
 import { OnEvent } from '@nestjs/event-emitter'
 import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
+import { DynamicTableService } from './dynamic-table.service'
+import { config } from 'googleapis/build/src/apis/config'
 
-const INTERVAL_NAME = 'air-shipments-sync'
 /**
  * Concurrency-safe polling scheduler (US4 / FR-001–FR-005).
  *
@@ -16,253 +17,204 @@ const INTERVAL_NAME = 'air-shipments-sync'
 @Injectable()
 export class SchedulerService implements OnApplicationShutdown {
   private readonly logger = new Logger(SchedulerService.name)
+
   // Per-table scheduling state
-  private intervals: Map<string, NodeJS.Timeout> = new Map()
+  private intervals: Map<string, number> = new Map()
   private state: Map<string, { isSyncing: boolean; consecutiveSkips: number; isPaused: boolean }> =
     new Map()
 
   constructor(
     private readonly airShipmentsService: AirShipmentsService,
-    private readonly schedulerRegistry: SchedulerRegistry
+    private readonly schedulerRegistry: SchedulerRegistry,
+    private readonly dynamicTableService: DynamicTableService
   ) {}
 
-  // Using @Interval decorator for automatic scheduling; the method will be called every SYNC_INTERVAL_MS
-  // can be disabled by config
-  private currentIntervalMs?: number
-
-  // Backwards-compatible global tick state (kept for tests)
-  public isSyncing = false
-  public consecutiveSkips = 0
-
-  @OnEvent('gsheetConfig.ready') handleConfigReady(config: GoogleSheetConfig) {
+  @OnEvent('gsheetConfig.ready') handleConfigReady(configs: GoogleSheetConfig[]) {
     this.logger.log('Received gsheetConfig.ready event, initializing scheduler...')
-    if (!config) {
-      this.logger.warn('No Google Sheet config found during scheduler initialization')
+    configs.forEach((config) => {
+      if (!config) {
+        this.logger.warn('No Google Sheet config found during scheduler initialization')
+        return
+      }
+
+      if (!config.enabled) {
+        this.logger.warn(
+          '[scheduler] Google Sheets integration is disabled — scheduler will not start'
+        )
+        return
+      }
+
+      const INTERVAL_NAME = `air_shipments_sync:${config.sheetId}`
+      const INTERVAL_SYNC_MS = (config?.syncInterval || 15) * 1000
+
+      this.intervals.set(config.sheetId, INTERVAL_SYNC_MS)
+      this.state.set(config.sheetId, { isSyncing: false, consecutiveSkips: 0, isPaused: false })
+
+      // ensure table schemas are loaded before starting the scheduler
+      void Promise.allSettled(
+        config.sheetConfigs.map((s) => this.dynamicTableService.ensureTable(s as any))
+      )
+
+      const intervalRef = setInterval(() => this.tick(config.sheetId), INTERVAL_SYNC_MS)
+      this.schedulerRegistry.addInterval(INTERVAL_NAME, intervalRef)
+      this.logger.log(
+        `[scheduler] Interval ${INTERVAL_NAME} initialized with interval of ${INTERVAL_SYNC_MS}ms`
+      )
+    })
+  }
+
+  async tick(sheetId: string): Promise<void> {
+    const state = this.state.get(sheetId)
+    if (!state) {
+      this.logger.warn(`[scheduler] No state found for sheetId: ${sheetId}`)
       return
     }
 
-    if (!config.enabled) {
+    if (state.isSyncing) {
+      state.consecutiveSkips++
       this.logger.warn(
-        '[scheduler] Google Sheets integration is disabled — scheduler will not start'
+        `[scheduler] Sync for sheetId ${sheetId} still in progress — skip #${state.consecutiveSkips}`
       )
-      return
-    }
 
-    // Create per-table intervals
-    const intervalMs = (config?.syncInterval || 15) * 1000
-    for (const sc of config.sheetConfigs ?? []) {
-      this.addIntervalForTable(sc.tableName, intervalMs)
-    }
-    this.logger.log(
-      `[scheduler] Initialized with ${this.intervals.size} per-table interval(s) at ${intervalMs}ms`
-    )
-  }
-
-  private addIntervalForTable(tableName: string, intervalMs: number) {
-    const key = `${INTERVAL_NAME}:${tableName}`
-    // Remove existing interval if present
-    try {
-      if (this.schedulerRegistry.doesExist('interval', key)) {
-        this.schedulerRegistry.deleteInterval(key)
-      }
-      if (this.intervals.has(tableName)) {
-        clearInterval(this.intervals.get(tableName)!)
-        this.intervals.delete(tableName)
-        this.state.delete(tableName)
-      }
-    } catch (_) {
-      // ignore
-    }
-
-    const intervalRef = setInterval(() => this.tickFor(tableName), intervalMs)
-    this.schedulerRegistry.addInterval(key, intervalRef)
-    this.intervals.set(tableName, intervalRef)
-    this.state.set(tableName, { isSyncing: false, consecutiveSkips: 0, isPaused: false })
-  }
-
-  private async tickFor(tableName: string): Promise<void> {
-    const st = this.state.get(tableName) ?? {
-      isSyncing: false,
-      consecutiveSkips: 0,
-      isPaused: false,
-    }
-
-    if (st.isSyncing) {
-      st.consecutiveSkips++
-      this.logger.warn(
-        `[scheduler:${tableName}] Sync still in progress — skip #${st.consecutiveSkips}`
-      )
-      // Pause the interval after 2 consecutive skips
-      if (st.consecutiveSkips >= 2 && !st.isPaused) {
-        st.isPaused = true
+      if (state.consecutiveSkips >= 2 && !state.isPaused) {
+        state.isPaused = true
         try {
-          const key = `${INTERVAL_NAME}:${tableName}`
-          this.schedulerRegistry.deleteInterval(key)
-          this.logger.warn(`[scheduler:${tableName}] Paused interval after 2 consecutive skips`)
+          const INTERVAL_NAME = `air_shipments_sync:${sheetId}`
+          this.schedulerRegistry.deleteInterval(INTERVAL_NAME)
+          this.logger.warn(`[scheduler] Interval ${INTERVAL_NAME} paused after 2 consecutive skips`)
         } catch (_err) {
-          // ignore
+          // Interval may already be deleted; ignore
         }
       }
-      this.state.set(tableName, st)
       return
     }
 
-    st.isSyncing = true
-    const wasPaused = st.isPaused
+    state.isSyncing = true
+    const waspaused = state.isPaused
     const startedAt = Date.now()
-    this.logger.log(`[scheduler:${tableName}] Starting sync`)
+    this.logger.log(`[scheduler] Starting sync cycle for sheetId ${sheetId}`)
 
     try {
-      await this.airShipmentsService.runSyncForTable(tableName)
+      await this.airShipmentsService.runSyncCycle(sheetId)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
-      this.logger.error(`[scheduler:${tableName}] Sync failed: ${message}`)
+      this.logger.error(
+        `[scheduler] Sync cycle failed for sheetId ${sheetId}: ${message}`,
+        err instanceof Error ? err.stack : undefined
+      )
     } finally {
       const durationMs = Date.now() - startedAt
-      this.logger.log(`[scheduler:${tableName}] Sync finished in ${durationMs}ms`)
-      st.isSyncing = false
-      st.consecutiveSkips = 0
+      this.logger.log(`[scheduler] Sync cycle finished for sheetId ${sheetId} in ${durationMs}ms`)
+      state.isSyncing = false
+      state.consecutiveSkips = 0
 
-      // Resume interval if it was paused
-      if (wasPaused) {
-        st.isPaused = false
-        // Re-create interval with existing timing by reading registry or using default
-        // The caller that paused must ensure re-adding; for simplicity, we re-add with same timing by retrieving interval name
+      // Resume the interval if it was paused
+      if (waspaused) {
+        state.isPaused = false
+        const INTERVAL_NAME = `air_shipments_sync:${sheetId}`
+        const intervalRef = setInterval(() => this.tick(sheetId), this.intervals.get(sheetId))
         try {
-          const key = `${INTERVAL_NAME}:${tableName}`
-          if (!this.schedulerRegistry.doesExist('interval', key)) {
-            const intervalRef = setInterval(() => this.tickFor(tableName), 1000 * 15)
-            this.schedulerRegistry.addInterval(key, intervalRef)
-            this.intervals.set(tableName, intervalRef)
-            this.logger.log(`[scheduler:${tableName}] Interval resumed`)
-          }
+          this.schedulerRegistry.addInterval(INTERVAL_NAME, intervalRef)
+          this.logger.log(`[scheduler] Interval ${INTERVAL_NAME} resumed`)
         } catch (_err) {
-          // ignore
+          // Interval may already exist; ignore
         }
       }
-      this.state.set(tableName, st)
-    }
-  }
-
-  // legacy tick() removed in favor of per-table tickFor()
-
-  // Backwards-compatible tick() — runs a global sync cycle (used by tests)
-  async tick(): Promise<void> {
-    if (this.isSyncing) {
-      this.consecutiveSkips++
-      this.logger.warn(`[scheduler] Sync still in progress — skip #${this.consecutiveSkips}`)
-      if (this.consecutiveSkips >= 2) {
-        try {
-          // Legacy interval name (global)
-          if (this.schedulerRegistry.doesExist('interval', INTERVAL_NAME)) {
-            this.schedulerRegistry.deleteInterval(INTERVAL_NAME)
-          }
-        } catch (_err) {
-          // ignore
-        }
-      }
-      return
-    }
-
-    this.isSyncing = true
-    try {
-      await this.airShipmentsService.runSyncCycle()
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err)
-      this.logger.error(`[scheduler] Sync failed: ${message}`)
-    } finally {
-      this.isSyncing = false
-      this.consecutiveSkips = 0
     }
   }
 
   onApplicationShutdown(): void {
-    this.logger.log('[scheduler] Shutting down — stopping all sync intervals')
-    // Attempt to delete any legacy/global interval name as well for compatibility
+    this.logger.log('[scheduler] Shutting down — stopping sync intervals')
+    this.intervals.forEach((_interval, sheetId) => {
+      const INTERVAL_NAME = `air_shipments_sync:${sheetId}`
+      try {
+        this.schedulerRegistry.deleteInterval(INTERVAL_NAME)
+      } catch (_err) {
+        // Interval may not exist if already deleted; ignore
+      }
+    })
+  }
+
+  @OnEvent('gsheetConfig.created') handleConfigCreate(newConfig: GoogleSheetConfig) {
+    this.logger.log('Received gsheetConfig.created event, updating scheduler config...')
+    if (!newConfig.enabled) {
+      this.logger.warn(
+        'Google Sheet sync disabled in config, skipping scheduler start for sheetId: ' +
+          newConfig.sheetId
+      )
+      return
+    }
+
+    const INTERVAL_NAME = `air_shipments_sync:${newConfig.sheetId}`
+    const INTERVAL_SYNC_MS = (newConfig.syncInterval || 15) * 1000
+
+    this.intervals.set(newConfig.sheetId, INTERVAL_SYNC_MS)
+    this.state.set(newConfig.sheetId, { isSyncing: false, consecutiveSkips: 0, isPaused: false })
+
     try {
       if (this.schedulerRegistry.doesExist('interval', INTERVAL_NAME)) {
         this.schedulerRegistry.deleteInterval(INTERVAL_NAME)
       }
+      const intervalRef = setInterval(() => this.tick(newConfig.sheetId), INTERVAL_SYNC_MS)
+      this.schedulerRegistry.addInterval(INTERVAL_NAME, intervalRef)
+      this.logger.log(`[scheduler] Interval ${INTERVAL_NAME} started with ${INTERVAL_SYNC_MS}ms`)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.logger.error(`[scheduler] Failed to start sync interval ${INTERVAL_NAME}: ${message}`)
+    }
+  }
+
+  @OnEvent('gsheetConfig.deleted') handleConfigChange(config: GoogleSheetConfig) {
+    this.logger.log('Received gsheetConfig.deleted event, updating scheduler config...')
+    const INTERVAL_NAME = `air_shipments_sync:${config.sheetId}`
+    try {
+      if (this.schedulerRegistry.doesExist('interval', INTERVAL_NAME)) {
+        this.schedulerRegistry.deleteInterval(INTERVAL_NAME)
+        this.logger.log(`[scheduler] Interval ${INTERVAL_NAME} deleted due to config deletion`)
+      }
     } catch (_err) {
-      // ignore
+      // Interval may already be deleted; ignore
     }
-    for (const [tableName, intervalRef] of this.intervals.entries()) {
-      try {
-        const key = `${INTERVAL_NAME}:${tableName}`
-        if (this.schedulerRegistry.doesExist('interval', key))
-          this.schedulerRegistry.deleteInterval(key)
-      } catch (_err) {
-        // ignore
-      }
-      try {
-        clearInterval(intervalRef)
-      } catch (_err) {
-        // ignore
-      }
-    }
-    this.intervals.clear()
-    this.state.clear()
   }
 
   @OnEvent('gsheetConfig.updated') handleConfigUpdate(newConfig: GoogleSheetConfig) {
     this.logger.log('Received gsheetConfig.updated event, updating scheduler config...')
+    const INTERVAL_NAME = `air_shipments_sync:${newConfig.sheetId}`
     if (!newConfig) {
       this.logger.warn('No Google Sheet config found during scheduler update')
       return
     }
+
     if (!newConfig.enabled) {
-      this.logger.warn('Google Sheet sync disabled in config, stopping all scheduler intervals')
-      // Stop all intervals
-      for (const tableName of Array.from(this.intervals.keys())) {
-        try {
-          const key = `${INTERVAL_NAME}:${tableName}`
-          if (this.schedulerRegistry.doesExist('interval', key))
-            this.schedulerRegistry.deleteInterval(key)
-        } catch (_err) {
-          // ignore
-        }
-        try {
-          clearInterval(this.intervals.get(tableName)!)
-        } catch (_err) {
-          // ignore
-        }
-        this.intervals.delete(tableName)
-        this.state.delete(tableName)
+      this.logger.warn(
+        'Google Sheet sync disabled in config, stopping scheduler with name: ' + INTERVAL_NAME
+      )
+      try {
+        this.schedulerRegistry.deleteInterval(INTERVAL_NAME)
+        this.logger.log(`[scheduler] Interval ${INTERVAL_NAME} stopped due to config update`)
+      } catch (_err) {
+        // Interval may already be deleted; ignore
       }
       return
     }
 
     const newIntervalMs = (newConfig.syncInterval || 15) * 1000
-    const newTables = new Set((newConfig.sheetConfigs ?? []).map((s) => s.tableName))
-
-    // Remove intervals for tables that no longer exist
-    for (const existingTable of Array.from(this.intervals.keys())) {
-      if (!newTables.has(existingTable)) {
-        try {
-          const key = `${INTERVAL_NAME}:${existingTable}`
-          if (this.schedulerRegistry.doesExist('interval', key))
-            this.schedulerRegistry.deleteInterval(key)
-        } catch (_err) {
-          // ignore
-        }
-        try {
-          clearInterval(this.intervals.get(existingTable)!)
-        } catch (_err) {
-          // ignore
-        }
-        this.intervals.delete(existingTable)
-        this.state.delete(existingTable)
-      }
+    if (newIntervalMs === this.intervals.get(newConfig.sheetId)) {
+      this.logger.log(`[scheduler] Interval ${INTERVAL_NAME} unchanged, no update needed`)
+      return
     }
 
-    // Add or update intervals for tables in the new config
-    for (const tableName of newTables) {
-      // If interval exists but timing changed, re-add with new timing
-      if (!this.intervals.has(tableName) || this.currentIntervalMs !== newIntervalMs) {
-        this.addIntervalForTable(tableName, newIntervalMs)
+    // Update the interval timing by restarting the interval with the new timing
+    try {
+      if (this.schedulerRegistry.doesExist('interval', INTERVAL_NAME)) {
+        this.schedulerRegistry.deleteInterval(INTERVAL_NAME)
       }
+      const intervalRef = setInterval(() => this.tick(newConfig.sheetId), newIntervalMs)
+      this.schedulerRegistry.addInterval(INTERVAL_NAME, intervalRef)
+      this.logger.log(`[scheduler] Interval ${INTERVAL_NAME} updated to ${newIntervalMs}ms`)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err)
+      this.logger.error(`[scheduler] Failed to update interval ${INTERVAL_NAME}: ${message}`)
     }
-
-    this.currentIntervalMs = newIntervalMs
   }
 }

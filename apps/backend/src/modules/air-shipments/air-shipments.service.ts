@@ -4,11 +4,6 @@ import { Repository, DataSource } from 'typeorm'
 import { SheetsService } from './sheets.service'
 import { DynamicTableService } from './dynamic-table.service'
 import { SyncNotificationGateway } from './sync-notification.gateway'
-import { AirShipmentCgk } from './entities/air-shipment-cgk.entity'
-import { AirShipmentSub } from './entities/air-shipment-sub.entity'
-import { AirShipmentSda } from './entities/air-shipment-sda.entity'
-import { RatePerStation } from './entities/rate-per-station.entity'
-import { RouteMaster } from './entities/route-master.entity'
 import { ChunkError, RowError, SheetResult } from './sheet-config.interface'
 import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
 import { GoogleSheetSheetConfig } from './entities/google-sheet-sheet-config.entity'
@@ -26,11 +21,6 @@ export class AirShipmentsService {
   constructor(
     private readonly sheetsService: SheetsService,
     @Optional() private readonly gateway: SyncNotificationGateway | null,
-    @InjectRepository(AirShipmentCgk) private readonly cgkRepo: Repository<AirShipmentCgk>,
-    @InjectRepository(AirShipmentSub) private readonly subRepo: Repository<AirShipmentSub>,
-    @InjectRepository(AirShipmentSda) private readonly sdaRepo: Repository<AirShipmentSda>,
-    @InjectRepository(RatePerStation) private readonly rateRepo: Repository<RatePerStation>,
-    @InjectRepository(RouteMaster) private readonly routeRepo: Repository<RouteMaster>,
     @InjectRepository(GoogleSheetConfig)
     private readonly googleSheetConfigRepo: Repository<GoogleSheetConfig>,
     @InjectRepository(GoogleSheetSheetConfig)
@@ -38,15 +28,7 @@ export class AirShipmentsService {
     private readonly dynamicTableService: DynamicTableService,
     private readonly eventEmitter: EventEmitter2, // inject EventEmitter2
     private readonly dataSource: DataSource
-  ) {
-    this.repoMap = new Map<string, Repository<any>>([
-      ['air_shipments_cgk', this.cgkRepo],
-      ['air_shipments_sub', this.subRepo],
-      ['air_shipments_sda', this.sdaRepo],
-      ['rate_per_station', this.rateRepo],
-      ['route_master', this.routeRepo],
-    ])
-  }
+  ) {}
 
   /**
    * Paginated read for dynamic air_shipment_* tables.
@@ -97,8 +79,14 @@ export class AirShipmentsService {
 
     const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
 
+    const isJsonbSort = !columns.includes(sortBy)
+    const orderBySql = isJsonbSort
+      ? `ORDER BY extra_fields->>'${sortBy}' ${sortOrder.toUpperCase()}`
+      : `ORDER BY "${safeSortBy}" ${sortOrder.toUpperCase()}`
+
     const rows = await this.dataSource.query(
-      `SELECT * FROM "${tableName}" ${whereSql} ORDER BY "${safeSortBy}" ${sortOrder.toUpperCase()} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      `SELECT * FROM "${tableName}" 
+      ${whereSql} ${orderBySql} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, limit, offset]
     )
 
@@ -111,13 +99,6 @@ export class AirShipmentsService {
     return { data: rows, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } }
   }
 
-  /** Returns the TypeORM Repository for a given table name. */
-  private repoFor(tableName: string): Repository<any> {
-    const repo = this.repoMap.get(tableName)
-    if (!repo) throw new Error(`No repository registered for table "${tableName}"`)
-    return repo
-  }
-
   /**
    * Executes a full sync cycle:
    * 1. Fetch all sheets via SheetsService
@@ -126,9 +107,11 @@ export class AirShipmentsService {
    *
    * FR-028–FR-046
    */
-  async runSyncCycle(): Promise<{ affectedTables: string[]; totalUpserted: number }> {
+  async runSyncCycle(
+    sheetId: string
+  ): Promise<{ affectedTables: string[]; totalUpserted: number }> {
     const startedAt = Date.now()
-    const results = await this.sheetsService.fetchAllSheets()
+    const results = await this.sheetsService.fetchAllSheets(sheetId)
 
     const sheetResults = await Promise.all(results.map((sheet) => this.processSingleSheet(sheet)))
 
@@ -155,48 +138,10 @@ export class AirShipmentsService {
         affectedTables,
         totalUpserted,
         syncedAt: new Date().toISOString(),
-        spreadsheetLabel: this.sheetsService.getGsheetConfig()?.label,
       })
     }
 
     return { affectedTables, totalUpserted }
-  }
-
-  /** Run sync for a single configured table (used by per-table scheduler). */
-  async runSyncForTable(tableName: string) {
-    const startedAt = Date.now()
-    try {
-      const results = await this.sheetsService.fetchAllSheets()
-      const sheet = results.find((s) => s.tableName === tableName)
-      if (!sheet) {
-        this.logger.warn(`[sync] No sheet configured with tableName="${tableName}"`)
-        return { tableName, upserted: 0, rowErrors: [], chunkErrors: [] }
-      }
-
-      const res = await this.processSingleSheet(sheet)
-
-      if (res.upserted > 0 && this.gateway) {
-        this.gateway.notifyClients({
-          affectedTables: [tableName],
-          totalUpserted: res.upserted,
-          syncedAt: new Date().toISOString(),
-          spreadsheetLabel: this.sheetsService.getGsheetConfig()?.label,
-        })
-      }
-
-      const durationMs = Date.now() - startedAt
-      this.logger.log(
-        `[sync] Single-table sync for ${tableName} finished in ${durationMs}ms — ${res.upserted} upserted`
-      )
-      return res
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err)
-      this.logger.error(
-        `[sync] Single-table sync for ${tableName} failed: ${message}`,
-        err instanceof Error ? err.stack : undefined
-      )
-      return { tableName, upserted: 0, rowErrors: [], chunkErrors: [] }
-    }
   }
 
   private async processSingleSheet(sheet: SheetResult): Promise<{
@@ -213,7 +158,7 @@ export class AirShipmentsService {
     const missingKeys = keyColumns.filter((k) => !headers.includes(k))
     if (missingKeys.length > 0) {
       this.logger.warn(
-        `[sync] "${sheetName}" missing key column(s) "${missingKeys.join(', ')}" — skipping`
+        `[sync] "${sheetName}" missing key column(s)  "${missingKeys.join(', ')}" — skipping`
       )
       return { tableName, upserted: 0, rowErrors, chunkErrors }
     }
@@ -223,10 +168,12 @@ export class AirShipmentsService {
     const rowKey = (row: Record<string, unknown>): string =>
       keyColumns.map((k) => String(row[k] ?? '')).join('\x00')
 
-    const repo = this.repoFor(tableName)
-
     // Fetch existing rows — only key columns + data columns needed for diff
-    const existingRows = await repo.createQueryBuilder('t').select('t.*').getRawMany()
+    const existingRows = await this.dataSource
+      .createQueryBuilder()
+      .select('*')
+      .from(tableName, 't')
+      .getRawMany()
     const existingMap = new Map<string, Record<string, unknown>>()
     for (const row of existingRows) existingMap.set(rowKey(row), row)
 
@@ -235,9 +182,19 @@ export class AirShipmentsService {
     const rowsToUpsert: Record<string, unknown>[] = []
 
     // Get all entity columns for this table (excluding extra_fields)
-    const entityColumns = repo.metadata.columns
-      .map((c) => c.propertyName)
-      .filter((c) => c !== 'extra_fields')
+    const columnsResult = await this.dataSource.query(
+      `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_name = $1
+      AND table_schema = 'public'
+      `,
+      [tableName]
+    )
+
+    const entityColumns = columnsResult
+      .map((c: any) => c.column_name)
+      .filter((c: string) => c !== 'extra_fields')
 
     for (const incomingRow of rows) {
       const existing = existingMap.get(rowKey(incomingRow))
@@ -287,13 +244,12 @@ export class AirShipmentsService {
       const chunk = rowsToUpsert.slice(i, i + CHUNK_SIZE)
 
       try {
-        await repo
-          .createQueryBuilder()
-          .insert()
-          .into(tableName)
-          .values(chunk)
-          .orUpdate(updateColumns, keyColumns)
-          .execute()
+        await this.upsertDynamic({
+          tableName,
+          data: chunk,
+          keyColumns,
+          updateColumns,
+        })
       } catch (err) {
         const errorType = this.classifyError(err as Error)
 
@@ -316,13 +272,12 @@ export class AirShipmentsService {
         for (let j = 0; j < chunk.length; j++) {
           const row = chunk[j]
           try {
-            await repo
-              .createQueryBuilder()
-              .insert()
-              .into(tableName)
-              .values(row)
-              .orUpdate(updateColumns, keyColumns)
-              .execute()
+            await this.upsertDynamic({
+              tableName,
+              data: [row],
+              keyColumns,
+              updateColumns,
+            })
           } catch (rowErr: unknown) {
             const rowErrorType = this.classifyError(rowErr as Error)
             const key = rowKey(row)
@@ -346,6 +301,90 @@ export class AirShipmentsService {
     }
 
     return { tableName, upserted: rowsToUpsert.length - rowErrors.length, rowErrors, chunkErrors }
+  }
+
+  upsertDynamic = async ({
+    tableName,
+    data,
+    keyColumns,
+    updateColumns,
+  }: {
+    tableName: string
+    data: any[]
+    keyColumns: string[]
+    updateColumns: string[]
+  }) => {
+    if (!data.length) return
+
+    // ✅ 1. sanitize table name (WAJIB)
+    if (!/^[a-zA-Z0-9_]+$/.test(tableName)) {
+      throw new Error('Invalid table name')
+    }
+
+    // ✅ 2. deduplicate (FIX error ON CONFLICT)
+    const dedupedMap = new Map<string, any>()
+    for (const row of data) {
+      const key = keyColumns.map((k) => row[k]).join('|')
+      dedupedMap.set(key, row) // last wins
+    }
+    const dedupedData = Array.from(dedupedMap.values())
+
+    // ✅ 3. ambil columns (dari row pertama)
+    const columns = Object.keys(dedupedData[0])
+
+    // ⚠️ safety: pastikan keyColumns ada di columns
+    for (const key of keyColumns) {
+      if (!columns.includes(key)) {
+        throw new Error(`Key column "${key}" not found in data`)
+      }
+    }
+
+    // ✅ 4. build values placeholder
+    const values = dedupedData
+      .map((_, i) => `(${columns.map((_, j) => `$${i * columns.length + j + 1}`).join(',')})`)
+      .join(',')
+
+    // ✅ 5. flatten values
+    const flatValues = dedupedData.flatMap(
+      (row) => columns.map((col) => row[col] ?? null) // handle undefined
+    )
+
+    // ✅ 6. handle updateSet kosong
+    let onConflictClause = ''
+
+    if (updateColumns.length > 0) {
+      const updateSet = updateColumns
+        .filter((col) => !keyColumns.includes(col)) // jangan update key
+        .map((col) => `"${col}" = EXCLUDED."${col}"`)
+        .join(', ')
+
+      if (updateSet.length > 0) {
+        onConflictClause = `
+        ON CONFLICT (${keyColumns.map((k) => `"${k}"`).join(', ')})
+        DO UPDATE SET ${updateSet}
+      `
+      } else {
+        onConflictClause = `
+        ON CONFLICT (${keyColumns.map((k) => `"${k}"`).join(', ')})
+        DO NOTHING
+      `
+      }
+    } else {
+      onConflictClause = `
+      ON CONFLICT (${keyColumns.map((k) => `"${k}"`).join(', ')})
+      DO NOTHING
+    `
+    }
+
+    // ✅ 7. execute
+    await this.dataSource.query(
+      `
+    INSERT INTO "${tableName}" (${columns.map((c) => `"${c}"`).join(', ')})
+    VALUES ${values}
+    ${onConflictClause}
+    `,
+      flatValues
+    )
   }
 
   private normalizeForDiff = (val: unknown): string => {
@@ -477,44 +516,6 @@ export class AirShipmentsService {
     return { data, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } }
   }
 
-  findAllCgk(query: {
-    page: number
-    limit: number
-    sortBy: string
-    sortOrder: 'asc' | 'desc'
-    search?: string
-  }) {
-    return this.paginatedQuery(this.cgkRepo, query, 'air_shipments_cgk')
-  }
-
-  findAllSub(query: {
-    page: number
-    limit: number
-    sortBy: string
-    sortOrder: 'asc' | 'desc'
-    search?: string
-  }) {
-    return this.paginatedQuery(this.subRepo, query, 'air_shipments_sub')
-  }
-
-  findAllSda(query: {
-    page: number
-    limit: number
-    sortBy: string
-    sortOrder: 'asc' | 'desc'
-    search?: string
-  }) {
-    return this.paginatedQuery(this.sdaRepo, query, 'air_shipments_sda')
-  }
-
-  findAllRate(query: { page: number; limit: number; sortBy: string; sortOrder: 'asc' | 'desc' }) {
-    return this.paginatedQuery(this.rateRepo, query)
-  }
-
-  findAllRoutes(query: { page: number; limit: number; sortBy: string; sortOrder: 'asc' | 'desc' }) {
-    return this.paginatedQuery(this.routeRepo, query)
-  }
-
   async getGoogleSheetConfig(): Promise<GoogleSheetConfig[]> {
     const config = await this.googleSheetConfigRepo.find({
       relations: ['sheetConfigs'],
@@ -554,6 +555,7 @@ export class AirShipmentsService {
       )
     }
 
+    this.eventEmitter.emit('gsheetConfig.created', saved)
     this.eventEmitter.emit('google_sheet_config.created', {
       actorId,
       resourceId: saved.id,
@@ -581,7 +583,6 @@ export class AirShipmentsService {
     const sheetConfigs = dto.sheetConfigs
     delete dto.sheetConfigs // remove sheetConfigs from dto to avoid confusion in update
     await this.googleSheetConfigRepo.update(id, { ...dto, sheetId })
-    await this.googleSheetSheetConfigRepo.delete({ googleSheetConfig: { id } })
     const config = await this.googleSheetConfigRepo.findOne({
       where: { id },
       relations: ['sheetConfigs'],
@@ -589,18 +590,22 @@ export class AirShipmentsService {
     // Determine which sheet configs are new or changed (uniqueKey change)
     try {
       const prevMap = new Map<string, any>()
-      for (const p of prev?.sheetConfigs ?? []) prevMap.set(p.id, p)
+      for (const p of prev?.sheetConfigs ?? []) prevMap.set(p.tableName, p)
 
       const toEnsure: any[] = []
-      for (const sc of config?.sheetConfigs ?? []) {
-        const prevSc = sc.id ? prevMap.get(sc.id) : undefined
+      for (const sc of sheetConfigs ?? []) {
+        const prevSc = sc.tableName ? prevMap.get(sc.tableName) : undefined
         if (!prevSc) {
           toEnsure.push(sc)
           continue
         }
         const prevKeys = Array.isArray(prevSc.uniqueKey) ? prevSc.uniqueKey : prevSc.uniqueKey || []
         const newKeys = Array.isArray(sc.uniqueKey) ? sc.uniqueKey : sc.uniqueKey || []
-        if (JSON.stringify(prevKeys) !== JSON.stringify(newKeys)) toEnsure.push(sc)
+        const prevTableName = prevSc.tableName
+        const newTableName = sc.tableName
+        // If uniqueKey or tableName changed, we need to ensure the table again
+        if (JSON.stringify(prevKeys) !== JSON.stringify(newKeys) || prevTableName !== newTableName)
+          toEnsure.push(sc)
       }
 
       if (toEnsure.length > 0) {
@@ -618,6 +623,7 @@ export class AirShipmentsService {
         googleSheetConfig: config,
       })
     )
+    await this.googleSheetSheetConfigRepo.delete({ googleSheetConfig: { id } })
     const saved = await this.googleSheetConfigRepo.save(config)
     this.eventEmitter.emit('google_sheet_config.updated', {
       actorId,
@@ -642,6 +648,7 @@ export class AirShipmentsService {
       relations: ['sheetConfigs'],
     })
     await this.googleSheetConfigRepo.delete(id)
+    this.eventEmitter.emit('gsheetConfig.deleted', { id })
     this.eventEmitter.emit('google_sheet_config.deleted', {
       actorId,
       resourceId: id,
@@ -659,11 +666,16 @@ export class AirShipmentsService {
     return match[1]
   }
 
-  async lockRow(tableName: string, id: string, locked: boolean): Promise<string> {
-    const repo = this.repoFor(tableName)
-    await repo.update(id, { is_locked: locked })
+  async lockRow(tableName: string, id: string, locked: boolean, actorId?: string): Promise<string> {
+    // use query builder to update is_locked column for the given id in the specified table
+    await this.dataSource
+      .createQueryBuilder()
+      .update(tableName)
+      .set({ is_locked: locked })
+      .where('id = :id', { id })
+      .execute()
     this.eventEmitter.emit('shipment_row.lock_changed', {
-      actorId: undefined,
+      actorId,
       resourceId: id,
       ip: undefined,
       userAgent: undefined,

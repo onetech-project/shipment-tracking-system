@@ -1,6 +1,6 @@
-export function normalizeTableName(sheetName: string, prefix = 'air_shipment_'): string {
+export function normalizeTableName(sheetName: string, prefix = 'air_shipments_'): string {
   if (typeof sheetName !== 'string' || sheetName.trim().length === 0) {
-    throw new TypeError('sheetName must be a non-empty string')
+    return sheetName
   }
 
   // Remove diacritics, lowercase
@@ -21,4 +21,8 @@ export function normalizeTableName(sheetName: string, prefix = 'air_shipment_'):
   if (s.length > available) s = s.slice(0, available)
 
   return `${prefix}${s}`
+}
+
+export const getAirShipmentsTabName = (sheetName: string): string => {
+  return sheetName.match(/[A-Z]+(?=[A-Z][a-z]|$)/g)?.join(' ') || ''
 }

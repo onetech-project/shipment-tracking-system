@@ -55,12 +55,7 @@ export function GoogleSheetConfigPanel() {
         case 'sheetName':
           if (typeof value === 'string') {
             const newTable = normalizeTableName(value)
-            if (
-              !existing.tableName ||
-              existing.tableName === normalizeTableName(existing.sheetName || '')
-            ) {
-              existing.tableName = newTable
-            }
+            existing.tableName = newTable
             existing.sheetName = value
           }
           break
@@ -183,13 +178,17 @@ export function GoogleSheetConfigPanel() {
 
   return (
     <div>
-      {configs.length > 0 && !editMode && (
-        <div className="mb-6">
-          <div className="flex justify-between mb-3">
-            <h2 className="text-lg font-medium mb-2">Google Sheet Configs</h2>
-            <Button onClick={handleAdd}>+ Add Config</Button>
-          </div>
-          {configs.map((cfg) => (
+      <div className="mb-6">
+        <div className="flex justify-between mb-3">
+          <h2 className="text-lg font-medium mb-2">Google Sheet Configs</h2>
+          {!editMode && <Button onClick={handleAdd}>+ Add Config</Button>}
+        </div>
+        {configs.length === 0 && !editMode && (
+          <div className="text-muted-foreground">No Google Sheet configs found.</div>
+        )}
+        {configs.length > 0 &&
+          !editMode &&
+          configs.map((cfg) => (
             <div
               key={cfg.id}
               className="border rounded p-3 mb-2 flex justify-between items-center bg-muted/30"
@@ -207,11 +206,9 @@ export function GoogleSheetConfigPanel() {
               <Button onClick={() => handleEdit(cfg)}>Edit</Button>
             </div>
           ))}
-        </div>
-      )}
+      </div>
       {editMode && form && (
         <>
-          <h2 className="text-lg font-medium mb-5">Google Sheet Integration Config</h2>
           <div className="space-y-4">
             <FormField label="Label" required>
               <Input
@@ -233,6 +230,7 @@ export function GoogleSheetConfigPanel() {
                 value={form?.syncInterval}
                 onChange={(e) => handleChange('syncInterval', Number(e.target.value))}
                 disabled={!editMode}
+                min={15}
               />
             </FormField>
             <FormField label="Enable Google Sheet Sync" className="flex-row">
@@ -261,7 +259,7 @@ export function GoogleSheetConfigPanel() {
                       <Input
                         value={sheet.tableName}
                         onChange={(e) => handleSheetConfigChange(idx, 'tableName', e.target.value)}
-                        disabled={!editMode}
+                        disabled
                       />
                     </FormField>
                     <FormField label="Header Row" required>
@@ -281,7 +279,7 @@ export function GoogleSheetConfigPanel() {
                         disabled={!editMode}
                       />
                     </FormField>
-                    <FormField label="Skip Null Cols">
+                    {/* <FormField label="Skip Null Cols">
                       <input
                         type="checkbox"
                         checked={!!sheet.skipNullCols}
@@ -290,7 +288,7 @@ export function GoogleSheetConfigPanel() {
                         }
                         disabled={!editMode}
                       />
-                    </FormField>
+                    </FormField> */}
                     <Button
                       className="ms-auto my-auto"
                       variant="destructive"

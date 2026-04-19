@@ -13,6 +13,8 @@ export interface SheetConfig {
   uniqueKey: string | string[]
   /** If true, columns with empty/null normalized headers are dropped */
   skipNullCols: boolean
+  /** Google Sheet ID */
+  sheetId: string
 }
 
 export interface SheetResult {

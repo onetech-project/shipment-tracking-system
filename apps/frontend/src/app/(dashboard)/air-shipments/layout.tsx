@@ -6,6 +6,8 @@ import { useEffect, useState } from 'react'
 import { apiClient } from '@/shared/api/client'
 import { GoogleSheetConfig } from '../../../features/air-shipments/types'
 import Spinner from '@/components/ui/spinner'
+import { useRouter } from 'next/navigation'
+import { getAirShipmentsTabName } from '../../../features/air-shipments/utils/normalizeTableName'
 
 // Module-level flag to avoid duplicate fetches in development (React Strict Mode)
 let _airShipmentsSublinksFetched = false
@@ -17,6 +19,7 @@ export default function AirShipmentsLayout({ children }: { children: React.React
   ] as { href: string; label: string }[])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const router = useRouter()
 
   useEffect(() => {
     if (_airShipmentsSublinksFetched) {
@@ -29,26 +32,26 @@ export default function AirShipmentsLayout({ children }: { children: React.React
       .get('/air-shipments/google-sheet-config')
       .then((res) => {
         // get google sheet sheet config and add to sublinks
-        res.data.forEach((config: GoogleSheetConfig) => {
-          config.sheetConfigs?.forEach((sheetConfig) => {
-            const label =
-              sheetConfig.sheetName.match(/[A-Z]+(?=[A-Z][a-z]|$)/g)?.join(' ') ||
-              sheetConfig.sheetName
+        const sheetLinks = res.data.map((config: GoogleSheetConfig) => {
+          const links = config.sheetConfigs?.map((sheetConfig) => {
+            const label = getAirShipmentsTabName(sheetConfig.sheetName) || sheetConfig.sheetName
             const href = `/air-shipments/${sheetConfig.tableName}`
-            setSublinks((prev) => [
-              {
-                label,
-                href,
-              },
-              ...prev,
-            ])
+            return { label, href }
           })
-          _airShipmentsSublinksFetched = false
+          return links || []
         })
+        const flattenedLinks = sheetLinks.flat()
+        setSublinks((prev) => [...flattenedLinks, ...prev])
+        if (pathname === '/air-shipments' || pathname === '/air-shipments/') {
+          router.push(flattenedLinks[0]?.href || '/air-shipments/google-sheet-config') // Redirect to first sublink or default config page
+        }
       })
       .catch((err: Error) => setError(err.message || 'Failed to load sublinks'))
-      .finally(() => setIsLoading(false))
-  }, [])
+      .finally(() => {
+        setIsLoading(false)
+        _airShipmentsSublinksFetched = false // Redirect to default sub-page after loading sublinks
+      })
+  }, [router])
 
   // centered spinner while loading
   if (isLoading)
