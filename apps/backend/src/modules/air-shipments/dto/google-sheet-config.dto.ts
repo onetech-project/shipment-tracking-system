@@ -27,6 +27,8 @@ export class GoogleSheetSheetConfigDto {
 }
 
 export class GoogleSheetConfigDto {
+  @IsString()
+  label: string
   @IsUrl()
   sheetLink: string
 
@@ -36,8 +38,9 @@ export class GoogleSheetConfigDto {
   @IsBoolean()
   enabled: boolean
 
-  // @IsArray()
-  // @ValidateNested({ each: true })
-  // @Type(() => GoogleSheetSheetConfigDto)
-  // sheetConfigs: GoogleSheetSheetConfigDto[]
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => GoogleSheetSheetConfigDto)
+  sheetConfigs?: GoogleSheetSheetConfigDto[]
 }

@@ -25,6 +25,7 @@ interface UseAirShipmentsResult {
   setPage: (page: number) => void
   setSort: (sortBy: string, sortOrder: SortOrder) => void
   setSearch: (search: string) => void
+  refresh: () => void
 }
 
 export function useAirShipments(
@@ -92,7 +93,11 @@ export function useAirShipments(
     []
   )
 
-  return { data, isLoading, error, query, setPage, setSort, setSearch }
+  const refresh = useCallback(() => {
+    void fetchData(query)
+  }, [fetchData, query])
+
+  return { data, isLoading, error, query, setPage, setSort, setSearch, refresh }
 }
 
 export async function lockAirShipmentRow(
@@ -101,4 +106,30 @@ export async function lockAirShipmentRow(
   locked: boolean
 ): Promise<void> {
   await apiClient.patch(`/air-shipments/${tableName}/${id}/lock`, { locked })
+}
+
+export async function batchLockAirShipments(
+  tableName: string,
+  start: string,
+  end: string,
+  locked = true
+): Promise<number> {
+  const res = await apiClient.post(`/air-shipments/${tableName}/batch-lock`, {
+    start,
+    end,
+    locked,
+  })
+  return res.data?.affected ?? 0
+}
+
+export async function batchDeleteAirShipments(
+  tableName: string,
+  start: string,
+  end: string
+): Promise<number> {
+  const res = await apiClient.post(`/air-shipments/${tableName}/batch-delete`, {
+    start,
+    end,
+  })
+  return res.data?.deleted ?? 0
 }

@@ -11,6 +11,7 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter'
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard'
 import { TenantClsInterceptor } from './common/interceptors/tenant-cls.interceptor'
 import { AppController } from './app.controller'
+import { AppLogger } from './common/logging/app-logger.service'
 import { AuthModule } from './modules/auth/auth.module'
 import { OrganizationsModule } from './modules/organizations/organizations.module'
 import { UsersModule } from './modules/users/users.module'
@@ -89,6 +90,7 @@ import { AirShipmentsModule } from './modules/air-shipments/air-shipments.module
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_INTERCEPTOR, useClass: TenantClsInterceptor },
+    AppLogger,
   ],
 })
 export class AppModule {}

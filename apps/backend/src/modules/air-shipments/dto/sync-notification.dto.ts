@@ -1,13 +1,17 @@
-import { IsArray, IsDateString, IsNumber, IsString } from 'class-validator';
+import { IsArray, IsDateString, IsNumber, IsString, IsOptional } from 'class-validator'
 
 export class SyncNotificationDto {
   @IsArray()
   @IsString({ each: true })
-  affectedTables!: string[];
+  affectedTables!: string[]
 
   @IsNumber()
-  totalUpserted!: number;
+  totalUpserted!: number
 
   @IsDateString()
-  syncedAt!: string;
+  syncedAt!: string
+
+  @IsOptional()
+  @IsString()
+  spreadsheetLabel?: string
 }

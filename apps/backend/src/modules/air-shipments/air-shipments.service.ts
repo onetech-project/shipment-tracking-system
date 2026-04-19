@@ -1,13 +1,9 @@
-import { Injectable, Logger, Optional } from '@nestjs/common'
+import { Injectable, Logger, Optional, BadRequestException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
+import { Repository, DataSource } from 'typeorm'
 import { SheetsService } from './sheets.service'
+import { DynamicTableService } from './dynamic-table.service'
 import { SyncNotificationGateway } from './sync-notification.gateway'
-import { AirShipmentCgk } from './entities/air-shipment-cgk.entity'
-import { AirShipmentSub } from './entities/air-shipment-sub.entity'
-import { AirShipmentSda } from './entities/air-shipment-sda.entity'
-import { RatePerStation } from './entities/rate-per-station.entity'
-import { RouteMaster } from './entities/route-master.entity'
 import { ChunkError, RowError, SheetResult } from './sheet-config.interface'
 import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
 import { GoogleSheetSheetConfig } from './entities/google-sheet-sheet-config.entity'
@@ -25,31 +21,87 @@ export class AirShipmentsService {
   constructor(
     private readonly sheetsService: SheetsService,
     @Optional() private readonly gateway: SyncNotificationGateway | null,
-    @InjectRepository(AirShipmentCgk) private readonly cgkRepo: Repository<AirShipmentCgk>,
-    @InjectRepository(AirShipmentSub) private readonly subRepo: Repository<AirShipmentSub>,
-    @InjectRepository(AirShipmentSda) private readonly sdaRepo: Repository<AirShipmentSda>,
-    @InjectRepository(RatePerStation) private readonly rateRepo: Repository<RatePerStation>,
-    @InjectRepository(RouteMaster) private readonly routeRepo: Repository<RouteMaster>,
     @InjectRepository(GoogleSheetConfig)
     private readonly googleSheetConfigRepo: Repository<GoogleSheetConfig>,
     @InjectRepository(GoogleSheetSheetConfig)
     private readonly googleSheetSheetConfigRepo: Repository<GoogleSheetSheetConfig>,
-    private readonly eventEmitter: EventEmitter2 // inject EventEmitter2
-  ) {
-    this.repoMap = new Map<string, Repository<any>>([
-      ['air_shipments_cgk', this.cgkRepo],
-      ['air_shipments_sub', this.subRepo],
-      ['air_shipments_sda', this.sdaRepo],
-      ['rate_per_station', this.rateRepo],
-      ['route_master', this.routeRepo],
-    ])
-  }
+    private readonly dynamicTableService: DynamicTableService,
+    private readonly eventEmitter: EventEmitter2, // inject EventEmitter2
+    private readonly dataSource: DataSource
+  ) {}
 
-  /** Returns the TypeORM Repository for a given table name. */
-  private repoFor(tableName: string): Repository<any> {
-    const repo = this.repoMap.get(tableName)
-    if (!repo) throw new Error(`No repository registered for table "${tableName}"`)
-    return repo
+  /**
+   * Paginated read for dynamic air_shipment_* tables.
+   * Allows basic paging and sorting. Validates table name to prevent SQL injection.
+   */
+  async findAllForTable(
+    tableName: string,
+    {
+      page = 1,
+      limit = 50,
+      sortBy = 'id',
+      sortOrder = 'asc',
+      search,
+    }: { page: number; limit: number; sortBy: string; sortOrder: 'asc' | 'desc'; search?: string }
+  ) {
+    // Basic validation: only allow tables with air_shipments_ prefix
+    if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
+      throw new BadRequestException('Invalid table name')
+    }
+
+    // Load columns from information_schema
+    const cols: { column_name: string }[] = await this.dataSource.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position`,
+      [tableName]
+    )
+    const columns = cols.map((c) => c.column_name)
+
+    const safeSortBy = columns.includes(sortBy) ? sortBy : 'id'
+    const offset = (page - 1) * limit
+
+    // Basic search support: search against text columns and extra_fields JSONB via ILIKE
+    const whereClauses: string[] = []
+    const params: any[] = []
+    if (search && String(search).trim()) {
+      const s = `%${String(search).trim()}%`
+      const textCols = columns // choose text-like columns heuristically
+        .filter(
+          (c) => c !== 'extra_fields' && c !== 'id' && c !== 'is_locked' && c !== 'last_synced_at'
+        )
+        .slice(0, 5) // limit to first few to avoid huge queries
+      const orConds = textCols.map((c, idx) => `${c}::text ILIKE $${params.length + idx + 1}`)
+      params.push(...textCols.map(() => s))
+      // extra_fields JSONB text search
+      orConds.push(`${'extra_fields'}::text ILIKE $${params.length + 1}`)
+      params.push(s)
+      whereClauses.push(`(${orConds.join(' OR ')})`)
+    }
+
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
+
+    const isJsonbSort = !columns.includes(sortBy)
+    let orderBySql = isJsonbSort
+      ? `ORDER BY extra_fields->>'${sortBy}' ${sortOrder.toUpperCase()}`
+      : `ORDER BY "${safeSortBy}" ${sortOrder.toUpperCase()}`
+
+    if (isJsonbSort && sortBy.toLowerCase().includes('date')) {
+      // Cast to timestamp for proper date sorting if column name suggests it's a date
+      orderBySql = `ORDER BY (NULLIF(extra_fields->>'${sortBy}', ''))::timestamp ${sortOrder.toUpperCase()}`
+    }
+
+    const rows = await this.dataSource.query(
+      `SELECT * FROM "${tableName}" 
+      ${whereSql} ${orderBySql} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, limit, offset]
+    )
+
+    const countRes = await this.dataSource.query(
+      `SELECT count(*)::int FROM "${tableName}" ${whereSql}`,
+      params
+    )
+    const total = countRes?.[0]?.count ?? 0
+
+    return { data: rows, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } }
   }
 
   /**
@@ -60,9 +112,11 @@ export class AirShipmentsService {
    *
    * FR-028–FR-046
    */
-  async runSyncCycle(): Promise<{ affectedTables: string[]; totalUpserted: number }> {
+  async runSyncCycle(
+    sheetId: string
+  ): Promise<{ affectedTables: string[]; totalUpserted: number }> {
     const startedAt = Date.now()
-    const results = await this.sheetsService.fetchAllSheets()
+    const results = await this.sheetsService.fetchAllSheets(sheetId)
 
     const sheetResults = await Promise.all(results.map((sheet) => this.processSingleSheet(sheet)))
 
@@ -109,7 +163,7 @@ export class AirShipmentsService {
     const missingKeys = keyColumns.filter((k) => !headers.includes(k))
     if (missingKeys.length > 0) {
       this.logger.warn(
-        `[sync] "${sheetName}" missing key column(s) "${missingKeys.join(', ')}" — skipping`
+        `[sync] "${sheetName}" missing key column(s)  "${missingKeys.join(', ')}" — skipping`
       )
       return { tableName, upserted: 0, rowErrors, chunkErrors }
     }
@@ -119,10 +173,12 @@ export class AirShipmentsService {
     const rowKey = (row: Record<string, unknown>): string =>
       keyColumns.map((k) => String(row[k] ?? '')).join('\x00')
 
-    const repo = this.repoFor(tableName)
-
     // Fetch existing rows — only key columns + data columns needed for diff
-    const existingRows = await repo.createQueryBuilder('t').select('t.*').getRawMany()
+    const existingRows = await this.dataSource
+      .createQueryBuilder()
+      .select('*')
+      .from(tableName, 't')
+      .getRawMany()
     const existingMap = new Map<string, Record<string, unknown>>()
     for (const row of existingRows) existingMap.set(rowKey(row), row)
 
@@ -131,9 +187,19 @@ export class AirShipmentsService {
     const rowsToUpsert: Record<string, unknown>[] = []
 
     // Get all entity columns for this table (excluding extra_fields)
-    const entityColumns = repo.metadata.columns
-      .map((c) => c.propertyName)
-      .filter((c) => c !== 'extra_fields')
+    const columnsResult = await this.dataSource.query(
+      `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_name = $1
+      AND table_schema = 'public'
+      `,
+      [tableName]
+    )
+
+    const entityColumns = columnsResult
+      .map((c: any) => c.column_name)
+      .filter((c: string) => c !== 'extra_fields')
 
     for (const incomingRow of rows) {
       const existing = existingMap.get(rowKey(incomingRow))
@@ -144,7 +210,6 @@ export class AirShipmentsService {
         lockedSkipped++
         continue
       }
-
 
       // Split known and unknown fields
       const regularFields: Record<string, unknown> = {}
@@ -184,13 +249,12 @@ export class AirShipmentsService {
       const chunk = rowsToUpsert.slice(i, i + CHUNK_SIZE)
 
       try {
-        await repo
-          .createQueryBuilder()
-          .insert()
-          .into(tableName)
-          .values(chunk)
-          .orUpdate(updateColumns, keyColumns)
-          .execute()
+        await this.upsertDynamic({
+          tableName,
+          data: chunk,
+          keyColumns,
+          updateColumns,
+        })
       } catch (err) {
         const errorType = this.classifyError(err as Error)
 
@@ -213,13 +277,12 @@ export class AirShipmentsService {
         for (let j = 0; j < chunk.length; j++) {
           const row = chunk[j]
           try {
-            await repo
-              .createQueryBuilder()
-              .insert()
-              .into(tableName)
-              .values(row)
-              .orUpdate(updateColumns, keyColumns)
-              .execute()
+            await this.upsertDynamic({
+              tableName,
+              data: [row],
+              keyColumns,
+              updateColumns,
+            })
           } catch (rowErr: unknown) {
             const rowErrorType = this.classifyError(rowErr as Error)
             const key = rowKey(row)
@@ -243,6 +306,90 @@ export class AirShipmentsService {
     }
 
     return { tableName, upserted: rowsToUpsert.length - rowErrors.length, rowErrors, chunkErrors }
+  }
+
+  upsertDynamic = async ({
+    tableName,
+    data,
+    keyColumns,
+    updateColumns,
+  }: {
+    tableName: string
+    data: any[]
+    keyColumns: string[]
+    updateColumns: string[]
+  }) => {
+    if (!data.length) return
+
+    // ✅ 1. sanitize table name (WAJIB)
+    if (!/^[a-zA-Z0-9_]+$/.test(tableName)) {
+      throw new Error('Invalid table name')
+    }
+
+    // ✅ 2. deduplicate (FIX error ON CONFLICT)
+    const dedupedMap = new Map<string, any>()
+    for (const row of data) {
+      const key = keyColumns.map((k) => row[k]).join('|')
+      dedupedMap.set(key, row) // last wins
+    }
+    const dedupedData = Array.from(dedupedMap.values())
+
+    // ✅ 3. ambil columns (dari row pertama)
+    const columns = Object.keys(dedupedData[0])
+
+    // ⚠️ safety: pastikan keyColumns ada di columns
+    for (const key of keyColumns) {
+      if (!columns.includes(key)) {
+        throw new Error(`Key column "${key}" not found in data`)
+      }
+    }
+
+    // ✅ 4. build values placeholder
+    const values = dedupedData
+      .map((_, i) => `(${columns.map((_, j) => `$${i * columns.length + j + 1}`).join(',')})`)
+      .join(',')
+
+    // ✅ 5. flatten values
+    const flatValues = dedupedData.flatMap(
+      (row) => columns.map((col) => row[col] ?? null) // handle undefined
+    )
+
+    // ✅ 6. handle updateSet kosong
+    let onConflictClause = ''
+
+    if (updateColumns.length > 0) {
+      const updateSet = updateColumns
+        .filter((col) => !keyColumns.includes(col)) // jangan update key
+        .map((col) => `"${col}" = EXCLUDED."${col}"`)
+        .join(', ')
+
+      if (updateSet.length > 0) {
+        onConflictClause = `
+        ON CONFLICT (${keyColumns.map((k) => `"${k}"`).join(', ')})
+        DO UPDATE SET ${updateSet}
+      `
+      } else {
+        onConflictClause = `
+        ON CONFLICT (${keyColumns.map((k) => `"${k}"`).join(', ')})
+        DO NOTHING
+      `
+      }
+    } else {
+      onConflictClause = `
+      ON CONFLICT (${keyColumns.map((k) => `"${k}"`).join(', ')})
+      DO NOTHING
+    `
+    }
+
+    // ✅ 7. execute
+    await this.dataSource.query(
+      `
+    INSERT INTO "${tableName}" (${columns.map((c) => `"${c}"`).join(', ')})
+    VALUES ${values}
+    ${onConflictClause}
+    `,
+      flatValues
+    )
   }
 
   private normalizeForDiff = (val: unknown): string => {
@@ -374,50 +521,11 @@ export class AirShipmentsService {
     return { data, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } }
   }
 
-  findAllCgk(query: {
-    page: number
-    limit: number
-    sortBy: string
-    sortOrder: 'asc' | 'desc'
-    search?: string
-  }) {
-    return this.paginatedQuery(this.cgkRepo, query, 'air_shipments_cgk')
-  }
-
-  findAllSub(query: {
-    page: number
-    limit: number
-    sortBy: string
-    sortOrder: 'asc' | 'desc'
-    search?: string
-  }) {
-    return this.paginatedQuery(this.subRepo, query, 'air_shipments_sub')
-  }
-
-  findAllSda(query: {
-    page: number
-    limit: number
-    sortBy: string
-    sortOrder: 'asc' | 'desc'
-    search?: string
-  }) {
-    return this.paginatedQuery(this.sdaRepo, query, 'air_shipments_sda')
-  }
-
-  findAllRate(query: { page: number; limit: number; sortBy: string; sortOrder: 'asc' | 'desc' }) {
-    return this.paginatedQuery(this.rateRepo, query)
-  }
-
-  findAllRoutes(query: { page: number; limit: number; sortBy: string; sortOrder: 'asc' | 'desc' }) {
-    return this.paginatedQuery(this.routeRepo, query)
-  }
-
-  async getGoogleSheetConfig(): Promise<GoogleSheetConfig | null> {
+  async getGoogleSheetConfig(): Promise<GoogleSheetConfig[]> {
     const config = await this.googleSheetConfigRepo.find({
-      take: 1,
       relations: ['sheetConfigs'],
     })
-    return config.length > 0 ? config[0] : null
+    return config
   }
 
   async createGoogleSheetConfig(
@@ -427,12 +535,32 @@ export class AirShipmentsService {
     userAgent?: string
   ): Promise<GoogleSheetConfig> {
     const sheetId = this.extractSheetId(dto.sheetLink)
+    const sheetEntities = (dto.sheetConfigs ?? []).map((sc) =>
+      this.googleSheetSheetConfigRepo.create({
+        sheetName: sc.sheetName,
+        tableName: sc.tableName,
+        headerRow: sc.headerRow,
+        uniqueKey: sc.uniqueKey,
+        skipNullCols: sc.skipNullCols ?? true,
+      })
+    )
+
     const config = this.googleSheetConfigRepo.create({
       ...dto,
       sheetId,
-      // sheetConfigs: dto.sheetConfigs.map((sc) => ({ ...sc, skipNullCols: true })),
+      sheetConfigs: sheetEntities,
     })
+
     const saved = await this.googleSheetConfigRepo.save(config)
+
+    // Fire-and-forget table creation for sheets; do not block API response on failures
+    if (Array.isArray(saved.sheetConfigs)) {
+      void Promise.allSettled(
+        saved.sheetConfigs.map((sc) => this.dynamicTableService.ensureTable(sc as any))
+      )
+    }
+
+    this.eventEmitter.emit('gsheetConfig.created', saved)
     this.eventEmitter.emit('google_sheet_config.created', {
       actorId,
       resourceId: saved.id,
@@ -441,6 +569,7 @@ export class AirShipmentsService {
       after: saved,
       before: null,
     })
+
     return saved
   }
 
@@ -456,22 +585,51 @@ export class AirShipmentsService {
       where: { id },
       relations: ['sheetConfigs'],
     })
-    // const sheetConfigs = dto.sheetConfigs
-    // delete dto.sheetConfigs // remove sheetConfigs from dto to avoid confusion in update
+    const sheetConfigs = dto.sheetConfigs
+    delete dto.sheetConfigs // remove sheetConfigs from dto to avoid confusion in update
     await this.googleSheetConfigRepo.update(id, { ...dto, sheetId })
-    // await this.googleSheetSheetConfigRepo.delete({ googleSheetConfig: { id } })
-    const saved = await this.googleSheetConfigRepo.findOne({
+    const config = await this.googleSheetConfigRepo.findOne({
       where: { id },
       relations: ['sheetConfigs'],
     })
-    // config.sheetConfigs = sheetConfigs.map((sc) =>
-    //   this.googleSheetSheetConfigRepo.create({
-    //     ...sc,
-    //     skipNullCols: true,
-    //     googleSheetConfig: config,
-    //   })
-    // )
-    // const saved = await this.googleSheetConfigRepo.save(config)
+    // Determine which sheet configs are new or changed (uniqueKey change)
+    try {
+      const prevMap = new Map<string, any>()
+      for (const p of prev?.sheetConfigs ?? []) prevMap.set(p.tableName, p)
+
+      const toEnsure: any[] = []
+      for (const sc of sheetConfigs ?? []) {
+        const prevSc = sc.tableName ? prevMap.get(sc.tableName) : undefined
+        if (!prevSc) {
+          toEnsure.push(sc)
+          continue
+        }
+        const prevKeys = Array.isArray(prevSc.uniqueKey) ? prevSc.uniqueKey : prevSc.uniqueKey || []
+        const newKeys = Array.isArray(sc.uniqueKey) ? sc.uniqueKey : sc.uniqueKey || []
+        const prevTableName = prevSc.tableName
+        const newTableName = sc.tableName
+        // If uniqueKey or tableName changed, we need to ensure the table again
+        if (JSON.stringify(prevKeys) !== JSON.stringify(newKeys) || prevTableName !== newTableName)
+          toEnsure.push(sc)
+      }
+
+      if (toEnsure.length > 0) {
+        void Promise.allSettled(toEnsure.map((s) => this.dynamicTableService.ensureTable(s as any)))
+      }
+    } catch (err) {
+      this.logger.warn(
+        `[Sync] Failed to ensure tables after config update: ${err instanceof Error ? err.message : String(err)}`
+      )
+    }
+    config.sheetConfigs = sheetConfigs.map((sc) =>
+      this.googleSheetSheetConfigRepo.create({
+        ...sc,
+        skipNullCols: true,
+        googleSheetConfig: config,
+      })
+    )
+    await this.googleSheetSheetConfigRepo.delete({ googleSheetConfig: { id } })
+    const saved = await this.googleSheetConfigRepo.save(config)
     this.eventEmitter.emit('google_sheet_config.updated', {
       actorId,
       resourceId: id,
@@ -495,6 +653,7 @@ export class AirShipmentsService {
       relations: ['sheetConfigs'],
     })
     await this.googleSheetConfigRepo.delete(id)
+    this.eventEmitter.emit('gsheetConfig.deleted', { id })
     this.eventEmitter.emit('google_sheet_config.deleted', {
       actorId,
       resourceId: id,
@@ -512,11 +671,16 @@ export class AirShipmentsService {
     return match[1]
   }
 
-  async lockRow(tableName: string, id: string, locked: boolean): Promise<string> {
-    const repo = this.repoFor(tableName)
-    await repo.update(id, { is_locked: locked })
+  async lockRow(tableName: string, id: string, locked: boolean, actorId?: string): Promise<string> {
+    // use query builder to update is_locked column for the given id in the specified table
+    await this.dataSource
+      .createQueryBuilder()
+      .update(tableName)
+      .set({ is_locked: locked })
+      .where('id = :id', { id })
+      .execute()
     this.eventEmitter.emit('shipment_row.lock_changed', {
-      actorId: undefined,
+      actorId,
       resourceId: id,
       ip: undefined,
       userAgent: undefined,
@@ -524,5 +688,96 @@ export class AirShipmentsService {
       before: { is_locked: !locked },
     })
     return `Row with id ${id} in table ${tableName} has been ${locked ? 'locked' : 'unlocked'}.`
+  }
+
+  /**
+   * Batch lock/unlock rows by date range. Returns number of affected rows.
+   */
+  async batchLockByDate(
+    tableName: string,
+    start: string,
+    end: string,
+    locked: boolean,
+    actorId?: string
+  ): Promise<number> {
+    if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
+      throw new BadRequestException('Invalid table name')
+    }
+    if (!start || !end) throw new BadRequestException('Start and end dates are required')
+
+    const s = new Date(start)
+    const e = new Date(end)
+    if (isNaN(s.getTime()) || isNaN(e.getTime()))
+      throw new BadRequestException('Invalid date range')
+
+    // Ensure table has a `date` column
+    const colRes = await this.dataSource.query(`
+      SELECT 1
+      FROM ${tableName}
+      WHERE extra_fields ? 'date'
+      LIMIT 1
+    `)
+    if (!colRes || colRes.length === 0)
+      throw new BadRequestException('Table does not have a date column')
+
+    const res = await this.dataSource.query(
+      `UPDATE "${tableName}" SET is_locked = $1, updated_at = NOW() 
+      WHERE (NULLIF(extra_fields->>'date', ''))::timestamp BETWEEN $2::timestamp AND $3::timestamp RETURNING id`,
+      [locked, start, end]
+    )
+    const affected = res?.[1] ?? 0
+    this.eventEmitter.emit('shipment_row.batch_lock_changed', {
+      actorId,
+      tableName,
+      start,
+      end,
+      affected,
+      locked,
+    })
+    return affected
+  }
+
+  /**
+   * Batch delete rows by date range. Returns number of deleted rows.
+   */
+  async batchDeleteByDate(
+    tableName: string,
+    start: string,
+    end: string,
+    actorId?: string
+  ): Promise<number> {
+    if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
+      throw new BadRequestException('Invalid table name')
+    }
+    if (!start || !end) throw new BadRequestException('Start and end dates are required')
+
+    const s = new Date(start)
+    const e = new Date(end)
+    if (isNaN(s.getTime()) || isNaN(e.getTime()))
+      throw new BadRequestException('Invalid date range')
+
+    // Ensure table has a `date` column
+    const colRes = await this.dataSource.query(`
+      SELECT 1
+      FROM ${tableName}
+      WHERE extra_fields ? 'date'
+      LIMIT 1
+    `)
+    if (!colRes || colRes.length === 0)
+      throw new BadRequestException('Table does not have a date column')
+
+    const res = await this.dataSource.query(
+      `DELETE FROM "${tableName}" WHERE (NULLIF(extra_fields->>'date', ''))::timestamp BETWEEN $1::timestamp AND $2::timestamp RETURNING id`,
+      [start, end]
+    )
+    const deleted = res?.[1] ?? 0
+    this.eventEmitter.emit('shipment_row.batch_deleted', {
+      actorId,
+      tableName,
+      start,
+      end,
+      deleted,
+    })
+    return deleted
   }
 }

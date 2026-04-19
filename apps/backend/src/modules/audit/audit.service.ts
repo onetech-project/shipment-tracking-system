@@ -117,4 +117,14 @@ export class AuditService {
   onShipmentRowLockChanged(p: AuditPayload) {
     this.log('shipment_row.lock_changed', p, 'shipment_row')
   }
+
+  @OnEvent('shipment_row.batch_lock_changed')
+  onShipmentRowBatchLockChanged(p: AuditPayload) {
+    this.log('shipment_row.batch_lock_changed', p, 'shipment_row')
+  }
+
+  @OnEvent('shipment_row.batch_deleted')
+  onShipmentRowBatchDeleted(p: AuditPayload) {
+    this.log('shipment_row.batch_deleted', p, 'shipment_row')
+  }
 }

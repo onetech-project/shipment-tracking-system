@@ -39,3 +39,21 @@ export interface CellProps {
   value: unknown
   additional?: AdditionalCellProps
 }
+
+export interface SheetConfig {
+  id?: string
+  sheetName: string
+  tableName: string
+  headerRow: number
+  uniqueKey: string[]
+  skipNullCols: boolean
+}
+
+export interface GoogleSheetConfig {
+  id?: string
+  label?: string
+  sheetLink: string
+  syncInterval: number
+  enabled: boolean
+  sheetConfigs?: SheetConfig[]
+}

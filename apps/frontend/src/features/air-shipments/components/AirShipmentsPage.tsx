@@ -6,14 +6,24 @@ import { SyncStatusBadge } from '@/features/air-shipments/components/SyncStatusB
 import { TableSkeleton } from '@/features/air-shipments/components/TableSkeleton'
 import { SortOrder } from '@/features/air-shipments/types'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { COLUMN_KEYS, FROZEN_KEYS, colLabel, SHIPMENT_SYSTEM } from '../columns.config'
-import { lockAirShipmentRow } from '@/features/air-shipments/hooks/useAirShipments'
+import {
+  lockAirShipmentRow,
+  batchLockAirShipments,
+  batchDeleteAirShipments,
+} from '@/features/air-shipments/hooks/useAirShipments'
+import { DEFAULT_HIDDEN, FROZEN_KEYS, colLabel } from '../columns.config'
+import { Lock, Trash2 } from 'lucide-react'
+import { AxiosError } from 'axios'
 
 interface AirShipmentsPageProps {
   endpoint: string
   tableName: string
   title: string
   defaultSortBy?: string
+}
+
+interface VisibleColumns {
+  [column: string]: boolean
 }
 
 export function AirShipmentsPage({
@@ -23,12 +33,60 @@ export function AirShipmentsPage({
   defaultSortBy = 'date',
 }: AirShipmentsPageProps) {
   const { isConnected, lastSyncAt, affectedTables } = useSyncNotification()
-  const { data, isLoading, query, setPage, setSort, setSearch } = useAirShipments(
+  const { data, isLoading, query, setPage, setSort, setSearch, refresh } = useAirShipments(
     endpoint,
     tableName,
     affectedTables,
     defaultSortBy
   )
+
+  type BatchOp = 'lock' | 'delete' | null
+  const [batchDialog, setBatchDialog] = useState<{
+    op: BatchOp
+    start: string
+    end: string
+    loading: boolean
+  }>({ op: null, start: '', end: '', loading: false })
+
+  const openBatch = (op: Exclude<BatchOp, null>) =>
+    setBatchDialog({ op, start: '', end: '', loading: false })
+  const closeBatch = () => setBatchDialog({ op: null, start: '', end: '', loading: false })
+
+  const handleConfirmBatch = async () => {
+    if (!batchDialog.op) return
+    if (!batchDialog.start || !batchDialog.end) {
+      window.alert('Please select both start and end dates')
+      return
+    }
+    setBatchDialog((s) => ({ ...s, loading: true }))
+    try {
+      if (batchDialog.op === 'lock') {
+        const affected = await batchLockAirShipments(
+          tableName,
+          batchDialog.start,
+          batchDialog.end,
+          true
+        )
+        window.alert(`Locked ${affected} row(s)`)
+      } else {
+        const deleted = await batchDeleteAirShipments(tableName, batchDialog.start, batchDialog.end)
+        window.alert(`Deleted ${deleted} row(s)`)
+      }
+      // refresh table data
+      try {
+        refresh()
+      } catch (e) {
+        console.error('Failed to refresh table data', e)
+        // ignore refresh errors
+      }
+    } catch (err: AxiosError | unknown) {
+      window.alert(
+        `Operation failed: ${err instanceof AxiosError ? err.response?.data?.message : String(err)}`
+      )
+    } finally {
+      closeBatch()
+    }
+  }
 
   // Search state with debounce
   const [searchInput, setSearchInput] = useState('')
@@ -39,48 +97,60 @@ export function AirShipmentsPage({
     return () => clearTimeout(handler)
   }, [searchInput, setSearch])
 
-  // Column visibility state
-  const isAirShipmentTable = tableName.startsWith('air_shipments_')
-
   // Compute all columns including extra_fields keys from data
   const allColumns = useMemo(() => {
-    const baseCols = COLUMN_KEYS[tableName] || []
-    // Collect all unique extra_fields keys from data
-    const extraFieldKeys = new Set<string>()
+    const cols = new Set<string>()
+
     if (Array.isArray(data?.data)) {
       for (const row of data.data) {
+        Object.keys(row)
+          .filter((k) => k !== 'extra_fields')
+          .forEach((k) => cols.add(k))
         if (row.extra_fields && typeof row.extra_fields === 'object') {
-          Object.keys(row.extra_fields).forEach((k) => extraFieldKeys.add(k))
+          Object.keys(row.extra_fields).forEach((k) => cols.add(k))
         }
       }
     }
-    // Add extra_fields keys if not already present
-    const all = [...baseCols]
-    for (const key of extraFieldKeys) {
-      if (!all.includes(key)) all.push(key)
-    }
 
-    for (const col of baseCols) {
-      if (SHIPMENT_SYSTEM.includes(col)) continue // Always include system columns
-      if (FROZEN_KEYS.includes(col)) continue // Always include frozen columns
-      if (!extraFieldKeys.has(col)) all.splice(all.indexOf(col), 1) // Remove base column if not in extra_fields keys
-    }
-    return all
-  }, [tableName, data])
+    return [
+      ...FROZEN_KEYS.filter((col) => cols.has(col.key)).map((c) => c.key), // Ensure frozen keys are included if present in data
+      ...Array.from(cols).filter((col) => !FROZEN_KEYS.some((c) => c.key === col)),
+    ]
+  }, [data])
 
-  const frozenColumns = isAirShipmentTable ? FROZEN_KEYS : []
-  const toggleableColumns = allColumns.filter((col) => !frozenColumns.includes(col))
-  const [visibleColumns, setVisibleColumns] = useState<string[]>([
-    ...frozenColumns,
-    ...toggleableColumns,
-  ])
+  const frozenColumns = FROZEN_KEYS.filter((col) => allColumns.includes(col.key)).map((c) => c.key)
+  const toggleableColumns = allColumns.filter((col) => !FROZEN_KEYS.some((c) => c.key === col))
+  const [visibleColumns, setVisibleColumns] = useState<VisibleColumns>({
+    ...frozenColumns.reduce((acc, col) => ({ ...acc, [col]: true }), {}),
+    ...toggleableColumns.reduce(
+      (acc, col) => ({ ...acc, [col]: !DEFAULT_HIDDEN.includes(col) }),
+      {}
+    ),
+  })
+
   useEffect(() => {
-    setVisibleColumns([
-      ...frozenColumns,
-      ...toggleableColumns,
-    ])
+    setVisibleColumns({
+      ...frozenColumns.reduce((acc, col) => ({ ...acc, [col]: true }), {}),
+      ...toggleableColumns.reduce(
+        (acc, col) => ({ ...acc, [col]: !DEFAULT_HIDDEN.includes(col) }),
+        {}
+      ),
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allColumns, tableName])
+  }, [tableName])
+
+  useEffect(() => {
+    setVisibleColumns((prev) => {
+      // Preserve currently visible columns that still exist, add new ones, but never remove (except by user toggle)
+      const newCols = allColumns.filter((col) => !(col in prev)) // new columns not in previous state
+      const updated = { ...prev }
+      newCols.forEach((col) => {
+        updated[col] = !DEFAULT_HIDDEN.includes(col) // default visibility for new columns
+      })
+      return updated
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allColumns])
 
   // Dropdown state for column toggle
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -103,15 +173,13 @@ export function AirShipmentsPage({
 
   const handleColumnToggle = (col: string) => {
     if (frozenColumns.includes(col)) return
-    setVisibleColumns((prev) =>
-      prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col]
-    )
+    setVisibleColumns((prev) => ({
+      ...prev,
+      [col]: !prev[col],
+    }))
   }
 
   const handleSort = (col: string, order: SortOrder) => setSort(col, order)
-
-  // Determine if search should be shown
-  const showSearch = !/rate|route/i.test(title)
 
   const [lockState, setLockState] = useState<Record<string, boolean>>({})
   const handleToggleLock = async (id: string, locked: boolean) => {
@@ -121,10 +189,11 @@ export function AirShipmentsPage({
     } catch (error) {
       setLockState((prev) => ({ ...prev, [id]: !locked }))
       // Optionally show a toast/notification here
-      window.alert(`Failed to ${locked ? 'lock' : 'unlock'} row: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      window.alert(
+        `Failed to ${locked ? 'lock' : 'unlock'} row: ${error instanceof Error ? error.message : 'Unknown error'}`
+      )
     }
   }
-
 
   return (
     <div className="flex flex-col gap-4">
@@ -136,18 +205,16 @@ export function AirShipmentsPage({
       <div className="flex flex-wrap items-center gap-4 justify-between">
         <div className="flex flex-wrap items-center gap-4">
           {/* Search input (hidden for Rate and Routes menu) */}
-          {showSearch && (
-            <input
-              type="text"
-              className="border rounded px-2 py-1 min-w-[200px]"
-              placeholder="Search shipments..."
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-            />
-          )}
+          <input
+            type="text"
+            className="border rounded px-2 py-1 min-w-[200px]"
+            placeholder="Search shipments..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+          />
         </div>
         {/* Column visibility controls in dropdown, right-aligned */}
-        <div className="relative" ref={dropdownRef}>
+        <div className="relative flex items-center gap-2" ref={dropdownRef}>
           <button
             type="button"
             className="border rounded px-2 py-1 text-xs bg-background hover:bg-accent flex items-center gap-1 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
@@ -174,14 +241,14 @@ export function AirShipmentsPage({
                 Toggle Columns
               </div>
               <div className="flex flex-col gap-1 px-3 py-2">
-                {toggleableColumns.map((col) => (
+                {allColumns.map((col) => (
                   <label
                     key={col}
                     className="flex items-center gap-2 text-xs cursor-pointer hover:bg-accent/30 rounded px-1 py-1 transition-colors"
                   >
                     <input
                       type="checkbox"
-                      checked={visibleColumns.includes(col)}
+                      checked={visibleColumns[col] || false}
                       onChange={() => handleColumnToggle(col)}
                       className="accent-accent h-3 w-3 rounded border border-border focus:ring-1 focus:ring-accent"
                     />
@@ -193,6 +260,73 @@ export function AirShipmentsPage({
               </div>
             </div>
           )}
+          {allColumns.includes('date') && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => openBatch('lock')}
+                className="border rounded px-2 py-1 text-xs bg-background hover:bg-accent flex items-center gap-1"
+              >
+                <Lock size={14} /> Batch Lock
+              </button>
+              <button
+                type="button"
+                onClick={() => openBatch('delete')}
+                className="border border-destructive rounded px-2 py-1 text-xs bg-background hover:bg-accent text-destructive flex items-center gap-1"
+              >
+                <Trash2 size={14} /> Batch Delete
+              </button>
+            </div>
+          )}
+          {batchDialog.op && (
+            <div className="absolute right-0 mt-12 w-[300px] p-3 rounded-lg border border-border bg-popover shadow-lg z-50">
+              <div className="text-sm font-medium mb-2">
+                {batchDialog.op === 'lock' ? 'Batch Lock Rows' : 'Batch Delete Rows'}
+              </div>
+              <label className="text-xs block mb-1">Start</label>
+              <input
+                type="date"
+                value={batchDialog.start}
+                onChange={(e) => setBatchDialog((s) => ({ ...s, start: e.target.value }))}
+                className="w-full border rounded px-2 py-1 mb-2"
+              />
+              <label className="text-xs block mb-1">End</label>
+              <input
+                type="date"
+                value={batchDialog.end}
+                onChange={(e) => setBatchDialog((s) => ({ ...s, end: e.target.value }))}
+                className="w-full border rounded px-2 py-1 mb-3"
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closeBatch}
+                  disabled={batchDialog.loading}
+                  className="rounded border px-3 py-1"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmBatch}
+                  disabled={batchDialog.loading || !batchDialog.start || !batchDialog.end}
+                  className="rounded border px-3 py-1 flex items-center gap-1"
+                >
+                  {batchDialog.loading ? (
+                    'Working...'
+                  ) : batchDialog.op === 'lock' ? (
+                    <>
+                      <Lock size={14} /> Lock
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={14} /> Delete
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -200,17 +334,14 @@ export function AirShipmentsPage({
         <TableSkeleton />
       ) : data ? (
         <AirShipmentTable
-          data={
-            data.data.map((row) =>
-              row.id in lockState ? { ...row, is_locked: lockState[row.id] } : row
-            )
-          }
+          data={data.data.map((row) =>
+            row.id in lockState ? { ...row, is_locked: lockState[row.id] } : row
+          )}
           meta={data.meta}
           sortBy={query.sortBy}
           sortOrder={query.sortOrder}
           onSort={handleSort}
           onPageChange={setPage}
-          tableName={tableName}
           visibleColumns={visibleColumns}
           onToggleLock={handleToggleLock}
         />
