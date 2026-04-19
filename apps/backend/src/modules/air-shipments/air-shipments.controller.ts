@@ -70,7 +70,46 @@ export class AirShipmentsController {
     @Body('locked') locked: boolean,
     @CurrentUser() user: AuthenticatedUser
   ): Promise<string> {
-    return this.service.lockRow(tableName, id, locked, user.id)
+    return this.service.lockRow(tableName, id, locked, user?.id)
+  }
+
+  @Post(':tableName/batch-lock')
+  async batchLock(
+    @Param('tableName') tableName: string,
+    @Body() body: { start: string; end: string; locked?: boolean },
+    @CurrentUser() user?: AuthenticatedUser
+  ): Promise<{ affected: number }> {
+    const affected = await this.service.batchLockByDate(
+      tableName,
+      body.start,
+      body.end,
+      Boolean(body.locked),
+      user?.id
+    )
+    return { affected }
+  }
+
+  @Post(':tableName/batch-delete')
+  async batchDelete(
+    @Param('tableName') tableName: string,
+    @Body() body: { start: string; end: string },
+    @CurrentUser() user?: AuthenticatedUser
+  ): Promise<{ deleted: number }> {
+    try {
+      const deleted = await this.service.batchDeleteByDate(
+        tableName,
+        body.start,
+        body.end,
+        user?.id
+      )
+      return { deleted }
+    } catch (err: unknown) {
+      this.logger.error(
+        `[POST /air-shipments/${tableName}/batch-delete]`,
+        err instanceof Error ? err.stack : String(err)
+      )
+      throw new InternalServerErrorException()
+    }
   }
 
   @Get(':tableName')

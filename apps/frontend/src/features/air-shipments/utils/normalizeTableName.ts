@@ -24,5 +24,8 @@ export function normalizeTableName(sheetName: string, prefix = 'air_shipments_')
 }
 
 export const getAirShipmentsTabName = (sheetName: string): string => {
-  return sheetName.match(/[A-Z]+(?=[A-Z][a-z]|$)/g)?.join(' ') || ''
+  if (typeof sheetName !== 'string' || sheetName.trim().length === 0) {
+    return sheetName
+  }
+  return sheetName.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
 }

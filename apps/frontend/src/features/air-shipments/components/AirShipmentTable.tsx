@@ -62,7 +62,6 @@ export function AirShipmentTable({
   const columns = visibleColumns
     ? Object.keys(visibleColumns).filter((col) => visibleColumns[col])
     : []
-  console.log(visibleColumns) // For debugging column visibility issues
 
   const handleHeaderClick = (col: string) => {
     if (col === sortBy) {
@@ -82,9 +81,9 @@ export function AirShipmentTable({
    */
   const FROZEN_COLS: { key: string; width: number | undefined }[] = [
     { key: '#', width: 50 },
-    ...FROZEN_KEYS.filter((key) => visibleColumns?.[key]).map((key) => ({
-      key,
-      width: key === 'is_locked' ? 100 : 170,
+    ...FROZEN_KEYS.filter((col) => visibleColumns?.[col.key]).map((col) => ({
+      key: col.key,
+      width: col.width,
     })),
   ]
 

@@ -6,8 +6,14 @@ import { SyncStatusBadge } from '@/features/air-shipments/components/SyncStatusB
 import { TableSkeleton } from '@/features/air-shipments/components/TableSkeleton'
 import { SortOrder } from '@/features/air-shipments/types'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { lockAirShipmentRow } from '@/features/air-shipments/hooks/useAirShipments'
+import {
+  lockAirShipmentRow,
+  batchLockAirShipments,
+  batchDeleteAirShipments,
+} from '@/features/air-shipments/hooks/useAirShipments'
 import { DEFAULT_HIDDEN, FROZEN_KEYS, colLabel } from '../columns.config'
+import { Lock, Trash2 } from 'lucide-react'
+import { AxiosError } from 'axios'
 
 interface AirShipmentsPageProps {
   endpoint: string
@@ -27,12 +33,60 @@ export function AirShipmentsPage({
   defaultSortBy = 'date',
 }: AirShipmentsPageProps) {
   const { isConnected, lastSyncAt, affectedTables } = useSyncNotification()
-  const { data, isLoading, query, setPage, setSort, setSearch } = useAirShipments(
+  const { data, isLoading, query, setPage, setSort, setSearch, refresh } = useAirShipments(
     endpoint,
     tableName,
     affectedTables,
     defaultSortBy
   )
+
+  type BatchOp = 'lock' | 'delete' | null
+  const [batchDialog, setBatchDialog] = useState<{
+    op: BatchOp
+    start: string
+    end: string
+    loading: boolean
+  }>({ op: null, start: '', end: '', loading: false })
+
+  const openBatch = (op: Exclude<BatchOp, null>) =>
+    setBatchDialog({ op, start: '', end: '', loading: false })
+  const closeBatch = () => setBatchDialog({ op: null, start: '', end: '', loading: false })
+
+  const handleConfirmBatch = async () => {
+    if (!batchDialog.op) return
+    if (!batchDialog.start || !batchDialog.end) {
+      window.alert('Please select both start and end dates')
+      return
+    }
+    setBatchDialog((s) => ({ ...s, loading: true }))
+    try {
+      if (batchDialog.op === 'lock') {
+        const affected = await batchLockAirShipments(
+          tableName,
+          batchDialog.start,
+          batchDialog.end,
+          true
+        )
+        window.alert(`Locked ${affected} row(s)`)
+      } else {
+        const deleted = await batchDeleteAirShipments(tableName, batchDialog.start, batchDialog.end)
+        window.alert(`Deleted ${deleted} row(s)`)
+      }
+      // refresh table data
+      try {
+        refresh()
+      } catch (e) {
+        console.error('Failed to refresh table data', e)
+        // ignore refresh errors
+      }
+    } catch (err: AxiosError | unknown) {
+      window.alert(
+        `Operation failed: ${err instanceof AxiosError ? err.response?.data?.message : String(err)}`
+      )
+    } finally {
+      closeBatch()
+    }
+  }
 
   // Search state with debounce
   const [searchInput, setSearchInput] = useState('')
@@ -59,13 +113,13 @@ export function AirShipmentsPage({
     }
 
     return [
-      ...FROZEN_KEYS.filter((key) => cols.has(key)), // Ensure frozen keys are included if present in data
-      ...Array.from(cols).filter((col) => !FROZEN_KEYS.includes(col)),
+      ...FROZEN_KEYS.filter((col) => cols.has(col.key)).map((c) => c.key), // Ensure frozen keys are included if present in data
+      ...Array.from(cols).filter((col) => !FROZEN_KEYS.some((c) => c.key === col)),
     ]
   }, [data])
 
-  const frozenColumns = FROZEN_KEYS.filter((key) => allColumns.includes(key))
-  const toggleableColumns = allColumns.filter((col) => !FROZEN_KEYS.includes(col))
+  const frozenColumns = FROZEN_KEYS.filter((col) => allColumns.includes(col.key)).map((c) => c.key)
+  const toggleableColumns = allColumns.filter((col) => !FROZEN_KEYS.some((c) => c.key === col))
   const [visibleColumns, setVisibleColumns] = useState<VisibleColumns>({
     ...frozenColumns.reduce((acc, col) => ({ ...acc, [col]: true }), {}),
     ...toggleableColumns.reduce(
@@ -160,7 +214,7 @@ export function AirShipmentsPage({
           />
         </div>
         {/* Column visibility controls in dropdown, right-aligned */}
-        <div className="relative" ref={dropdownRef}>
+        <div className="relative flex items-center gap-2" ref={dropdownRef}>
           <button
             type="button"
             className="border rounded px-2 py-1 text-xs bg-background hover:bg-accent flex items-center gap-1 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
@@ -203,6 +257,73 @@ export function AirShipmentsPage({
                     </span>
                   </label>
                 ))}
+              </div>
+            </div>
+          )}
+          {allColumns.includes('date') && (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => openBatch('lock')}
+                className="border rounded px-2 py-1 text-xs bg-background hover:bg-accent flex items-center gap-1"
+              >
+                <Lock size={14} /> Batch Lock
+              </button>
+              <button
+                type="button"
+                onClick={() => openBatch('delete')}
+                className="border border-destructive rounded px-2 py-1 text-xs bg-background hover:bg-accent text-destructive flex items-center gap-1"
+              >
+                <Trash2 size={14} /> Batch Delete
+              </button>
+            </div>
+          )}
+          {batchDialog.op && (
+            <div className="absolute right-0 mt-12 w-[300px] p-3 rounded-lg border border-border bg-popover shadow-lg z-50">
+              <div className="text-sm font-medium mb-2">
+                {batchDialog.op === 'lock' ? 'Batch Lock Rows' : 'Batch Delete Rows'}
+              </div>
+              <label className="text-xs block mb-1">Start</label>
+              <input
+                type="date"
+                value={batchDialog.start}
+                onChange={(e) => setBatchDialog((s) => ({ ...s, start: e.target.value }))}
+                className="w-full border rounded px-2 py-1 mb-2"
+              />
+              <label className="text-xs block mb-1">End</label>
+              <input
+                type="date"
+                value={batchDialog.end}
+                onChange={(e) => setBatchDialog((s) => ({ ...s, end: e.target.value }))}
+                className="w-full border rounded px-2 py-1 mb-3"
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closeBatch}
+                  disabled={batchDialog.loading}
+                  className="rounded border px-3 py-1"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmBatch}
+                  disabled={batchDialog.loading || !batchDialog.start || !batchDialog.end}
+                  className="rounded border px-3 py-1 flex items-center gap-1"
+                >
+                  {batchDialog.loading ? (
+                    'Working...'
+                  ) : batchDialog.op === 'lock' ? (
+                    <>
+                      <Lock size={14} /> Lock
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={14} /> Delete
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           )}

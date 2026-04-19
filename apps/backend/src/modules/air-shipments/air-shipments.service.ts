@@ -80,9 +80,14 @@ export class AirShipmentsService {
     const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
 
     const isJsonbSort = !columns.includes(sortBy)
-    const orderBySql = isJsonbSort
+    let orderBySql = isJsonbSort
       ? `ORDER BY extra_fields->>'${sortBy}' ${sortOrder.toUpperCase()}`
       : `ORDER BY "${safeSortBy}" ${sortOrder.toUpperCase()}`
+
+    if (isJsonbSort && sortBy.toLowerCase().includes('date')) {
+      // Cast to timestamp for proper date sorting if column name suggests it's a date
+      orderBySql = `ORDER BY (NULLIF(extra_fields->>'${sortBy}', ''))::timestamp ${sortOrder.toUpperCase()}`
+    }
 
     const rows = await this.dataSource.query(
       `SELECT * FROM "${tableName}" 
@@ -683,5 +688,96 @@ export class AirShipmentsService {
       before: { is_locked: !locked },
     })
     return `Row with id ${id} in table ${tableName} has been ${locked ? 'locked' : 'unlocked'}.`
+  }
+
+  /**
+   * Batch lock/unlock rows by date range. Returns number of affected rows.
+   */
+  async batchLockByDate(
+    tableName: string,
+    start: string,
+    end: string,
+    locked: boolean,
+    actorId?: string
+  ): Promise<number> {
+    if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
+      throw new BadRequestException('Invalid table name')
+    }
+    if (!start || !end) throw new BadRequestException('Start and end dates are required')
+
+    const s = new Date(start)
+    const e = new Date(end)
+    if (isNaN(s.getTime()) || isNaN(e.getTime()))
+      throw new BadRequestException('Invalid date range')
+
+    // Ensure table has a `date` column
+    const colRes = await this.dataSource.query(`
+      SELECT 1
+      FROM ${tableName}
+      WHERE extra_fields ? 'date'
+      LIMIT 1
+    `)
+    if (!colRes || colRes.length === 0)
+      throw new BadRequestException('Table does not have a date column')
+
+    const res = await this.dataSource.query(
+      `UPDATE "${tableName}" SET is_locked = $1, updated_at = NOW() 
+      WHERE (NULLIF(extra_fields->>'date', ''))::timestamp BETWEEN $2::timestamp AND $3::timestamp RETURNING id`,
+      [locked, start, end]
+    )
+    const affected = res?.[1] ?? 0
+    this.eventEmitter.emit('shipment_row.batch_lock_changed', {
+      actorId,
+      tableName,
+      start,
+      end,
+      affected,
+      locked,
+    })
+    return affected
+  }
+
+  /**
+   * Batch delete rows by date range. Returns number of deleted rows.
+   */
+  async batchDeleteByDate(
+    tableName: string,
+    start: string,
+    end: string,
+    actorId?: string
+  ): Promise<number> {
+    if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
+      throw new BadRequestException('Invalid table name')
+    }
+    if (!start || !end) throw new BadRequestException('Start and end dates are required')
+
+    const s = new Date(start)
+    const e = new Date(end)
+    if (isNaN(s.getTime()) || isNaN(e.getTime()))
+      throw new BadRequestException('Invalid date range')
+
+    // Ensure table has a `date` column
+    const colRes = await this.dataSource.query(`
+      SELECT 1
+      FROM ${tableName}
+      WHERE extra_fields ? 'date'
+      LIMIT 1
+    `)
+    if (!colRes || colRes.length === 0)
+      throw new BadRequestException('Table does not have a date column')
+
+    const res = await this.dataSource.query(
+      `DELETE FROM "${tableName}" WHERE (NULLIF(extra_fields->>'date', ''))::timestamp BETWEEN $1::timestamp AND $2::timestamp RETURNING id`,
+      [start, end]
+    )
+    const deleted = res?.[1] ?? 0
+    this.eventEmitter.emit('shipment_row.batch_deleted', {
+      actorId,
+      tableName,
+      start,
+      end,
+      deleted,
+    })
+    return deleted
   }
 }

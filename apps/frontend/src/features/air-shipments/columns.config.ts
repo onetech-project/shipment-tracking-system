@@ -10,5 +10,10 @@ export function colLabel(key: string): string {
   return key.replace(/_/g, ' ').toUpperCase()
 }
 
-// Always-visible (frozen) columns for CGK, SDA, SUB
-export const FROZEN_KEYS = ['date', 'lt_number', 'to_number', 'awb', 'is_locked']
+export const FROZEN_KEYS = [
+  { key: 'date', width: 150 },
+  { key: 'lt_number', width: 170 },
+  { key: 'to_number', width: 170 },
+  { key: 'awb', width: 130 },
+  { key: 'is_locked', width: 110 },
+]
