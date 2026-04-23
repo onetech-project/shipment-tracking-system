@@ -112,6 +112,19 @@ export class AirShipmentsController {
     }
   }
 
+  @Get(':tableName/alert-summary')
+  async getAlertSummary(@Param('tableName') tableName: string) {
+    try {
+      return await this.service.getAlertSummaryForTable(tableName)
+    } catch (err: unknown) {
+      this.logger.error(
+        `[GET /air-shipments/${tableName}/alert-summary]`,
+        err instanceof Error ? err.stack : String(err)
+      )
+      throw new InternalServerErrorException()
+    }
+  }
+
   @Get(':tableName')
   async findAllDynamic(@Param('tableName') tableName: string, @Query() query: AirShipmentQueryDto) {
     try {

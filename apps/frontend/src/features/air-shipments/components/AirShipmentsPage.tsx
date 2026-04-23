@@ -2,6 +2,11 @@
 import { useAirShipments } from '@/features/air-shipments/hooks/useAirShipments'
 import { useSyncNotification } from '@/features/air-shipments/hooks/useSyncNotification'
 import { AirShipmentTable } from '@/features/air-shipments/components/AirShipmentTable'
+import {
+  AlertPieChart,
+  AlertType,
+  ALERT_TYPE_LABELS,
+} from '@/features/air-shipments/components/AlertPieChart'
 import { SyncStatusBadge } from '@/features/air-shipments/components/SyncStatusBadge'
 import { TableSkeleton } from '@/features/air-shipments/components/TableSkeleton'
 import { SortOrder } from '@/features/air-shipments/types'
@@ -33,12 +38,8 @@ export function AirShipmentsPage({
   defaultSortBy = 'date',
 }: AirShipmentsPageProps) {
   const { isConnected, lastSyncAt, affectedTables } = useSyncNotification()
-  const { data, isLoading, query, setPage, setSort, setSearch, refresh } = useAirShipments(
-    endpoint,
-    tableName,
-    affectedTables,
-    defaultSortBy
-  )
+  const { data, isLoading, query, setPage, setSort, setSearch, setAlertFilter, refresh } =
+    useAirShipments(endpoint, tableName, affectedTables, defaultSortBy)
 
   type BatchOp = 'lock' | 'delete' | null
   const [batchDialog, setBatchDialog] = useState<{
@@ -182,6 +183,16 @@ export function AirShipmentsPage({
   const handleSort = (col: string, order: SortOrder) => setSort(col, order)
 
   const [lockState, setLockState] = useState<Record<string, boolean>>({})
+  const activeAlert = (query.alertFilter ?? null) as AlertType | null
+
+  const handleAlertSelect = (alertType: AlertType | null) => {
+    if (query.alertFilter === alertType) {
+      setAlertFilter(null)
+      return
+    }
+    setAlertFilter(alertType)
+  }
+
   const handleToggleLock = async (id: string, locked: boolean) => {
     setLockState((prev) => ({ ...prev, [id]: locked }))
     try {
@@ -197,10 +208,34 @@ export function AirShipmentsPage({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+      {/* <div className="flex items-center justify-between">
         <h2 className="text-lg font-medium">{title}</h2>
-        <SyncStatusBadge isConnected={isConnected} lastSyncAt={lastSyncAt} />
-      </div>
+      </div> */}
+
+      {title.includes('compileaircgk') && (
+        <>
+          <AlertPieChart
+            tableName={tableName}
+            activeAlert={activeAlert}
+            onAlertSelect={handleAlertSelect}
+            affectedTables={affectedTables}
+          />
+
+          {activeAlert && (
+            <div className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-slate-50 px-3 py-1 text-sm text-slate-700">
+              <span>Filtered by: {ALERT_TYPE_LABELS[activeAlert]}</span>
+              <button
+                type="button"
+                onClick={() => handleAlertSelect(null)}
+                className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-slate-700 hover:bg-slate-300"
+                aria-label="Clear alert filter"
+              >
+                ×
+              </button>
+            </div>
+          )}
+        </>
+      )}
 
       <div className="flex flex-wrap items-center gap-4 justify-between">
         <div className="flex flex-wrap items-center gap-4">
@@ -278,6 +313,7 @@ export function AirShipmentsPage({
               </button>
             </div>
           )}
+          <SyncStatusBadge isConnected={isConnected} lastSyncAt={lastSyncAt} />
           {batchDialog.op && (
             <div className="absolute right-0 mt-12 w-[300px] p-3 rounded-lg border border-border bg-popover shadow-lg z-50">
               <div className="text-sm font-medium mb-2">

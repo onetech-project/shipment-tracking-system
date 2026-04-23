@@ -5,5 +5,5 @@ import { AirShipmentsPage } from '@/features/air-shipments/components/AirShipmen
 
 export default function CgkPage() {
   const { table } = useParams<{ table: string }>()
-  return <AirShipmentsPage endpoint={`/air-shipments/${table}`} tableName={table} title={``} />
+  return <AirShipmentsPage endpoint={`/air-shipments/${table}`} tableName={table} title={table} />
 }

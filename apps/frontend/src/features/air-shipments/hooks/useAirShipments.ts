@@ -15,6 +15,7 @@ interface QueryState {
   sortBy: string
   sortOrder: SortOrder
   search?: string
+  alertFilter?: string
 }
 
 interface UseAirShipmentsResult {
@@ -25,6 +26,7 @@ interface UseAirShipmentsResult {
   setPage: (page: number) => void
   setSort: (sortBy: string, sortOrder: SortOrder) => void
   setSearch: (search: string) => void
+  setAlertFilter: (alertFilter: string | null) => void
   refresh: () => void
 }
 
@@ -58,6 +60,9 @@ export function useAirShipments(
         })
         if (q.search && q.search.trim()) {
           params.set('search', q.search.trim())
+        }
+        if (q.alertFilter && q.alertFilter.trim()) {
+          params.set('alertFilter', q.alertFilter.trim())
         }
         const res = await apiClient.get<AirShipmentsResponse>(`${endpoint}?${params}`)
         setData(res.data)
@@ -93,11 +98,19 @@ export function useAirShipments(
     []
   )
 
+  const setAlertFilter = useCallback((alertFilter: string | null) => {
+    setQuery((q) => ({
+      ...q,
+      alertFilter: alertFilter ?? undefined,
+      page: 1,
+    }))
+  }, [])
+
   const refresh = useCallback(() => {
     void fetchData(query)
   }, [fetchData, query])
 
-  return { data, isLoading, error, query, setPage, setSort, setSearch, refresh }
+  return { data, isLoading, error, query, setPage, setSort, setSearch, setAlertFilter, refresh }
 }
 
 export async function lockAirShipmentRow(

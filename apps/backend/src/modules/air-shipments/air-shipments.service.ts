@@ -8,6 +8,7 @@ import { ChunkError, RowError, SheetResult } from './sheet-config.interface'
 import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
 import { GoogleSheetSheetConfig } from './entities/google-sheet-sheet-config.entity'
 import { GoogleSheetConfigDto } from './dto/google-sheet-config.dto'
+import { AlertType, ALERT_TYPES } from './alert-evaluator'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 
 /** System-managed columns that are never diff-compared against sheet data */
@@ -42,7 +43,15 @@ export class AirShipmentsService {
       sortBy = 'id',
       sortOrder = 'asc',
       search,
-    }: { page: number; limit: number; sortBy: string; sortOrder: 'asc' | 'desc'; search?: string }
+      alertFilter,
+    }: {
+      page: number
+      limit: number
+      sortBy: string
+      sortOrder: 'asc' | 'desc'
+      search?: string
+      alertFilter?: AlertType
+    }
   ) {
     // Basic validation: only allow tables with air_shipments_ prefix
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
@@ -59,9 +68,16 @@ export class AirShipmentsService {
     const safeSortBy = columns.includes(sortBy) ? sortBy : 'id'
     const offset = (page - 1) * limit
 
+    const alertFilterCondition = alertFilter
+      ? this.buildAlertSqlCondition(alertFilter, columns)
+      : null
+
     // Basic search support: search against text columns and extra_fields JSONB via ILIKE
     const whereClauses: string[] = []
     const params: any[] = []
+    if (alertFilterCondition) {
+      whereClauses.push(`(${alertFilterCondition})`)
+    }
     if (search && String(search).trim()) {
       const s = `%${String(search).trim()}%`
       const textCols = columns // choose text-like columns heuristically
@@ -102,6 +118,56 @@ export class AirShipmentsService {
     const total = countRes?.[0]?.count ?? 0
 
     return { data: rows, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } }
+  }
+
+  async getAlertSummaryForTable(tableName: string) {
+    if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
+      throw new BadRequestException('Invalid table name')
+    }
+
+    const cols: { column_name: string }[] = await this.dataSource.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position`,
+      [tableName]
+    )
+    const columns = cols.map((c) => c.column_name)
+
+    const conditions = ALERT_TYPES.map((type) => {
+      const condition = this.buildAlertSqlCondition(type, columns)
+      return `COUNT(*) FILTER (WHERE ${condition}) AS "${type}"`
+    })
+
+    const query = `SELECT ${conditions.join(', ')} FROM "${tableName}"`
+    const result = await this.dataSource.query(query)
+    return (
+      result?.[0] ?? {
+        slaAlert: 0,
+        tjphAlert: 0,
+        ataFlightAlert: 0,
+        atdFlightAlert: 0,
+        smuAlert: 0,
+      }
+    )
+  }
+
+  private buildAlertSqlCondition(alertFilter: AlertType, columns: string[]) {
+    const property = {
+      slaAlert: 'sla',
+      tjphAlert: 'tjph',
+      ataFlightAlert: 'ata_flight',
+      atdFlightAlert: 'atd_flight',
+      smuAlert: 'tracking_smu',
+    }[alertFilter]
+
+    const physicalExists = columns.includes(property)
+    const expressions: string[] = []
+
+    if (physicalExists) {
+      expressions.push(`NULLIF(TRIM(CAST("${property}" AS text)), '')`)
+    }
+    expressions.push(`NULLIF(TRIM(extra_fields->>'${property}'), '')`)
+
+    const coalesce = expressions.length > 1 ? `COALESCE(${expressions.join(', ')})` : expressions[0]
+    return `${coalesce} IS NULL`
   }
 
   /**
