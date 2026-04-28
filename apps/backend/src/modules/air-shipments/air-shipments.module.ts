@@ -15,11 +15,13 @@ import { SyncNotificationGateway } from './sync-notification.gateway'
 import { SchedulerService } from './scheduler.service'
 import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
 import { GoogleSheetSheetConfig } from './entities/google-sheet-sheet-config.entity'
+import { GeneralParamsModule } from '../general-params/general-params.module'
 
 @Module({
   imports: [
     ConfigModule,
     ScheduleModule.forRoot(),
+    GeneralParamsModule,
     TypeOrmModule.forFeature([
       AirShipmentCgk,
       AirShipmentSub,

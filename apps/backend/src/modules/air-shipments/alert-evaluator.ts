@@ -1,11 +1,18 @@
-export type AlertType = 'slaAlert' | 'tjphAlert' | 'ataFlightAlert' | 'atdFlightAlert' | 'smuAlert'
+export type AlertType =
+  | 'reservasiPenerbangan'
+  | 'potensiMelebihiSla'
+  | 'melewatiSla'
+  | 'potensiMelebihiTjph'
+  | 'melewatiTjph'
+
+export type AlertFilter = AlertType | 'normal'
 
 export interface AlertFlags {
-  slaAlert: boolean
-  tjphAlert: boolean
-  ataFlightAlert: boolean
-  atdFlightAlert: boolean
-  smuAlert: boolean
+  reservasiPenerbangan: boolean
+  potensiMelebihiSla: boolean
+  melewatiSla: boolean
+  potensiMelebihiTjph: boolean
+  melewatiTjph: boolean
 }
 
 const isEmptyValue = (value: unknown): boolean => {
@@ -15,40 +22,89 @@ const isEmptyValue = (value: unknown): boolean => {
 }
 
 const getFieldValue = (row: Record<string, unknown>, key: string): unknown => {
-  if (Object.prototype.hasOwnProperty.call(row, key)) {
-    return row[key]
-  }
-
+  if (Object.prototype.hasOwnProperty.call(row, key)) return row[key]
   const extraFields = row.extra_fields
   if (extraFields && typeof extraFields === 'object') {
     return (extraFields as Record<string, unknown>)[key]
   }
-
   return undefined
 }
 
-export function evaluateAlerts(row: Record<string, unknown>): AlertFlags {
+// SLA and TJPH are HH:MM:SS strings; hours CAN exceed 23 — do NOT use Date parsing
+function parseDuration(value: string): number {
+  const [hours, minutes, seconds] = value.split(':').map(Number)
+  return (hours * 3600 + minutes * 60 + seconds) * 1000
+}
+
+function parseDurationSafe(value: unknown): number | null {
+  if (typeof value !== 'string' || !value.trim()) return null
+  return parseDuration(value)
+}
+
+function parseDate(value: unknown): Date | null {
+  if (typeof value !== 'string' || !value.trim()) return null
+  const d = new Date(value)
+  return isNaN(d.getTime()) ? null : d
+}
+
+export function evaluateAlerts(
+  row: Record<string, unknown>,
+  nHours: number,
+  mHours: number,
+): AlertFlags {
+  const now = new Date()
+
+  const ataOrigin = parseDate(getFieldValue(row, 'ata_origin'))
+  const slaTime = parseDurationSafe(getFieldValue(row, 'sla'))
+  const tjphTime = parseDurationSafe(getFieldValue(row, 'tjph'))
+  const ataFlight = getFieldValue(row, 'ata_flight')
+  const atdFlight = getFieldValue(row, 'atd_flight')
+  const ataFlightDate = parseDate(ataFlight)
+
+  const maxSla = ataOrigin && slaTime !== null ? new Date(ataOrigin.getTime() + slaTime) : null
+  const maxTjph = ataOrigin && tjphTime !== null ? new Date(ataOrigin.getTime() + tjphTime) : null
+  const nMs = nHours * 3_600_000
+  const mMs = mHours * 3_600_000
+
+  const melewatiSla = maxSla !== null && now > maxSla
+  const melewatiTjph = maxTjph !== null && now > maxTjph
+
   return {
-    slaAlert: isEmptyValue(getFieldValue(row, 'sla')),
-    tjphAlert: isEmptyValue(getFieldValue(row, 'tjph')),
-    ataFlightAlert: isEmptyValue(getFieldValue(row, 'ata_flight')),
-    atdFlightAlert: isEmptyValue(getFieldValue(row, 'atd_flight')),
-    smuAlert: isEmptyValue(getFieldValue(row, 'tracking_smu')),
+    reservasiPenerbangan:
+      ataOrigin !== null &&
+      now > new Date(ataOrigin.getTime() + nMs) &&
+      isEmptyValue(atdFlight) &&
+      isEmptyValue(ataFlight),
+
+    potensiMelebihiSla:
+      ataFlightDate !== null && maxSla !== null && new Date(ataFlightDate.getTime() + mMs) > maxSla,
+
+    melewatiSla,
+
+    potensiMelebihiTjph:
+      melewatiSla ||
+      (ataFlightDate !== null &&
+        maxTjph !== null &&
+        new Date(ataFlightDate.getTime() + mMs) > maxTjph),
+
+    melewatiTjph,
   }
 }
 
 export const ALERT_TYPES: AlertType[] = [
-  'slaAlert',
-  'tjphAlert',
-  'ataFlightAlert',
-  'atdFlightAlert',
-  'smuAlert',
+  'reservasiPenerbangan',
+  'potensiMelebihiSla',
+  'melewatiSla',
+  'potensiMelebihiTjph',
+  'melewatiTjph',
 ]
 
+export const ALERT_FILTERS: AlertFilter[] = [...ALERT_TYPES, 'normal']
+
 export const ALERT_TYPE_LABELS: Record<AlertType, string> = {
-  slaAlert: 'SLA Alert',
-  tjphAlert: 'TJPH Alert',
-  ataFlightAlert: 'ATA Flight Alert',
-  atdFlightAlert: 'ATD Flight Alert',
-  smuAlert: 'SMU Alert',
+  reservasiPenerbangan: 'Reservasi Penerbangan',
+  potensiMelebihiSla: 'Potensi Melebihi SLA',
+  melewatiSla: 'Melewati SLA',
+  potensiMelebihiTjph: 'Potensi Melebihi TJPH',
+  melewatiTjph: 'Melewati TJPH',
 }

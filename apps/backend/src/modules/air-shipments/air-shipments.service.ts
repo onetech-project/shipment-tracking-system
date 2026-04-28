@@ -8,8 +8,9 @@ import { ChunkError, RowError, SheetResult } from './sheet-config.interface'
 import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
 import { GoogleSheetSheetConfig } from './entities/google-sheet-sheet-config.entity'
 import { GoogleSheetConfigDto } from './dto/google-sheet-config.dto'
-import { AlertType, ALERT_TYPES } from './alert-evaluator'
+import { AlertType, AlertFilter, ALERT_TYPES, evaluateAlerts } from './alert-evaluator'
 import { EventEmitter2 } from '@nestjs/event-emitter'
+import { GeneralParamsService } from '../general-params/general-params.service'
 
 /** System-managed columns that are never diff-compared against sheet data */
 const SYSTEM_COLUMNS = new Set(['id', 'is_locked', 'last_synced_at', 'created_at', 'updated_at'])
@@ -27,8 +28,9 @@ export class AirShipmentsService {
     @InjectRepository(GoogleSheetSheetConfig)
     private readonly googleSheetSheetConfigRepo: Repository<GoogleSheetSheetConfig>,
     private readonly dynamicTableService: DynamicTableService,
-    private readonly eventEmitter: EventEmitter2, // inject EventEmitter2
-    private readonly dataSource: DataSource
+    private readonly eventEmitter: EventEmitter2,
+    private readonly dataSource: DataSource,
+    private readonly generalParamsService: GeneralParamsService,
   ) {}
 
   /**
@@ -44,70 +46,92 @@ export class AirShipmentsService {
       sortOrder = 'asc',
       search,
       alertFilter,
+      routeFilter,
+      days,
     }: {
       page: number
       limit: number
       sortBy: string
       sortOrder: 'asc' | 'desc'
       search?: string
-      alertFilter?: AlertType
+      alertFilter?: AlertFilter
+      routeFilter?: string
+      days?: number
     }
   ) {
-    // Basic validation: only allow tables with air_shipments_ prefix
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
       throw new BadRequestException('Invalid table name')
     }
 
-    // Load columns from information_schema
-    const cols: { column_name: string }[] = await this.dataSource.query(
-      `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position`,
-      [tableName]
-    )
-    const columns = cols.map((c) => c.column_name)
-
+    const columns = await this.getTableColumns(tableName)
     const safeSortBy = columns.includes(sortBy) ? sortBy : 'id'
     const offset = (page - 1) * limit
 
-    const alertFilterCondition = alertFilter
-      ? this.buildAlertSqlCondition(alertFilter, columns)
-      : null
-
-    // Basic search support: search against text columns and extra_fields JSONB via ILIKE
     const whereClauses: string[] = []
     const params: any[] = []
-    if (alertFilterCondition) {
-      whereClauses.push(`(${alertFilterCondition})`)
-    }
+
     if (search && String(search).trim()) {
       const s = `%${String(search).trim()}%`
-      const textCols = columns // choose text-like columns heuristically
+      const textCols = columns
         .filter(
           (c) => c !== 'extra_fields' && c !== 'id' && c !== 'is_locked' && c !== 'last_synced_at'
         )
-        .slice(0, 5) // limit to first few to avoid huge queries
+        .slice(0, 5)
       const orConds = textCols.map((c, idx) => `${c}::text ILIKE $${params.length + idx + 1}`)
       params.push(...textCols.map(() => s))
-      // extra_fields JSONB text search
-      orConds.push(`${'extra_fields'}::text ILIKE $${params.length + 1}`)
+      orConds.push(`extra_fields::text ILIKE $${params.length + 1}`)
       params.push(s)
       whereClauses.push(`(${orConds.join(' OR ')})`)
     }
 
-    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
+    if (routeFilter && routeFilter.trim()) {
+      const parts = routeFilter
+        .split(/\s*-\s*/)
+        .map((part) => part.trim())
+        .filter(Boolean)
+      if (parts.length === 2) {
+        const [origin, destination] = parts
+        const originExpr = this.buildFieldValueExpression('origin', columns)
+        const destinationExpr = this.buildFieldValueExpression('destination', columns)
+        whereClauses.push(`LOWER(${originExpr}) = LOWER($${params.length + 1})`)
+        params.push(origin)
+        whereClauses.push(`LOWER(${destinationExpr}) = LOWER($${params.length + 1})`)
+        params.push(destination)
+      }
+    }
 
+    if (typeof days === 'number') {
+      const ataOriginExpr = this.buildTimestampExpression('ata_origin', columns)
+      whereClauses.push(
+        `(${ataOriginExpr} >= NOW() - ($${params.length + 1} || ' days')::interval)`
+      )
+      params.push(String(days))
+    }
+
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
     const isJsonbSort = !columns.includes(sortBy)
     let orderBySql = isJsonbSort
       ? `ORDER BY extra_fields->>'${sortBy}' ${sortOrder.toUpperCase()}`
       : `ORDER BY "${safeSortBy}" ${sortOrder.toUpperCase()}`
 
     if (isJsonbSort && sortBy.toLowerCase().includes('date')) {
-      // Cast to timestamp for proper date sorting if column name suggests it's a date
       orderBySql = `ORDER BY (NULLIF(extra_fields->>'${sortBy}', ''))::timestamp ${sortOrder.toUpperCase()}`
     }
 
+    if (alertFilter) {
+      const { nHours, mHours } = await this.getAlertNMHours()
+      const rows = await this.dataSource.query(
+        `SELECT * FROM "${tableName}" ${whereSql} ${orderBySql}`,
+        params
+      )
+      const filteredRows = this.filterRowsByAlert(rows, alertFilter, nHours, mHours)
+      const total = filteredRows.length
+      const data = filteredRows.slice(offset, offset + limit)
+      return { data, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } }
+    }
+
     const rows = await this.dataSource.query(
-      `SELECT * FROM "${tableName}" 
-      ${whereSql} ${orderBySql} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      `SELECT * FROM "${tableName}" ${whereSql} ${orderBySql} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, limit, offset]
     )
 
@@ -120,54 +144,166 @@ export class AirShipmentsService {
     return { data: rows, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } }
   }
 
-  async getAlertSummaryForTable(tableName: string) {
+  async getAlertSummaryForTable(tableName: string, days?: number) {
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
       throw new BadRequestException('Invalid table name')
     }
 
+    const { nHours, mHours } = await this.getAlertNMHours()
+    const columns = await this.getTableColumns(tableName)
+    const whereClauses: string[] = []
+    const params: any[] = []
+
+    if (typeof days === 'number') {
+      const ataOriginExpr = this.buildTimestampExpression('ata_origin', columns)
+      whereClauses.push(
+        `(${ataOriginExpr} >= NOW() - ($${params.length + 1} || ' days')::interval)`
+      )
+      params.push(String(days))
+    }
+
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
+    const rows: Record<string, unknown>[] = await this.dataSource.query(
+      `SELECT * FROM "${tableName}" ${whereSql}`,
+      params
+    )
+
+    interface AlertSummaryItem {
+      routes: number
+      tonnage: number
+      breakdown: Map<string, number>
+    }
+
+    const acc: Record<AlertType, AlertSummaryItem> = {} as any
+    for (const type of ALERT_TYPES) {
+      acc[type] = { routes: 0, tonnage: 0, breakdown: new Map() }
+    }
+
+    const getFieldValue = (row: Record<string, unknown>, key: string): unknown => {
+      if (Object.prototype.hasOwnProperty.call(row, key)) return row[key]
+      const extra = row.extra_fields
+      if (extra && typeof extra === 'object') return (extra as Record<string, unknown>)[key]
+      return undefined
+    }
+
+    for (const row of rows) {
+      const alerts = evaluateAlerts(row, nHours, mHours)
+      const origin = String(getFieldValue(row, 'origin') ?? '').trim()
+      const destination = String(getFieldValue(row, 'destination') ?? '').trim()
+      const route = origin && destination ? `${origin} - ${destination}` : ''
+      const grossWeight = parseFloat(String(getFieldValue(row, 'gross_weight') ?? '0')) || 0
+
+      for (const type of ALERT_TYPES) {
+        if (!alerts[type]) continue
+        const item = acc[type]
+        const prev = item.breakdown.get(route) ?? 0
+        item.breakdown.set(route, prev + grossWeight)
+        item.tonnage += grossWeight
+      }
+    }
+
+    const alerts: Record<AlertType, { routes: number; tonnage: number; breakdown: Array<{ route: string; tonnage: number }> }> = {} as any
+    for (const type of ALERT_TYPES) {
+      const item = acc[type]
+      const breakdown = Array.from(item.breakdown.entries())
+        .map(([route, tonnage]) => ({ route, tonnage: Math.round(tonnage * 100) / 100 }))
+        .sort((a, b) => a.route.localeCompare(b.route))
+      alerts[type] = {
+        routes: item.breakdown.size,
+        tonnage: Math.round(item.tonnage * 100) / 100,
+        breakdown,
+      }
+    }
+
+    return { nHours, mHours, alerts }
+  }
+
+  async getRoutesForTable(tableName: string, days?: number) {
+    if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
+      throw new BadRequestException('Invalid table name')
+    }
+
+    const columns = await this.getTableColumns(tableName)
+    const originExpr = this.buildFieldValueExpression('origin', columns)
+    const destinationExpr = this.buildFieldValueExpression('destination', columns)
+
+    const whereClauses: string[] = []
+    const params: any[] = []
+    if (typeof days === 'number') {
+      const ataOriginExpr = this.buildTimestampExpression('ata_origin', columns)
+      whereClauses.push(
+        `(${ataOriginExpr} >= NOW() - ($${params.length + 1} || ' days')::interval)`
+      )
+      params.push(String(days))
+    }
+
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
+    const rows: { origin: string; destination: string }[] = await this.dataSource.query(
+      `SELECT DISTINCT ${originExpr} AS origin, ${destinationExpr} AS destination FROM "${tableName}" ${whereSql} ORDER BY origin, destination`,
+      params
+    )
+
+    return {
+      routes: rows
+        .filter((row) => row.origin && row.destination)
+        .map((row) => ({
+          label: `${row.origin} - ${row.destination}`,
+          origin: row.origin,
+          destination: row.destination,
+        })),
+    }
+  }
+
+  private async getAlertNMHours(): Promise<{ nHours: number; mHours: number }> {
+    const [n, m] = await Promise.all([
+      this.generalParamsService.getValue('n_hours', '5'),
+      this.generalParamsService.getValue('m_hours', '5'),
+    ])
+    return { nHours: parseFloat(n), mHours: parseFloat(m) }
+  }
+
+  private filterRowsByAlert(
+    rows: Record<string, unknown>[],
+    alertFilter: AlertFilter,
+    nHours: number,
+    mHours: number,
+  ) {
+    return rows.filter((row) => {
+      const alerts = evaluateAlerts(row, nHours, mHours)
+      if (alertFilter === 'normal') {
+        return !Object.values(alerts).some(Boolean)
+      }
+      return alerts[alertFilter as AlertType]
+    })
+  }
+
+  private normalizeSheetIdentifier(sheetName: string): string {
+    return sheetName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+  }
+
+  private async getTableColumns(tableName: string) {
     const cols: { column_name: string }[] = await this.dataSource.query(
       `SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = $1 ORDER BY ordinal_position`,
       [tableName]
     )
-    const columns = cols.map((c) => c.column_name)
-
-    const conditions = ALERT_TYPES.map((type) => {
-      const condition = this.buildAlertSqlCondition(type, columns)
-      return `COUNT(*) FILTER (WHERE ${condition}) AS "${type}"`
-    })
-
-    const query = `SELECT ${conditions.join(', ')} FROM "${tableName}"`
-    const result = await this.dataSource.query(query)
-    return (
-      result?.[0] ?? {
-        slaAlert: 0,
-        tjphAlert: 0,
-        ataFlightAlert: 0,
-        atdFlightAlert: 0,
-        smuAlert: 0,
-      }
-    )
+    return cols.map((c) => c.column_name)
   }
 
-  private buildAlertSqlCondition(alertFilter: AlertType, columns: string[]) {
-    const property = {
-      slaAlert: 'sla',
-      tjphAlert: 'tjph',
-      ataFlightAlert: 'ata_flight',
-      atdFlightAlert: 'atd_flight',
-      smuAlert: 'tracking_smu',
-    }[alertFilter]
-
-    const physicalExists = columns.includes(property)
+  private buildFieldValueExpression(field: string, columns: string[]) {
     const expressions: string[] = []
-
-    if (physicalExists) {
-      expressions.push(`NULLIF(TRIM(CAST("${property}" AS text)), '')`)
+    if (columns.includes(field)) {
+      expressions.push(`NULLIF(TRIM(CAST("${field}" AS text)), '')`)
     }
-    expressions.push(`NULLIF(TRIM(extra_fields->>'${property}'), '')`)
+    expressions.push(`NULLIF(TRIM(extra_fields->>'${field}'), '')`)
+    return expressions.length > 1 ? `COALESCE(${expressions.join(', ')})` : expressions[0]
+  }
 
-    const coalesce = expressions.length > 1 ? `COALESCE(${expressions.join(', ')})` : expressions[0]
-    return `${coalesce} IS NULL`
+  private buildTimestampExpression(field: string, columns: string[]) {
+    const fieldExpr = this.buildFieldValueExpression(field, columns)
+    return `NULLIF(${fieldExpr}, '')::timestamptz`
   }
 
   /**
@@ -205,11 +341,21 @@ export class AirShipmentsService {
     }
 
     if (totalUpserted > 0 && this.gateway) {
-      this.gateway.notifyClients({
+      const payload = {
         affectedTables,
         totalUpserted,
         syncedAt: new Date().toISOString(),
-      })
+      }
+      this.gateway.notifyClients(payload)
+
+      const sheetIdentifiers = sheetResults
+        .filter((result) => result.upserted > 0)
+        .map((result) => this.normalizeSheetIdentifier(result.sheetName))
+        .filter(Boolean)
+
+      for (const sheetIdentifier of sheetIdentifiers) {
+        this.gateway.notifyCompleted(sheetIdentifier)
+      }
     }
 
     return { affectedTables, totalUpserted }
@@ -217,6 +363,7 @@ export class AirShipmentsService {
 
   private async processSingleSheet(sheet: SheetResult): Promise<{
     tableName: string
+    sheetName: string
     upserted: number
     rowErrors: RowError[]
     chunkErrors: ChunkError[]
@@ -231,10 +378,10 @@ export class AirShipmentsService {
       this.logger.warn(
         `[sync] "${sheetName}" missing key column(s)  "${missingKeys.join(', ')}" — skipping`
       )
-      return { tableName, upserted: 0, rowErrors, chunkErrors }
+      return { tableName, sheetName, upserted: 0, rowErrors, chunkErrors }
     }
 
-    if (rows.length === 0) return { tableName, upserted: 0, rowErrors, chunkErrors }
+    if (rows.length === 0) return { tableName, sheetName, upserted: 0, rowErrors, chunkErrors }
 
     const rowKey = (row: Record<string, unknown>): string =>
       keyColumns.map((k) => String(row[k] ?? '')).join('\x00')
@@ -371,7 +518,13 @@ export class AirShipmentsService {
       }
     }
 
-    return { tableName, upserted: rowsToUpsert.length - rowErrors.length, rowErrors, chunkErrors }
+    return {
+      tableName,
+      sheetName,
+      upserted: rowsToUpsert.length - rowErrors.length,
+      rowErrors,
+      chunkErrors,
+    }
   }
 
   upsertDynamic = async ({

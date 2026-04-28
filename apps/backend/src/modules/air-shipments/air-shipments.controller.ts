@@ -113,12 +113,27 @@ export class AirShipmentsController {
   }
 
   @Get(':tableName/alert-summary')
-  async getAlertSummary(@Param('tableName') tableName: string) {
+  async getAlertSummary(@Param('tableName') tableName: string, @Query('days') days?: string) {
+    const daysNum = days != null && !isNaN(Number(days)) ? Number(days) : undefined
     try {
-      return await this.service.getAlertSummaryForTable(tableName)
+      return await this.service.getAlertSummaryForTable(tableName, daysNum)
     } catch (err: unknown) {
       this.logger.error(
         `[GET /air-shipments/${tableName}/alert-summary]`,
+        err instanceof Error ? err.stack : String(err)
+      )
+      throw new InternalServerErrorException()
+    }
+  }
+
+  @Get(':tableName/routes')
+  async getRoutes(@Param('tableName') tableName: string, @Query('days') days?: string) {
+    const daysNum = days != null && !isNaN(Number(days)) ? Number(days) : undefined
+    try {
+      return await this.service.getRoutesForTable(tableName, daysNum)
+    } catch (err: unknown) {
+      this.logger.error(
+        `[GET /air-shipments/${tableName}/routes]`,
         err instanceof Error ? err.stack : String(err)
       )
       throw new InternalServerErrorException()

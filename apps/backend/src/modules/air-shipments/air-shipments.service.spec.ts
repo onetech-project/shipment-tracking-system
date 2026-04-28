@@ -12,11 +12,14 @@ import { RouteMaster } from './entities/route-master.entity'
 import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
 import { GoogleSheetSheetConfig } from './entities/google-sheet-sheet-config.entity'
 import { EventEmitter2 } from '@nestjs/event-emitter'
+import { GeneralParamsService } from '../general-params/general-params.service'
 
 const makeRepo = (): Partial<Repository<any>> => ({
   find: jest.fn().mockResolvedValue([]),
   save: jest.fn().mockResolvedValue({}),
   update: jest.fn().mockResolvedValue({ affected: 1 }),
+  delete: jest.fn().mockResolvedValue({}),
+  create: jest.fn().mockImplementation((o: any) => ({ ...o })) as any,
   findAndCount: jest.fn().mockResolvedValue([[], 0]),
   metadata: {
     columns: [
@@ -112,6 +115,10 @@ describe('AirShipmentsService — runSyncCycle()', () => {
         { provide: getRepositoryToken(GoogleSheetSheetConfig), useValue: makeRepo() },
         { provide: EventEmitter2, useValue: { emit: jest.fn() } },
         { provide: DataSource, useValue: { query: jest.fn().mockResolvedValue([]) } },
+        {
+          provide: GeneralParamsService,
+          useValue: { getValue: jest.fn().mockResolvedValue('5') },
+        },
       ],
     }).compile()
 
@@ -262,7 +269,7 @@ describe('AirShipmentsService — runSyncCycle()', () => {
       },
     ])
 
-    const result = await service.runSyncCycle()
+    const result = await service.runSyncCycle('ABC123')
     expect(result.totalUpserted).toBe(0)
     expect(result.affectedTables).toHaveLength(0)
   })
@@ -306,16 +313,14 @@ describe('AirShipmentsService — runSyncCycle()', () => {
       },
     ])
 
-    // Mock existing row with is_locked=true so it gets skipped
-    const cgkRepo = service['repoFor']('air_shipments_cgk') as jest.Mocked<
-      Repository<AirShipmentCgk>
-    >
-    ;(cgkRepo.createQueryBuilder as jest.Mock).mockReturnValue({
+    const dataSource = service['dataSource'] as any
+    dataSource.createQueryBuilder = jest.fn(() => ({
       select: jest.fn().mockReturnThis(),
+      from: jest.fn().mockReturnThis(),
       getRawMany: jest.fn().mockResolvedValue([{ to_number: 'CGK-001', is_locked: true }]),
-    } as any)
+    }))
 
-    const result = await service.runSyncCycle()
+    const result = await service.runSyncCycle('ABC123')
     expect(result.totalUpserted).toBe(0)
   })
 
@@ -358,12 +363,10 @@ describe('AirShipmentsService — runSyncCycle()', () => {
       },
     ])
 
-    // Pre-load "existing" row in the repository with matching data (no change)
-    const cgkRepo = service['repoFor']('air_shipments_cgk') as jest.Mocked<
-      Repository<AirShipmentCgk>
-    >
-    ;(cgkRepo.createQueryBuilder as jest.Mock).mockReturnValue({
+    const dataSource = service['dataSource'] as any
+    dataSource.createQueryBuilder = jest.fn(() => ({
       select: jest.fn().mockReturnThis(),
+      from: jest.fn().mockReturnThis(),
       getRawMany: jest.fn().mockResolvedValue([
         {
           to_number: 'CGK-001',
@@ -372,12 +375,10 @@ describe('AirShipmentsService — runSyncCycle()', () => {
           last_synced_at: new Date(),
         },
       ]),
-    } as any)
+    }))
 
-    const result = await service.runSyncCycle()
+    const result = await service.runSyncCycle('ABC123')
     expect(result.totalUpserted).toBe(0)
-    expect(cgkRepo.save).not.toHaveBeenCalled()
-    expect(cgkRepo.update).not.toHaveBeenCalled()
   })
 
   it('upserts a row and sets last_synced_at when a field has changed', async () => {
@@ -419,25 +420,113 @@ describe('AirShipmentsService — runSyncCycle()', () => {
       },
     ])
 
-    const cgkRepo = service['repoFor']('air_shipments_cgk') as jest.Mocked<
-      Repository<AirShipmentCgk>
-    >
-    ;(cgkRepo.createQueryBuilder as jest.Mock).mockReturnValue({
+    const dataSource = service['dataSource'] as any
+    dataSource.query = jest.fn((sql: string, params: any[]) => {
+      if (sql.includes('information_schema.columns')) {
+        return Promise.resolve([
+          { column_name: 'to_number' },
+          { column_name: 'status' },
+          { column_name: 'is_locked' },
+          { column_name: 'last_synced_at' },
+          { column_name: 'extra_fields' },
+        ])
+      }
+      return Promise.resolve([])
+    })
+    dataSource.createQueryBuilder = jest.fn(() => ({
       select: jest.fn().mockReturnThis(),
+      from: jest.fn().mockReturnThis(),
       getRawMany: jest
         .fn()
         .mockResolvedValue([
           { to_number: 'CGK-001', status: 'pending', is_locked: null, last_synced_at: new Date() },
         ]),
-      insert: jest.fn().mockReturnThis(),
-      into: jest.fn().mockReturnThis(),
-      values: jest.fn().mockReturnThis(),
-      orUpdate: jest.fn().mockReturnThis(),
-      execute: jest.fn().mockResolvedValue({}),
-    } as any)
+    }))
 
-    const result = await service.runSyncCycle()
+    const result = await service.runSyncCycle('ABC123')
     expect(result.totalUpserted).toBe(1)
     expect(result.affectedTables).toContain('air_shipments_cgk')
+  })
+
+  it('returns alert summary with routes+tonnage structure', async () => {
+    const dataSource = service['dataSource'] as jest.Mocked<DataSource>
+    dataSource.query.mockImplementation((sql: string, _params: any[]) => {
+      if (sql.includes('information_schema.columns')) {
+        return Promise.resolve([{ column_name: 'extra_fields' }])
+      }
+      if (sql.startsWith('SELECT * FROM "air_shipments_compileaircgk"')) {
+        return Promise.resolve([
+          {
+            // now=2025-01-15, ata_origin=2025-01-01, sla=24h→maxSla=2025-01-02, tjph=48h→maxTjph=2025-01-03
+            // now > maxTjph → melewatiSla=true, melewatiTjph=true
+            // ata_flight present: potensiMelebihiSla and potensiMelebihiTjph also compute
+            extra_fields: {
+              ata_origin: '2025-01-01T00:00:00Z',
+              sla: '24:00:00',
+              tjph: '48:00:00',
+              ata_flight: '2025-01-01T12:00:00Z',
+              atd_flight: '2025-01-01T06:00:00Z',
+              origin: 'CGK',
+              destination: 'SUB',
+              gross_weight: '9.15',
+            },
+          },
+          {
+            // ata_origin=2025-01-12, sla=24h→maxSla=2025-01-13, tjph=48h→maxTjph=2025-01-14
+            // now(2025-01-15) > maxTjph → melewatiSla, melewatiTjph
+            extra_fields: {
+              ata_origin: '2025-01-12T00:00:00Z',
+              sla: '24:00:00',
+              tjph: '48:00:00',
+              ata_flight: '2025-01-12T12:00:00Z',
+              atd_flight: '2025-01-12T06:00:00Z',
+              origin: 'CGK',
+              destination: 'DPS',
+              gross_weight: '5.00',
+            },
+          },
+        ])
+      }
+      return Promise.resolve([])
+    })
+
+    jest.useFakeTimers()
+    jest.setSystemTime(new Date('2025-01-15T12:00:00Z'))
+
+    const summary = await service.getAlertSummaryForTable('air_shipments_compileaircgk', 15)
+
+    expect(summary.nHours).toBe(5)
+    expect(summary.mHours).toBe(5)
+    expect(summary.alerts.melewatiSla.routes).toBe(2)
+    expect(summary.alerts.melewatiTjph.routes).toBe(2)
+    expect(summary.alerts.melewatiSla.breakdown).toContainEqual(
+      expect.objectContaining({ route: 'CGK - SUB' }),
+    )
+
+    jest.useRealTimers()
+  })
+
+  it('returns distinct routes from a table', async () => {
+    const dataSource = service['dataSource'] as jest.Mocked<DataSource>
+    dataSource.query.mockImplementation((sql: string, params: any[]) => {
+      if (sql.includes('information_schema.columns')) {
+        return Promise.resolve([{ column_name: 'extra_fields' }])
+      }
+      if (sql.startsWith('SELECT DISTINCT')) {
+        return Promise.resolve([
+          { origin: 'CGK', destination: 'SUB' },
+          { origin: 'CGK', destination: 'DPS' },
+        ])
+      }
+      return Promise.resolve([])
+    })
+
+    const routes = await service.getRoutesForTable('air_shipments_compileaircgk', 15)
+    expect(routes).toEqual({
+      routes: [
+        { label: 'CGK - SUB', origin: 'CGK', destination: 'SUB' },
+        { label: 'CGK - DPS', origin: 'CGK', destination: 'DPS' },
+      ],
+    })
   })
 })

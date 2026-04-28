@@ -2,11 +2,11 @@
 import { useAirShipments } from '@/features/air-shipments/hooks/useAirShipments'
 import { useSyncNotification } from '@/features/air-shipments/hooks/useSyncNotification'
 import { AirShipmentTable } from '@/features/air-shipments/components/AirShipmentTable'
-import {
-  AlertPieChart,
-  AlertType,
-  ALERT_TYPE_LABELS,
-} from '@/features/air-shipments/components/AlertPieChart'
+// import {
+//   AlertPieChart,
+//   AlertType,
+//   ALERT_TYPE_LABELS,
+// } from '@/features/air-shipments/components/AlertPieChart'
 import { SyncStatusBadge } from '@/features/air-shipments/components/SyncStatusBadge'
 import { TableSkeleton } from '@/features/air-shipments/components/TableSkeleton'
 import { SortOrder } from '@/features/air-shipments/types'
@@ -34,11 +34,11 @@ interface VisibleColumns {
 export function AirShipmentsPage({
   endpoint,
   tableName,
-  title,
+  // title,
   defaultSortBy = 'date',
 }: AirShipmentsPageProps) {
   const { isConnected, lastSyncAt, affectedTables } = useSyncNotification()
-  const { data, isLoading, query, setPage, setSort, setSearch, setAlertFilter, refresh } =
+  const { data, isLoading, query, setPage, setSort, setSearch, /*setAlertFilter, */ refresh } =
     useAirShipments(endpoint, tableName, affectedTables, defaultSortBy)
 
   type BatchOp = 'lock' | 'delete' | null
@@ -183,15 +183,15 @@ export function AirShipmentsPage({
   const handleSort = (col: string, order: SortOrder) => setSort(col, order)
 
   const [lockState, setLockState] = useState<Record<string, boolean>>({})
-  const activeAlert = (query.alertFilter ?? null) as AlertType | null
+  // const activeAlert = (query.alertFilter ?? null) as AlertType | null
 
-  const handleAlertSelect = (alertType: AlertType | null) => {
-    if (query.alertFilter === alertType) {
-      setAlertFilter(null)
-      return
-    }
-    setAlertFilter(alertType)
-  }
+  // const handleAlertSelect = (alertType: AlertType | null) => {
+  //   if (query.alertFilter === alertType) {
+  //     setAlertFilter(null)
+  //     return
+  //   }
+  //   setAlertFilter(alertType)
+  // }
 
   const handleToggleLock = async (id: string, locked: boolean) => {
     setLockState((prev) => ({ ...prev, [id]: locked }))
@@ -212,7 +212,7 @@ export function AirShipmentsPage({
         <h2 className="text-lg font-medium">{title}</h2>
       </div> */}
 
-      {title.includes('compileaircgk') && (
+      {/* title.includes('compileaircgk') && (
         <>
           <AlertPieChart
             tableName={tableName}
@@ -235,7 +235,7 @@ export function AirShipmentsPage({
             </div>
           )}
         </>
-      )}
+      ) */}
 
       <div className="flex flex-wrap items-center gap-4 justify-between">
         <div className="flex flex-wrap items-center gap-4">

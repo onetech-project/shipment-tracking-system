@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer'
 import { IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator'
-import { ALERT_TYPES, AlertType } from '../alert-evaluator'
+import { ALERT_FILTERS, AlertFilter } from '../alert-evaluator'
 
 export class AirShipmentQueryDto {
   @IsOptional()
@@ -30,6 +30,16 @@ export class AirShipmentQueryDto {
 
   @IsOptional()
   @IsString()
-  @IsIn(ALERT_TYPES)
-  alertFilter?: AlertType
+  @IsIn(ALERT_FILTERS)
+  alertFilter?: AlertFilter
+
+  @IsOptional()
+  @IsString()
+  routeFilter?: string
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  days?: number
 }
