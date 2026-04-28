@@ -119,11 +119,16 @@ export class AirShipmentsService {
     }
 
     if (alertFilter) {
-      const { nHours, mHours } = await this.getAlertNMHours()
-      const rows = await this.dataSource.query(
+      const [{ nHours, mHours }, reservasiTableName] = await Promise.all([
+        this.getAlertNMHours(),
+        this.generalParamsService.getValue('reservasi_table_name', ''),
+      ])
+      const reservasiByAwb = await this.getReservasiTrackinganByAwb(reservasiTableName)
+      const rawRows = await this.dataSource.query(
         `SELECT * FROM "${tableName}" ${whereSql} ${orderBySql}`,
         params
       )
+      const rows = this.enrichRowsWithReservasi(rawRows, reservasiByAwb)
       const filteredRows = this.filterRowsByAlert(rows, alertFilter, nHours, mHours)
       const total = filteredRows.length
       const data = filteredRows.slice(offset, offset + limit)
@@ -149,7 +154,11 @@ export class AirShipmentsService {
       throw new BadRequestException('Invalid table name')
     }
 
-    const { nHours, mHours } = await this.getAlertNMHours()
+    const [{ nHours, mHours }, reservasiTableName] = await Promise.all([
+      this.getAlertNMHours(),
+      this.generalParamsService.getValue('reservasi_table_name', ''),
+    ])
+    const reservasiByAwb = await this.getReservasiTrackinganByAwb(reservasiTableName)
     const columns = await this.getTableColumns(tableName)
     const whereClauses: string[] = []
     const params: any[] = []
@@ -163,10 +172,11 @@ export class AirShipmentsService {
     }
 
     const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
-    const rows: Record<string, unknown>[] = await this.dataSource.query(
+    const rawRows: Record<string, unknown>[] = await this.dataSource.query(
       `SELECT * FROM "${tableName}" ${whereSql}`,
       params
     )
+    const rows = this.enrichRowsWithReservasi(rawRows, reservasiByAwb)
 
     interface AlertSummaryItem {
       routes: number
@@ -179,12 +189,7 @@ export class AirShipmentsService {
       acc[type] = { routes: 0, tonnage: 0, breakdown: new Map() }
     }
 
-    const getFieldValue = (row: Record<string, unknown>, key: string): unknown => {
-      if (Object.prototype.hasOwnProperty.call(row, key)) return row[key]
-      const extra = row.extra_fields
-      if (extra && typeof extra === 'object') return (extra as Record<string, unknown>)[key]
-      return undefined
-    }
+    const getFieldValue = AirShipmentsService.getFieldValueFromRow
 
     for (const row of rows) {
       const alerts = evaluateAlerts(row, nHours, mHours)
@@ -260,6 +265,56 @@ export class AirShipmentsService {
       this.generalParamsService.getValue('m_hours', '5'),
     ])
     return { nHours: parseFloat(n), mHours: parseFloat(m) }
+  }
+
+  private static getFieldValueFromRow(row: Record<string, unknown>, key: string): unknown {
+    if (Object.prototype.hasOwnProperty.call(row, key)) return row[key]
+    const extra = row.extra_fields
+    if (extra && typeof extra === 'object') return (extra as Record<string, unknown>)[key]
+    return undefined
+  }
+
+  /**
+   * Loads {awb → trackingan_smu} from the Reservasi sheet table.
+   * Returns an empty Map when the table name is blank or the table doesn't exist.
+   */
+  private async getReservasiTrackinganByAwb(reservasiTableName: string): Promise<Map<string, string>> {
+    if (!reservasiTableName?.trim() || !/^air_shipments_[a-z0-9_]+$/.test(reservasiTableName)) {
+      return new Map()
+    }
+    const exists: { exists: boolean }[] = await this.dataSource.query(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.tables
+         WHERE table_schema = 'public' AND table_name = $1
+       ) AS exists`,
+      [reservasiTableName]
+    )
+    if (!exists[0]?.exists) return new Map()
+
+    const rows: Record<string, unknown>[] = await this.dataSource.query(
+      `SELECT * FROM "${reservasiTableName}"`
+    )
+    const map = new Map<string, string>()
+    for (const row of rows) {
+      const awb = AirShipmentsService.getFieldValueFromRow(row, 'awb')
+      const smu = AirShipmentsService.getFieldValueFromRow(row, 'trackingan_smu')
+      if (awb) map.set(String(awb).trim(), String(smu ?? '').trim())
+    }
+    return map
+  }
+
+  private enrichRowsWithReservasi(
+    rows: Record<string, unknown>[],
+    reservasiByAwb: Map<string, string>,
+  ): Record<string, unknown>[] {
+    if (!reservasiByAwb.size) return rows
+    return rows.map((row) => {
+      const awb = AirShipmentsService.getFieldValueFromRow(row, 'awb')
+      if (!awb) return row
+      const trackinganSmu = reservasiByAwb.get(String(awb).trim())
+      if (trackinganSmu === undefined) return row
+      return { ...row, trackingan_smu: trackinganSmu }
+    })
   }
 
   private filterRowsByAlert(
