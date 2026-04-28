@@ -60,6 +60,13 @@ export function evaluateAlerts(
   const ataFlight = getFieldValue(row, 'ata_flight')
   const atdFlight = getFieldValue(row, 'atd_flight')
   const ataFlightDate = parseDate(ataFlight)
+  const trackinganSmu = getFieldValue(row, 'trackingan_smu')
+  // Only flag SMU as "not onboard" when there is an explicit non-empty status that isn't "Onboard".
+  // Missing/empty means no Reservasi record was found — don't trigger on absence of data.
+  const smuNotOnboard =
+    typeof trackinganSmu === 'string' &&
+    trackinganSmu.trim() !== '' &&
+    trackinganSmu.trim().toLowerCase() !== 'onboard'
 
   const maxSla = ataOrigin && slaTime !== null ? new Date(ataOrigin.getTime() + slaTime) : null
   const maxTjph = ataOrigin && tjphTime !== null ? new Date(ataOrigin.getTime() + tjphTime) : null
@@ -77,7 +84,10 @@ export function evaluateAlerts(
       isEmptyValue(ataFlight),
 
     potensiMelebihiSla:
-      ataFlightDate !== null && maxSla !== null && new Date(ataFlightDate.getTime() + mMs) > maxSla,
+      (ataFlightDate !== null &&
+        maxSla !== null &&
+        new Date(ataFlightDate.getTime() + mMs) > maxSla) ||
+      (!isEmptyValue(atdFlight) && smuNotOnboard),
 
     melewatiSla,
 

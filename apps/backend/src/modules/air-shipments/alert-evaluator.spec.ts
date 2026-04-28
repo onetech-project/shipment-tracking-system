@@ -16,6 +16,7 @@ describe('evaluateAlerts', () => {
     tjph: '04:00:00', // maxTjph = 12:00
     ata_flight: '2025-01-01T09:00:00Z',
     atd_flight: '2025-01-01T08:30:00Z',
+    trackingan_smu: 'Onboard', // SMU already onboard — potensiMelebihiSla SMU path suppressed
   }
   const N = 1 // n_hours = 1h: now must be > ata_origin + 1h
   const M = 1 // m_hours = 1h: ata_flight + 1h vs deadlines
@@ -131,6 +132,65 @@ describe('evaluateAlerts', () => {
           M,
         ).potensiMelebihiSla,
       ).toBe(false)
+    })
+
+    it('triggers via SMU path when atd_flight is present and trackingan_smu is not Onboard', () => {
+      jest.setSystemTime(new Date('2025-01-01T08:30:00Z'))
+      expect(
+        evaluateAlerts(
+          { ...baseRow, ata_flight: '2025-01-01T08:30:00Z', trackingan_smu: 'In Transit' },
+          N,
+          M,
+        ).potensiMelebihiSla,
+      ).toBe(true)
+    })
+
+    it('does NOT trigger via SMU path when trackingan_smu is empty (no Reservasi record)', () => {
+      // Missing/empty trackingan_smu means no Reservasi data was joined — should not false-positive
+      jest.setSystemTime(new Date('2025-01-01T08:30:00Z'))
+      expect(
+        evaluateAlerts(
+          { ...baseRow, ata_flight: '2025-01-01T08:30:00Z', trackingan_smu: '' },
+          N,
+          M,
+        ).potensiMelebihiSla,
+      ).toBe(false)
+    })
+
+    it('does NOT trigger via SMU path when trackingan_smu is Onboard (case-insensitive)', () => {
+      jest.setSystemTime(new Date('2025-01-01T08:30:00Z'))
+      // ata_flight + m <= maxSla, and SMU is onboard — neither path triggers
+      expect(
+        evaluateAlerts(
+          { ...baseRow, ata_flight: '2025-01-01T08:30:00Z', trackingan_smu: 'ONBOARD' },
+          N,
+          M,
+        ).potensiMelebihiSla,
+      ).toBe(false)
+    })
+
+    it('does NOT trigger via SMU path when atd_flight is empty', () => {
+      jest.setSystemTime(new Date('2025-01-01T08:30:00Z'))
+      expect(
+        evaluateAlerts(
+          { ...baseRow, atd_flight: '', trackingan_smu: 'In Transit' },
+          N,
+          M,
+        ).potensiMelebihiSla,
+      ).toBe(false)
+    })
+
+    it('reads trackingan_smu from extra_fields when not on top-level', () => {
+      // Remove trackingan_smu from top-level so getFieldValue falls through to extra_fields
+      const { trackingan_smu: _omit, ...baseWithoutSmu } = { ...baseRow, ata_flight: '2025-01-01T08:30:00Z' }
+      jest.setSystemTime(new Date('2025-01-01T08:30:00Z'))
+      expect(
+        evaluateAlerts(
+          { ...baseWithoutSmu, extra_fields: { trackingan_smu: 'In Transit' } },
+          N,
+          M,
+        ).potensiMelebihiSla,
+      ).toBe(true)
     })
   })
 

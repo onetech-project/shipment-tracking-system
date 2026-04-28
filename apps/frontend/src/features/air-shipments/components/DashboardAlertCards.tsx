@@ -46,16 +46,16 @@ const ALERT_CARDS: Array<{
   color: string
   icon: ElementType
 }> = [
-  { key: 'reservasiPenerbangan', label: 'Reservasi Penerbangan', color: '#F97316', icon: Clock },
-  { key: 'potensiMelebihiSla', label: 'Potensi Melebihi SLA', color: '#EAB308', icon: Hourglass },
-  { key: 'melewatiSla', label: 'Melewati SLA', color: '#EF4444', icon: AlertTriangle },
+  { key: 'reservasiPenerbangan', label: 'Flight Reservations', color: '#F97316', icon: Clock },
+  { key: 'potensiMelebihiSla', label: 'Potential SLA Breach', color: '#EAB308', icon: Hourglass },
+  { key: 'melewatiSla', label: 'SLA Breach', color: '#EF4444', icon: AlertTriangle },
   {
     key: 'potensiMelebihiTjph',
-    label: 'Potensi Melebihi TJPH',
+    label: 'Potential TJPH Breach',
     color: '#8B5CF6',
     icon: PlaneLanding,
   },
-  { key: 'melewatiTjph', label: 'Melewati TJPH', color: '#DC2626', icon: ShieldAlert },
+  { key: 'melewatiTjph', label: 'TJPH Breach', color: '#DC2626', icon: ShieldAlert },
 ]
 
 export function DashboardAlertCards({
@@ -104,16 +104,15 @@ export function DashboardAlertCards({
           const Icon = card.icon
 
           return (
-            <div
-              key={card.key}
-              className="relative"
-            >
+            <div key={card.key} className="relative">
               <button
                 type="button"
                 onClick={() => handleCardClick(card.key)}
                 className={cn(
                   'group flex w-full flex-col justify-between rounded-3xl border p-5 text-left transition hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-offset-2',
-                  isActive ? 'border-slate-900 bg-slate-50 shadow-md' : 'border-border bg-background',
+                  isActive
+                    ? 'border-slate-900 bg-slate-50 shadow-md'
+                    : 'border-border bg-background'
                 )}
                 aria-pressed={isActive}
                 aria-expanded={isExpanded}

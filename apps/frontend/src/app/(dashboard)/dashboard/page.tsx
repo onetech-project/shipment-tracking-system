@@ -21,6 +21,7 @@ import { DEFAULT_HIDDEN, FROZEN_KEYS, colLabel } from '@/features/air-shipments/
 import { AirShipmentsResponse, SortOrder } from '@/features/air-shipments/types'
 import { Lock, Trash2, Settings } from 'lucide-react'
 import { AxiosError } from 'axios'
+import { useAuth } from '@/features/auth/auth.context'
 
 interface RouteOption {
   label: string
@@ -34,12 +35,12 @@ const TABLE_ENDPOINT = `/air-shipments/${TABLE_NAME}`
 type AlertFilterOption = DashboardAlertKey | 'normal'
 
 const ALERT_OPTIONS: Array<{ value: AlertFilterOption | null; label: string }> = [
-  { value: null, label: 'Semua Alert' },
-  { value: 'reservasiPenerbangan', label: 'Reservasi Penerbangan' },
-  { value: 'potensiMelebihiSla', label: 'Potensi Melebihi SLA' },
-  { value: 'melewatiSla', label: 'Melewati SLA' },
-  { value: 'potensiMelebihiTjph', label: 'Potensi Melebihi TJPH' },
-  { value: 'melewatiTjph', label: 'Melewati TJPH' },
+  { value: null, label: 'All Data' },
+  { value: 'reservasiPenerbangan', label: 'Flight Reservations' },
+  { value: 'potensiMelebihiSla', label: 'Potential SLA Breach' },
+  { value: 'melewatiSla', label: 'SLA Breach' },
+  { value: 'potensiMelebihiTjph', label: 'Potential TJPH Breach' },
+  { value: 'melewatiTjph', label: 'TJPH Breach' },
   { value: 'normal', label: 'Normal' },
 ]
 
@@ -80,6 +81,7 @@ export default function DashboardPage() {
     end: string
     loading: boolean
   }>({ op: null, start: '', end: '', loading: false })
+  const { user } = useAuth()
 
   // ── Fetch helpers ────────────────────────────────────────────────────────────
 
@@ -312,7 +314,9 @@ export default function DashboardPage() {
 
       <section className="space-y-6">
         <div className="rounded-3xl border border-border bg-panel p-6 shadow-sm">
-          <div className="text-xl font-semibold text-foreground">Welcome back</div>
+          <div className="text-xl font-semibold text-foreground">
+            Welcome back, {user?.username}
+          </div>
           <p className="mt-2 text-sm text-muted-foreground">
             Operational monitoring for the last {days} days.
           </p>
