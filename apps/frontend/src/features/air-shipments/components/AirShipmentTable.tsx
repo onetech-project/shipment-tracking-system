@@ -113,7 +113,7 @@ export function AirShipmentTable({
                   minWidth: FROZEN_WIDTH['#'],
                   maxWidth: FROZEN_WIDTH['#'],
                 }}
-                className="sticky z-30 bg-muted whitespace-nowrap px-4 py-2 text-left font-medium text-muted-foreground"
+                className="xl:sticky z-30 bg-muted whitespace-nowrap px-4 py-2 text-left font-medium text-muted-foreground"
               >
                 #
               </th>
@@ -135,7 +135,7 @@ export function AirShipmentTable({
                   }
                   className={[
                     'cursor-pointer select-none whitespace-nowrap px-4 py-2 text-left font-medium text-muted-foreground hover:text-foreground',
-                    isFrozen(col) ? 'sticky z-30 bg-muted' : '',
+                    isFrozen(col) ? 'xl:sticky z-30 bg-muted' : '',
                   ].join(' ')}
                 >
                   {colLabel(col)}
@@ -163,7 +163,7 @@ export function AirShipmentTable({
                       minWidth: FROZEN_WIDTH['#'],
                       maxWidth: FROZEN_WIDTH['#'],
                     }}
-                    className="sticky z-10 bg-background text-center"
+                    className="xl:sticky z-10 bg-background text-center"
                   >
                     {(meta.page - 1) * meta.limit + data.indexOf(row) + 1}
                   </td>
@@ -184,7 +184,7 @@ export function AirShipmentTable({
                       }
                       className={[
                         'whitespace-nowrap px-4 py-2',
-                        isFrozen(col) ? 'sticky z-10 bg-background' : '',
+                        isFrozen(col) ? 'xl:sticky z-10 bg-background' : '',
                         col === 'is_locked' ? 'text-center' : '',
                       ].join(' ')}
                     >

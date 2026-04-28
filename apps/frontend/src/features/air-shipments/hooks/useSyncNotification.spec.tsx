@@ -90,6 +90,20 @@ describe('useSyncNotification', () => {
     expect(result.current.affectedTables).toEqual(['air_shipments_cgk'])
   })
 
+  it('updates lastCompletedSheet and lastCompletedAt on sync.completed event', () => {
+    const { result } = renderUseSyncNotification()
+    const completedHandler = mockOn.mock.calls.find(([event]) => event === 'sync.completed')?.[1]
+    expect(completedHandler).toBeDefined()
+
+    const payload = { sheet: 'compile_air_cgk' }
+    act(() => {
+      completedHandler(payload)
+    })
+
+    expect(result.current.lastCompletedSheet).toBe('compile_air_cgk')
+    expect(result.current.lastCompletedAt).not.toBeNull()
+  })
+
   it('disconnects the socket on unmount', () => {
     const { unmount } = renderUseSyncNotification()
     unmount()

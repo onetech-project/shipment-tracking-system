@@ -25,7 +25,8 @@
         "christian-kohler.npm-intellisense",
         "ms-vscode.js-debug",
         "qwenlm.qwen-code-vscode-ide-companion",
-        "nullsetindustries.lmstudio-byok-chat-provider"
+        "nullsetindustries.lmstudio-byok-chat-provider",
+        "anthropic.claude-code"
       ]
     }
   },

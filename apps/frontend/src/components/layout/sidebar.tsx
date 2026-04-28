@@ -73,7 +73,7 @@ export function Sidebar({ onNavClick }: SidebarProps) {
           </p>
           <div className="flex flex-col gap-1">
             <NavLink
-              href="/air-shipments/cgk"
+              href="/air-shipments"
               icon={<Plane size={16} />}
               label="Shipments"
               onClick={onNavClick}

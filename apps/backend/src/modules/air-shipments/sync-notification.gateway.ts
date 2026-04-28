@@ -1,13 +1,13 @@
-import { Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common'
 import {
   ConnectedSocket,
   OnGatewayConnection,
   OnGatewayDisconnect,
   WebSocketGateway,
   WebSocketServer,
-} from '@nestjs/websockets';
-import { Server, Socket } from 'socket.io';
-import { SyncNotificationDto } from './dto/sync-notification.dto';
+} from '@nestjs/websockets'
+import { Server, Socket } from 'socket.io'
+import { SyncNotificationDto } from './dto/sync-notification.dto'
 
 @WebSocketGateway({
   cors: {
@@ -16,25 +16,30 @@ import { SyncNotificationDto } from './dto/sync-notification.dto';
   },
 })
 export class SyncNotificationGateway implements OnGatewayConnection, OnGatewayDisconnect {
-  private readonly logger = new Logger(SyncNotificationGateway.name);
+  private readonly logger = new Logger(SyncNotificationGateway.name)
 
   @WebSocketServer()
-  server!: Server;
+  server!: Server
 
   handleConnection(@ConnectedSocket() client: Socket): void {
-    this.logger.log(`WebSocket client connected: ${client.id}`);
+    this.logger.log(`WebSocket client connected: ${client.id}`)
   }
 
   handleDisconnect(@ConnectedSocket() client: Socket): void {
-    this.logger.log(`WebSocket client disconnected: ${client.id}`);
+    this.logger.log(`WebSocket client disconnected: ${client.id}`)
   }
 
   /**
    * Broadcasts a sync:update event to all connected clients.
-   * Only emits when totalUpserted > 0 to avoid noisy zero-change broadcasts (FR-032).
+   * Only emits when totalUpserted > 0 to avoid noisy zero-change broadcasts.
    */
   notifyClients(payload: SyncNotificationDto): void {
-    if (payload.totalUpserted === 0) return;
-    this.server.emit('sync:update', payload);
+    if (payload.totalUpserted === 0) return
+    this.server.emit('sync:update', payload)
+  }
+
+  notifyCompleted(sheetIdentifier: string): void {
+    if (!sheetIdentifier) return
+    this.server.emit('sync.completed', { sheet: sheetIdentifier })
   }
 }

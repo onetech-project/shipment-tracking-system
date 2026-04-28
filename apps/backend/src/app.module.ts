@@ -21,6 +21,7 @@ import { InvitationsModule } from './modules/invitations/invitations.module'
 import { AuditModule } from './modules/audit/audit.module'
 // ...existing code...
 import { AirShipmentsModule } from './modules/air-shipments/air-shipments.module'
+import { GeneralParamsModule } from './modules/general-params/general-params.module'
 
 @Module({
   imports: [
@@ -84,6 +85,7 @@ import { AirShipmentsModule } from './modules/air-shipments/air-shipments.module
     AuditModule,
     // ...existing code...
     AirShipmentsModule,
+    GeneralParamsModule,
   ],
   controllers: [AppController],
   providers: [
