@@ -255,6 +255,18 @@ describe('evaluateAlerts', () => {
       expect(evaluateAlerts(baseRow, N, M).melewatiTjph).toBe(true)
     })
 
+    it('suppresses all other alerts when melewatiTjph is true', () => {
+      // now=13:00 → melewatiTjph=true → only melewatiTjph should be set
+      jest.setSystemTime(new Date('2025-01-01T13:00:00Z'))
+      expect(evaluateAlerts(baseRow, N, M)).toEqual({
+        reservasiPenerbangan: false,
+        potensiMelebihiSla: false,
+        melewatiSla: false,
+        potensiMelebihiTjph: false,
+        melewatiTjph: true,
+      })
+    })
+
     it('does NOT trigger when now <= maxTjph', () => {
       jest.setSystemTime(new Date('2025-01-01T10:00:00Z'))
       expect(evaluateAlerts(baseRow, N, M).melewatiTjph).toBe(false)

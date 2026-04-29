@@ -76,6 +76,16 @@ export function evaluateAlerts(
   const melewatiSla = maxSla !== null && now > maxSla
   const melewatiTjph = maxTjph !== null && now > maxTjph
 
+  if (melewatiTjph) {
+    return {
+      reservasiPenerbangan: false,
+      potensiMelebihiSla: false,
+      melewatiSla: false,
+      potensiMelebihiTjph: false,
+      melewatiTjph: true,
+    }
+  }
+
   return {
     reservasiPenerbangan:
       ataOrigin !== null &&
@@ -97,7 +107,7 @@ export function evaluateAlerts(
         maxTjph !== null &&
         new Date(ataFlightDate.getTime() + mMs) > maxTjph),
 
-    melewatiTjph,
+    melewatiTjph: false,
   }
 }
 
