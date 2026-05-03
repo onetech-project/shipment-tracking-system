@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { usePnlCycles, usePnlSummary } from '@/features/pnl/hooks/usePnl'
+import { usePnlCycles, usePnlSummary, usePnlTrend } from '@/features/pnl/hooks/usePnl'
 import { PnlKpiCards } from '@/features/pnl/components/PnlKpiCards'
+import { PnlTrendChart } from '@/features/pnl/components/PnlTrendChart'
 
 export default function PnlPage() {
   const { data: cycles } = usePnlCycles()
@@ -15,6 +16,7 @@ export default function PnlPage() {
   }, [cycles, cycle])
 
   const { data: summary, isLoading } = usePnlSummary(cycle)
+  const { data: trendData } = usePnlTrend()
 
   return (
     <div className="space-y-6">
@@ -36,6 +38,7 @@ export default function PnlPage() {
 
       {isLoading && <p className="text-muted-foreground text-sm">Loading summary…</p>}
       {summary && <PnlKpiCards summary={summary} />}
+      {trendData && trendData.length > 0 && <PnlTrendChart data={trendData} />}
     </div>
   )
 }
