@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { usePnlCycles, usePnlSummary, usePnlTrend } from '@/features/pnl/hooks/usePnl'
 import { PnlKpiCards } from '@/features/pnl/components/PnlKpiCards'
 import { PnlTrendChart } from '@/features/pnl/components/PnlTrendChart'
+import { PnlAwbDrilldown } from '@/features/pnl/components/PnlAwbDrilldown'
 
 export default function PnlPage() {
   const { data: cycles } = usePnlCycles()
@@ -39,6 +40,7 @@ export default function PnlPage() {
       {isLoading && <p className="text-muted-foreground text-sm">Loading summary…</p>}
       {summary && <PnlKpiCards summary={summary} />}
       {trendData && trendData.length > 0 && <PnlTrendChart data={trendData} />}
+      {cycle && <PnlAwbDrilldown cyclePeriod={cycle} />}
     </div>
   )
 }
