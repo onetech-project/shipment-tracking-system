@@ -5,6 +5,7 @@ import { usePnlCycles, usePnlSummary, usePnlTrend } from '@/features/pnl/hooks/u
 import { PnlKpiCards } from '@/features/pnl/components/PnlKpiCards'
 import { PnlTrendChart } from '@/features/pnl/components/PnlTrendChart'
 import { PnlAwbDrilldown } from '@/features/pnl/components/PnlAwbDrilldown'
+import { PnlDataQuality } from '@/features/pnl/components/PnlDataQuality'
 
 export default function PnlPage() {
   const { data: cycles } = usePnlCycles()
@@ -41,6 +42,7 @@ export default function PnlPage() {
       {summary && <PnlKpiCards summary={summary} />}
       {trendData && trendData.length > 0 && <PnlTrendChart data={trendData} />}
       {cycle && <PnlAwbDrilldown cyclePeriod={cycle} />}
+      <PnlDataQuality />
     </div>
   )
 }
