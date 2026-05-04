@@ -77,7 +77,7 @@ export class PnlService {
                 THEN TO_DATE(SUBSTRING(cycle_period, 1, 7) || '-01', 'YYYY-MM-DD')
               WHEN cycle_period LIKE '%-2H'
                 THEN TO_DATE(SUBSTRING(cycle_period, 1, 7) || '-16', 'YYYY-MM-DD')
-            END >= CURRENT_DATE - INTERVAL '84 days'
+            END >= CURRENT_DATE - INTERVAL '3 months'
       ORDER BY cycle_period DESC
     `)
     return rows.map((r: { cycle_period: string }) => r.cycle_period)
