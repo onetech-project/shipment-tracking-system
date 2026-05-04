@@ -89,14 +89,10 @@ export function usePnlAwbDrilldown(filter: PnlFilter | undefined, page: number, 
   })
 }
 
-export function usePnlDataQuality(filter: PnlFilter | undefined) {
+export function usePnlDataQuality() {
   return useQuery<PnlDataQualityItem[]>({
-    queryKey: ['pnl', 'data-quality', filter],
-    queryFn: () =>
-      apiClient
-        .get('/pnl/data-quality', { params: filter ? filterToParams(filter) : {} })
-        .then((r) => r.data),
-    enabled: !!filter,
+    queryKey: ['pnl', 'data-quality'],
+    queryFn: () => apiClient.get('/pnl/data-quality').then((r) => r.data),
     staleTime: 5 * 60 * 1000,
   })
 }

@@ -102,7 +102,7 @@ export default function PnlPage() {
       {summary && <PnlKpiCards summary={summary} />}
       {trendData && trendData.length > 0 && <PnlTrendChart data={trendData} />}
       {filter && <PnlAwbDrilldown filter={filter} />}
-      <PnlDataQuality filter={filter} />
+      <PnlDataQuality />
     </div>
   )
 }

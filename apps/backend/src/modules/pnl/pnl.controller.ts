@@ -38,11 +38,7 @@ export class PnlController {
   }
 
   @Get('data-quality')
-  getDataQuality(
-    @Query('cycle') cycle?: string,
-    @Query('start') start?: string,
-    @Query('end') end?: string,
-  ) {
-    return this.pnlService.getDataQuality(cycle, start, end)
+  getDataQuality() {
+    return this.pnlService.getDataQuality()
   }
 }

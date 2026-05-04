@@ -72,12 +72,6 @@ export class PnlService {
       SELECT DISTINCT cycle_period
       FROM v_pnl_to
       WHERE cycle_period IS NOT NULL
-        AND CASE
-              WHEN cycle_period LIKE '%-1H'
-                THEN TO_DATE(SUBSTRING(cycle_period, 1, 7) || '-01', 'YYYY-MM-DD')
-              WHEN cycle_period LIKE '%-2H'
-                THEN TO_DATE(SUBSTRING(cycle_period, 1, 7) || '-16', 'YYYY-MM-DD')
-            END >= CURRENT_DATE - INTERVAL '3 months'
       ORDER BY cycle_period DESC
     `)
     return rows.map((r: { cycle_period: string }) => r.cycle_period)
@@ -206,14 +200,8 @@ export class PnlService {
     return { data, total }
   }
 
-  async getDataQuality(
-    cyclePeriod?: string,
-    startDate?: string,
-    endDate?: string,
-  ): Promise<PnlDataQualityItem[]> {
-    const { where, params } = buildFilter(cyclePeriod, startDate, endDate)
-    const rows = await this.dataSource.query(
-      `
+  async getDataQuality(): Promise<PnlDataQualityItem[]> {
+    const rows = await this.dataSource.query(`
       SELECT
         to_number,
         awb,
@@ -226,12 +214,10 @@ export class PnlService {
           ELSE 'unknown'
         END AS issue
       FROM v_pnl_to
-      WHERE cost_to IS NULL AND ${where}
+      WHERE cost_to IS NULL
       ORDER BY awb, to_number
       LIMIT 500
-      `,
-      params,
-    )
+    `)
     return rows.map((r: Record<string, string>) => ({
       toNumber: r.to_number,
       awb: r.awb,
