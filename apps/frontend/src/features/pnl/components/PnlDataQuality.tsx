@@ -1,6 +1,6 @@
 'use client'
 
-import { usePnlDataQuality } from '../hooks/usePnl'
+import { usePnlDataQuality, PnlFilter } from '../hooks/usePnl'
 import { AlertTriangle } from 'lucide-react'
 
 const ISSUE_LABELS: Record<string, string> = {
@@ -11,8 +11,12 @@ const ISSUE_LABELS: Record<string, string> = {
   unknown:                 'Unknown cost issue',
 }
 
-export function PnlDataQuality() {
-  const { data, isLoading } = usePnlDataQuality()
+interface PnlDataQualityProps {
+  filter: PnlFilter | undefined
+}
+
+export function PnlDataQuality({ filter }: PnlDataQualityProps) {
+  const { data, isLoading } = usePnlDataQuality(filter)
 
   if (isLoading) return null
   if (!data || data.length === 0) return null

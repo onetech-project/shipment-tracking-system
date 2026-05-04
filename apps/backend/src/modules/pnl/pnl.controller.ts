@@ -13,8 +13,12 @@ export class PnlController {
   }
 
   @Get('summary')
-  getSummary(@Query('cycle') cycle: string) {
-    return this.pnlService.getSummary(cycle)
+  getSummary(
+    @Query('cycle') cycle?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+  ) {
+    return this.pnlService.getSummary(cycle, start, end)
   }
 
   @Get('trend')
@@ -24,15 +28,21 @@ export class PnlController {
 
   @Get('awb-drilldown')
   getAwbDrilldown(
-    @Query('cycle') cycle: string,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+    @Query('cycle') cycle?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
   ) {
-    return this.pnlService.getAwbDrilldown(cycle, page, limit)
+    return this.pnlService.getAwbDrilldown(page, limit, cycle, start, end)
   }
 
   @Get('data-quality')
-  getDataQuality() {
-    return this.pnlService.getDataQuality()
+  getDataQuality(
+    @Query('cycle') cycle?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+  ) {
+    return this.pnlService.getDataQuality(cycle, start, end)
   }
 }

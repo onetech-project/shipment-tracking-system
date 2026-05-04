@@ -1,24 +1,25 @@
 'use client'
 
 import { useState } from 'react'
-import { usePnlAwbDrilldown } from '../hooks/usePnl'
+import { usePnlAwbDrilldown, PnlFilter } from '../hooks/usePnl'
 
 const fmt = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 })
 const pct = (n: number | null) => (n == null ? '—' : `${n.toFixed(1)}%`)
 
 interface PnlAwbDrilldownProps {
-  cyclePeriod: string
+  filter: PnlFilter
 }
 
-export function PnlAwbDrilldown({ cyclePeriod }: PnlAwbDrilldownProps) {
+export function PnlAwbDrilldown({ filter }: PnlAwbDrilldownProps) {
   const [page, setPage] = useState(1)
-  const { data, isLoading } = usePnlAwbDrilldown(cyclePeriod, page)
+  const { data, isLoading } = usePnlAwbDrilldown(filter, page)
   const totalPages = data ? Math.ceil(data.total / 50) : 0
+  const title = filter.mode === 'cycle' ? filter.cycle : `${filter.start} → ${filter.end}`
 
   return (
     <div className="rounded-lg border bg-card">
       <div className="border-b px-4 py-3">
-        <p className="text-sm font-medium">AWB Drilldown — {cyclePeriod}</p>
+        <p className="text-sm font-medium">AWB Drilldown — {title}</p>
         {data && <p className="text-xs text-muted-foreground">{data.total} AWBs</p>}
       </div>
       <div className="overflow-x-auto">

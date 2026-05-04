@@ -1,8 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/client'
 
+export type PnlFilter =
+  | { mode: 'cycle'; cycle: string }
+  | { mode: 'range'; start: string; end: string }
+
 export interface PnlSummary {
-  cyclePeriod: string
+  label: string
   totalTos: number
   totalAwbs: number
   totalRevenue: number
@@ -41,6 +45,12 @@ export interface PnlDataQualityItem {
   issue: string
 }
 
+function filterToParams(filter: PnlFilter) {
+  return filter.mode === 'cycle'
+    ? { cycle: filter.cycle }
+    : { start: filter.start, end: filter.end }
+}
+
 export function usePnlCycles() {
   return useQuery<string[]>({
     queryKey: ['pnl', 'cycles'],
@@ -49,12 +59,12 @@ export function usePnlCycles() {
   })
 }
 
-export function usePnlSummary(cyclePeriod: string | undefined) {
+export function usePnlSummary(filter: PnlFilter | undefined) {
   return useQuery<PnlSummary>({
-    queryKey: ['pnl', 'summary', cyclePeriod],
+    queryKey: ['pnl', 'summary', filter],
     queryFn: () =>
-      apiClient.get('/pnl/summary', { params: { cycle: cyclePeriod } }).then((r) => r.data),
-    enabled: !!cyclePeriod,
+      apiClient.get('/pnl/summary', { params: filterToParams(filter!) }).then((r) => r.data),
+    enabled: !!filter,
     staleTime: 60 * 1000,
   })
 }
@@ -67,26 +77,26 @@ export function usePnlTrend() {
   })
 }
 
-export function usePnlAwbDrilldown(
-  cyclePeriod: string | undefined,
-  page: number,
-  limit = 50,
-) {
+export function usePnlAwbDrilldown(filter: PnlFilter | undefined, page: number, limit = 50) {
   return useQuery<{ data: PnlAwbRow[]; total: number }>({
-    queryKey: ['pnl', 'awb-drilldown', cyclePeriod, page, limit],
+    queryKey: ['pnl', 'awb-drilldown', filter, page, limit],
     queryFn: () =>
       apiClient
-        .get('/pnl/awb-drilldown', { params: { cycle: cyclePeriod, page, limit } })
+        .get('/pnl/awb-drilldown', { params: { ...filterToParams(filter!), page, limit } })
         .then((r) => r.data),
-    enabled: !!cyclePeriod,
+    enabled: !!filter,
     staleTime: 60 * 1000,
   })
 }
 
-export function usePnlDataQuality() {
+export function usePnlDataQuality(filter: PnlFilter | undefined) {
   return useQuery<PnlDataQualityItem[]>({
-    queryKey: ['pnl', 'data-quality'],
-    queryFn: () => apiClient.get('/pnl/data-quality').then((r) => r.data),
+    queryKey: ['pnl', 'data-quality', filter],
+    queryFn: () =>
+      apiClient
+        .get('/pnl/data-quality', { params: filter ? filterToParams(filter) : {} })
+        .then((r) => r.data),
+    enabled: !!filter,
     staleTime: 5 * 60 * 1000,
   })
 }

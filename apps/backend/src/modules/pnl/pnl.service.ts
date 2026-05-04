@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common'
 import { DataSource } from 'typeorm'
 
 export interface PnlSummary {
-  cyclePeriod: string
+  label: string
   totalTos: number
   totalAwbs: number
   totalRevenue: number
@@ -41,6 +41,28 @@ export interface PnlDataQualityItem {
   issue: string
 }
 
+// Builds a WHERE clause and its bound params for either cycle or date-range mode.
+// Date range uses TO_TIMESTAMP since completed_time is stored as "DD-Mon-YYYY HH24:MI" text.
+function buildFilter(
+  cyclePeriod?: string,
+  startDate?: string,
+  endDate?: string,
+): { where: string; params: unknown[] } {
+  if (cyclePeriod) {
+    return { where: 'cycle_period = $1', params: [cyclePeriod] }
+  }
+  if (startDate && endDate) {
+    return {
+      where: `completed_time IS NOT NULL
+              AND completed_time != ''
+              AND TO_TIMESTAMP(completed_time, 'DD-Mon-YYYY HH24:MI') >= $1::DATE
+              AND TO_TIMESTAMP(completed_time, 'DD-Mon-YYYY HH24:MI') <= $2::DATE`,
+      params: [startDate, endDate],
+    }
+  }
+  return { where: '1=0', params: [] }
+}
+
 @Injectable()
 export class PnlService {
   constructor(private readonly dataSource: DataSource) {}
@@ -55,7 +77,12 @@ export class PnlService {
     return rows.map((r: { cycle_period: string }) => r.cycle_period)
   }
 
-  async getSummary(cyclePeriod: string): Promise<PnlSummary> {
+  async getSummary(
+    cyclePeriod?: string,
+    startDate?: string,
+    endDate?: string,
+  ): Promise<PnlSummary> {
+    const { where, params } = buildFilter(cyclePeriod, startDate, endDate)
     const rows = await this.dataSource.query(
       `
       SELECT
@@ -65,15 +92,16 @@ export class PnlService {
         COALESCE(SUM(cost_to), 0)               AS total_cost,
         COALESCE(SUM(gross_profit_to), 0)       AS gross_profit
       FROM v_pnl_to
-      WHERE cycle_period = $1
+      WHERE ${where}
       `,
-      [cyclePeriod],
+      params,
     )
     const row = rows[0]
     const totalRevenue = Number(row.total_revenue)
     const grossProfit = Number(row.gross_profit)
+    const label = cyclePeriod ?? `${startDate} to ${endDate}`
     return {
-      cyclePeriod,
+      label,
       totalTos: Number(row.total_tos),
       totalAwbs: Number(row.total_awbs),
       totalRevenue,
@@ -106,11 +134,18 @@ export class PnlService {
   }
 
   async getAwbDrilldown(
-    cyclePeriod: string,
     page: number,
     limit: number,
+    cyclePeriod?: string,
+    startDate?: string,
+    endDate?: string,
   ): Promise<{ data: PnlAwbRow[]; total: number }> {
+    const { where, params } = buildFilter(cyclePeriod, startDate, endDate)
     const offset = (page - 1) * limit
+    const dataParams = [...params, limit, offset]
+    const countParams = [...params]
+    const p = params.length
+
     const [rows, countRows] = await Promise.all([
       this.dataSource.query(
         `
@@ -128,18 +163,19 @@ export class PnlService {
           COALESCE(SUM(gross_profit_to), 0)       AS gross_profit,
           (MAX(cost_total_awb) IS NULL)            AS has_null_cost
         FROM v_pnl_to
-        WHERE cycle_period = $1
+        WHERE ${where}
         GROUP BY awb, vendor, airline
         ORDER BY SUM(revenue_total) DESC NULLS LAST
-        LIMIT $2 OFFSET $3
+        LIMIT $${p + 1} OFFSET $${p + 2}
         `,
-        [cyclePeriod, limit, offset],
+        dataParams,
       ),
       this.dataSource.query(
-        `SELECT COUNT(DISTINCT awb)::int AS total FROM v_pnl_to WHERE cycle_period = $1`,
-        [cyclePeriod],
+        `SELECT COUNT(DISTINCT awb)::int AS total FROM v_pnl_to WHERE ${where}`,
+        countParams,
       ),
     ])
+
     const total = Number(countRows[0].total)
     const data: PnlAwbRow[] = rows.map((r: Record<string, unknown>) => {
       const rev = Number(r.total_revenue)
@@ -164,8 +200,14 @@ export class PnlService {
     return { data, total }
   }
 
-  async getDataQuality(): Promise<PnlDataQualityItem[]> {
-    const rows = await this.dataSource.query(`
+  async getDataQuality(
+    cyclePeriod?: string,
+    startDate?: string,
+    endDate?: string,
+  ): Promise<PnlDataQualityItem[]> {
+    const { where, params } = buildFilter(cyclePeriod, startDate, endDate)
+    const rows = await this.dataSource.query(
+      `
       SELECT
         to_number,
         awb,
@@ -178,10 +220,12 @@ export class PnlService {
           ELSE 'unknown'
         END AS issue
       FROM v_pnl_to
-      WHERE cost_to IS NULL
+      WHERE cost_to IS NULL AND ${where}
       ORDER BY awb, to_number
       LIMIT 500
-    `)
+      `,
+      params,
+    )
     return rows.map((r: Record<string, string>) => ({
       toNumber: r.to_number,
       awb: r.awb,
