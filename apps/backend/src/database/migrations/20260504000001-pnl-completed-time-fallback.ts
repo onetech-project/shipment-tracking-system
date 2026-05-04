@@ -23,10 +23,13 @@ export class PnlCompletedTimeFallback20260504000001 implements MigrationInterfac
     await queryRunner.query(`
       ALTER TABLE air_shipments_compileaircgk
         ADD COLUMN completed_time TEXT GENERATED ALWAYS AS (
-          COALESCE(
-            NULLIF(extra_fields->>'completed_time', ''),
-            extra_fields->>'ata_vendor_wh_destination'
-          )
+          CASE
+            WHEN NULLIF(extra_fields->>'completed_time', '') IS NOT NULL
+              THEN extra_fields->>'completed_time'
+            WHEN extra_fields->>'ata_vendor_wh_destination' ~ '^[0-9]{2}-'
+              THEN extra_fields->>'ata_vendor_wh_destination'
+            ELSE NULL
+          END
         ) STORED,
         ADD COLUMN cycle_period TEXT GENERATED ALWAYS AS (
           CASE
@@ -34,6 +37,11 @@ export class PnlCompletedTimeFallback20260504000001 implements MigrationInterfac
                    NULLIF(extra_fields->>'completed_time', ''),
                    NULLIF(extra_fields->>'ata_vendor_wh_destination', '')
                  ) IS NULL
+            THEN NULL
+            WHEN SUBSTRING(COALESCE(
+                   NULLIF(extra_fields->>'completed_time', ''),
+                   NULLIF(extra_fields->>'ata_vendor_wh_destination', '')
+                 ), 1, 2) !~ '^[0-9]{2}$'
             THEN NULL
             ELSE
               SUBSTRING(COALESCE(
