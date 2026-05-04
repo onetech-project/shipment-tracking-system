@@ -6,6 +6,7 @@ import { PnlKpiCards } from '@/features/pnl/components/PnlKpiCards'
 import { PnlTrendChart } from '@/features/pnl/components/PnlTrendChart'
 import { PnlAwbDrilldown } from '@/features/pnl/components/PnlAwbDrilldown'
 import { PnlDataQuality } from '@/features/pnl/components/PnlDataQuality'
+import { PnlFormulaPanel } from '@/features/pnl/components/PnlFormulaPanel'
 
 type FilterMode = 'cycle' | 'range'
 
@@ -97,6 +98,8 @@ export default function PnlPage() {
           )}
         </div>
       </div>
+
+      <PnlFormulaPanel />
 
       {isLoading && <p className="text-muted-foreground text-sm">Loading summary…</p>}
       {summary && <PnlKpiCards summary={summary} />}
