@@ -110,6 +110,7 @@ export function AirShipmentTable({
               <th
                 style={{
                   left: FROZEN_LEFT['#'],
+                  width: FROZEN_WIDTH['#'],
                   minWidth: FROZEN_WIDTH['#'],
                   maxWidth: FROZEN_WIDTH['#'],
                 }}
@@ -125,6 +126,7 @@ export function AirShipmentTable({
                     isFrozen(col)
                       ? {
                           left: FROZEN_LEFT[col],
+                          width: FROZEN_WIDTH[col],
                           minWidth: FROZEN_WIDTH[col],
                           maxWidth: FROZEN_WIDTH[col],
                           ...(col === FROZEN_COLS[FROZEN_COLS.length - 1].key
@@ -163,6 +165,7 @@ export function AirShipmentTable({
                   <td
                     style={{
                       left: FROZEN_LEFT['#'],
+                      width: FROZEN_WIDTH['#'],
                       minWidth: FROZEN_WIDTH['#'],
                       maxWidth: FROZEN_WIDTH['#'],
                     }}
@@ -177,6 +180,7 @@ export function AirShipmentTable({
                         isFrozen(col)
                           ? {
                               left: FROZEN_LEFT[col],
+                              width: FROZEN_WIDTH[col],
                               minWidth: FROZEN_WIDTH[col],
                               maxWidth: FROZEN_WIDTH[col],
                               ...(col === FROZEN_COLS[FROZEN_COLS.length - 1].key
