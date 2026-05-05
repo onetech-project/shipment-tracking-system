@@ -13,10 +13,17 @@ export interface GeneralParam {
 export function useGeneralParams() {
   const [params, setParams] = useState<GeneralParam[]>([])
   const [saving, setSaving] = useState(false)
+  const [loaded, setLoaded] = useState(false)
 
   const load = async () => {
-    const res = await apiClient.get<GeneralParam[]>('/general-params')
-    setParams(res.data)
+    try {
+      const res = await apiClient.get<GeneralParam[]>('/general-params')
+      setParams(res.data)
+    } catch {
+      // keep params as-is; loaded still becomes true so callers use the fallback
+    } finally {
+      setLoaded(true)
+    }
   }
 
   const update = async (key: string, value: string) => {
@@ -33,5 +40,5 @@ export function useGeneralParams() {
     void load()
   }, [])
 
-  return { params, update, saving, reload: load }
+  return { params, update, saving, reload: load, loaded }
 }

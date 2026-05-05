@@ -49,7 +49,7 @@ export function SlaPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { isConnected, lastSyncAt, lastCompletedSheet } = useSyncNotification()
-  const { params: generalParams, reload: reloadGeneralParams } = useGeneralParams()
+  const { params: generalParams, reload: reloadGeneralParams, loaded: paramsLoaded } = useGeneralParams()
 
   const days = useMemo(() => {
     const p = generalParams.find((p) => p.key === 'days_range')
@@ -145,11 +145,12 @@ export function SlaPage() {
   // ── Effects ─────────────────────────────────────────────────────────────────
 
   useEffect(() => {
+    if (!paramsLoaded) return
     void fetchAlertSummary()
     void fetchRoutes()
     setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [days])
+  }, [days, paramsLoaded])
 
   useEffect(() => {
     const handler = window.setTimeout(() => {
@@ -160,9 +161,10 @@ export function SlaPage() {
   }, [searchInput])
 
   useEffect(() => {
+    if (!paramsLoaded) return
     void fetchTableData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, sortBy, sortOrder, activeAlert, activeRoute, searchQuery, days])
+  }, [page, sortBy, sortOrder, activeAlert, activeRoute, searchQuery, days, paramsLoaded])
 
   useEffect(() => {
     if (lastCompletedSheet === 'compileaircgk') {
