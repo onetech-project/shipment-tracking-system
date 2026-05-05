@@ -164,7 +164,10 @@ export function DashboardAlertCards({
                           <li key={route}>
                             <button
                               type="button"
-                              onClick={() => onRouteSelect(card.key, route)}
+                              onClick={() => {
+                                onRouteSelect(card.key, route)
+                                setExpandedKey(null)
+                              }}
                               className="flex w-full items-center justify-between px-4 py-2 text-left text-sm transition hover:bg-muted focus:outline-none focus:bg-muted"
                             >
                               <span className="flex items-center gap-1.5 text-foreground">
