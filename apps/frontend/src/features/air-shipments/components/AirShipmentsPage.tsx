@@ -37,7 +37,7 @@ export function AirShipmentsPage({
   // title,
   defaultSortBy = 'date',
 }: AirShipmentsPageProps) {
-  const { isConnected, lastSyncAt, affectedTables } = useSyncNotification()
+  const { isConnected, lastSyncAt, lastSyncAtByTable, affectedTables } = useSyncNotification()
   const { data, isLoading, query, setPage, setSort, setSearch, /*setAlertFilter, */ refresh } =
     useAirShipments(endpoint, tableName, affectedTables, defaultSortBy)
 
@@ -313,7 +313,7 @@ export function AirShipmentsPage({
               </button>
             </div>
           )}
-          <SyncStatusBadge isConnected={isConnected} lastSyncAt={lastSyncAt} />
+          <SyncStatusBadge isConnected={isConnected} lastSyncAt={lastSyncAtByTable[tableName] ?? lastSyncAt} />
           {batchDialog.op && (
             <div className="absolute right-0 mt-12 w-[300px] p-3 rounded-lg border border-border bg-popover shadow-lg z-50">
               <div className="text-sm font-medium mb-2">

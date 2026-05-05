@@ -23,6 +23,9 @@ export class SchedulerService implements OnApplicationShutdown {
   private labels: Map<string, string> = new Map()
   private state: Map<string, { isSyncing: boolean; consecutiveSkips: number; isPaused: boolean }> =
     new Map()
+  // Tracks the sheetId currently associated with each config id so we can clean up
+  // stale intervals when the sheet link (sheetId) changes on an update.
+  private configIdToSheetId: Map<string, string> = new Map()
 
   private label(sheetId: string): string {
     return this.labels.get(sheetId) ?? sheetId
@@ -55,6 +58,7 @@ export class SchedulerService implements OnApplicationShutdown {
       this.labels.set(config.sheetId, config.label)
       this.intervals.set(config.sheetId, INTERVAL_SYNC_MS)
       this.state.set(config.sheetId, { isSyncing: false, consecutiveSkips: 0, isPaused: false })
+      this.configIdToSheetId.set(config.id, config.sheetId)
 
       // ensure table schemas are loaded before starting the scheduler
       void Promise.allSettled(
@@ -94,7 +98,6 @@ export class SchedulerService implements OnApplicationShutdown {
     }
 
     state.isSyncing = true
-    const waspaused = state.isPaused
     const startedAt = Date.now()
     this.logger.log(`[scheduler] Starting sync for "${this.label(sheetId)}"`)
 
@@ -112,8 +115,8 @@ export class SchedulerService implements OnApplicationShutdown {
       state.isSyncing = false
       state.consecutiveSkips = 0
 
-      // Resume the interval if it was paused
-      if (waspaused) {
+      // If the interval was paused while this sync was running, re-add it now
+      if (state.isPaused) {
         state.isPaused = false
         const INTERVAL_NAME = `air_shipments_sync:${sheetId}`
         const intervalRef = setInterval(() => this.tick(sheetId), this.intervals.get(sheetId))
@@ -153,6 +156,7 @@ export class SchedulerService implements OnApplicationShutdown {
 
     this.intervals.set(newConfig.sheetId, INTERVAL_SYNC_MS)
     this.state.set(newConfig.sheetId, { isSyncing: false, consecutiveSkips: 0, isPaused: false })
+    this.configIdToSheetId.set(newConfig.id, newConfig.sheetId)
 
     try {
       if (this.schedulerRegistry.doesExist('interval', INTERVAL_NAME)) {
@@ -182,6 +186,7 @@ export class SchedulerService implements OnApplicationShutdown {
     this.labels.delete(payload.sheetId)
     this.intervals.delete(payload.sheetId)
     this.state.delete(payload.sheetId)
+    this.configIdToSheetId.delete(payload.id)
   }
 
   @OnEvent('gsheetConfig.updated') handleConfigUpdate(newConfig: GoogleSheetConfig) {
@@ -191,7 +196,25 @@ export class SchedulerService implements OnApplicationShutdown {
       return
     }
 
+    // If the sheet link changed, tear down the stale interval registered under the old sheetId.
+    const oldSheetId = this.configIdToSheetId.get(newConfig.id)
+    if (oldSheetId && oldSheetId !== newConfig.sheetId) {
+      const oldIntervalName = `air_shipments_sync:${oldSheetId}`
+      try {
+        if (this.schedulerRegistry.doesExist('interval', oldIntervalName)) {
+          this.schedulerRegistry.deleteInterval(oldIntervalName)
+          this.logger.log(
+            `[scheduler] "${this.label(oldSheetId)}" old interval removed (sheetId changed)`
+          )
+        }
+      } catch (_err) {}
+      this.labels.delete(oldSheetId)
+      this.intervals.delete(oldSheetId)
+      this.state.delete(oldSheetId)
+    }
+
     this.labels.set(newConfig.sheetId, newConfig.label)
+    this.configIdToSheetId.set(newConfig.id, newConfig.sheetId)
     const INTERVAL_NAME = `air_shipments_sync:${newConfig.sheetId}`
 
     if (!newConfig.enabled) {

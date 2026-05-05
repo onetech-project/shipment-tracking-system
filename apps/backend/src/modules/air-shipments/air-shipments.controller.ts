@@ -140,6 +140,11 @@ export class AirShipmentsController {
     }
   }
 
+  @Get('last-sync')
+  getLastSyncAt() {
+    return this.service.getLastSyncAt()
+  }
+
   @Get(':tableName')
   async findAllDynamic(@Param('tableName') tableName: string, @Query() query: AirShipmentQueryDto) {
     try {

@@ -1,22 +1,31 @@
-'use client';
+'use client'
+
+import { useState, useEffect } from 'react'
 
 interface SyncStatusBadgeProps {
-  isConnected: boolean;
-  lastSyncAt: string | null;
+  isConnected: boolean
+  lastSyncAt: string | null
 }
 
 function formatRelativeTime(isoDate: string | null): string {
-  if (!isoDate) return 'Never';
-  const diffMs = Date.now() - new Date(isoDate).getTime();
-  const diffSeconds = Math.floor(diffMs / 1000);
-  if (diffSeconds < 60) return `${diffSeconds}s ago`;
-  const diffMinutes = Math.floor(diffSeconds / 60);
-  if (diffMinutes < 60) return `${diffMinutes}m ago`;
-  const diffHours = Math.floor(diffMinutes / 60);
-  return `${diffHours}h ago`;
+  if (!isoDate) return 'Never'
+  const diffMs = Date.now() - new Date(isoDate).getTime()
+  const diffSeconds = Math.floor(diffMs / 1000)
+  if (diffSeconds < 60) return `${diffSeconds}s ago`
+  const diffMinutes = Math.floor(diffSeconds / 60)
+  if (diffMinutes < 60) return `${diffMinutes}m ago`
+  const diffHours = Math.floor(diffMinutes / 60)
+  return `${diffHours}h ago`
 }
 
 export function SyncStatusBadge({ isConnected, lastSyncAt }: SyncStatusBadgeProps) {
+  const [, setTick] = useState(0)
+
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 1000)
+    return () => clearInterval(id)
+  }, [])
+
   return (
     <div className="flex items-center gap-2 text-sm">
       <span
@@ -35,5 +44,5 @@ export function SyncStatusBadge({ isConnected, lastSyncAt }: SyncStatusBadgeProp
         <span className="text-muted-foreground">Last sync: {formatRelativeTime(lastSyncAt)}</span>
       )}
     </div>
-  );
+  )
 }

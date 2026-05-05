@@ -1081,4 +1081,31 @@ export class AirShipmentsService {
     })
     return deleted
   }
+
+  async getLastSyncAt(): Promise<{ lastSyncAt: string | null; byTable: Record<string, string | null> }> {
+    const tableRows = await this.googleSheetSheetConfigRepo
+      .createQueryBuilder('ssc')
+      .select('DISTINCT ssc.tableName', 'tableName')
+      .getRawMany()
+
+    const tableNames: string[] = tableRows
+      .map((r: { tableName: string }) => r.tableName)
+      .filter((t: string) => t && /^[a-z][a-z0-9_]*$/.test(t))
+
+    if (tableNames.length === 0) return { lastSyncAt: null, byTable: {} }
+
+    const union = tableNames
+      .map((t) => `SELECT '${t}' AS table_name, MAX(last_synced_at)::TEXT AS ts FROM "${t}"`)
+      .join(' UNION ALL ')
+    const rows: { table_name: string; ts: string | null }[] =
+      await this.dataSource.query(union)
+
+    const byTable: Record<string, string | null> = {}
+    let lastSyncAt: string | null = null
+    for (const row of rows) {
+      byTable[row.table_name] = row.ts ?? null
+      if (row.ts && (!lastSyncAt || row.ts > lastSyncAt)) lastSyncAt = row.ts
+    }
+    return { lastSyncAt, byTable }
+  }
 }
