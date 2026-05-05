@@ -117,6 +117,7 @@ export default function DashboardPage() {
           onSaved={() => {
             void reloadGeneralParams().then(() => {
               void fetchAlertSummary()
+              setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
             })
           }}
         />

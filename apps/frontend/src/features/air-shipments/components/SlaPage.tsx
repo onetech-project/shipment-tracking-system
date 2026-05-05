@@ -368,6 +368,7 @@ export function SlaPage() {
             void reloadGeneralParams().then(() => {
               void fetchAlertSummary()
               void fetchTableData()
+              setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
             })
           }}
         />
