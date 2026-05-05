@@ -35,6 +35,18 @@ export interface PnlAwbRow {
   hasNullCost: boolean
 }
 
+export interface PnlToRow {
+  toNumber: string
+  grossWeight: number
+  revenue: number
+  costSmu: number | null
+  costRa: number | null
+  costSg: number | null
+  totalCost: number | null
+  grossProfit: number | null
+  marginPct: number | null
+}
+
 export interface PnlDataQualityItem {
   toNumber: string | null
   awb: string
@@ -115,22 +127,25 @@ export class PnlService {
     const rows = await this.dataSource.query(`
       SELECT
         cycle_period,
-        COALESCE(SUM(revenue_total), 0)   AS total_revenue,
-        COALESCE(SUM(cost_to), 0)         AS total_cost,
-        COALESCE(SUM(gross_profit_to), 0) AS gross_profit,
-        COUNT(*)::int                     AS total_tos
+        COALESCE(SUM(revenue_total), 0) AS total_revenue,
+        COALESCE(SUM(cost_to), 0)       AS total_cost,
+        COUNT(*)::int                   AS total_tos
       FROM v_pnl_to
       WHERE cycle_period IS NOT NULL
       GROUP BY cycle_period
       ORDER BY cycle_period
     `)
-    return rows.map((r: Record<string, string>) => ({
-      cyclePeriod: r.cycle_period,
-      totalRevenue: Number(r.total_revenue),
-      totalCost: Number(r.total_cost),
-      grossProfit: Number(r.gross_profit),
-      totalTos: Number(r.total_tos),
-    }))
+    return rows.map((r: Record<string, string>) => {
+      const totalRevenue = Number(r.total_revenue)
+      const totalCost = Number(r.total_cost)
+      return {
+        cyclePeriod: r.cycle_period,
+        totalRevenue,
+        totalCost,
+        grossProfit: totalRevenue - totalCost,
+        totalTos: Number(r.total_tos),
+      }
+    })
   }
 
   async getAwbDrilldown(
@@ -222,6 +237,47 @@ export class PnlService {
       toNumber: r.to_number,
       awb: r.awb,
       issue: r.issue,
+    }))
+  }
+
+  async getAwbTos(
+    awb: string,
+    cyclePeriod?: string,
+    startDate?: string,
+    endDate?: string,
+  ): Promise<PnlToRow[]> {
+    const { where, params } = buildFilter(cyclePeriod, startDate, endDate)
+    const rows = await this.dataSource.query(
+      `
+      SELECT
+        to_number,
+        gross_weight,
+        revenue_total,
+        cost_smu_awb  * weight_share          AS cost_smu,
+        cost_ra_awb   * weight_share          AS cost_ra,
+        cost_sg_out_awb * weight_share        AS cost_sg,
+        cost_to,
+        gross_profit_to,
+        CASE WHEN revenue_total > 0 AND gross_profit_to IS NOT NULL
+             THEN (gross_profit_to / revenue_total) * 100
+             ELSE NULL
+        END AS margin_pct
+      FROM v_pnl_to
+      WHERE awb = $1 AND ${where.replace(/\$(\d+)/g, (_, n) => `$${Number(n) + 1}`)}
+      ORDER BY to_number
+      `,
+      [awb, ...params],
+    )
+    return rows.map((r: Record<string, unknown>) => ({
+      toNumber: r.to_number as string,
+      grossWeight: Number(r.gross_weight),
+      revenue: Number(r.revenue_total),
+      costSmu: r.cost_smu != null ? Number(r.cost_smu) : null,
+      costRa: r.cost_ra != null ? Number(r.cost_ra) : null,
+      costSg: r.cost_sg != null ? Number(r.cost_sg) : null,
+      totalCost: r.cost_to != null ? Number(r.cost_to) : null,
+      grossProfit: r.gross_profit_to != null ? Number(r.gross_profit_to) : null,
+      marginPct: r.margin_pct != null ? Number(r.margin_pct) : null,
     }))
   }
 }

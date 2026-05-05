@@ -37,6 +37,16 @@ export class PnlController {
     return this.pnlService.getAwbDrilldown(page, limit, cycle, start, end)
   }
 
+  @Get('awb-tos')
+  getAwbTos(
+    @Query('awb') awb: string,
+    @Query('cycle') cycle?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+  ) {
+    return this.pnlService.getAwbTos(awb, cycle, start, end)
+  }
+
   @Get('data-quality')
   getDataQuality() {
     return this.pnlService.getDataQuality()

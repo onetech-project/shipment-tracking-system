@@ -39,6 +39,18 @@ export interface PnlAwbRow {
   hasNullCost: boolean
 }
 
+export interface PnlToRow {
+  toNumber: string
+  grossWeight: number
+  revenue: number
+  costSmu: number | null
+  costRa: number | null
+  costSg: number | null
+  totalCost: number | null
+  grossProfit: number | null
+  marginPct: number | null
+}
+
 export interface PnlDataQualityItem {
   toNumber: string | null
   awb: string
@@ -85,6 +97,18 @@ export function usePnlAwbDrilldown(filter: PnlFilter | undefined, page: number, 
         .get('/pnl/awb-drilldown', { params: { ...filterToParams(filter!), page, limit } })
         .then((r) => r.data),
     enabled: !!filter,
+    staleTime: 60 * 1000,
+  })
+}
+
+export function usePnlAwbTos(awb: string | null, filter: PnlFilter | undefined) {
+  return useQuery<PnlToRow[]>({
+    queryKey: ['pnl', 'awb-tos', awb, filter],
+    queryFn: () =>
+      apiClient
+        .get('/pnl/awb-tos', { params: { awb, ...filterToParams(filter!) } })
+        .then((r) => r.data),
+    enabled: !!awb && !!filter,
     staleTime: 60 * 1000,
   })
 }
