@@ -63,9 +63,7 @@ export class SchedulerService implements OnApplicationShutdown {
 
       const intervalRef = setInterval(() => this.tick(config.sheetId), INTERVAL_SYNC_MS)
       this.schedulerRegistry.addInterval(INTERVAL_NAME, intervalRef)
-      this.logger.log(
-        `[scheduler] Interval ${INTERVAL_NAME} initialized with interval of ${INTERVAL_SYNC_MS}ms`
-      )
+      this.logger.log(`[scheduler] "${config.label}" initialized (${INTERVAL_SYNC_MS}ms)`)
     })
   }
 
@@ -182,6 +180,8 @@ export class SchedulerService implements OnApplicationShutdown {
       // Interval may already be deleted; ignore
     }
     this.labels.delete(payload.sheetId)
+    this.intervals.delete(payload.sheetId)
+    this.state.delete(payload.sheetId)
   }
 
   @OnEvent('gsheetConfig.updated') handleConfigUpdate(newConfig: GoogleSheetConfig) {
