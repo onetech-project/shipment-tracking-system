@@ -17,6 +17,7 @@ import {
   LogOut,
   Plane,
   TrendingUp,
+  ShieldAlert,
 } from 'lucide-react'
 
 interface NavLinkProps {
@@ -83,6 +84,12 @@ export function Sidebar({ onNavClick }: SidebarProps) {
               href="/pnl"
               icon={<TrendingUp size={16} />}
               label="P&L Analysis"
+              onClick={onNavClick}
+            />
+            <NavLink
+              href="/sla"
+              icon={<ShieldAlert size={16} />}
+              label="SLA Monitoring"
               onClick={onNavClick}
             />
             {hasPermission('read.google_sheet_config') && (
