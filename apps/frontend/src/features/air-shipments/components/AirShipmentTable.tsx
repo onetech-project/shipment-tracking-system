@@ -155,15 +155,18 @@ export function AirShipmentTable({
                 </td>
               </tr>
             ) : (
-              data.map((row) => (
-                <tr key={row.id} className="hover:bg-muted/30">
+              data.map((row, idx) => {
+                const isOdd = idx % 2 === 1
+                const frozenBg = isOdd ? 'bg-muted' : 'bg-background'
+                return (
+                <tr key={row.id} className={`hover:bg-muted/30 ${isOdd ? 'bg-muted/70' : ''}`}>
                   <td
                     style={{
                       left: FROZEN_LEFT['#'],
                       minWidth: FROZEN_WIDTH['#'],
                       maxWidth: FROZEN_WIDTH['#'],
                     }}
-                    className="xl:sticky z-10 bg-background text-center"
+                    className={`xl:sticky z-10 ${frozenBg} text-center`}
                   >
                     {(meta.page - 1) * meta.limit + data.indexOf(row) + 1}
                   </td>
@@ -184,7 +187,7 @@ export function AirShipmentTable({
                       }
                       className={[
                         'whitespace-nowrap px-4 py-2',
-                        isFrozen(col) ? 'xl:sticky z-10 bg-background' : '',
+                        isFrozen(col) ? `xl:sticky z-10 ${frozenBg}` : '',
                         col === 'is_locked' ? 'text-center' : '',
                       ].join(' ')}
                     >
@@ -209,7 +212,8 @@ export function AirShipmentTable({
                     </td>
                   ))}
                 </tr>
-              ))
+                )
+              })
             )}
           </tbody>
         </table>
