@@ -1,6 +1,9 @@
 # Git worktrees
 .worktrees/
 
+# Superpowers brainstorming sessions
+.superpowers/
+
 # Logs
 logs
 *.log
