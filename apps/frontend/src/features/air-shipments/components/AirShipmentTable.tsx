@@ -168,7 +168,7 @@ export function AirShipmentTable({
                     }}
                     className={`xl:sticky z-10 ${frozenBg} text-center`}
                   >
-                    {(meta.page - 1) * meta.limit + data.indexOf(row) + 1}
+                    {(meta.page - 1) * meta.limit + idx + 1}
                   </td>
                   {columns.map((col) => (
                     <td
