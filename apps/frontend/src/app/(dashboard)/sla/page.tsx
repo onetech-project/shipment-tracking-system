@@ -3,7 +3,7 @@ import { SlaPage } from '@/features/air-shipments/components/SlaPage'
 
 export default function SlaRoute() {
   return (
-    <Suspense>
+    <Suspense fallback={<div className="p-8 text-sm text-muted-foreground">Loading...</div>}>
       <SlaPage />
     </Suspense>
   )
