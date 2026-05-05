@@ -20,7 +20,7 @@ import {
 } from '@/features/air-shipments/hooks/useAirShipments'
 import { DEFAULT_HIDDEN, FROZEN_KEYS, colLabel } from '@/features/air-shipments/columns.config'
 import { AirShipmentsResponse, SortOrder } from '@/features/air-shipments/types'
-import { Lock, Trash2, Settings } from 'lucide-react'
+import { Lock, Trash2, Settings, ChevronDown, ChevronUp } from 'lucide-react'
 import { AxiosError } from 'axios'
 
 interface RouteOption {
@@ -58,6 +58,7 @@ export function SlaPage() {
 
   const tableRef = useRef<HTMLDivElement | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const shouldScrollOnLoad = useRef(!!(searchParams.get('alert') || searchParams.get('route')))
 
   const [summary, setSummary] = useState<DashboardAlertSummary | null>(null)
   const [routes, setRoutes] = useState<RouteOption[]>([])
@@ -81,6 +82,7 @@ export function SlaPage() {
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [lockState, setLockState] = useState<Record<string, boolean>>({})
   const [showConfigModal, setShowConfigModal] = useState(false)
+  const [panelVisible, setPanelVisible] = useState(true)
   const [batchDialog, setBatchDialog] = useState<{
     op: BatchOp
     start: string
@@ -151,6 +153,13 @@ export function SlaPage() {
     setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days, paramsLoaded])
+
+  useEffect(() => {
+    if (!isLoading && data && shouldScrollOnLoad.current) {
+      shouldScrollOnLoad.current = false
+      setTimeout(() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
+    }
+  }, [isLoading, data])
 
   useEffect(() => {
     const handler = window.setTimeout(() => {
@@ -298,6 +307,7 @@ export function SlaPage() {
     setActiveAlert(alertKey)
     setActiveRoute(route)
     setPage(1)
+    setPanelVisible(false)
     const params = new URLSearchParams()
     params.set('alert', alertKey)
     params.set('route', route)
@@ -334,12 +344,14 @@ export function SlaPage() {
       <PageHeader title="SLA Monitoring" />
 
       <section className="space-y-6">
-        <DashboardAlertCards
-          summary={summary}
-          activeAlert={activeAlert}
-          onRouteSelect={handleRouteSelect}
-          isLoading={summaryLoading}
-        />
+        {panelVisible && (
+          <DashboardAlertCards
+            summary={summary}
+            activeAlert={activeAlert}
+            onRouteSelect={handleRouteSelect}
+            isLoading={summaryLoading}
+          />
+        )}
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-col gap-2">
@@ -351,6 +363,14 @@ export function SlaPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setPanelVisible((v) => !v)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground transition hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              {panelVisible ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              {panelVisible ? 'Hide summary' : 'Show summary'}
+            </button>
             <button
               type="button"
               onClick={() => setShowConfigModal(true)}
