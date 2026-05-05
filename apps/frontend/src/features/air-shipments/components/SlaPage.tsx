@@ -32,7 +32,7 @@ interface RouteOption {
 const TABLE_NAME = 'air_shipments_compileaircgk'
 const TABLE_ENDPOINT = `/air-shipments/${TABLE_NAME}`
 
-type AlertFilterOption = DashboardAlertKey | 'normal'
+type AlertFilterOption = DashboardAlertKey
 
 const ALERT_OPTIONS: Array<{ value: AlertFilterOption | null; label: string }> = [
   { value: null, label: 'All Alerts' },
@@ -142,15 +142,12 @@ export function SlaPage() {
     }
   }
 
-  const refreshAll = async () => {
-    await Promise.all([fetchAlertSummary(), fetchRoutes(), fetchTableData()])
-    setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
-  }
-
   // ── Effects ─────────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    void refreshAll()
+    void fetchAlertSummary()
+    void fetchRoutes()
+    setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days])
 
@@ -169,7 +166,9 @@ export function SlaPage() {
 
   useEffect(() => {
     if (lastCompletedSheet === 'compileaircgk') {
-      void refreshAll()
+      void fetchAlertSummary()
+      void fetchRoutes()
+      setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastCompletedSheet])
@@ -205,8 +204,14 @@ export function SlaPage() {
     ]
   }, [data])
 
-  const frozenColumns = FROZEN_KEYS.filter((col) => allColumns.includes(col.key)).map((c) => c.key)
-  const toggleableColumns = allColumns.filter((col) => !FROZEN_KEYS.some((c) => c.key === col))
+  const frozenColumns = useMemo(
+    () => FROZEN_KEYS.filter((col) => allColumns.includes(col.key)).map((c) => c.key),
+    [allColumns]
+  )
+  const toggleableColumns = useMemo(
+    () => allColumns.filter((col) => !FROZEN_KEYS.some((c) => c.key === col)),
+    [allColumns]
+  )
 
   useEffect(() => {
     setVisibleColumns((prev) => {
@@ -299,13 +304,21 @@ export function SlaPage() {
   }
 
   const handleAlertDropdownChange = (value: string) => {
-    setActiveAlert(value === 'null' ? null : (value as AlertFilterOption))
+    const newAlert = value === 'null' ? null : (value as AlertFilterOption)
+    setActiveAlert(newAlert)
     setPage(1)
+    const params = new URLSearchParams()
+    if (newAlert) params.set('alert', newAlert)
+    if (activeRoute) params.set('route', activeRoute)
+    router.replace(`/sla?${params.toString()}`)
   }
 
   const handleClearAlert = () => {
     setActiveAlert(null)
     setPage(1)
+    const params = new URLSearchParams()
+    if (activeRoute) params.set('route', activeRoute)
+    router.replace(`/sla?${params.toString()}`)
   }
 
   const activeAlertLabel = activeAlert
@@ -321,7 +334,7 @@ export function SlaPage() {
       <section className="space-y-6">
         <DashboardAlertCards
           summary={summary}
-          activeAlert={activeAlert !== 'normal' ? activeAlert : null}
+          activeAlert={activeAlert}
           onRouteSelect={handleRouteSelect}
           isLoading={summaryLoading}
         />
@@ -352,7 +365,7 @@ export function SlaPage() {
           open={showConfigModal}
           onClose={() => setShowConfigModal(false)}
           onSaved={() => {
-            reloadGeneralParams().then(() => {
+            void reloadGeneralParams().then(() => {
               void fetchAlertSummary()
               void fetchTableData()
             })
@@ -392,8 +405,13 @@ export function SlaPage() {
             <select
               value={activeRoute}
               onChange={(e) => {
-                setActiveRoute(e.target.value)
+                const newRoute = e.target.value
+                setActiveRoute(newRoute)
                 setPage(1)
+                const params = new URLSearchParams()
+                if (activeAlert) params.set('alert', activeAlert)
+                if (newRoute) params.set('route', newRoute)
+                router.replace(`/sla?${params.toString()}`)
               }}
               className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
             >
