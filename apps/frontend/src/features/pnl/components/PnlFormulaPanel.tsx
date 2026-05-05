@@ -42,40 +42,74 @@ export function PnlFormulaPanel() {
         onClick={() => setOpen((v) => !v)}
       >
         {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        <span className="font-medium">How is P&amp;L calculated?</span>
+        <span className="font-medium">How is estimated P&amp;L calculated?</span>
       </button>
 
       {open && (
         <div className="border-t px-4 pb-5 pt-4 space-y-5 text-xs">
 
-          {/* ── REVENUE ── */}
-          <Section title="1. Revenue (per Transport Order)">
-            <p className="mb-2 text-muted-foreground">
-              Source sheet: <Sheet name="Compile Air CGK" />
+          {/* ── IMPORTANT CAVEAT ── */}
+          <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+            <p className="font-medium mb-0.5">Estimated figures — not actual billing</p>
+            <p className="text-amber-700 dark:text-amber-300">
+              The billing cycle is assigned by <em>arrival date</em> (<Col name="completed_time" /> or{' '}
+              <Col name="ata_vendor_wh_destination" />), which indicates when the shipment reached the destination —
+              not when the customer was invoiced or paid.
             </p>
+          </div>
+
+          <Divider />
+
+          {/* ── BILLING CYCLE ── */}
+          <Section title="1. Billing Cycle Assignment">
+            <p className="mb-2 text-muted-foreground">Source: <Sheet name="Compile Air CGK" /></p>
             <table className="w-full">
-              <thead>
-                <tr className="border-b text-muted-foreground">
-                  <th className="pb-1 pr-4 text-left font-medium w-36">Line</th>
-                  <th className="pb-1 pr-4 text-left font-medium w-44">Sheet column</th>
-                  <th className="pb-1 text-left font-medium">Notes</th>
-                </tr>
-              </thead>
               <tbody className="divide-y divide-border/40">
                 <tr>
-                  <td className="py-1.5 pr-4">Freight revenue</td>
-                  <td className="py-1.5 pr-4"><Col name="amount_revenue" /></td>
-                  <td className="py-1.5 text-muted-foreground">IDR billed per TO</td>
+                  <td className="py-1.5 pr-4 w-40">Primary date</td>
+                  <td className="py-1.5"><Col name="completed_time" /> — date the TO was marked complete</td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 pr-4">Fallback date</td>
+                  <td className="py-1.5">
+                    <Col name="ata_vendor_wh_destination" /> — used when <Col name="completed_time" /> is blank,
+                    only if the value looks like a date (starts with a digit)
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 pr-4">Supported formats</td>
+                  <td className="py-1.5 font-mono text-foreground/80">
+                    <Col name="DD-Mon-YYYY HH:MM" /> and <Col name="D Mon YYYY H:MM" /> (single-digit day)
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 pr-4">Cycle label</td>
+                  <td className="py-1.5">
+                    <Col name="YYYY-MM-1H" /> for days 1–15 · <Col name="YYYY-MM-2H" /> for days 16–31
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </Section>
+
+          <Divider />
+
+          {/* ── REVENUE ── */}
+          <Section title="2. Estimated Revenue (per TO)">
+            <p className="mb-2 text-muted-foreground">Source: <Sheet name="Compile Air CGK" /></p>
+            <table className="w-full">
+              <tbody className="divide-y divide-border/40">
+                <tr>
+                  <td className="py-1.5 pr-4 w-40">Freight revenue</td>
+                  <td className="py-1.5"><Col name="amount_revenue" /></td>
                 </tr>
                 <tr>
                   <td className="py-1.5 pr-4">+ Packing surcharge</td>
-                  <td className="py-1.5 pr-4"><Col name="additional_amount_packing_kayu" /></td>
-                  <td className="py-1.5 text-muted-foreground">0 when blank</td>
+                  <td className="py-1.5"><Col name="additional_amount_packing_kayu" /> (0 when blank)</td>
                 </tr>
                 <tr className="font-medium">
                   <td className="py-1.5 pr-4">= Revenue per TO</td>
-                  <td className="py-1.5 pr-4 font-mono text-foreground/80">amount_revenue + packing_kayu</td>
-                  <td></td>
+                  <td className="py-1.5 font-mono">amount_revenue + packing_kayu</td>
                 </tr>
               </tbody>
             </table>
@@ -84,21 +118,19 @@ export function PnlFormulaPanel() {
           <Divider />
 
           {/* ── COST LOOKUP ── */}
-          <Section title="2. Cost Lookup (per AWB)">
+          <Section title="3. Cost Lookup (per AWB)">
             <p className="mb-3 text-muted-foreground">
-              Cost is looked up at AWB level using the booking entry in{' '}
-              <Sheet name="SMU Rate CGK SPX" />, then joined to three rate sheets.
+              The booking entry in <Sheet name="SMU Rate CGK SPX" /> maps each AWB to its vendor, airline, and rate tables.
+              Cost is computed at AWB level then prorated to each TO by weight share.
             </p>
 
             <div className="space-y-3">
-              {/* SMU */}
               <div className="rounded border p-3 space-y-1.5">
                 <p className="font-medium">SMU Cost</p>
                 <p className="text-muted-foreground">
-                  Lookup key: <Sheet name="SMU Rate CGK SPX" /> <Col name="account" /> ×{' '}
-                  <Col name="airlines" /> × <Col name="via" /> × <Col name="dest" />{' '}
-                  → <Sheet name="SMU" /> <Col name="vendor" /> × <Col name="airlines" /> ×{' '}
-                  <Col name="origin" /> × <Col name="destination" />
+                  Join: <Sheet name="SMU Rate CGK SPX" /> <Col name="account" /> × <Col name="airlines" /> ×{' '}
+                  <Col name="via" /> × <Col name="dest" /> → <Sheet name="SMU" /> <Col name="vendor" /> ×{' '}
+                  <Col name="airlines" /> × <Col name="origin" /> × <Col name="destination" />
                 </p>
                 <p className="font-mono text-foreground/80">
                   total_AWB_weight × <Col name="total_cost_smukg" /> + <Col name="admin_smu" />
@@ -106,43 +138,40 @@ export function PnlFormulaPanel() {
                 <p className="text-muted-foreground">NULL when no matching row in <Sheet name="SMU" /></p>
               </div>
 
-              {/* RA */}
               <div className="rounded border p-3 space-y-1.5">
                 <p className="font-medium">RA Cost</p>
                 <p className="text-muted-foreground">
-                  Lookup key: <Sheet name="SMU Rate CGK SPX" /> <Col name="ra" />{' '}
-                  → <Sheet name="RA" /> <Col name="ra_name" /> (case-insensitive)
+                  Join: <Sheet name="SMU Rate CGK SPX" /> <Col name="ra" /> → <Sheet name="RA" /> <Col name="ra_name" /> (case-insensitive)
                 </p>
                 <p className="font-mono text-foreground/80">
-                  total_AWB_weight × <Col name="rate" /> × (1 + <Col name="ppn" />) + <Col name="admin" />
+                  total_AWB_weight × <Col name="rate" /> × (1 + <Col name="ppn" /> / 100) + <Col name="admin" />
                 </p>
                 <p className="text-muted-foreground">
                   0 when <Col name="ra" /> is blank or starts with &quot;include&quot;.
-                  NULL when no matching row in <Sheet name="RA" />
+                  NULL when no matching row in <Sheet name="RA" />.
+                  <Col name="ppn" /> is stored as a percentage (e.g. 11 = 11% VAT).
                 </p>
               </div>
 
-              {/* SG Outgoing */}
               <div className="rounded border p-3 space-y-1.5">
                 <p className="font-medium">SG Outgoing Cost</p>
                 <p className="text-muted-foreground">
-                  Lookup key: <Sheet name="SMU" /> <Col name="sg_out" />{' '}
-                  → <Sheet name="SG Outgoing" /> <Col name="sg_outgoing_name" />
+                  Join: <Sheet name="SMU" /> <Col name="sg_out" /> → <Sheet name="SG Outgoing" /> <Col name="sg_outgoing_name" />
                 </p>
                 <p className="font-mono text-foreground/80">
-                  total_AWB_weight × <Col name="rate" /> × (1 + <Col name="ppn" />) + <Col name="admin" />
+                  total_AWB_weight × <Col name="rate" /> × (1 + <Col name="ppn" /> / 100) + <Col name="admin" />
                 </p>
                 <p className="text-muted-foreground">
                   0 when <Col name="sg_out" /> is blank or starts with &quot;include&quot;.
-                  NULL when no matching row in <Sheet name="SG Outgoing" />
+                  NULL when no matching row in <Sheet name="SG Outgoing" />.
+                  <Col name="ppn" /> is stored as a percentage.
                 </p>
               </div>
 
-              {/* Total */}
               <div className="rounded border bg-muted/50 p-3 space-y-1">
                 <p className="font-medium">Total Cost per AWB</p>
                 <p className="font-mono text-foreground/80">cost_smu + cost_ra + cost_sg_out</p>
-                <p className="text-muted-foreground">NULL if any component is NULL</p>
+                <p className="text-muted-foreground">NULL if any component is NULL (cost lookup failed)</p>
               </div>
             </div>
           </Section>
@@ -150,7 +179,7 @@ export function PnlFormulaPanel() {
           <Divider />
 
           {/* ── PRORATION ── */}
-          <Section title="3. Proration to Transport Order">
+          <Section title="4. Proration to Transport Order">
             <p className="mb-2 text-muted-foreground">
               AWB cost is shared across all TOs under that AWB proportionally by gross weight.
               Source: <Sheet name="Compile Air CGK" /> <Col name="gross_weight" />
@@ -158,8 +187,8 @@ export function PnlFormulaPanel() {
             <table className="w-full">
               <tbody className="divide-y divide-border/40">
                 <tr>
-                  <td className="py-1.5 pr-4 w-44">Weight share</td>
-                  <td className="py-1.5 font-mono text-foreground/80">TO_gross_weight / sum(gross_weight per AWB)</td>
+                  <td className="py-1.5 pr-4 w-40">Weight share</td>
+                  <td className="py-1.5 font-mono text-foreground/80">TO_gross_weight / SUM(gross_weight per AWB)</td>
                 </tr>
                 <tr>
                   <td className="py-1.5 pr-4">Cost per TO</td>
@@ -171,33 +200,31 @@ export function PnlFormulaPanel() {
 
           <Divider />
 
-          {/* ── GROSS PROFIT ── */}
-          <Section title="4. Gross Profit &amp; Margin">
+          {/* ── SUMMARY ── */}
+          <Section title="5. Summary Totals">
             <table className="w-full">
               <tbody className="divide-y divide-border/40">
                 <tr>
-                  <td className="py-1.5 pr-4 w-44">Gross Profit</td>
-                  <td className="py-1.5 font-mono text-foreground/80">Revenue − Cost per TO</td>
+                  <td className="py-1.5 pr-4 w-40">Est. Revenue</td>
+                  <td className="py-1.5 font-mono text-foreground/80">SUM(revenue_total) — all TOs in cycle</td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 pr-4">Gross Margin %</td>
+                  <td className="py-1.5 pr-4">Est. Cost</td>
+                  <td className="py-1.5 font-mono text-foreground/80">SUM(cost_to) — only TOs with complete cost data</td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 pr-4">Est. Gross Profit</td>
+                  <td className="py-1.5 font-mono text-foreground/80">Est. Revenue − Est. Cost</td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 pr-4">Est. Gross Margin</td>
                   <td className="py-1.5 font-mono text-foreground/80">(Gross Profit / Revenue) × 100</td>
                 </tr>
               </tbody>
             </table>
-          </Section>
-
-          <Divider />
-
-          {/* ── BILLING CYCLE ── */}
-          <Section title="5. Billing Cycle Assignment">
-            <p className="text-muted-foreground leading-relaxed">
-              Derived from <Sheet name="Compile Air CGK" /> <Col name="completed_time" />.
-              Falls back to <Col name="ata_vendor_wh_destination" /> when{' '}
-              <Col name="completed_time" /> is blank (and the value looks like a{' '}
-              <Col name="DD-Mon-YYYY" /> date).
-              Format: <Col name="YYYY-MM-1H" /> = days 1–15,{' '}
-              <Col name="YYYY-MM-2H" /> = days 16–31.
+            <p className="mt-2 text-muted-foreground">
+              TOs with missing cost data (no matching rate row) contribute to revenue but not to cost —
+              see the Data Quality panel below for details.
             </p>
           </Section>
 

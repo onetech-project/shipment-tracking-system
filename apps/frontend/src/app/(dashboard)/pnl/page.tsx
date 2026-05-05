@@ -43,7 +43,7 @@ export default function PnlPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">P&amp;L Analysis</h1>
-          <p className="text-muted-foreground text-sm">Air shipment profit &amp; loss by billing cycle</p>
+          <p className="text-muted-foreground text-sm">Estimated P&amp;L based on arrival date — not yet billed</p>
         </div>
 
         <div className="flex flex-col items-end gap-2">

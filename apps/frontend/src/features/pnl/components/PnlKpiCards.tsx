@@ -29,12 +29,12 @@ interface PnlKpiCardsProps {
 export function PnlKpiCards({ summary }: PnlKpiCardsProps) {
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-      <KpiCard label="Total Revenue"   value={fmt.format(summary.totalRevenue)} />
-      <KpiCard label="Total Cost"      value={fmt.format(summary.totalCost)} />
-      <KpiCard label="Gross Profit"    value={fmt.format(summary.grossProfit)} />
-      <KpiCard label="Gross Margin"    value={pct(summary.grossMarginPct)} />
-      <KpiCard label="Total TOs"       value={num(summary.totalTos)} />
-      <KpiCard label="Total AWBs"      value={num(summary.totalAwbs)} />
+      <KpiCard label="Est. Revenue"     value={fmt.format(summary.totalRevenue)}    sub="based on arrival date" />
+      <KpiCard label="Est. Cost"        value={fmt.format(summary.totalCost)}       sub="based on arrival date" />
+      <KpiCard label="Est. Gross Profit" value={fmt.format(summary.grossProfit)}   sub="revenue − cost" />
+      <KpiCard label="Est. Gross Margin" value={pct(summary.grossMarginPct)}       sub="GP / revenue" />
+      <KpiCard label="Total TOs"        value={num(summary.totalTos)} />
+      <KpiCard label="Total AWBs"       value={num(summary.totalAwbs)} />
     </div>
   )
 }
