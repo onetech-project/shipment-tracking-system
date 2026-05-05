@@ -81,7 +81,7 @@ describe('coerceValue()', () => {
     it('parses dd-mmm-yyyy format', () => {
       const result = coerceValue('08-Apr-2026', ctx)
       expect(result).toBeInstanceOf(Date)
-      expect((result as Date).getFullYear()).toBe(2026)
+      expect(result instanceof Date && result.getFullYear()).toBe(2026)
     })
 
     it('parses dd/mm/yyyy hh:mm format', () => {
@@ -91,6 +91,24 @@ describe('coerceValue()', () => {
 
     it('returns plain string for unrecognized date-like text', () => {
       expect(coerceValue('not-a-date', ctx)).toBe('not-a-date')
+    })
+  })
+
+  describe('percentage strings → number', () => {
+    it('coerces "11%" to 11', () => {
+      expect(coerceValue('11%', ctx)).toBe(11)
+    })
+
+    it('coerces "0.5%" to 0.5', () => {
+      expect(coerceValue('0.5%', ctx)).toBe(0.5)
+    })
+
+    it('coerces "1,234%" to 1234', () => {
+      expect(coerceValue('1,234%', ctx)).toBe(1234)
+    })
+
+    it('does not coerce "30% discount" (trailing text)', () => {
+      expect(coerceValue('30% discount', ctx)).toBe('30% discount')
     })
   })
 

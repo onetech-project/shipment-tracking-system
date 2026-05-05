@@ -16,6 +16,7 @@ import {
   ClipboardList,
   LogOut,
   Plane,
+  TrendingUp,
 } from 'lucide-react'
 
 interface NavLinkProps {
@@ -76,6 +77,12 @@ export function Sidebar({ onNavClick }: SidebarProps) {
               href="/air-shipments"
               icon={<Plane size={16} />}
               label="Shipments"
+              onClick={onNavClick}
+            />
+            <NavLink
+              href="/pnl"
+              icon={<TrendingUp size={16} />}
+              label="P&L Analysis"
               onClick={onNavClick}
             />
             {hasPermission('read.google_sheet_config') && (

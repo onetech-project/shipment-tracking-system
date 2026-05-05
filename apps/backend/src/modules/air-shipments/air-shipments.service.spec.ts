@@ -506,6 +506,71 @@ describe('AirShipmentsService — runSyncCycle()', () => {
     jest.useRealTimers()
   })
 
+  describe('upsertDynamic — generated key columns', () => {
+    it('does not throw when key columns are generated (not in insert data)', async () => {
+      const mockQuery = jest.fn().mockResolvedValue([])
+      ;(service as any).dataSource = { query: mockQuery }
+
+      await expect(
+        (service as any).upsertDynamic({
+          tableName: 'air_shipments_smu',
+          data: [
+            {
+              extra_fields: { vendor: 'GATRANS', airlines: 'GA', origin: 'CGK', destination: 'SUB' },
+              last_synced_at: new Date(),
+            },
+          ],
+          keyColumns: ['vendor', 'airlines', 'origin', 'destination'],
+          updateColumns: ['id', 'is_locked', 'created_at', 'updated_at', 'last_synced_at', 'extra_fields'],
+        })
+      ).resolves.toBeUndefined()
+    })
+
+    it('deduplicates correctly using extra_fields for generated key columns', async () => {
+      let capturedValues: any[] = []
+      const mockQuery = jest.fn().mockImplementation((_sql: string, vals: any[]) => {
+        capturedValues = vals
+        return Promise.resolve([])
+      })
+      ;(service as any).dataSource = { query: mockQuery }
+
+      // Two distinct rows — should keep both, not collapse to one
+      await (service as any).upsertDynamic({
+        tableName: 'air_shipments_sg_outgoing',
+        data: [
+          { extra_fields: { sg_outgoing_name: 'SG SBM' }, last_synced_at: new Date() },
+          { extra_fields: { sg_outgoing_name: 'SG Poslog' }, last_synced_at: new Date() },
+        ],
+        keyColumns: ['sg_outgoing_name'],
+        updateColumns: ['last_synced_at', 'extra_fields'],
+      })
+
+      // 2 rows × 2 columns = 4 flat values
+      expect(capturedValues).toHaveLength(4)
+    })
+
+    it('only includes insert-data columns in DO UPDATE SET', async () => {
+      let capturedSql = ''
+      const mockQuery = jest.fn().mockImplementation((sql: string) => {
+        capturedSql = sql
+        return Promise.resolve([])
+      })
+      ;(service as any).dataSource = { query: mockQuery }
+
+      await (service as any).upsertDynamic({
+        tableName: 'air_shipments_smu',
+        data: [{ extra_fields: { vendor: 'GATRANS' }, last_synced_at: new Date() }],
+        keyColumns: ['vendor'],
+        updateColumns: ['id', 'is_locked', 'created_at', 'updated_at', 'last_synced_at', 'extra_fields'],
+      })
+
+      expect(capturedSql).toContain('"extra_fields" = EXCLUDED."extra_fields"')
+      expect(capturedSql).toContain('"last_synced_at" = EXCLUDED."last_synced_at"')
+      expect(capturedSql).not.toContain('"is_locked" = EXCLUDED."is_locked"')
+      expect(capturedSql).not.toContain('"id" = EXCLUDED."id"')
+    })
+  })
+
   it('returns distinct routes from a table', async () => {
     const dataSource = service['dataSource'] as jest.Mocked<DataSource>
     dataSource.query.mockImplementation((sql: string, params: any[]) => {

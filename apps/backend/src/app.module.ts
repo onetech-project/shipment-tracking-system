@@ -22,6 +22,7 @@ import { AuditModule } from './modules/audit/audit.module'
 // ...existing code...
 import { AirShipmentsModule } from './modules/air-shipments/air-shipments.module'
 import { GeneralParamsModule } from './modules/general-params/general-params.module'
+import { PnlModule } from './modules/pnl/pnl.module'
 
 @Module({
   imports: [
@@ -86,6 +87,7 @@ import { GeneralParamsModule } from './modules/general-params/general-params.mod
     // ...existing code...
     AirShipmentsModule,
     GeneralParamsModule,
+    PnlModule,
   ],
   controllers: [AppController],
   providers: [
