@@ -10,8 +10,10 @@ import {
   ChevronDown,
   ChevronUp,
   MapPin,
+  Settings,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { SyncStatusBadge } from '@/features/air-shipments/components/SyncStatusBadge'
 
 export type DashboardAlertKey =
   | 'reservasiPenerbangan'
@@ -38,6 +40,12 @@ interface DashboardAlertCardsProps {
   onRouteSelect: (alertKey: DashboardAlertKey, route: string) => void
   isLoading?: boolean
   error?: string | null
+  days?: number
+  lastUpdated?: string | null
+  syncNote?: string
+  onConfigure?: () => void
+  isConnected?: boolean
+  lastSyncAt?: string | null
 }
 
 const ALERT_CARDS: Array<{
@@ -64,6 +72,12 @@ export function DashboardAlertCards({
   onRouteSelect,
   isLoading,
   error,
+  days,
+  lastUpdated,
+  syncNote,
+  onConfigure,
+  isConnected,
+  lastSyncAt,
 }: DashboardAlertCardsProps) {
   const [expandedKey, setExpandedKey] = useState<DashboardAlertKey | null>(null)
 
@@ -77,20 +91,48 @@ export function DashboardAlertCards({
       aria-labelledby="dashboard-alert-cards-heading"
       className="rounded-3xl border border-border bg-panel p-6 shadow-sm"
     >
-      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-0.5">
           <h2 id="dashboard-alert-cards-heading" className="text-lg font-semibold text-foreground">
             Shipment Alerts
           </h2>
+          {days !== undefined && (
+            <p className="text-sm text-muted-foreground">
+              Operational monitoring for the last {days} days.
+            </p>
+          )}
           <p className="text-sm text-muted-foreground">
             {isLoading ? 'Loading alert data…' : error ? error : ''}
           </p>
+          {lastUpdated !== undefined && (
+            <p className="text-sm text-muted-foreground" aria-live="polite">
+              {lastUpdated ? `Last updated: ${lastUpdated}` : 'Waiting for data...'}
+            </p>
+          )}
+          {syncNote && (
+            <p className="text-sm text-muted-foreground">{syncNote}</p>
+          )}
         </div>
-        {summary && !isLoading && (
-          <div className="text-xs text-muted-foreground">
-            n={summary.nHours}h · m={summary.mHours}h
-          </div>
-        )}
+        <div className="flex shrink-0 items-center gap-3">
+          {summary && !isLoading && (
+            <div className="text-xs text-muted-foreground">
+              n={summary.nHours}h · m={summary.mHours}h
+            </div>
+          )}
+          {onConfigure && (
+            <button
+              type="button"
+              onClick={onConfigure}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground transition hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <Settings size={14} />
+              Configure
+            </button>
+          )}
+          {isConnected !== undefined && (
+            <SyncStatusBadge isConnected={isConnected} lastSyncAt={lastSyncAt ?? null} />
+          )}
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

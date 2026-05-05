@@ -3,7 +3,6 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { apiClient } from '@/shared/api/client'
 import { PageHeader } from '@/components/shared/page-header'
-import { SyncStatusBadge } from '@/features/air-shipments/components/SyncStatusBadge'
 import {
   DashboardAlertCards,
   DashboardAlertKey,
@@ -12,7 +11,6 @@ import {
 import { GeneralParamsModal } from '@/features/general-params/components/GeneralParamsModal'
 import { useGeneralParams } from '@/features/general-params/hooks/useGeneralParams'
 import { useSyncNotification } from '@/features/air-shipments/hooks/useSyncNotification'
-import { Settings } from 'lucide-react'
 import { useAuth } from '@/features/auth/auth.context'
 
 const TABLE_ENDPOINT = `/air-shipments/air_shipments_compileaircgk`
@@ -78,9 +76,6 @@ export default function DashboardPage() {
           <div className="text-xl font-semibold text-foreground">
             Welcome back, {user?.username}
           </div>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Operational monitoring for the last {days} days.
-          </p>
         </div>
 
         <DashboardAlertCards
@@ -88,29 +83,13 @@ export default function DashboardPage() {
           activeAlert={null}
           onRouteSelect={handleRouteSelect}
           isLoading={summaryLoading}
+          days={days}
+          lastUpdated={lastUpdated}
+          syncNote="Live refresh is active for Compile Air CGK synchronization."
+          onConfigure={() => setShowConfigModal(true)}
+          isConnected={isConnected}
+          lastSyncAt={lastSyncAt}
         />
-
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-col gap-2">
-            <p className="text-sm text-muted-foreground" aria-live="polite">
-              {lastUpdated ? `Last updated: ${lastUpdated}` : 'Waiting for data...'}
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Live refresh is active for Compile Air CGK synchronization.
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setShowConfigModal(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground transition hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring"
-            >
-              <Settings size={14} />
-              Configure
-            </button>
-            <SyncStatusBadge isConnected={isConnected} lastSyncAt={lastSyncAt} />
-          </div>
-        </div>
 
         <GeneralParamsModal
           open={showConfigModal}
