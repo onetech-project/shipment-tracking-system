@@ -20,8 +20,13 @@ export class SchedulerService implements OnApplicationShutdown {
 
   // Per-table scheduling state
   private intervals: Map<string, number> = new Map()
+  private labels: Map<string, string> = new Map()
   private state: Map<string, { isSyncing: boolean; consecutiveSkips: number; isPaused: boolean }> =
     new Map()
+
+  private label(sheetId: string): string {
+    return this.labels.get(sheetId) ?? sheetId
+  }
 
   constructor(
     private readonly airShipmentsService: AirShipmentsService,
@@ -47,6 +52,7 @@ export class SchedulerService implements OnApplicationShutdown {
       const INTERVAL_NAME = `air_shipments_sync:${config.sheetId}`
       const INTERVAL_SYNC_MS = (config?.syncInterval || 15) * 1000
 
+      this.labels.set(config.sheetId, config.label)
       this.intervals.set(config.sheetId, INTERVAL_SYNC_MS)
       this.state.set(config.sheetId, { isSyncing: false, consecutiveSkips: 0, isPaused: false })
 
@@ -66,14 +72,14 @@ export class SchedulerService implements OnApplicationShutdown {
   async tick(sheetId: string): Promise<void> {
     const state = this.state.get(sheetId)
     if (!state) {
-      this.logger.warn(`[scheduler] No state found for sheetId: ${sheetId}`)
+      this.logger.warn(`[scheduler] No state found for "${this.label(sheetId)}"`)
       return
     }
 
     if (state.isSyncing) {
       state.consecutiveSkips++
       this.logger.warn(
-        `[scheduler] Sync for sheetId ${sheetId} still in progress — skip #${state.consecutiveSkips}`
+        `[scheduler] "${this.label(sheetId)}" sync still in progress — skip #${state.consecutiveSkips}`
       )
 
       if (state.consecutiveSkips >= 2 && !state.isPaused) {
@@ -81,7 +87,7 @@ export class SchedulerService implements OnApplicationShutdown {
         try {
           const INTERVAL_NAME = `air_shipments_sync:${sheetId}`
           this.schedulerRegistry.deleteInterval(INTERVAL_NAME)
-          this.logger.warn(`[scheduler] Interval ${INTERVAL_NAME} paused after 2 consecutive skips`)
+          this.logger.warn(`[scheduler] "${this.label(sheetId)}" paused after 2 consecutive skips`)
         } catch (_err) {
           // Interval may already be deleted; ignore
         }
@@ -92,19 +98,19 @@ export class SchedulerService implements OnApplicationShutdown {
     state.isSyncing = true
     const waspaused = state.isPaused
     const startedAt = Date.now()
-    this.logger.log(`[scheduler] Starting sync cycle for sheetId ${sheetId}`)
+    this.logger.log(`[scheduler] Starting sync for "${this.label(sheetId)}"`)
 
     try {
       await this.airShipmentsService.runSyncCycle(sheetId)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
       this.logger.error(
-        `[scheduler] Sync cycle failed for sheetId ${sheetId}: ${message}`,
+        `[scheduler] Sync failed for "${this.label(sheetId)}": ${message}`,
         err instanceof Error ? err.stack : undefined
       )
     } finally {
       const durationMs = Date.now() - startedAt
-      this.logger.log(`[scheduler] Sync cycle finished for sheetId ${sheetId} in ${durationMs}ms`)
+      this.logger.log(`[scheduler] Sync finished for "${this.label(sheetId)}" in ${durationMs}ms`)
       state.isSyncing = false
       state.consecutiveSkips = 0
 
@@ -115,7 +121,7 @@ export class SchedulerService implements OnApplicationShutdown {
         const intervalRef = setInterval(() => this.tick(sheetId), this.intervals.get(sheetId))
         try {
           this.schedulerRegistry.addInterval(INTERVAL_NAME, intervalRef)
-          this.logger.log(`[scheduler] Interval ${INTERVAL_NAME} resumed`)
+          this.logger.log(`[scheduler] "${this.label(sheetId)}" resumed`)
         } catch (_err) {
           // Interval may already exist; ignore
         }
@@ -137,11 +143,10 @@ export class SchedulerService implements OnApplicationShutdown {
 
   @OnEvent('gsheetConfig.created') handleConfigCreate(newConfig: GoogleSheetConfig) {
     this.logger.log('Received gsheetConfig.created event, updating scheduler config...')
+    this.labels.set(newConfig.sheetId, newConfig.label)
+
     if (!newConfig.enabled) {
-      this.logger.warn(
-        'Google Sheet sync disabled in config, skipping scheduler start for sheetId: ' +
-          newConfig.sheetId
-      )
+      this.logger.warn(`[scheduler] "${newConfig.label}" disabled — skipping start`)
       return
     }
 
@@ -157,24 +162,26 @@ export class SchedulerService implements OnApplicationShutdown {
       }
       const intervalRef = setInterval(() => this.tick(newConfig.sheetId), INTERVAL_SYNC_MS)
       this.schedulerRegistry.addInterval(INTERVAL_NAME, intervalRef)
-      this.logger.log(`[scheduler] Interval ${INTERVAL_NAME} started with ${INTERVAL_SYNC_MS}ms`)
+      this.logger.log(`[scheduler] "${newConfig.label}" started (${INTERVAL_SYNC_MS}ms)`)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
-      this.logger.error(`[scheduler] Failed to start sync interval ${INTERVAL_NAME}: ${message}`)
+      this.logger.error(`[scheduler] Failed to start "${newConfig.label}": ${message}`)
     }
   }
 
   @OnEvent('gsheetConfig.deleted') handleConfigChange(payload: { id: string; sheetId: string }) {
     this.logger.log('Received gsheetConfig.deleted event, updating scheduler config...')
+    const lbl = this.label(payload.sheetId)
     const INTERVAL_NAME = `air_shipments_sync:${payload.sheetId}`
     try {
       if (this.schedulerRegistry.doesExist('interval', INTERVAL_NAME)) {
         this.schedulerRegistry.deleteInterval(INTERVAL_NAME)
-        this.logger.log(`[scheduler] Interval ${INTERVAL_NAME} deleted due to config deletion`)
+        this.logger.log(`[scheduler] "${lbl}" deleted`)
       }
     } catch (_err) {
       // Interval may already be deleted; ignore
     }
+    this.labels.delete(payload.sheetId)
   }
 
   @OnEvent('gsheetConfig.updated') handleConfigUpdate(newConfig: GoogleSheetConfig) {
@@ -184,15 +191,14 @@ export class SchedulerService implements OnApplicationShutdown {
       return
     }
 
+    this.labels.set(newConfig.sheetId, newConfig.label)
     const INTERVAL_NAME = `air_shipments_sync:${newConfig.sheetId}`
 
     if (!newConfig.enabled) {
-      this.logger.warn(
-        'Google Sheet sync disabled in config, stopping scheduler with name: ' + INTERVAL_NAME
-      )
+      this.logger.warn(`[scheduler] "${newConfig.label}" disabled — stopping`)
       try {
         this.schedulerRegistry.deleteInterval(INTERVAL_NAME)
-        this.logger.log(`[scheduler] Interval ${INTERVAL_NAME} stopped due to config update`)
+        this.logger.log(`[scheduler] "${newConfig.label}" stopped due to config update`)
       } catch (_err) {
         // Interval may already be deleted; ignore
       }
@@ -220,10 +226,10 @@ export class SchedulerService implements OnApplicationShutdown {
         this.state.set(newConfig.sheetId, { isSyncing: false, consecutiveSkips: 0, isPaused: false })
       }
 
-      this.logger.log(`[scheduler] Interval ${INTERVAL_NAME} restarted after config update (${newIntervalMs}ms)`)
+      this.logger.log(`[scheduler] "${newConfig.label}" restarted (${newIntervalMs}ms)`)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
-      this.logger.error(`[scheduler] Failed to restart interval ${INTERVAL_NAME}: ${message}`)
+      this.logger.error(`[scheduler] Failed to restart "${newConfig.label}": ${message}`)
     }
   }
 }
