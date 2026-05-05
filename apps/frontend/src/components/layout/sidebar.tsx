@@ -63,7 +63,7 @@ export function Sidebar({ onNavClick, collapsed = false, onToggleCollapse }: Sid
 
   return (
     <nav data-sidebar className="flex h-full w-full flex-col overflow-hidden bg-sidebar px-3 py-4">
-      <div className={cn('mb-6 flex items-center gap-2', collapsed ? 'justify-center' : 'px-3')}>
+      <div className={cn('mb-4 flex items-center gap-2', collapsed ? 'justify-center' : 'px-3')}>
         <button
           type="button"
           onClick={onToggleCollapse}
@@ -78,6 +78,8 @@ export function Sidebar({ onNavClick, collapsed = false, onToggleCollapse }: Sid
           </h2>
         )}
       </div>
+
+      <Separator className="mb-4 bg-white/10" />
 
       <div className="flex flex-1 flex-col gap-1 overflow-y-auto">
         <NavLink
