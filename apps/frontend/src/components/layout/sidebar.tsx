@@ -18,8 +18,7 @@ import {
   Plane,
   TrendingUp,
   ShieldAlert,
-  ChevronLeft,
-  ChevronRight,
+  Menu,
 } from 'lucide-react'
 
 interface NavLinkProps {
@@ -64,20 +63,20 @@ export function Sidebar({ onNavClick, collapsed = false, onToggleCollapse }: Sid
 
   return (
     <nav data-sidebar className="flex h-full w-full flex-col overflow-hidden bg-sidebar px-3 py-4">
-      <div className={cn('mb-6 flex items-center', collapsed ? 'justify-center' : 'justify-between px-3')}>
+      <div className={cn('mb-6 flex items-center gap-2', collapsed ? 'justify-center' : 'px-3')}>
+        <button
+          type="button"
+          onClick={onToggleCollapse}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className="shrink-0 rounded-md p-1 text-sidebar-muted transition-colors hover:bg-white/10 hover:text-white"
+        >
+          <Menu size={16} />
+        </button>
         {!collapsed && (
           <h2 className="text-sm font-semibold uppercase tracking-widest text-sidebar-muted">
             Shipment Tracker
           </h2>
         )}
-        <button
-          type="button"
-          onClick={onToggleCollapse}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className="rounded-md p-1 text-sidebar-muted transition-colors hover:bg-white/10 hover:text-white"
-        >
-          {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-        </button>
       </div>
 
       <div className="flex flex-1 flex-col gap-1 overflow-y-auto">
