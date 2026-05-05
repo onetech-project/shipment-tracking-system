@@ -8,8 +8,21 @@ interface DashboardShellProps { children: React.ReactNode; }
 
 export function DashboardShell({ children }: DashboardShellProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
   const toggle = () => setIsOpen((o) => !o);
   const close = () => setIsOpen(false);
+
+  useEffect(() => {
+    if (localStorage.getItem('sidebar-collapsed') === 'true') setCollapsed(true);
+  }, []);
+
+  const toggleCollapsed = () => {
+    setCollapsed((c) => {
+      const next = !c;
+      localStorage.setItem('sidebar-collapsed', String(next));
+      return next;
+    });
+  };
 
   useEffect(() => {
     const handleResize = () => { if (window.innerWidth >= 1024) close(); };
@@ -19,8 +32,8 @@ export function DashboardShell({ children }: DashboardShellProps) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <div className="hidden lg:flex lg:flex-col lg:w-60 lg:shrink-0 h-full">
-        <Sidebar />
+      <div className={`hidden lg:flex lg:flex-col lg:shrink-0 h-full transition-[width] duration-200 ${collapsed ? 'lg:w-14' : 'lg:w-60'}`}>
+        <Sidebar collapsed={collapsed} onToggleCollapse={toggleCollapsed} />
       </div>
       <MobileDrawer open={isOpen} onClose={close} />
       <div className="flex flex-1 flex-col overflow-hidden">
