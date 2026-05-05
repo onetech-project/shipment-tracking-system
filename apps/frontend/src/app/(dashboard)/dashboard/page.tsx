@@ -35,13 +35,13 @@ const TABLE_ENDPOINT = `/air-shipments/${TABLE_NAME}`
 type AlertFilterOption = DashboardAlertKey | 'normal'
 
 const ALERT_OPTIONS: Array<{ value: AlertFilterOption | null; label: string }> = [
-  { value: null, label: 'All Data' },
+  { value: null, label: 'All Alerts' },
   { value: 'reservasiPenerbangan', label: 'Flight Reservations' },
   { value: 'potensiMelebihiSla', label: 'Potential SLA Breach' },
   { value: 'melewatiSla', label: 'SLA Breach' },
   { value: 'potensiMelebihiTjph', label: 'Potential TJPH Breach' },
   { value: 'melewatiTjph', label: 'TJPH Breach' },
-  { value: 'normal', label: 'Normal' },
+  // { value: 'normal', label: 'Normal' },
 ]
 
 type BatchOp = 'lock' | 'delete' | null

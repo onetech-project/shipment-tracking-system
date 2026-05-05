@@ -164,9 +164,9 @@ export class SchedulerService implements OnApplicationShutdown {
     }
   }
 
-  @OnEvent('gsheetConfig.deleted') handleConfigChange(config: GoogleSheetConfig) {
+  @OnEvent('gsheetConfig.deleted') handleConfigChange(payload: { id: string; sheetId: string }) {
     this.logger.log('Received gsheetConfig.deleted event, updating scheduler config...')
-    const INTERVAL_NAME = `air_shipments_sync:${config.sheetId}`
+    const INTERVAL_NAME = `air_shipments_sync:${payload.sheetId}`
     try {
       if (this.schedulerRegistry.doesExist('interval', INTERVAL_NAME)) {
         this.schedulerRegistry.deleteInterval(INTERVAL_NAME)
@@ -179,11 +179,12 @@ export class SchedulerService implements OnApplicationShutdown {
 
   @OnEvent('gsheetConfig.updated') handleConfigUpdate(newConfig: GoogleSheetConfig) {
     this.logger.log('Received gsheetConfig.updated event, updating scheduler config...')
-    const INTERVAL_NAME = `air_shipments_sync:${newConfig.sheetId}`
     if (!newConfig) {
       this.logger.warn('No Google Sheet config found during scheduler update')
       return
     }
+
+    const INTERVAL_NAME = `air_shipments_sync:${newConfig.sheetId}`
 
     if (!newConfig.enabled) {
       this.logger.warn(
@@ -199,22 +200,30 @@ export class SchedulerService implements OnApplicationShutdown {
     }
 
     const newIntervalMs = (newConfig.syncInterval || 15) * 1000
-    if (newIntervalMs === this.intervals.get(newConfig.sheetId)) {
-      this.logger.log(`[scheduler] Interval ${INTERVAL_NAME} unchanged, no update needed`)
-      return
-    }
+    this.intervals.set(newConfig.sheetId, newIntervalMs)
 
-    // Update the interval timing by restarting the interval with the new timing
+    // Always restart the interval on any config update so that:
+    // - config field changes (sheetName, tableName, etc.) are picked up immediately
+    // - any paused state from consecutive skips is cleared
     try {
       if (this.schedulerRegistry.doesExist('interval', INTERVAL_NAME)) {
         this.schedulerRegistry.deleteInterval(INTERVAL_NAME)
       }
       const intervalRef = setInterval(() => this.tick(newConfig.sheetId), newIntervalMs)
       this.schedulerRegistry.addInterval(INTERVAL_NAME, intervalRef)
-      this.logger.log(`[scheduler] Interval ${INTERVAL_NAME} updated to ${newIntervalMs}ms`)
+
+      const currentState = this.state.get(newConfig.sheetId)
+      if (currentState?.isSyncing) {
+        currentState.isPaused = false
+        currentState.consecutiveSkips = 0
+      } else {
+        this.state.set(newConfig.sheetId, { isSyncing: false, consecutiveSkips: 0, isPaused: false })
+      }
+
+      this.logger.log(`[scheduler] Interval ${INTERVAL_NAME} restarted after config update (${newIntervalMs}ms)`)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
-      this.logger.error(`[scheduler] Failed to update interval ${INTERVAL_NAME}: ${message}`)
+      this.logger.error(`[scheduler] Failed to restart interval ${INTERVAL_NAME}: ${message}`)
     }
   }
 }

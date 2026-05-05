@@ -115,7 +115,8 @@ export class AirShipmentsService {
       : `ORDER BY "${safeSortBy}" ${sortOrder.toUpperCase()}`
 
     if (isJsonbSort && sortBy.toLowerCase().includes('date')) {
-      orderBySql = `ORDER BY (NULLIF(extra_fields->>'${sortBy}', ''))::timestamp ${sortOrder.toUpperCase()}`
+      const v = `NULLIF(extra_fields->>'${sortBy}', '')`
+      orderBySql = `ORDER BY (CASE WHEN ${v} ~ '^\\d{4}-\\d{2}-\\d{2}([ T]\\d{2}:\\d{2}|$)' THEN ${v}::timestamp END) ${sortOrder.toUpperCase()}`
     }
 
     if (alertFilter) {
@@ -358,7 +359,8 @@ export class AirShipmentsService {
 
   private buildTimestampExpression(field: string, columns: string[]) {
     const fieldExpr = this.buildFieldValueExpression(field, columns)
-    return `NULLIF(${fieldExpr}, '')::timestamptz`
+    const v = `NULLIF(${fieldExpr}, '')`
+    return `(CASE WHEN ${v} ~ '^\\d{4}-\\d{2}-\\d{2}([ T]\\d{2}:\\d{2}|$)' THEN ${v}::timestamptz END)`
   }
 
   /**
@@ -461,6 +463,7 @@ export class AirShipmentsService {
       FROM information_schema.columns
       WHERE table_name = $1
       AND table_schema = 'public'
+      AND is_generated = 'NEVER'
       `,
       [tableName]
     )
@@ -601,22 +604,23 @@ export class AirShipmentsService {
     }
 
     // ✅ 2. deduplicate (FIX error ON CONFLICT)
+    // Key columns may be generated (not top-level in row) — fall back to extra_fields.
     const dedupedMap = new Map<string, any>()
     for (const row of data) {
-      const key = keyColumns.map((k) => row[k]).join('|')
+      const key = keyColumns
+        .map((k) => {
+          if (k in row) return row[k]
+          const ef = row['extra_fields']
+          if (ef && typeof ef === 'object') return (ef as Record<string, unknown>)[k] ?? ''
+          return ''
+        })
+        .join('|')
       dedupedMap.set(key, row) // last wins
     }
     const dedupedData = Array.from(dedupedMap.values())
 
     // ✅ 3. ambil columns (dari row pertama)
     const columns = Object.keys(dedupedData[0])
-
-    // ⚠️ safety: pastikan keyColumns ada di columns
-    for (const key of keyColumns) {
-      if (!columns.includes(key)) {
-        throw new Error(`Key column "${key}" not found in data`)
-      }
-    }
 
     // ✅ 4. build values placeholder
     const values = dedupedData
@@ -632,8 +636,13 @@ export class AirShipmentsService {
     let onConflictClause = ''
 
     if (updateColumns.length > 0) {
+      // Only update columns that are actually present in the INSERT data.
+      // Key columns that are GENERATED (derived from extra_fields) won't be in
+      // `columns`, so we don't filter them out of updateColumns — they simply
+      // won't appear because they're not in the insert data either.
       const updateSet = updateColumns
         .filter((col) => !keyColumns.includes(col)) // jangan update key
+        .filter((col) => columns.includes(col)) // only update what we're inserting
         .map((col) => `"${col}" = EXCLUDED."${col}"`)
         .join(', ')
 
@@ -927,7 +936,7 @@ export class AirShipmentsService {
       relations: ['sheetConfigs'],
     })
     await this.googleSheetConfigRepo.delete(id)
-    this.eventEmitter.emit('gsheetConfig.deleted', { id })
+    this.eventEmitter.emit('gsheetConfig.deleted', { id, sheetId: prev?.sheetId })
     this.eventEmitter.emit('google_sheet_config.deleted', {
       actorId,
       resourceId: id,

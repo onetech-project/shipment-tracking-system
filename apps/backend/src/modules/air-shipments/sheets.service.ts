@@ -128,6 +128,10 @@ export class SheetsService implements OnApplicationBootstrap {
    */
   async fetchAllSheets(sheetId: string): Promise<SheetResult[]> {
     const cfg = this.gsheetConfigs.find((c) => c.sheetId === sheetId)
+    if (!cfg) {
+      this.logger.warn(`[SheetsService] No config found for sheetId "${sheetId}" — skipping`)
+      return []
+    }
     const ranges = cfg.sheetConfigs.map((c) => `${c.sheetName}!A:ZZ`)
 
     let valueRanges: sheets_v4.Schema$ValueRange[]
@@ -353,12 +357,12 @@ export class SheetsService implements OnApplicationBootstrap {
     }
   }
 
-  @OnEvent('gsheetConfig.deleted') onConfigDelete(payload: { id: string }) {
+  @OnEvent('gsheetConfig.deleted') onConfigDelete(payload: { id: string; sheetId: string }) {
     this.logger.log(
       `Google Sheet config deleted event received for id ${payload.id}, removing from memory...`
     )
     this.gsheetConfigs = this.gsheetConfigs.filter((cfg) => cfg.id !== payload.id)
-    this.sheetConfigs = this.sheetConfigs.filter((sc) => sc.sheetId !== payload.id)
+    this.sheetConfigs = this.sheetConfigs.filter((sc) => sc.sheetId !== payload.sheetId)
     this.logger.log(`Sheet config removed: ${this.sheetConfigs.length} sheets remaining`)
   }
 }
