@@ -65,8 +65,8 @@ export default function AuditPage() {
                 </tr>
               </thead>
               <tbody>
-                {logs.map((log) => (
-                  <tr key={log.id} className="border-t hover:bg-muted/30 motion-safe:transition-colors">
+                {logs.map((log, idx) => (
+                  <tr key={log.id} className={`border-t hover:bg-muted/30 motion-safe:transition-colors ${idx % 2 === 1 ? 'bg-muted/70' : ''}`}>
                     <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{new Date(log.createdAt).toLocaleString()}</td>
                     <td className="px-4 py-3">
                       <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{log.action}</code>
