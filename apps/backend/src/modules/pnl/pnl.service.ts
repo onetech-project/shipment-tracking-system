@@ -89,8 +89,7 @@ export class PnlService {
         COUNT(*)::int                           AS total_tos,
         COUNT(DISTINCT awb)::int                AS total_awbs,
         COALESCE(SUM(revenue_total), 0)         AS total_revenue,
-        COALESCE(SUM(cost_to), 0)               AS total_cost,
-        COALESCE(SUM(gross_profit_to), 0)       AS gross_profit
+        COALESCE(SUM(cost_to), 0)               AS total_cost
       FROM v_pnl_to
       WHERE ${where}
       `,
@@ -98,14 +97,15 @@ export class PnlService {
     )
     const row = rows[0]
     const totalRevenue = Number(row.total_revenue)
-    const grossProfit = Number(row.gross_profit)
+    const totalCost = Number(row.total_cost)
+    const grossProfit = totalRevenue - totalCost
     const label = cyclePeriod ?? `${startDate} to ${endDate}`
     return {
       label,
       totalTos: Number(row.total_tos),
       totalAwbs: Number(row.total_awbs),
       totalRevenue,
-      totalCost: Number(row.total_cost),
+      totalCost,
       grossProfit,
       grossMarginPct: totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0,
     }
