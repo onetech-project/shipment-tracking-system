@@ -110,8 +110,8 @@ export default function InvitationsSettingsPage() {
             </tr>
           </thead>
           <tbody>
-            {invitations.map((inv) => (
-              <tr key={inv.id} className="border-t hover:bg-muted/30 motion-safe:transition-colors">
+            {invitations.map((inv, idx) => (
+              <tr key={inv.id} className={`border-t hover:bg-muted/30 motion-safe:transition-colors ${idx % 2 === 1 ? 'bg-muted/70' : ''}`}>
                 <td className="px-4 py-3">{inv.email}</td>
                 <td className="px-4 py-3">
                   <StatusBadge variant={STATUS_VARIANT[inv.status] ?? 'inactive'} label={inv.status} />

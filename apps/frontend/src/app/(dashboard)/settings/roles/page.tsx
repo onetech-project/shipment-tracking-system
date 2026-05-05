@@ -97,8 +97,8 @@ export default function RolesSettingsPage() {
             </tr>
           </thead>
           <tbody>
-            {roles.map((role) => (
-              <tr key={role.id} className="border-t hover:bg-muted/30 motion-safe:transition-colors">
+            {roles.map((role, idx) => (
+              <tr key={role.id} className={`border-t hover:bg-muted/30 motion-safe:transition-colors ${idx % 2 === 1 ? 'bg-muted/70' : ''}`}>
                 <td className="px-4 py-3"><code className="text-sm">{role.name}</code></td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1">

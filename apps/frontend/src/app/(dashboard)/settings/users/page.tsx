@@ -87,8 +87,8 @@ export default function UsersSettingsPage() {
             </tr>
           </thead>
           <tbody>
-            {users.map((u) => (
-              <tr key={u.id} className="border-t hover:bg-muted/30 motion-safe:transition-colors">
+            {users.map((u, idx) => (
+              <tr key={u.id} className={`border-t hover:bg-muted/30 motion-safe:transition-colors ${idx % 2 === 1 ? 'bg-muted/70' : ''}`}>
                 <td className="px-4 py-3 font-medium">{u.username}</td>
                 <td className="px-4 py-3">{u.profile?.name ?? '—'}</td>
                 <td className="px-4 py-3">

@@ -80,8 +80,8 @@ export default function OrganizationsSettingsPage() {
             </tr>
           </thead>
           <tbody>
-            {orgs.map((org) => (
-              <tr key={org.id} className="border-t hover:bg-muted/30 motion-safe:transition-colors">
+            {orgs.map((org, idx) => (
+              <tr key={org.id} className={`border-t hover:bg-muted/30 motion-safe:transition-colors ${idx % 2 === 1 ? 'bg-muted/70' : ''}`}>
                 <td className="px-4 py-3 font-medium">{org.name}</td>
                 <td className="px-4 py-3"><code className="text-xs text-muted-foreground">{org.slug}</code></td>
                 <td className="px-4 py-3">{org.address ?? '—'}</td>
