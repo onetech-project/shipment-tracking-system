@@ -387,12 +387,23 @@ export class AirShipmentsService {
       `[sync] Cycle complete in ${durationMs}ms — ${totalUpserted} upserted across ${affectedTables.length} table(s)`
     )
 
-    // Summary log per sheet
-    for (const { tableName, rowErrors, chunkErrors } of sheetResults) {
-      if (rowErrors.length > 0 || chunkErrors.length > 0) {
+    // Compact per-sheet summary
+    for (const r of sheetResults) {
+      const parts: string[] = []
+      if (r.upserted > 0) parts.push(`upserted=${r.upserted}`)
+      if (r.lockedSkipped > 0) parts.push(`locked=${r.lockedSkipped}`)
+      if (r.noChangeSkipped > 0) parts.push(`unchanged=${r.noChangeSkipped}`)
+      if (r.skippedEmpty > 0) parts.push(`emptyRows=${r.skippedEmpty}`)
+      if (r.skippedMissingKey > 0) parts.push(`missingKey=${r.skippedMissingKey}`)
+      if (r.rowErrors.length > 0) parts.push(`rowErrors=${r.rowErrors.length}`)
+      if (r.chunkErrors.length > 0) parts.push(`chunkErrors=${r.chunkErrors.length}`)
+      if (parts.length > 0) {
+        this.logger.log(`[sync] "${r.sheetName}" — ${parts.join(' ')}`)
+      }
+      if (r.rowErrors.length > 0 || r.chunkErrors.length > 0) {
         this.logger.error(
-          `[sync] ${tableName}: ${rowErrors.length} row error(s), ${chunkErrors.length} chunk error(s)\n` +
-            this.formatErrorSummary(rowErrors, chunkErrors)
+          `[sync] ${r.tableName}: ${r.rowErrors.length} row error(s), ${r.chunkErrors.length} chunk error(s)\n` +
+            this.formatErrorSummary(r.rowErrors, r.chunkErrors)
         )
       }
     }
@@ -422,23 +433,31 @@ export class AirShipmentsService {
     tableName: string
     sheetName: string
     upserted: number
+    lockedSkipped: number
+    noChangeSkipped: number
+    skippedEmpty: number
+    skippedMissingKey: number
     rowErrors: RowError[]
     chunkErrors: ChunkError[]
   }> {
     const { tableName, uniqueKey, headers, rows, sheetName } = sheet
+    const skippedEmpty = sheet.skippedEmpty ?? 0
+    const skippedMissingKey = sheet.skippedMissingKey ?? 0
     const keyColumns = Array.isArray(uniqueKey) ? uniqueKey : [uniqueKey]
     const rowErrors: RowError[] = []
     const chunkErrors: ChunkError[] = []
 
+    const base = { tableName, sheetName, lockedSkipped: 0, noChangeSkipped: 0, skippedEmpty, skippedMissingKey, rowErrors, chunkErrors }
+
     const missingKeys = keyColumns.filter((k) => !headers.includes(k))
     if (missingKeys.length > 0) {
       this.logger.warn(
-        `[sync] "${sheetName}" missing key column(s)  "${missingKeys.join(', ')}" — skipping`
+        `[sync] "${sheetName}" missing key column(s) "${missingKeys.join(', ')}" — skipping`
       )
-      return { tableName, sheetName, upserted: 0, rowErrors, chunkErrors }
+      return { ...base, upserted: 0 }
     }
 
-    if (rows.length === 0) return { tableName, sheetName, upserted: 0, rowErrors, chunkErrors }
+    if (rows.length === 0) return { ...base, upserted: 0 }
 
     const rowKey = (row: Record<string, unknown>): string =>
       keyColumns.map((k) => String(row[k] ?? '')).join('\x00')
@@ -577,11 +596,10 @@ export class AirShipmentsService {
     }
 
     return {
-      tableName,
-      sheetName,
+      ...base,
+      lockedSkipped,
+      noChangeSkipped,
       upserted: rowsToUpsert.length - rowErrors.length,
-      rowErrors,
-      chunkErrors,
     }
   }
 

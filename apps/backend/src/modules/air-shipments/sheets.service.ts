@@ -156,6 +156,8 @@ export class SheetsService implements OnApplicationBootstrap {
         uniqueKey: c.uniqueKey,
         headers: [],
         rows: [],
+        skippedEmpty: 0,
+        skippedMissingKey: 0,
       }))
     }
 
@@ -180,6 +182,8 @@ export class SheetsService implements OnApplicationBootstrap {
           uniqueKey: sheetCfg.uniqueKey,
           headers: [],
           rows: [],
+          skippedEmpty: 0,
+          skippedMissingKey: 0,
         })
         continue
       }
@@ -256,21 +260,14 @@ export class SheetsService implements OnApplicationBootstrap {
         rows.push(row)
       }
 
-      if (skippedEmptyRow > 0)
-        this.logger.debug(
-          `[SheetsService] Skipped ${skippedEmptyRow} empty rows in sheet "${sheetCfg.sheetName}"`
-        )
-      if (skippedEmptyKey > 0)
-        this.logger.warn(
-          `[SheetsService] Skipped ${skippedEmptyKey} rows with missing unique key in sheet "${sheetCfg.sheetName}"`
-        )
-
       results.push({
         sheetName: sheetCfg.sheetName,
         tableName: sheetCfg.tableName,
         uniqueKey: sheetCfg.uniqueKey,
         headers: uniqueHeaders,
         rows,
+        skippedEmpty: skippedEmptyRow,
+        skippedMissingKey: skippedEmptyKey,
       })
     }
 
