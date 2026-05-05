@@ -101,7 +101,7 @@ export function PnlFormulaPanel() {
                   <Col name="origin" /> × <Col name="destination" />
                 </p>
                 <p className="font-mono text-foreground/80">
-                  total_AWB_weight × <Col name="total_cost_smu_per_kg" /> + <Col name="admin_smu" />
+                  total_AWB_weight × <Col name="total_cost_smukg" /> + <Col name="admin_smu" />
                 </p>
                 <p className="text-muted-foreground">NULL when no matching row in <Sheet name="SMU" /></p>
               </div>
