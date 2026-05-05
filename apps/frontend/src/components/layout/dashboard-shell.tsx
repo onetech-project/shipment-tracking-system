@@ -18,8 +18,8 @@ export function DashboardShell({ children }: DashboardShellProps) {
   }, []);
 
   return (
-    <div className="flex min-h-screen">
-      <div className="hidden lg:flex lg:flex-col lg:w-60 lg:shrink-0">
+    <div className="flex h-screen overflow-hidden">
+      <div className="hidden lg:flex lg:flex-col lg:w-60 lg:shrink-0 h-full">
         <Sidebar />
       </div>
       <MobileDrawer open={isOpen} onClose={close} />
