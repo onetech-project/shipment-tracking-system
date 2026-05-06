@@ -8,6 +8,7 @@ import { FormField } from '@/components/shared/form-field'
 import { normalizeTableName } from '../utils/normalizeTableName'
 import { GoogleSheetConfig, SheetConfig } from '../types'
 import Spinner from '@/components/ui/spinner'
+import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 
 export function GoogleSheetConfigPanel() {
   // const [config, setConfig] = useState<GoogleSheetConfig | null>(null)
@@ -16,6 +17,7 @@ export function GoogleSheetConfigPanel() {
   const [editMode, setEditMode] = useState(false)
   const [configs, setConfigs] = useState<GoogleSheetConfig[]>([])
   const [form, setForm] = useState<GoogleSheetConfig>({} as GoogleSheetConfig)
+  const [deleteTarget, setDeleteTarget] = useState<GoogleSheetConfig | null>(null)
 
   useEffect(() => {
     apiClient
@@ -38,6 +40,21 @@ export function GoogleSheetConfigPanel() {
   const handleCancel = () => {
     setEditMode(false)
     setForm({} as GoogleSheetConfig)
+  }
+
+  const handleDelete = async () => {
+    if (!deleteTarget?.id) return
+    setError(null)
+    try {
+      await apiClient.delete(`/air-shipments/google-sheet-config/${deleteTarget.id}`)
+      const res = await apiClient.get('/air-shipments/google-sheet-config')
+      setConfigs(res.data)
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e)
+      setError(message || 'Failed to delete config')
+    } finally {
+      setDeleteTarget(null)
+    }
   }
 
   const handleChange = (field: keyof GoogleSheetConfig, value: string | number | boolean) => {
@@ -203,10 +220,24 @@ export function GoogleSheetConfigPanel() {
                   Status: {cfg.enabled ? 'Enabled' : 'Disabled'}
                 </div>
               </div>
-              <Button onClick={() => handleEdit(cfg)}>Edit</Button>
+              <div className="flex gap-2">
+                <Button onClick={() => handleEdit(cfg)}>Edit</Button>
+                <Button variant="destructive" onClick={() => setDeleteTarget(cfg)}>
+                  Delete
+                </Button>
+              </div>
             </div>
           ))}
       </div>
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title="Delete Google Sheet Config"
+        description={`Are you sure you want to delete "${deleteTarget?.label || 'this config'}"? This action cannot be undone.`}
+        confirmLabel="Delete"
+        destructive
+        onConfirm={handleDelete}
+      />
       {editMode && form && (
         <>
           <div className="space-y-4">
