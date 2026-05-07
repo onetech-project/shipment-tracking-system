@@ -48,6 +48,8 @@ export class AirShipmentsService {
       alertFilter,
       routeFilter,
       days,
+      startDate,
+      endDate,
     }: {
       page: number
       limit: number
@@ -57,6 +59,8 @@ export class AirShipmentsService {
       alertFilter?: AlertFilter
       routeFilter?: string
       days?: number
+      startDate?: string
+      endDate?: string
     }
   ) {
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
@@ -100,13 +104,8 @@ export class AirShipmentsService {
       }
     }
 
-    if (typeof days === 'number') {
-      const ataOriginExpr = this.buildTimestampExpression('ata_origin', columns)
-      whereClauses.push(
-        `(${ataOriginExpr} >= NOW() - ($${params.length + 1} || ' days')::interval)`
-      )
-      params.push(String(days))
-    }
+    const dateClause = this.buildDateRangeClause(columns, params, startDate, endDate, days)
+    if (dateClause) whereClauses.push(dateClause)
 
     const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
     const isJsonbSort = !columns.includes(sortBy)
@@ -150,7 +149,7 @@ export class AirShipmentsService {
     return { data: rows, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } }
   }
 
-  async getAlertSummaryForTable(tableName: string, days?: number) {
+  async getAlertSummaryForTable(tableName: string, startDate?: string, endDate?: string, days?: number) {
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
       throw new BadRequestException('Invalid table name')
     }
@@ -164,13 +163,8 @@ export class AirShipmentsService {
     const whereClauses: string[] = []
     const params: any[] = []
 
-    if (typeof days === 'number') {
-      const ataOriginExpr = this.buildTimestampExpression('ata_origin', columns)
-      whereClauses.push(
-        `(${ataOriginExpr} >= NOW() - ($${params.length + 1} || ' days')::interval)`
-      )
-      params.push(String(days))
-    }
+    const dateClause = this.buildDateRangeClause(columns, params, startDate, endDate, days)
+    if (dateClause) whereClauses.push(dateClause)
 
     const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
     const rawRows: Record<string, unknown>[] = await this.dataSource.query(
@@ -192,6 +186,12 @@ export class AirShipmentsService {
 
     const getFieldValue = AirShipmentsService.getFieldValueFromRow
 
+    // OTP accumulators: onTime/late weight per route for completed shipments
+    interface OtpRouteItem { onTime: number; late: number }
+    const otpByRoute = new Map<string, OtpRouteItem>()
+    let otpOnTimeTotal = 0
+    let otpLateTotal = 0
+
     for (const row of rows) {
       const alerts = evaluateAlerts(row, nHours, mHours)
       const origin = String(getFieldValue(row, 'origin') ?? '').trim()
@@ -205,6 +205,36 @@ export class AirShipmentsService {
         const prev = item.breakdown.get(route) ?? 0
         item.breakdown.set(route, prev + grossWeight)
         item.tonnage += grossWeight
+      }
+
+      // OTP: only process completed shipments
+      const completedTimeRaw = getFieldValue(row, 'completed_time')
+      const isCompleted =
+        completedTimeRaw !== null &&
+        completedTimeRaw !== undefined &&
+        String(completedTimeRaw).trim() !== ''
+      if (isCompleted) {
+        const ataOriginRaw = getFieldValue(row, 'ata_origin')
+        const slaRaw = getFieldValue(row, 'sla')
+        let isOnTime = false
+        if (ataOriginRaw && slaRaw) {
+          const ataOrigin = new Date(String(ataOriginRaw))
+          const [h, m, s] = String(slaRaw).split(':').map(Number)
+          const slaDuration = (h * 3600 + m * 60 + s) * 1000
+          const maxSla = new Date(ataOrigin.getTime() + slaDuration)
+          const completedTime = new Date(String(completedTimeRaw))
+          isOnTime = !isNaN(completedTime.getTime()) && !isNaN(maxSla.getTime()) && completedTime <= maxSla
+        }
+
+        const prev = otpByRoute.get(route) ?? { onTime: 0, late: 0 }
+        if (isOnTime) {
+          prev.onTime += grossWeight
+          otpOnTimeTotal += grossWeight
+        } else {
+          prev.late += grossWeight
+          otpLateTotal += grossWeight
+        }
+        otpByRoute.set(route, prev)
       }
     }
 
@@ -221,10 +251,33 @@ export class AirShipmentsService {
       }
     }
 
-    return { nHours, mHours, alerts }
+    const completedTotal = otpOnTimeTotal + otpLateTotal
+    const otpPercentage =
+      completedTotal > 0 ? Math.round((otpOnTimeTotal / completedTotal) * 10000) / 100 : 0
+
+    const otpBreakdown = Array.from(otpByRoute.entries())
+      .map(([route, { onTime, late }]) => {
+        const total = onTime + late
+        return {
+          route,
+          percentage: total > 0 ? Math.round((onTime / total) * 10000) / 100 : 0,
+          onTimeWeight: Math.round(onTime * 100) / 100,
+          lateWeight: Math.round(late * 100) / 100,
+        }
+      })
+      .sort((a, b) => a.route.localeCompare(b.route))
+
+    const otp = {
+      percentage: otpPercentage,
+      onTimeWeight: Math.round(otpOnTimeTotal * 100) / 100,
+      lateWeight: Math.round(otpLateTotal * 100) / 100,
+      breakdown: otpBreakdown,
+    }
+
+    return { nHours, mHours, alerts, otp }
   }
 
-  async getRoutesForTable(tableName: string, days?: number) {
+  async getRoutesForTable(tableName: string, startDate?: string, endDate?: string, days?: number) {
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
       throw new BadRequestException('Invalid table name')
     }
@@ -235,13 +288,8 @@ export class AirShipmentsService {
 
     const whereClauses: string[] = []
     const params: any[] = []
-    if (typeof days === 'number') {
-      const ataOriginExpr = this.buildTimestampExpression('ata_origin', columns)
-      whereClauses.push(
-        `(${ataOriginExpr} >= NOW() - ($${params.length + 1} || ' days')::interval)`
-      )
-      params.push(String(days))
-    }
+    const dateClause = this.buildDateRangeClause(columns, params, startDate, endDate, days)
+    if (dateClause) whereClauses.push(dateClause)
 
     const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
     const rows: { origin: string; destination: string }[] = await this.dataSource.query(
@@ -258,6 +306,134 @@ export class AirShipmentsService {
           destination: row.destination,
         })),
     }
+  }
+
+  async getRouteAlertSummary(tableName: string, startDate?: string, endDate?: string, days?: number) {
+    if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
+      throw new BadRequestException('Invalid table name')
+    }
+
+    const [{ nHours, mHours }, reservasiTableName] = await Promise.all([
+      this.getAlertNMHours(),
+      this.generalParamsService.getValue('reservasi_table_name', ''),
+    ])
+    const reservasiByAwb = await this.getReservasiTrackinganByAwb(reservasiTableName)
+    const columns = await this.getTableColumns(tableName)
+    const whereClauses: string[] = []
+    const params: any[] = []
+
+    const dateClause = this.buildDateRangeClause(columns, params, startDate, endDate, days)
+    if (dateClause) whereClauses.push(dateClause)
+
+    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
+    const rawRows: Record<string, unknown>[] = await this.dataSource.query(
+      `SELECT * FROM "${tableName}" ${whereSql}`,
+      params
+    )
+    const rows = this.enrichRowsWithReservasi(rawRows, reservasiByAwb)
+
+    const getFieldValue = AirShipmentsService.getFieldValueFromRow
+
+    interface RouteAlertItem {
+      totalTonnage: number
+      totalCount: number
+      alerts: Record<AlertType, number>
+      alertCounts: Record<AlertType, number>
+      otpOnTime: number
+      otpOnTimeCount: number
+      otpLate: number
+      otpLateCount: number
+    }
+    const byRoute = new Map<string, RouteAlertItem>()
+
+    for (const row of rows) {
+      const alerts = evaluateAlerts(row, nHours, mHours)
+      const origin = String(getFieldValue(row, 'origin') ?? '').trim()
+      const destination = String(getFieldValue(row, 'destination') ?? '').trim()
+      if (!origin || !destination) continue
+      const route = `${origin} - ${destination}`
+      const grossWeight = parseFloat(String(getFieldValue(row, 'gross_weight') ?? '0')) || 0
+
+      if (!byRoute.has(route)) {
+        const emptyAlerts = {} as Record<AlertType, number>
+        const emptyCounts = {} as Record<AlertType, number>
+        for (const t of ALERT_TYPES) { emptyAlerts[t] = 0; emptyCounts[t] = 0 }
+        byRoute.set(route, { totalTonnage: 0, totalCount: 0, alerts: emptyAlerts, alertCounts: emptyCounts, otpOnTime: 0, otpOnTimeCount: 0, otpLate: 0, otpLateCount: 0 })
+      }
+      const item = byRoute.get(route)!
+      item.totalTonnage += grossWeight
+      item.totalCount += 1
+      for (const type of ALERT_TYPES) {
+        if (alerts[type]) {
+          item.alerts[type] += grossWeight
+          item.alertCounts[type] += 1
+        }
+      }
+
+      // OTP: only completed shipments
+      const completedTimeRaw = getFieldValue(row, 'completed_time')
+      const isCompleted = completedTimeRaw !== null && completedTimeRaw !== undefined && String(completedTimeRaw).trim() !== ''
+      if (isCompleted) {
+        const ataOriginRaw = getFieldValue(row, 'ata_origin')
+        const slaRaw = getFieldValue(row, 'sla')
+        let isOnTime = false
+        if (ataOriginRaw && slaRaw) {
+          const ataOrigin = new Date(String(ataOriginRaw))
+          const [h, m, s] = String(slaRaw).split(':').map(Number)
+          const slaDuration = (h * 3600 + m * 60 + s) * 1000
+          const maxSla = new Date(ataOrigin.getTime() + slaDuration)
+          const completedTime = new Date(String(completedTimeRaw))
+          isOnTime = !isNaN(completedTime.getTime()) && !isNaN(maxSla.getTime()) && completedTime <= maxSla
+        }
+        if (isOnTime) { item.otpOnTime += grossWeight; item.otpOnTimeCount += 1 }
+        else { item.otpLate += grossWeight; item.otpLateCount += 1 }
+      }
+    }
+
+    return Array.from(byRoute.entries())
+      .map(([route, item]) => {
+        const otpTotal = item.otpOnTime + item.otpLate
+        return {
+          route,
+          totalTonnage: Math.round(item.totalTonnage * 100) / 100,
+          totalCount: item.totalCount,
+          alerts: Object.fromEntries(
+            ALERT_TYPES.map((t) => [t, Math.round(item.alerts[t] * 100) / 100])
+          ) as Record<AlertType, number>,
+          alertCounts: Object.fromEntries(
+            ALERT_TYPES.map((t) => [t, item.alertCounts[t]])
+          ) as Record<AlertType, number>,
+          otp: {
+            percentage: otpTotal > 0 ? Math.round((item.otpOnTime / otpTotal) * 10000) / 100 : null,
+            onTimeWeight: Math.round(item.otpOnTime * 100) / 100,
+            onTimeCount: item.otpOnTimeCount,
+            lateWeight: Math.round(item.otpLate * 100) / 100,
+            lateCount: item.otpLateCount,
+          },
+        }
+      })
+      .sort((a, b) => a.route.localeCompare(b.route))
+  }
+
+  private buildDateRangeClause(
+    columns: string[],
+    params: any[],
+    startDate?: string,
+    endDate?: string,
+    days?: number,
+  ): string | null {
+    const ataOriginExpr = this.buildTimestampExpression('ata_origin', columns)
+    if (startDate && endDate) {
+      const clause = `(${ataOriginExpr} >= $${params.length + 1}::timestamptz AND ${ataOriginExpr} <= $${params.length + 2}::timestamptz)`
+      params.push(`${startDate}T00:00:00.000Z`, `${endDate}T23:59:59.999Z`)
+      return clause
+    }
+    if (typeof days === 'number') {
+      const clause = `(${ataOriginExpr} >= NOW() - ($${params.length + 1} || ' days')::interval)`
+      params.push(String(days))
+      return clause
+    }
+    return null
   }
 
   private async getAlertNMHours(): Promise<{ nHours: number; mHours: number }> {

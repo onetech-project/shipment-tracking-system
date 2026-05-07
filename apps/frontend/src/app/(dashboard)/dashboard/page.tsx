@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { apiClient } from '@/shared/api/client'
 import { PageHeader } from '@/components/shared/page-header'
@@ -15,16 +15,44 @@ import { useAuth } from '@/features/auth/auth.context'
 
 const TABLE_ENDPOINT = `/air-shipments/air_shipments_compileaircgk`
 
+function toDateStr(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
+
+function computeDays(startDate: string, endDate: string): number {
+  const diff = new Date(endDate).getTime() - new Date(startDate).getTime()
+  return Math.max(1, Math.round(diff / 86_400_000))
+}
+
 export default function DashboardPage() {
   const { isConnected, lastSyncAt, lastCompletedSheet } = useSyncNotification()
   const { params: generalParams, reload: reloadGeneralParams, loaded: paramsLoaded } = useGeneralParams()
   const { user } = useAuth()
   const router = useRouter()
 
-  const days = useMemo(() => {
+  const daysRange = useMemo(() => {
     const p = generalParams.find((p) => p.key === 'days_range')
-    return p ? parseInt(p.value, 10) || 30 : 30
+    return p ? parseInt(p.value, 10) || 15 : 15
   }, [generalParams])
+
+  const today = toDateStr(new Date())
+  const [startDate, setStartDate] = useState(() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 15)
+    return toDateStr(d)
+  })
+  const [endDate, setEndDate] = useState(today)
+  const [dateError, setDateError] = useState<string | null>(null)
+
+  const initialDateSet = useRef(false)
+  useEffect(() => {
+    if (!paramsLoaded || initialDateSet.current) return
+    initialDateSet.current = true
+    const d = new Date()
+    d.setDate(d.getDate() - daysRange)
+    setStartDate(toDateStr(d))
+    setEndDate(today)
+  }, [paramsLoaded, daysRange, today])
 
   const [summary, setSummary] = useState<DashboardAlertSummary | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(false)
@@ -35,7 +63,7 @@ export default function DashboardPage() {
     setSummaryLoading(true)
     try {
       const response = await apiClient.get<DashboardAlertSummary>(
-        `${TABLE_ENDPOINT}/alert-summary?days=${days}`
+        `${TABLE_ENDPOINT}/alert-summary?days=${computeDays(startDate, endDate)}`
       )
       setSummary(response.data)
     } catch {
@@ -47,10 +75,16 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!paramsLoaded) return
+    const start = new Date(startDate)
+    const end = new Date(endDate)
+    const diff = Math.round((end.getTime() - start.getTime()) / 86_400_000)
+    if (diff < 0) { setDateError('End date must be after start date.'); return }
+    if (diff > 60) { setDateError('Date range cannot exceed 60 days.'); return }
+    setDateError(null)
     void fetchAlertSummary()
     setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [days, paramsLoaded])
+  }, [startDate, endDate, paramsLoaded])
 
   useEffect(() => {
     if (lastCompletedSheet === 'compileaircgk') {
@@ -83,7 +117,11 @@ export default function DashboardPage() {
           activeAlert={null}
           onRouteSelect={handleRouteSelect}
           isLoading={summaryLoading}
-          days={days}
+          startDate={startDate}
+          endDate={endDate}
+          onStartDateChange={setStartDate}
+          onEndDateChange={setEndDate}
+          dateError={dateError}
           lastUpdated={lastUpdated}
           syncNote="Live refresh is active for Compile Air CGK synchronization."
           onConfigure={() => setShowConfigModal(true)}

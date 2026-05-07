@@ -73,8 +73,11 @@ export function evaluateAlerts(
   const nMs = nHours * 3_600_000
   const mMs = mHours * 3_600_000
 
-  const melewatiSla = maxSla !== null && now > maxSla
-  const melewatiTjph = maxTjph !== null && now > maxTjph
+  const completedTime = parseDate(getFieldValue(row, 'completed_time'))
+  const effectiveTime = completedTime ?? now
+
+  const melewatiSla = maxSla !== null && effectiveTime > maxSla
+  const melewatiTjph = maxTjph !== null && effectiveTime > maxTjph
 
   if (melewatiTjph) {
     return {
@@ -102,10 +105,9 @@ export function evaluateAlerts(
     melewatiSla,
 
     potensiMelebihiTjph:
-      melewatiSla ||
-      (ataFlightDate !== null &&
-        maxTjph !== null &&
-        new Date(ataFlightDate.getTime() + mMs) > maxTjph),
+      ataFlightDate !== null &&
+      maxTjph !== null &&
+      new Date(ataFlightDate.getTime() + mMs) > maxTjph,
 
     melewatiTjph: false,
   }

@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer'
-import { IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator'
+import { IsIn, IsInt, IsOptional, IsString, Max, Min, Matches } from 'class-validator'
 import { ALERT_FILTERS, AlertFilter } from '../alert-evaluator'
 
 export class AirShipmentQueryDto {
@@ -42,4 +42,14 @@ export class AirShipmentQueryDto {
   @IsInt()
   @Min(1)
   days?: number
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  startDate?: string
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  endDate?: string
 }
