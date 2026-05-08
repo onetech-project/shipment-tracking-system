@@ -168,10 +168,30 @@ export function PnlFormulaPanel() {
                 </p>
               </div>
 
+              <div className="rounded border p-3 space-y-1.5">
+                <p className="font-medium">SG Incoming Cost (per TO)</p>
+                <p className="text-muted-foreground">
+                  Join: <Sheet name="Compile Air CGK" /> <Col name="origin_station" /> ×{' '}
+                  <Col name="destination_station" /> → <Sheet name="SG Incoming" /> <Col name="origin" /> ×{' '}
+                  <Col name="destination" />
+                </p>
+                <p className="font-mono text-foreground/80">
+                  TO_gross_weight × <Col name="sg_inc" />
+                </p>
+                <p className="text-muted-foreground">
+                  Looked up per TO (not per AWB) using the route. Treated as 0 when no match in{' '}
+                  <Sheet name="SG Incoming" /> so cost is not nullified for unconfigured routes.
+                </p>
+              </div>
+
               <div className="rounded border bg-muted/50 p-3 space-y-1">
-                <p className="font-medium">Total Cost per AWB</p>
-                <p className="font-mono text-foreground/80">cost_smu + cost_ra + cost_sg_out</p>
-                <p className="text-muted-foreground">NULL if any component is NULL (cost lookup failed)</p>
+                <p className="font-medium">Total Cost per TO</p>
+                <p className="font-mono text-foreground/80">
+                  (cost_smu + cost_ra + cost_sg_out) × weight_share + cost_sg_in
+                </p>
+                <p className="text-muted-foreground">
+                  AWB-level costs are prorated by weight share; SG Incoming is per-TO.
+                </p>
               </div>
             </div>
           </Section>

@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { usePnlCycles, usePnlSummary, usePnlTrend, PnlFilter } from '@/features/pnl/hooks/usePnl'
-import { PnlKpiCards } from '@/features/pnl/components/PnlKpiCards'
-import { PnlTrendChart } from '@/features/pnl/components/PnlTrendChart'
+import { usePnlCycles, usePnlSummary, PnlFilter } from '@/features/pnl/hooks/usePnl'
+import { PnlKpiCards, PnlKpiKey } from '@/features/pnl/components/PnlKpiCards'
+import { PnlDailyMarginChart } from '@/features/pnl/components/PnlDailyMarginChart'
+import { PnlBreakdownPanel } from '@/features/pnl/components/PnlBreakdownPanel'
 import { PnlAwbDrilldown } from '@/features/pnl/components/PnlAwbDrilldown'
 import { PnlDataQuality } from '@/features/pnl/components/PnlDataQuality'
 import { PnlFormulaPanel } from '@/features/pnl/components/PnlFormulaPanel'
@@ -16,6 +17,7 @@ export default function PnlPage() {
   const [cycle, setCycle] = useState<string | undefined>(undefined)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
+  const [activeKpi, setActiveKpi] = useState<PnlKpiKey | null>(null)
 
   useEffect(() => {
     if (cycles && cycles.length > 0 && !cycle) {
@@ -29,7 +31,6 @@ export default function PnlPage() {
       : startDate && endDate ? { mode: 'range', start: startDate, end: endDate } : undefined
 
   const { data: summary, isLoading } = usePnlSummary(filter)
-  const { data: trendData } = usePnlTrend()
 
   const cycleDateHint =
     cycle && mode === 'cycle'
@@ -37,6 +38,10 @@ export default function PnlPage() {
         ? `${cycle.slice(0, 7)} · days 1–15`
         : `${cycle.slice(0, 7)} · days 16–31`
       : null
+
+  const handleKpiSelect = (key: PnlKpiKey) => {
+    setActiveKpi((prev) => (prev === key ? null : key))
+  }
 
   return (
     <div className="space-y-6">
@@ -102,8 +107,11 @@ export default function PnlPage() {
       <PnlFormulaPanel />
 
       {isLoading && <p className="text-muted-foreground text-sm">Loading summary…</p>}
-      {summary && <PnlKpiCards summary={summary} />}
-      {trendData && trendData.length > 0 && <PnlTrendChart data={trendData} />}
+      {summary && (
+        <PnlKpiCards summary={summary} activeKpi={activeKpi} onSelect={handleKpiSelect} />
+      )}
+      {filter && <PnlDailyMarginChart filter={filter} />}
+      {filter && <PnlBreakdownPanel filter={filter} activeKpi={activeKpi} />}
       {filter && <PnlAwbDrilldown filter={filter} />}
       <PnlDataQuality />
     </div>
