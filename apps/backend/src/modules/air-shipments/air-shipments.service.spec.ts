@@ -457,13 +457,13 @@ describe('AirShipmentsService — runSyncCycle()', () => {
       if (sql.startsWith('SELECT * FROM "air_shipments_compileaircgk"')) {
         return Promise.resolve([
           {
-            // now=2025-01-15, ata_origin=2025-01-01, sla=24h→maxSla=2025-01-02, tjph=48h→maxTjph=2025-01-03
-            // now > maxTjph → melewatiSla=true, melewatiTjph=true
-            // ata_flight present: potensiMelebihiSla and potensiMelebihiTjph also compute
+            // now=2025-01-15, ata_origin=2025-01-01, sla=24h→maxSla=2025-01-02
+            // tjph=480h(20 days)→maxTjph=2025-01-21 (not yet breached)
+            // effectiveTime=now > maxSla → melewatiSla=true; now < maxTjph → melewatiTjph=false
             extra_fields: {
               ata_origin: '2025-01-01T00:00:00Z',
               sla: '24:00:00',
-              tjph: '48:00:00',
+              tjph: '480:00:00',
               ata_flight: '2025-01-01T12:00:00Z',
               atd_flight: '2025-01-01T06:00:00Z',
               origin: 'CGK',
@@ -472,12 +472,13 @@ describe('AirShipmentsService — runSyncCycle()', () => {
             },
           },
           {
-            // ata_origin=2025-01-12, sla=24h→maxSla=2025-01-13, tjph=48h→maxTjph=2025-01-14
-            // now(2025-01-15) > maxTjph → melewatiSla, melewatiTjph
+            // ata_origin=2025-01-12, sla=24h→maxSla=2025-01-13
+            // tjph=480h→maxTjph=2025-01-31 (not yet breached)
+            // now(2025-01-15) > maxSla → melewatiSla=true
             extra_fields: {
               ata_origin: '2025-01-12T00:00:00Z',
               sla: '24:00:00',
-              tjph: '48:00:00',
+              tjph: '480:00:00',
               ata_flight: '2025-01-12T12:00:00Z',
               atd_flight: '2025-01-12T06:00:00Z',
               origin: 'CGK',
@@ -493,15 +494,16 @@ describe('AirShipmentsService — runSyncCycle()', () => {
     jest.useFakeTimers()
     jest.setSystemTime(new Date('2025-01-15T12:00:00Z'))
 
-    const summary = await service.getAlertSummaryForTable('air_shipments_compileaircgk', 15)
+    const summary = await service.getAlertSummaryForTable('air_shipments_compileaircgk', '2025-01-01', '2025-01-15')
 
     expect(summary.nHours).toBe(5)
     expect(summary.mHours).toBe(5)
     expect(summary.alerts.melewatiSla.routes).toBe(2)
-    expect(summary.alerts.melewatiTjph.routes).toBe(2)
+    expect(summary.alerts.melewatiTjph.routes).toBe(0)
     expect(summary.alerts.melewatiSla.breakdown).toContainEqual(
       expect.objectContaining({ route: 'CGK - SUB' }),
     )
+    expect(summary.otp).toBeDefined()
 
     jest.useRealTimers()
   })
@@ -586,7 +588,7 @@ describe('AirShipmentsService — runSyncCycle()', () => {
       return Promise.resolve([])
     })
 
-    const routes = await service.getRoutesForTable('air_shipments_compileaircgk', 15)
+    const routes = await service.getRoutesForTable('air_shipments_compileaircgk', '2025-01-01', '2025-01-15')
     expect(routes).toEqual({
       routes: [
         { label: 'CGK - SUB', origin: 'CGK', destination: 'SUB' },

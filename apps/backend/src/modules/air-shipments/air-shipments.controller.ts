@@ -113,10 +113,15 @@ export class AirShipmentsController {
   }
 
   @Get(':tableName/alert-summary')
-  async getAlertSummary(@Param('tableName') tableName: string, @Query('days') days?: string) {
+  async getAlertSummary(
+    @Param('tableName') tableName: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('days') days?: string,
+  ) {
     const daysNum = days != null && !isNaN(Number(days)) ? Number(days) : undefined
     try {
-      return await this.service.getAlertSummaryForTable(tableName, daysNum)
+      return await this.service.getAlertSummaryForTable(tableName, startDate, endDate, daysNum)
     } catch (err: unknown) {
       this.logger.error(
         `[GET /air-shipments/${tableName}/alert-summary]`,
@@ -127,13 +132,37 @@ export class AirShipmentsController {
   }
 
   @Get(':tableName/routes')
-  async getRoutes(@Param('tableName') tableName: string, @Query('days') days?: string) {
+  async getRoutes(
+    @Param('tableName') tableName: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('days') days?: string,
+  ) {
     const daysNum = days != null && !isNaN(Number(days)) ? Number(days) : undefined
     try {
-      return await this.service.getRoutesForTable(tableName, daysNum)
+      return await this.service.getRoutesForTable(tableName, startDate, endDate, daysNum)
     } catch (err: unknown) {
       this.logger.error(
         `[GET /air-shipments/${tableName}/routes]`,
+        err instanceof Error ? err.stack : String(err)
+      )
+      throw new InternalServerErrorException()
+    }
+  }
+
+  @Get(':tableName/route-alert-summary')
+  async getRouteAlertSummary(
+    @Param('tableName') tableName: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('days') days?: string,
+  ) {
+    const daysNum = days != null && !isNaN(Number(days)) ? Number(days) : undefined
+    try {
+      return await this.service.getRouteAlertSummary(tableName, startDate, endDate, daysNum)
+    } catch (err: unknown) {
+      this.logger.error(
+        `[GET /air-shipments/${tableName}/route-alert-summary]`,
         err instanceof Error ? err.stack : String(err)
       )
       throw new InternalServerErrorException()

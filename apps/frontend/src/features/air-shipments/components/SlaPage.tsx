@@ -4,12 +4,12 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { apiClient } from '@/shared/api/client'
 import { PageHeader } from '@/components/shared/page-header'
 import { AirShipmentTable } from '@/features/air-shipments/components/AirShipmentTable'
-import { SyncStatusBadge } from '@/features/air-shipments/components/SyncStatusBadge'
 import {
   DashboardAlertCards,
   DashboardAlertKey,
   DashboardAlertSummary,
 } from '@/features/air-shipments/components/DashboardAlertCards'
+import { RouteAlertTable, RouteAlertRow } from '@/features/air-shipments/components/RouteAlertTable'
 import { GeneralParamsModal } from '@/features/general-params/components/GeneralParamsModal'
 import { useGeneralParams } from '@/features/general-params/hooks/useGeneralParams'
 import { useSyncNotification } from '@/features/air-shipments/hooks/useSyncNotification'
@@ -20,8 +20,27 @@ import {
 } from '@/features/air-shipments/hooks/useAirShipments'
 import { DEFAULT_HIDDEN, FROZEN_KEYS, colLabel } from '@/features/air-shipments/columns.config'
 import { AirShipmentsResponse, SortOrder } from '@/features/air-shipments/types'
-import { Lock, Trash2, Settings } from 'lucide-react'
+import { Lock, Trash2 } from 'lucide-react'
 import { AxiosError } from 'axios'
+
+function toDateStr(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
+
+function defaultStartDate(): string {
+  const d = new Date()
+  d.setDate(d.getDate() - 15)
+  return toDateStr(d)
+}
+
+function defaultEndDate(): string {
+  return toDateStr(new Date())
+}
+
+function computeDays(startDate: string, endDate: string): number {
+  const diff = new Date(endDate).getTime() - new Date(startDate).getTime()
+  return Math.max(1, Math.round(diff / 86_400_000))
+}
 
 interface RouteOption {
   label: string
@@ -51,18 +70,25 @@ export function SlaPage() {
   const { isConnected, lastSyncAt, lastCompletedSheet } = useSyncNotification()
   const { params: generalParams, reload: reloadGeneralParams, loaded: paramsLoaded } = useGeneralParams()
 
-  const days = useMemo(() => {
+  const daysRange = useMemo(() => {
     const p = generalParams.find((p) => p.key === 'days_range')
-    return p ? parseInt(p.value, 10) || 30 : 30
+    return p ? parseInt(p.value, 10) || 15 : 15
   }, [generalParams])
 
   const tableRef = useRef<HTMLDivElement | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const shouldScrollOnLoad = useRef(!!(searchParams.get('alert') || searchParams.get('route')))
+  const pendingScrollRef = useRef(false)
+
+  const [startDate, setStartDate] = useState(defaultStartDate)
+  const [endDate, setEndDate] = useState(defaultEndDate)
+  const [dateError, setDateError] = useState<string | null>(null)
 
   const [summary, setSummary] = useState<DashboardAlertSummary | null>(null)
   const [routes, setRoutes] = useState<RouteOption[]>([])
   const [data, setData] = useState<AirShipmentsResponse | null>(null)
+  const [routeAlertData, setRouteAlertData] = useState<RouteAlertRow[]>([])
+  const [routeAlertLoading, setRouteAlertLoading] = useState(false)
   const [activeAlert, setActiveAlert] = useState<AlertFilterOption | null>(
     () => (searchParams.get('alert') as AlertFilterOption) || null
   )
@@ -95,7 +121,7 @@ export function SlaPage() {
     setSummaryLoading(true)
     try {
       const response = await apiClient.get<DashboardAlertSummary>(
-        `${TABLE_ENDPOINT}/alert-summary?days=${days}`
+        `${TABLE_ENDPOINT}/alert-summary?days=${computeDays(startDate, endDate)}`
       )
       setSummary(response.data)
     } catch {
@@ -108,7 +134,7 @@ export function SlaPage() {
   const fetchRoutes = async () => {
     try {
       const response = await apiClient.get<{ routes: RouteOption[] }>(
-        `${TABLE_ENDPOINT}/routes?days=${days}`
+        `${TABLE_ENDPOINT}/routes?days=${computeDays(startDate, endDate)}`
       )
       setRoutes(response.data.routes ?? [])
     } catch {
@@ -123,7 +149,7 @@ export function SlaPage() {
       const params = new URLSearchParams({
         page: String(page),
         limit: '50',
-        days: String(days),
+        days: String(computeDays(startDate, endDate)),
         sortBy,
         sortOrder,
       })
@@ -143,20 +169,62 @@ export function SlaPage() {
     }
   }
 
+  const fetchRouteAlerts = async () => {
+    setRouteAlertLoading(true)
+    try {
+      const response = await apiClient.get<RouteAlertRow[]>(
+        `${TABLE_ENDPOINT}/route-alert-summary?days=${computeDays(startDate, endDate)}`
+      )
+      setRouteAlertData(response.data ?? [])
+    } catch {
+      setRouteAlertData([])
+    } finally {
+      setRouteAlertLoading(false)
+    }
+  }
+
   // ── Effects ─────────────────────────────────────────────────────────────────
+
+  const initialDateSet = useRef(false)
+  useEffect(() => {
+    if (!paramsLoaded || initialDateSet.current) return
+    initialDateSet.current = true
+    const d = new Date()
+    d.setDate(d.getDate() - daysRange)
+    setStartDate(toDateStr(d))
+    setEndDate(defaultEndDate())
+  }, [paramsLoaded, daysRange])
 
   useEffect(() => {
     if (!paramsLoaded) return
+    // Validate date range: max 60 days
+    const start = new Date(startDate)
+    const end = new Date(endDate)
+    const diffDays = Math.round((end.getTime() - start.getTime()) / 86_400_000)
+    if (diffDays < 0) {
+      setDateError('End date must be after start date.')
+      return
+    }
+    if (diffDays > 60) {
+      setDateError('Date range cannot exceed 60 days.')
+      return
+    }
+    setDateError(null)
     void fetchAlertSummary()
     void fetchRoutes()
+    void fetchRouteAlerts()
     setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [days, paramsLoaded])
+  }, [startDate, endDate, paramsLoaded])
 
   useEffect(() => {
     if (!isLoading && data && shouldScrollOnLoad.current) {
       shouldScrollOnLoad.current = false
-      setTimeout(() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100)
+      tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }
+    if (!isLoading && data && pendingScrollRef.current) {
+      pendingScrollRef.current = false
+      tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
   }, [isLoading, data])
 
@@ -169,15 +237,16 @@ export function SlaPage() {
   }, [searchInput])
 
   useEffect(() => {
-    if (!paramsLoaded) return
+    if (!paramsLoaded || dateError) return
     void fetchTableData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, sortBy, sortOrder, activeAlert, activeRoute, searchQuery, days, paramsLoaded])
+  }, [page, sortBy, sortOrder, activeAlert, activeRoute, searchQuery, startDate, endDate, paramsLoaded, dateError])
 
   useEffect(() => {
     if (lastCompletedSheet === 'compileaircgk') {
       void fetchAlertSummary()
       void fetchRoutes()
+      void fetchRouteAlerts()
       setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -302,38 +371,31 @@ export function SlaPage() {
 
   // ── Alert filter helpers ────────────────────────────────────────────────────
 
-  const handleRouteSelect = (alertKey: DashboardAlertKey, route: string) => {
+  const applyRouteAlertFilter = (alertKey: DashboardAlertKey, route: string) => {
+    pendingScrollRef.current = true
     setActiveAlert(alertKey)
     setActiveRoute(route)
     setPage(1)
     const params = new URLSearchParams()
     params.set('alert', alertKey)
     params.set('route', route)
-    router.replace(`/sla?${params.toString()}`)
-    setTimeout(() => tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+    router.replace(`/sla?${params.toString()}`, { scroll: false })
   }
 
+  const handleRouteSelect = (alertKey: DashboardAlertKey, route: string) =>
+    applyRouteAlertFilter(alertKey, route)
+
   const handleAlertDropdownChange = (value: string) => {
+    pendingScrollRef.current = true
     const newAlert = value === 'null' ? null : (value as AlertFilterOption)
     setActiveAlert(newAlert)
     setPage(1)
     const params = new URLSearchParams()
     if (newAlert) params.set('alert', newAlert)
     if (activeRoute) params.set('route', activeRoute)
-    router.replace(`/sla?${params.toString()}`)
+    router.replace(`/sla?${params.toString()}`, { scroll: false })
   }
 
-  const handleClearAlert = () => {
-    setActiveAlert(null)
-    setPage(1)
-    const params = new URLSearchParams()
-    if (activeRoute) params.set('route', activeRoute)
-    router.replace(`/sla?${params.toString()}`)
-  }
-
-  const activeAlertLabel = activeAlert
-    ? ALERT_OPTIONS.find((option) => option.value === activeAlert)?.label
-    : ''
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -347,29 +409,17 @@ export function SlaPage() {
           activeAlert={activeAlert}
           onRouteSelect={handleRouteSelect}
           isLoading={summaryLoading}
+          startDate={startDate}
+          endDate={endDate}
+          onStartDateChange={(d) => { setStartDate(d); setPage(1) }}
+          onEndDateChange={(d) => { setEndDate(d); setPage(1) }}
+          dateError={dateError}
+          lastUpdated={lastUpdated}
+          syncNote="Live refresh is active for Compile Air CGK synchronization."
+          onConfigure={() => setShowConfigModal(true)}
+          isConnected={isConnected}
+          lastSyncAt={lastSyncAt}
         />
-
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex flex-col gap-2">
-            <p className="text-sm text-muted-foreground" aria-live="polite">
-              {lastUpdated ? `Last updated: ${lastUpdated}` : 'Waiting for data...'}
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Live refresh is active for Compile Air CGK synchronization.
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setShowConfigModal(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-sm text-foreground transition hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring"
-            >
-              <Settings size={14} />
-              Configure
-            </button>
-            <SyncStatusBadge isConnected={isConnected} lastSyncAt={lastSyncAt} />
-          </div>
-        </div>
 
         <GeneralParamsModal
           open={showConfigModal}
@@ -377,10 +427,22 @@ export function SlaPage() {
           onSaved={() => {
             void reloadGeneralParams().then(() => {
               void fetchAlertSummary()
+              void fetchRoutes()
+              void fetchRouteAlerts()
               void fetchTableData()
               setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
             })
           }}
+        />
+      </section>
+
+      <section className="space-y-4">
+        <RouteAlertTable
+          data={routeAlertData}
+          isLoading={routeAlertLoading}
+          onAlertClick={(route, alertKey) =>
+            applyRouteAlertFilter(alertKey as DashboardAlertKey, route)
+          }
         />
       </section>
 
@@ -416,13 +478,14 @@ export function SlaPage() {
             <select
               value={activeRoute}
               onChange={(e) => {
+                pendingScrollRef.current = true
                 const newRoute = e.target.value
                 setActiveRoute(newRoute)
                 setPage(1)
                 const params = new URLSearchParams()
                 if (activeAlert) params.set('alert', activeAlert)
                 if (newRoute) params.set('route', newRoute)
-                router.replace(`/sla?${params.toString()}`)
+                router.replace(`/sla?${params.toString()}`, { scroll: false })
               }}
               className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
             >
@@ -437,20 +500,6 @@ export function SlaPage() {
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2">
-          {activeAlert && (
-            <div className="inline-flex items-center gap-3 rounded-full border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-              <span>Filter: {activeAlertLabel}</span>
-              <button
-                type="button"
-                className="rounded-full bg-slate-200 px-2 py-1 text-slate-700 hover:bg-slate-300"
-                onClick={handleClearAlert}
-                aria-label="Clear alert filter"
-              >
-                ×
-              </button>
-            </div>
-          )}
-
           <div className="relative ml-auto flex items-center gap-2" ref={dropdownRef}>
             <button
               type="button"
@@ -600,6 +649,7 @@ export function SlaPage() {
           </div>
         )}
       </section>
+
     </div>
   )
 }

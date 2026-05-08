@@ -195,10 +195,26 @@ describe('evaluateAlerts', () => {
   })
 
   describe('melewatiSla', () => {
-    it('triggers when now > maxSla', () => {
+    it('triggers when now > maxSla (no completed_time)', () => {
       // ata_origin=08:00, sla=02:00 → maxSla=10:00; now=10:30
       jest.setSystemTime(new Date('2025-01-01T10:30:00Z'))
       expect(evaluateAlerts(baseRow, N, M).melewatiSla).toBe(true)
+    })
+
+    it('triggers when completed_time > maxSla (even if now < maxSla)', () => {
+      // now=09:00 < maxSla=10:00, but completed_time=10:30 > maxSla → trigger
+      jest.setSystemTime(new Date('2025-01-01T09:00:00Z'))
+      expect(
+        evaluateAlerts({ ...baseRow, completed_time: '2025-01-01T10:30:00Z' }, N, M).melewatiSla,
+      ).toBe(true)
+    })
+
+    it('does NOT trigger when completed_time <= maxSla (even if now > maxSla)', () => {
+      // now=10:30 > maxSla=10:00, but completed_time=09:30 < maxSla → no trigger
+      jest.setSystemTime(new Date('2025-01-01T10:30:00Z'))
+      expect(
+        evaluateAlerts({ ...baseRow, completed_time: '2025-01-01T09:30:00Z' }, N, M).melewatiSla,
+      ).toBe(false)
     })
 
     it('does NOT trigger when now <= maxSla', () => {
@@ -218,41 +234,59 @@ describe('evaluateAlerts', () => {
   })
 
   describe('potensiMelebihiTjph', () => {
-    it('triggers via melewatiSla path (independent of ata_flight)', () => {
-      // now > maxSla (=10:00) → melewatiSla=true → potensiMelebihiTjph=true
-      jest.setSystemTime(new Date('2025-01-01T10:30:00Z'))
-      expect(evaluateAlerts(baseRow, N, M).potensiMelebihiTjph).toBe(true)
-    })
-
-    it('triggers via ata_flight + mHours > maxTjph path (melewatiSla=false)', () => {
-      // ata_origin=08:00, sla=06:00→maxSla=14:00 (now < maxSla so melewatiSla=false)
-      // tjph=03:00 → maxTjph=11:00; ata_flight=10:30, m=1h → 11:30 > maxTjph=11:00 → trigger
+    it('triggers when ata_flight + mHours > maxTjph', () => {
+      // ata_origin=08:00, tjph=03:00 → maxTjph=11:00; ata_flight=10:30, m=1h → 11:30 > 11:00 → trigger
       jest.setSystemTime(new Date('2025-01-01T09:00:00Z'))
       expect(
         evaluateAlerts(
-          {
-            ...baseRow,
-            sla: '06:00:00',
-            tjph: '03:00:00',
-            ata_flight: '2025-01-01T10:30:00Z',
-          },
+          { ...baseRow, tjph: '03:00:00', ata_flight: '2025-01-01T10:30:00Z' },
           N,
           M,
         ).potensiMelebihiTjph,
       ).toBe(true)
     })
 
-    it('does NOT trigger when neither condition is met', () => {
+    it('does NOT trigger when melewatiSla is true but ata_flight + mHours <= maxTjph', () => {
+      // melewatiSla path was removed — potensiMelebihiTjph is only ata_flight + mMs > maxTjph
+      // now=10:30 → melewatiSla=true, but ata_flight(09:00)+1h=10:00 < maxTjph(12:00) → false
+      jest.setSystemTime(new Date('2025-01-01T10:30:00Z'))
+      expect(evaluateAlerts(baseRow, N, M).potensiMelebihiTjph).toBe(false)
+    })
+
+    it('does NOT trigger when ata_flight is missing', () => {
+      jest.setSystemTime(new Date('2025-01-01T09:00:00Z'))
+      expect(
+        evaluateAlerts({ ...baseRow, ata_flight: '' }, N, M).potensiMelebihiTjph,
+      ).toBe(false)
+    })
+
+    it('does NOT trigger when ata_flight + mHours <= maxTjph', () => {
       jest.setSystemTime(new Date('2025-01-01T08:30:00Z'))
       expect(evaluateAlerts(baseRow, N, M).potensiMelebihiTjph).toBe(false)
     })
   })
 
   describe('melewatiTjph', () => {
-    it('triggers when now > maxTjph', () => {
+    it('triggers when now > maxTjph (no completed_time)', () => {
       // ata_origin=08:00, tjph=04:00 → maxTjph=12:00; now=13:00
       jest.setSystemTime(new Date('2025-01-01T13:00:00Z'))
       expect(evaluateAlerts(baseRow, N, M).melewatiTjph).toBe(true)
+    })
+
+    it('triggers when completed_time > maxTjph (even if now < maxTjph)', () => {
+      // now=09:00 < maxTjph=12:00, but completed_time=13:00 > maxTjph → trigger
+      jest.setSystemTime(new Date('2025-01-01T09:00:00Z'))
+      expect(
+        evaluateAlerts({ ...baseRow, completed_time: '2025-01-01T13:00:00Z' }, N, M).melewatiTjph,
+      ).toBe(true)
+    })
+
+    it('does NOT trigger when completed_time <= maxTjph (even if now > maxTjph)', () => {
+      // now=13:00 > maxTjph=12:00, but completed_time=11:00 < maxTjph → no trigger
+      jest.setSystemTime(new Date('2025-01-01T13:00:00Z'))
+      expect(
+        evaluateAlerts({ ...baseRow, completed_time: '2025-01-01T11:00:00Z' }, N, M).melewatiTjph,
+      ).toBe(false)
     })
 
     it('suppresses all other alerts when melewatiTjph is true', () => {

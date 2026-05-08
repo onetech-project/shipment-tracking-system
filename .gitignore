@@ -171,4 +171,5 @@ debug-*
 debug*
 
 serviceaccount.json
-.qwen
+.qwen/
+.claude/
