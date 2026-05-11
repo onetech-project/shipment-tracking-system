@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useState } from 'react'
+import { Fragment, useState, useEffect } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { usePnlAwbDrilldown, usePnlAwbTos, PnlFilter, PnlToRow } from '../hooks/usePnl'
 import { fmt, num, pct } from '../utils/format'
@@ -68,6 +68,11 @@ interface PnlAwbDrilldownProps {
 export function PnlAwbDrilldown({ filter }: PnlAwbDrilldownProps) {
   const [page, setPage] = useState(1)
   const [expandedAwb, setExpandedAwb] = useState<string | null>(null)
+
+  useEffect(() => {
+    setPage(1)
+    setExpandedAwb(null)
+  }, [filter])
   const { data, isLoading, isError, refetch } = usePnlAwbDrilldown(filter, page)
   const totalPages = data ? Math.ceil(data.total / 50) : 0
   const title = filter.mode === 'cycle' ? filter.cycle : `${filter.start} → ${filter.end}`

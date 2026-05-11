@@ -32,6 +32,7 @@ export function PnlDataQuality() {
         <AlertTriangle size={16} className="text-amber-600" />
         <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
           Data Quality Issues — {data.length} TOs with missing cost data
+          <span className="ml-2 font-normal opacity-60">· All cycles</span>
         </p>
       </div>
       <div className="overflow-x-auto">

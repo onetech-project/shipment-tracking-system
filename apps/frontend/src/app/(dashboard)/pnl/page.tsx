@@ -46,6 +46,7 @@ export default function PnlPage() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [activeKpi, setActiveKpi] = useState<PnlKpiKey | null>(null)
+  const [showDq, setShowDq] = useState(false)
 
   useEffect(() => {
     if (cycles && cycles.length > 0 && !cycle) {
@@ -104,8 +105,18 @@ export default function PnlPage() {
                 value={cycle ?? ''}
                 onChange={(e) => setCycle(e.target.value)}
               >
-                {cycles?.map((c) => (
-                  <option key={c} value={c}>{c}</option>
+                {Object.entries(
+                  (cycles ?? []).reduce<Record<string, string[]>>((acc, c) => {
+                    const year = c.slice(0, 4)
+                    ;(acc[year] ??= []).push(c)
+                    return acc
+                  }, {})
+                ).map(([year, items]) => (
+                  <optgroup key={year} label={year}>
+                    {items.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
               {cycleDateHint && (
@@ -134,8 +145,6 @@ export default function PnlPage() {
         </div>
       </div>
 
-      <PnlFormulaPanel />
-
       {isPageError ? (
         <div className="rounded-lg border bg-card p-8 text-center">
           <p className="text-sm text-muted-foreground">
@@ -150,15 +159,31 @@ export default function PnlPage() {
         </div>
       ) : isPageLoading ? (
         <PnlSkeleton />
+      ) : mode === 'range' && !filter ? (
+        <div className="rounded-lg border bg-card p-8 text-center">
+          <p className="text-sm text-muted-foreground">Select a start and end date above to view P&amp;L data.</p>
+        </div>
       ) : (
         <>
+          <PnlFormulaPanel />
           {summary && (
             <PnlKpiCards summary={summary} activeKpi={activeKpi} onSelect={handleKpiSelect} />
           )}
           {filter && <PnlDailyMarginChart filter={filter} />}
           {filter && <PnlBreakdownPanel filter={filter} activeKpi={activeKpi} />}
           {filter && <PnlAwbDrilldown filter={filter} />}
-          <PnlDataQuality />
+          {showDq ? (
+            <PnlDataQuality />
+          ) : (
+            <div className="flex justify-center">
+              <button
+                className="text-xs text-muted-foreground underline hover:text-foreground"
+                onClick={() => setShowDq(true)}
+              >
+                Check data quality
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>
