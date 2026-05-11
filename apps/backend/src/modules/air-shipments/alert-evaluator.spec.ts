@@ -88,6 +88,18 @@ describe('evaluateAlerts', () => {
         ).reservasiPenerbangan,
       ).toBe(false)
     })
+
+    it('does NOT trigger when melewatiSla is true, even if flights are empty', () => {
+      // now=10:30 > maxSla=10:00 → melewatiSla=true → reservasiPenerbangan must be suppressed
+      jest.setSystemTime(new Date('2025-01-01T10:30:00Z'))
+      expect(
+        evaluateAlerts(
+          { ...baseRow, atd_flight: '', ata_flight: '' },
+          N,
+          M,
+        ).reservasiPenerbangan,
+      ).toBe(false)
+    })
   })
 
   describe('potensiMelebihiSla', () => {
@@ -120,6 +132,30 @@ describe('evaluateAlerts', () => {
       jest.setSystemTime(new Date('2025-01-01T08:30:00Z'))
       expect(
         evaluateAlerts({ ...baseRow, ata_flight: '' }, N, M).potensiMelebihiSla,
+      ).toBe(false)
+    })
+
+    it('does NOT trigger when melewatiSla is true (shipment already past deadline)', () => {
+      // now=10:30 > maxSla=10:00 → melewatiSla=true; ata_flight+m would exceed maxSla but irrelevant
+      jest.setSystemTime(new Date('2025-01-01T10:30:00Z'))
+      expect(
+        evaluateAlerts(
+          { ...baseRow, ata_flight: '2025-01-01T09:30:00Z' },
+          N,
+          M,
+        ).potensiMelebihiSla,
+      ).toBe(false)
+    })
+
+    it('does NOT trigger via SMU path when melewatiSla is true', () => {
+      // now=10:30 > maxSla=10:00 → melewatiSla=true; SMU not onboard but irrelevant
+      jest.setSystemTime(new Date('2025-01-01T10:30:00Z'))
+      expect(
+        evaluateAlerts(
+          { ...baseRow, trackingan_smu: 'In Transit' },
+          N,
+          M,
+        ).potensiMelebihiSla,
       ).toBe(false)
     })
 
@@ -266,6 +302,110 @@ describe('evaluateAlerts', () => {
     })
   })
 
+  describe('ata_vendor_wh_destination exclusion', () => {
+    it('suppresses reservasiPenerbangan when ata_vendor_wh_destination is filled', () => {
+      // Without completedTime, reservasiPenerbangan would fire (now > ataOrigin+nH, no flights)
+      jest.setSystemTime(new Date('2025-01-01T09:30:00Z'))
+      expect(
+        evaluateAlerts(
+          {
+            ...baseRow,
+            atd_flight: '',
+            ata_flight: '',
+            ata_vendor_wh_destination: '2025-01-01T09:00:00Z',
+          },
+          N,
+          M,
+        ).reservasiPenerbangan,
+      ).toBe(false)
+    })
+
+    it('suppresses potensiMelebihiSla when ata_vendor_wh_destination is filled', () => {
+      // ata_flight + m > maxSla would normally fire, but completedTime blocks it
+      jest.setSystemTime(new Date('2025-01-01T08:30:00Z'))
+      expect(
+        evaluateAlerts(
+          {
+            ...baseRow,
+            ata_flight: '2025-01-01T09:30:00Z',
+            ata_vendor_wh_destination: '2025-01-01T09:00:00Z',
+          },
+          N,
+          M,
+        ).potensiMelebihiSla,
+      ).toBe(false)
+    })
+
+    it('suppresses potensiMelebihiTjph when ata_vendor_wh_destination is filled', () => {
+      // ata_flight + m > maxTjph would normally fire, but completedTime blocks it
+      jest.setSystemTime(new Date('2025-01-01T09:00:00Z'))
+      expect(
+        evaluateAlerts(
+          {
+            ...baseRow,
+            tjph: '03:00:00',
+            ata_flight: '2025-01-01T10:30:00Z',
+            ata_vendor_wh_destination: '2025-01-01T09:00:00Z',
+          },
+          N,
+          M,
+        ).potensiMelebihiTjph,
+      ).toBe(false)
+    })
+
+    it('still evaluates melewatiSla normally when ata_vendor_wh_destination is filled', () => {
+      // completedTime=09:30 < maxSla=10:00 → melewatiSla stays false
+      jest.setSystemTime(new Date('2025-01-01T10:30:00Z'))
+      expect(
+        evaluateAlerts(
+          {
+            ...baseRow,
+            ata_vendor_wh_destination: '2025-01-01T09:30:00Z',
+          },
+          N,
+          M,
+        ).melewatiSla,
+      ).toBe(false)
+    })
+
+    it('still evaluates melewatiSla as true when completedTime > maxSla', () => {
+      // completedTime=10:30 > maxSla=10:00 → melewatiSla true despite completedTime guard
+      jest.setSystemTime(new Date('2025-01-01T09:00:00Z'))
+      expect(
+        evaluateAlerts(
+          {
+            ...baseRow,
+            ata_vendor_wh_destination: '2025-01-01T10:30:00Z',
+          },
+          N,
+          M,
+        ).melewatiSla,
+      ).toBe(true)
+    })
+
+    it('melewatiTjph still fires when completedTime > maxTjph, and melewatiSla is also propagated', () => {
+      // ata_origin=08:00, sla=02:00 → maxSla=10:00, tjph=04:00 → maxTjph=12:00
+      // completedTime=13:00 > maxTjph AND > maxSla → both melewatiTjph and melewatiSla are true
+      jest.setSystemTime(new Date('2025-01-01T09:00:00Z'))
+      expect(
+        evaluateAlerts(
+          {
+            ...baseRow,
+            ata_vendor_wh_destination: '2025-01-01T13:00:00Z',
+          },
+          N,
+          M,
+        ),
+      ).toEqual({
+        reservasiPenerbangan: false,
+        potensiMelebihiSla: false,
+        melewatiSla: true,
+        potensiMelebihiTjph: false,
+        melewatiTjph: true,
+      })
+    })
+  })
+
   describe('melewatiTjph', () => {
     it('triggers when now > maxTjph (no ata_vendor_wh_destination)', () => {
       // ata_origin=08:00, tjph=04:00 → maxTjph=12:00; now=13:00
@@ -289,10 +429,22 @@ describe('evaluateAlerts', () => {
       ).toBe(false)
     })
 
-    it('suppresses all other alerts when melewatiTjph is true', () => {
-      // now=13:00 → melewatiTjph=true → only melewatiTjph should be set
+    it('suppresses in-flight alerts when melewatiTjph is true, but propagates melewatiSla', () => {
+      // now=13:00 → melewatiTjph=true (maxTjph=12:00) AND melewatiSla=true (maxSla=10:00)
       jest.setSystemTime(new Date('2025-01-01T13:00:00Z'))
       expect(evaluateAlerts(baseRow, N, M)).toEqual({
+        reservasiPenerbangan: false,
+        potensiMelebihiSla: false,
+        melewatiSla: true,
+        potensiMelebihiTjph: false,
+        melewatiTjph: true,
+      })
+    })
+
+    it('returns only melewatiTjph when melewatiSla is not breached', () => {
+      // sla=10:00:00 → maxSla = 08:00+10h = 18:00; now=13:00 < maxSla → melewatiSla=false
+      jest.setSystemTime(new Date('2025-01-01T13:00:00Z'))
+      expect(evaluateAlerts({ ...baseRow, sla: '10:00:00' }, N, M)).toEqual({
         reservasiPenerbangan: false,
         potensiMelebihiSla: false,
         melewatiSla: false,
@@ -357,6 +509,19 @@ describe('evaluateAlerts', () => {
       'melewatiSla',
       'potensiMelebihiTjph',
       'melewatiTjph',
+    ])
+  })
+
+  it("ALERT_FILTERS array contains all 5 alert types plus 'normal' and 'any'", () => {
+    const { ALERT_FILTERS } = require('./alert-evaluator')
+    expect(ALERT_FILTERS).toEqual([
+      'reservasiPenerbangan',
+      'potensiMelebihiSla',
+      'melewatiSla',
+      'potensiMelebihiTjph',
+      'melewatiTjph',
+      'normal',
+      'any',
     ])
   })
 })

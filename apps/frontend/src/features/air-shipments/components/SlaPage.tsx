@@ -18,23 +18,49 @@ import {
   batchLockAirShipments,
   batchDeleteAirShipments,
 } from '@/features/air-shipments/hooks/useAirShipments'
-import { DEFAULT_HIDDEN, FROZEN_KEYS, colLabel } from '@/features/air-shipments/columns.config'
+import { SLA_FROZEN_KEYS, SLA_DEFAULT_VISIBLE, colLabel } from '@/features/air-shipments/columns.config'
 import { AirShipmentsResponse, SortOrder } from '@/features/air-shipments/types'
 import { Lock, Trash2 } from 'lucide-react'
 import { AxiosError } from 'axios'
+
+const SLA_COLUMNS_STORAGE_KEY = 'sla-columns-v1'
+
+function loadStoredColumns(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(SLA_COLUMNS_STORAGE_KEY)
+    return raw ? (JSON.parse(raw) as Record<string, boolean>) : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveStoredColumns(cols: Record<string, boolean>): void {
+  try {
+    localStorage.setItem(SLA_COLUMNS_STORAGE_KEY, JSON.stringify(cols))
+  } catch {
+    // localStorage unavailable (SSR, private mode) — silently skip
+  }
+}
 
 function toDateStr(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
-function defaultStartDate(): string {
-  const d = new Date()
-  d.setDate(d.getDate() - 15)
-  return toDateStr(d)
-}
-
-function defaultEndDate(): string {
-  return toDateStr(new Date())
+function defaultDateRange(): { start: string; end: string } {
+  const today = new Date()
+  const y = today.getUTCFullYear()
+  const m = today.getUTCMonth() // 0-indexed
+  if (today.getUTCDate() <= 15) {
+    return {
+      start: toDateStr(new Date(Date.UTC(y, m, 1))),
+      end: toDateStr(new Date(Date.UTC(y, m, 15))),
+    }
+  }
+  const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate()
+  return {
+    start: toDateStr(new Date(Date.UTC(y, m, 16))),
+    end: toDateStr(new Date(Date.UTC(y, m, lastDay))),
+  }
 }
 
 function computeDays(startDate: string, endDate: string): number {
@@ -70,18 +96,13 @@ export function SlaPage() {
   const { isConnected, lastSyncAt, lastCompletedSheet } = useSyncNotification()
   const { params: generalParams, reload: reloadGeneralParams, loaded: paramsLoaded } = useGeneralParams()
 
-  const daysRange = useMemo(() => {
-    const p = generalParams.find((p) => p.key === 'days_range')
-    return p ? parseInt(p.value, 10) || 15 : 15
-  }, [generalParams])
-
   const tableRef = useRef<HTMLDivElement | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const shouldScrollOnLoad = useRef(!!(searchParams.get('alert') || searchParams.get('route')))
   const pendingScrollRef = useRef(false)
 
-  const [startDate, setStartDate] = useState(defaultStartDate)
-  const [endDate, setEndDate] = useState(defaultEndDate)
+  const [startDate, setStartDate] = useState(() => defaultDateRange().start)
+  const [endDate, setEndDate] = useState(() => defaultDateRange().end)
   const [dateError, setDateError] = useState<string | null>(null)
 
   const [summary, setSummary] = useState<DashboardAlertSummary | null>(null)
@@ -154,7 +175,7 @@ export function SlaPage() {
         sortOrder,
       })
       if (searchQuery.trim()) params.set('search', searchQuery.trim())
-      if (activeAlert) params.set('alertFilter', activeAlert)
+      params.set('alertFilter', activeAlert ?? 'any')
       if (activeRoute) params.set('routeFilter', activeRoute)
 
       const response = await apiClient.get<AirShipmentsResponse>(
@@ -184,16 +205,6 @@ export function SlaPage() {
   }
 
   // ── Effects ─────────────────────────────────────────────────────────────────
-
-  const initialDateSet = useRef(false)
-  useEffect(() => {
-    if (!paramsLoaded || initialDateSet.current) return
-    initialDateSet.current = true
-    const d = new Date()
-    d.setDate(d.getDate() - daysRange)
-    setStartDate(toDateStr(d))
-    setEndDate(defaultEndDate())
-  }, [paramsLoaded, daysRange])
 
   useEffect(() => {
     if (!paramsLoaded) return
@@ -243,12 +254,18 @@ export function SlaPage() {
   }, [page, sortBy, sortOrder, activeAlert, activeRoute, searchQuery, startDate, endDate, paramsLoaded, dateError])
 
   useEffect(() => {
-    if (lastCompletedSheet === 'compileaircgk') {
-      void fetchAlertSummary()
-      void fetchRoutes()
-      void fetchRouteAlerts()
-      setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
-    }
+    if (lastCompletedSheet !== 'compileaircgk') return
+    // Silent refresh — bypass loading-state setters to prevent layout shifts that move the scroll position
+    const days = computeDays(startDate, endDate)
+    void Promise.all([
+      apiClient.get<DashboardAlertSummary>(`${TABLE_ENDPOINT}/alert-summary?days=${days}`)
+        .then(r => setSummary(r.data)).catch(() => setSummary(null)),
+      apiClient.get<{ routes: RouteOption[] }>(`${TABLE_ENDPOINT}/routes?days=${days}`)
+        .then(r => setRoutes(r.data.routes ?? [])).catch(() => setRoutes([])),
+      apiClient.get<RouteAlertRow[]>(`${TABLE_ENDPOINT}/route-alert-summary?days=${days}`)
+        .then(r => setRouteAlertData(r.data ?? [])).catch(() => setRouteAlertData([])),
+    ])
+    setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastCompletedSheet])
 
@@ -278,26 +295,31 @@ export function SlaPage() {
       }
     }
     return [
-      ...FROZEN_KEYS.filter((col) => cols.has(col.key)).map((c) => c.key),
-      ...Array.from(cols).filter((col) => !FROZEN_KEYS.some((c) => c.key === col)),
+      ...SLA_FROZEN_KEYS.filter((col) => cols.has(col.key)).map((c) => c.key),
+      ...Array.from(cols).filter((col) => !SLA_FROZEN_KEYS.some((c) => c.key === col)),
     ]
   }, [data])
 
   const frozenColumns = useMemo(
-    () => FROZEN_KEYS.filter((col) => allColumns.includes(col.key)).map((c) => c.key),
+    () => SLA_FROZEN_KEYS.filter((col) => allColumns.includes(col.key)).map((c) => c.key),
     [allColumns]
   )
   const toggleableColumns = useMemo(
-    () => allColumns.filter((col) => !FROZEN_KEYS.some((c) => c.key === col)),
+    () => allColumns.filter((col) => !SLA_FROZEN_KEYS.some((c) => c.key === col)),
     [allColumns]
   )
 
   useEffect(() => {
+    const stored = loadStoredColumns()
     setVisibleColumns((prev) => {
       const next = { ...prev }
       for (const col of frozenColumns) next[col] = true
       for (const col of toggleableColumns) {
-        if (!(col in next)) next[col] = !DEFAULT_HIDDEN.includes(col)
+        if (col in stored) {
+          next[col] = stored[col]
+        } else if (!(col in next)) {
+          next[col] = SLA_DEFAULT_VISIBLE.has(col)
+        }
       }
       return next
     })
@@ -306,7 +328,26 @@ export function SlaPage() {
 
   const handleColumnToggle = (col: string) => {
     if (frozenColumns.includes(col)) return
-    setVisibleColumns((prev) => ({ ...prev, [col]: !prev[col] }))
+    setVisibleColumns((prev) => {
+      const next = { ...prev, [col]: !prev[col] }
+      const toStore = Object.fromEntries(
+        Object.entries(next).filter(([k]) => !frozenColumns.includes(k))
+      )
+      saveStoredColumns(toStore)
+      return next
+    })
+  }
+
+  const handleToggleAllColumns = (show: boolean) => {
+    setVisibleColumns((prev) => {
+      const next = { ...prev }
+      for (const col of toggleableColumns) next[col] = show
+      const toStore = Object.fromEntries(
+        Object.entries(next).filter(([k]) => !frozenColumns.includes(k))
+      )
+      saveStoredColumns(toStore)
+      return next
+    })
   }
 
   // ── Sort ────────────────────────────────────────────────────────────────────
@@ -524,8 +565,24 @@ export function SlaPage() {
                 className="absolute right-0 top-full mt-2 min-w-[180px] max-h-72 overflow-auto rounded-lg border border-border bg-popover shadow-lg ring-1 ring-black/10 z-[100]"
                 style={{ boxShadow: '0 8px 32px 0 rgba(0,0,0,0.18)' }}
               >
-                <div className="px-3 py-2 border-b border-border text-xs font-semibold text-muted-foreground bg-muted rounded-t-lg sticky top-0 z-10">
-                  Toggle Columns
+                <div className="px-3 py-2 border-b border-border bg-muted rounded-t-lg sticky top-0 z-10 flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-muted-foreground">Toggle Columns</span>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleAllColumns(true)}
+                      className="text-xs px-2 py-0.5 rounded border border-border hover:bg-accent transition-colors"
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleAllColumns(false)}
+                      className="text-xs px-2 py-0.5 rounded border border-border hover:bg-accent transition-colors"
+                    >
+                      None
+                    </button>
+                  </div>
                 </div>
                 <div className="flex flex-col gap-1 px-3 py-2">
                   {allColumns.map((col) => (

@@ -5,7 +5,7 @@ export type AlertType =
   | 'potensiMelebihiTjph'
   | 'melewatiTjph'
 
-export type AlertFilter = AlertType | 'normal'
+export type AlertFilter = AlertType | 'normal' | 'any'
 
 export interface AlertFlags {
   reservasiPenerbangan: boolean
@@ -50,7 +50,7 @@ function parseDate(value: unknown): Date | null {
 export function evaluateAlerts(
   row: Record<string, unknown>,
   nHours: number,
-  mHours: number,
+  mHours: number
 ): AlertFlags {
   const now = new Date()
 
@@ -83,24 +83,38 @@ export function evaluateAlerts(
     return {
       reservasiPenerbangan: false,
       potensiMelebihiSla: false,
-      melewatiSla: false,
+      melewatiSla, // propagate: SLA may also be breached when TJPH is
       potensiMelebihiTjph: false,
       melewatiTjph: true,
     }
   }
 
+  // Shipment already delivered — suppress in-flight alerts.
+  // melewatiTjph is always false here (handled by the early-return above).
+  if (completedTime !== null) {
+    return {
+      reservasiPenerbangan: false,
+      potensiMelebihiSla: false,
+      melewatiSla,
+      potensiMelebihiTjph: false,
+      melewatiTjph: false,
+    }
+  }
+
   return {
     reservasiPenerbangan:
+      !melewatiSla &&
       ataOrigin !== null &&
       now > new Date(ataOrigin.getTime() + nMs) &&
       isEmptyValue(atdFlight) &&
       isEmptyValue(ataFlight),
 
     potensiMelebihiSla:
-      (ataFlightDate !== null &&
+      !melewatiSla &&
+      ((ataFlightDate !== null &&
         maxSla !== null &&
         new Date(ataFlightDate.getTime() + mMs) > maxSla) ||
-      (!isEmptyValue(atdFlight) && smuNotOnboard),
+      (!isEmptyValue(atdFlight) && smuNotOnboard)),
 
     melewatiSla,
 
@@ -121,7 +135,7 @@ export const ALERT_TYPES: AlertType[] = [
   'melewatiTjph',
 ]
 
-export const ALERT_FILTERS: AlertFilter[] = [...ALERT_TYPES, 'normal']
+export const ALERT_FILTERS: AlertFilter[] = [...ALERT_TYPES, 'normal', 'any']
 
 export const ALERT_TYPE_LABELS: Record<AlertType, string> = {
   reservasiPenerbangan: 'Reservasi Penerbangan',

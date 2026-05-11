@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { apiClient } from '@/shared/api/client'
 import { PageHeader } from '@/components/shared/page-header'
@@ -19,6 +19,23 @@ function toDateStr(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
+function defaultDateRange(): { start: string; end: string } {
+  const today = new Date()
+  const y = today.getUTCFullYear()
+  const m = today.getUTCMonth()
+  if (today.getUTCDate() <= 15) {
+    return {
+      start: toDateStr(new Date(Date.UTC(y, m, 1))),
+      end: toDateStr(new Date(Date.UTC(y, m, 15))),
+    }
+  }
+  const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate()
+  return {
+    start: toDateStr(new Date(Date.UTC(y, m, 16))),
+    end: toDateStr(new Date(Date.UTC(y, m, lastDay))),
+  }
+}
+
 function computeDays(startDate: string, endDate: string): number {
   const diff = new Date(endDate).getTime() - new Date(startDate).getTime()
   return Math.max(1, Math.round(diff / 86_400_000))
@@ -30,29 +47,9 @@ export default function DashboardPage() {
   const { user } = useAuth()
   const router = useRouter()
 
-  const daysRange = useMemo(() => {
-    const p = generalParams.find((p) => p.key === 'days_range')
-    return p ? parseInt(p.value, 10) || 15 : 15
-  }, [generalParams])
-
-  const today = toDateStr(new Date())
-  const [startDate, setStartDate] = useState(() => {
-    const d = new Date()
-    d.setDate(d.getDate() - 15)
-    return toDateStr(d)
-  })
-  const [endDate, setEndDate] = useState(today)
+  const [startDate, setStartDate] = useState(() => defaultDateRange().start)
+  const [endDate, setEndDate] = useState(() => defaultDateRange().end)
   const [dateError, setDateError] = useState<string | null>(null)
-
-  const initialDateSet = useRef(false)
-  useEffect(() => {
-    if (!paramsLoaded || initialDateSet.current) return
-    initialDateSet.current = true
-    const d = new Date()
-    d.setDate(d.getDate() - daysRange)
-    setStartDate(toDateStr(d))
-    setEndDate(today)
-  }, [paramsLoaded, daysRange, today])
 
   const [summary, setSummary] = useState<DashboardAlertSummary | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(false)
