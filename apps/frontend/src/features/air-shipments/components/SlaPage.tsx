@@ -175,7 +175,7 @@ export function SlaPage() {
         sortOrder,
       })
       if (searchQuery.trim()) params.set('search', searchQuery.trim())
-      if (activeAlert) params.set('alertFilter', activeAlert)
+      params.set('alertFilter', activeAlert ?? 'any')
       if (activeRoute) params.set('routeFilter', activeRoute)
 
       const response = await apiClient.get<AirShipmentsResponse>(
