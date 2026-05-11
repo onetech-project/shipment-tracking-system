@@ -29,18 +29,18 @@ function toDateStr(d: Date): string {
 
 function defaultDateRange(): { start: string; end: string } {
   const today = new Date()
-  const y = today.getFullYear()
-  const m = today.getMonth() // 0-indexed
-  if (today.getDate() <= 15) {
+  const y = today.getUTCFullYear()
+  const m = today.getUTCMonth() // 0-indexed
+  if (today.getUTCDate() <= 15) {
     return {
-      start: toDateStr(new Date(y, m, 1)),
-      end: toDateStr(new Date(y, m, 15)),
+      start: toDateStr(new Date(Date.UTC(y, m, 1))),
+      end: toDateStr(new Date(Date.UTC(y, m, 15))),
     }
   }
-  const lastDay = new Date(y, m + 1, 0).getDate()
+  const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate()
   return {
-    start: toDateStr(new Date(y, m, 16)),
-    end: toDateStr(new Date(y, m, lastDay)),
+    start: toDateStr(new Date(Date.UTC(y, m, 16))),
+    end: toDateStr(new Date(Date.UTC(y, m, lastDay))),
   }
 }
 
