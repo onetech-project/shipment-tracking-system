@@ -205,7 +205,7 @@ describe('evaluateAlerts', () => {
       // now=09:00 < maxSla=10:00, but completed_time=10:30 > maxSla → trigger
       jest.setSystemTime(new Date('2025-01-01T09:00:00Z'))
       expect(
-        evaluateAlerts({ ...baseRow, completed_time: '2025-01-01T10:30:00Z' }, N, M).melewatiSla,
+        evaluateAlerts({ ...baseRow, ata_vendor_wh_destination: '2025-01-01T10:30:00Z' }, N, M).melewatiSla,
       ).toBe(true)
     })
 
@@ -213,7 +213,7 @@ describe('evaluateAlerts', () => {
       // now=10:30 > maxSla=10:00, but completed_time=09:30 < maxSla → no trigger
       jest.setSystemTime(new Date('2025-01-01T10:30:00Z'))
       expect(
-        evaluateAlerts({ ...baseRow, completed_time: '2025-01-01T09:30:00Z' }, N, M).melewatiSla,
+        evaluateAlerts({ ...baseRow, ata_vendor_wh_destination: '2025-01-01T09:30:00Z' }, N, M).melewatiSla,
       ).toBe(false)
     })
 
@@ -277,7 +277,7 @@ describe('evaluateAlerts', () => {
       // now=09:00 < maxTjph=12:00, but completed_time=13:00 > maxTjph → trigger
       jest.setSystemTime(new Date('2025-01-01T09:00:00Z'))
       expect(
-        evaluateAlerts({ ...baseRow, completed_time: '2025-01-01T13:00:00Z' }, N, M).melewatiTjph,
+        evaluateAlerts({ ...baseRow, ata_vendor_wh_destination: '2025-01-01T13:00:00Z' }, N, M).melewatiTjph,
       ).toBe(true)
     })
 
@@ -285,7 +285,7 @@ describe('evaluateAlerts', () => {
       // now=13:00 > maxTjph=12:00, but completed_time=11:00 < maxTjph → no trigger
       jest.setSystemTime(new Date('2025-01-01T13:00:00Z'))
       expect(
-        evaluateAlerts({ ...baseRow, completed_time: '2025-01-01T11:00:00Z' }, N, M).melewatiTjph,
+        evaluateAlerts({ ...baseRow, ata_vendor_wh_destination: '2025-01-01T11:00:00Z' }, N, M).melewatiTjph,
       ).toBe(false)
     })
 

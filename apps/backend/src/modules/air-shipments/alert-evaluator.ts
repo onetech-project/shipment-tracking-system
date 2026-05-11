@@ -73,7 +73,7 @@ export function evaluateAlerts(
   const nMs = nHours * 3_600_000
   const mMs = mHours * 3_600_000
 
-  const completedTime = parseDate(getFieldValue(row, 'completed_time'))
+  const completedTime = parseDate(getFieldValue(row, 'ata_vendor_wh_destination'))
   const effectiveTime = completedTime ?? now
 
   const melewatiSla = maxSla !== null && effectiveTime > maxSla
