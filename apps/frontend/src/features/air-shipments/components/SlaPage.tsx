@@ -256,7 +256,7 @@ export function SlaPage() {
   useEffect(() => {
     if (lastCompletedSheet !== 'compileaircgk') return
     const savedY = window.scrollY
-    void Promise.all([fetchAlertSummary(), fetchRoutes(), fetchRouteAlerts()]).then(() => {
+    void Promise.all([fetchAlertSummary(), fetchRoutes(), fetchRouteAlerts()]).finally(() => {
       requestAnimationFrame(() => window.scrollTo({ top: savedY, behavior: 'instant' }))
     })
     setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
