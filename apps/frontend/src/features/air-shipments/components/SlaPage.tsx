@@ -255,10 +255,16 @@ export function SlaPage() {
 
   useEffect(() => {
     if (lastCompletedSheet !== 'compileaircgk') return
-    const savedY = window.scrollY
-    void Promise.all([fetchAlertSummary(), fetchRoutes(), fetchRouteAlerts()]).finally(() => {
-      requestAnimationFrame(() => window.scrollTo({ top: savedY, behavior: 'instant' }))
-    })
+    // Silent refresh — bypass loading-state setters to prevent layout shifts that move the scroll position
+    const days = computeDays(startDate, endDate)
+    void Promise.all([
+      apiClient.get<DashboardAlertSummary>(`${TABLE_ENDPOINT}/alert-summary?days=${days}`)
+        .then(r => setSummary(r.data)).catch(() => setSummary(null)),
+      apiClient.get<{ routes: RouteOption[] }>(`${TABLE_ENDPOINT}/routes?days=${days}`)
+        .then(r => setRoutes(r.data.routes ?? [])).catch(() => setRoutes([])),
+      apiClient.get<RouteAlertRow[]>(`${TABLE_ENDPOINT}/route-alert-summary?days=${days}`)
+        .then(r => setRouteAlertData(r.data ?? [])).catch(() => setRouteAlertData([])),
+    ])
     setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastCompletedSheet])
