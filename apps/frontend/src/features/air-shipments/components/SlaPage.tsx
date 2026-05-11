@@ -324,7 +324,10 @@ export function SlaPage() {
     if (frozenColumns.includes(col)) return
     setVisibleColumns((prev) => {
       const next = { ...prev, [col]: !prev[col] }
-      saveStoredColumns(next)
+      const toStore = Object.fromEntries(
+        Object.entries(next).filter(([k]) => !frozenColumns.includes(k))
+      )
+      saveStoredColumns(toStore)
       return next
     })
   }
@@ -333,7 +336,10 @@ export function SlaPage() {
     setVisibleColumns((prev) => {
       const next = { ...prev }
       for (const col of toggleableColumns) next[col] = show
-      saveStoredColumns(next)
+      const toStore = Object.fromEntries(
+        Object.entries(next).filter(([k]) => !frozenColumns.includes(k))
+      )
+      saveStoredColumns(toStore)
       return next
     })
   }
