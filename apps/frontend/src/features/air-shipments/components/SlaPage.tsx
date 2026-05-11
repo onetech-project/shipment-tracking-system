@@ -18,10 +18,29 @@ import {
   batchLockAirShipments,
   batchDeleteAirShipments,
 } from '@/features/air-shipments/hooks/useAirShipments'
-import { DEFAULT_HIDDEN, FROZEN_KEYS, colLabel } from '@/features/air-shipments/columns.config'
+import { SLA_FROZEN_KEYS, SLA_DEFAULT_VISIBLE, colLabel } from '@/features/air-shipments/columns.config'
 import { AirShipmentsResponse, SortOrder } from '@/features/air-shipments/types'
 import { Lock, Trash2 } from 'lucide-react'
 import { AxiosError } from 'axios'
+
+const SLA_COLUMNS_STORAGE_KEY = 'sla-columns-v1'
+
+function loadStoredColumns(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(SLA_COLUMNS_STORAGE_KEY)
+    return raw ? (JSON.parse(raw) as Record<string, boolean>) : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveStoredColumns(cols: Record<string, boolean>): void {
+  try {
+    localStorage.setItem(SLA_COLUMNS_STORAGE_KEY, JSON.stringify(cols))
+  } catch {
+    // localStorage unavailable (SSR, private mode) — silently skip
+  }
+}
 
 function toDateStr(d: Date): string {
   return d.toISOString().slice(0, 10)
@@ -270,26 +289,31 @@ export function SlaPage() {
       }
     }
     return [
-      ...FROZEN_KEYS.filter((col) => cols.has(col.key)).map((c) => c.key),
-      ...Array.from(cols).filter((col) => !FROZEN_KEYS.some((c) => c.key === col)),
+      ...SLA_FROZEN_KEYS.filter((col) => cols.has(col.key)).map((c) => c.key),
+      ...Array.from(cols).filter((col) => !SLA_FROZEN_KEYS.some((c) => c.key === col)),
     ]
   }, [data])
 
   const frozenColumns = useMemo(
-    () => FROZEN_KEYS.filter((col) => allColumns.includes(col.key)).map((c) => c.key),
+    () => SLA_FROZEN_KEYS.filter((col) => allColumns.includes(col.key)).map((c) => c.key),
     [allColumns]
   )
   const toggleableColumns = useMemo(
-    () => allColumns.filter((col) => !FROZEN_KEYS.some((c) => c.key === col)),
+    () => allColumns.filter((col) => !SLA_FROZEN_KEYS.some((c) => c.key === col)),
     [allColumns]
   )
 
   useEffect(() => {
+    const stored = loadStoredColumns()
     setVisibleColumns((prev) => {
       const next = { ...prev }
       for (const col of frozenColumns) next[col] = true
       for (const col of toggleableColumns) {
-        if (!(col in next)) next[col] = !DEFAULT_HIDDEN.includes(col)
+        if (col in stored) {
+          next[col] = stored[col]
+        } else if (!(col in next)) {
+          next[col] = SLA_DEFAULT_VISIBLE.has(col)
+        }
       }
       return next
     })
@@ -298,7 +322,20 @@ export function SlaPage() {
 
   const handleColumnToggle = (col: string) => {
     if (frozenColumns.includes(col)) return
-    setVisibleColumns((prev) => ({ ...prev, [col]: !prev[col] }))
+    setVisibleColumns((prev) => {
+      const next = { ...prev, [col]: !prev[col] }
+      saveStoredColumns(next)
+      return next
+    })
+  }
+
+  const handleToggleAllColumns = (show: boolean) => {
+    setVisibleColumns((prev) => {
+      const next = { ...prev }
+      for (const col of toggleableColumns) next[col] = show
+      saveStoredColumns(next)
+      return next
+    })
   }
 
   // ── Sort ────────────────────────────────────────────────────────────────────
@@ -516,8 +553,24 @@ export function SlaPage() {
                 className="absolute right-0 top-full mt-2 min-w-[180px] max-h-72 overflow-auto rounded-lg border border-border bg-popover shadow-lg ring-1 ring-black/10 z-[100]"
                 style={{ boxShadow: '0 8px 32px 0 rgba(0,0,0,0.18)' }}
               >
-                <div className="px-3 py-2 border-b border-border text-xs font-semibold text-muted-foreground bg-muted rounded-t-lg sticky top-0 z-10">
-                  Toggle Columns
+                <div className="px-3 py-2 border-b border-border bg-muted rounded-t-lg sticky top-0 z-10 flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-muted-foreground">Toggle Columns</span>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleAllColumns(true)}
+                      className="text-xs px-2 py-0.5 rounded border border-border hover:bg-accent transition-colors"
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleAllColumns(false)}
+                      className="text-xs px-2 py-0.5 rounded border border-border hover:bg-accent transition-colors"
+                    >
+                      None
+                    </button>
+                  </div>
                 </div>
                 <div className="flex flex-col gap-1 px-3 py-2">
                   {allColumns.map((col) => (
