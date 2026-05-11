@@ -50,7 +50,7 @@ function parseDate(value: unknown): Date | null {
 export function evaluateAlerts(
   row: Record<string, unknown>,
   nHours: number,
-  mHours: number,
+  mHours: number
 ): AlertFlags {
   const now = new Date()
 
@@ -86,6 +86,17 @@ export function evaluateAlerts(
       melewatiSla: false,
       potensiMelebihiTjph: false,
       melewatiTjph: true,
+    }
+  }
+
+  // NEW: shipment already delivered — suppress in-flight alerts
+  if (completedTime !== null) {
+    return {
+      reservasiPenerbangan: false,
+      potensiMelebihiSla: false,
+      melewatiSla,
+      potensiMelebihiTjph: false,
+      melewatiTjph: false,
     }
   }
 

@@ -266,6 +266,88 @@ describe('evaluateAlerts', () => {
     })
   })
 
+  describe('ata_vendor_wh_destination exclusion', () => {
+    it('suppresses reservasiPenerbangan when ata_vendor_wh_destination is filled', () => {
+      // Without completedTime, reservasiPenerbangan would fire (now > ataOrigin+nH, no flights)
+      jest.setSystemTime(new Date('2025-01-01T09:30:00Z'))
+      expect(
+        evaluateAlerts(
+          {
+            ...baseRow,
+            atd_flight: '',
+            ata_flight: '',
+            ata_vendor_wh_destination: '2025-01-01T09:00:00Z',
+          },
+          N,
+          M,
+        ).reservasiPenerbangan,
+      ).toBe(false)
+    })
+
+    it('suppresses potensiMelebihiSla when ata_vendor_wh_destination is filled', () => {
+      // ata_flight + m > maxSla would normally fire, but completedTime blocks it
+      jest.setSystemTime(new Date('2025-01-01T08:30:00Z'))
+      expect(
+        evaluateAlerts(
+          {
+            ...baseRow,
+            ata_flight: '2025-01-01T09:30:00Z',
+            ata_vendor_wh_destination: '2025-01-01T09:00:00Z',
+          },
+          N,
+          M,
+        ).potensiMelebihiSla,
+      ).toBe(false)
+    })
+
+    it('suppresses potensiMelebihiTjph when ata_vendor_wh_destination is filled', () => {
+      // ata_flight + m > maxTjph would normally fire, but completedTime blocks it
+      jest.setSystemTime(new Date('2025-01-01T09:00:00Z'))
+      expect(
+        evaluateAlerts(
+          {
+            ...baseRow,
+            tjph: '03:00:00',
+            ata_flight: '2025-01-01T10:30:00Z',
+            ata_vendor_wh_destination: '2025-01-01T09:00:00Z',
+          },
+          N,
+          M,
+        ).potensiMelebihiTjph,
+      ).toBe(false)
+    })
+
+    it('still evaluates melewatiSla normally when ata_vendor_wh_destination is filled', () => {
+      // completedTime=09:30 < maxSla=10:00 → melewatiSla stays false
+      jest.setSystemTime(new Date('2025-01-01T10:30:00Z'))
+      expect(
+        evaluateAlerts(
+          {
+            ...baseRow,
+            ata_vendor_wh_destination: '2025-01-01T09:30:00Z',
+          },
+          N,
+          M,
+        ).melewatiSla,
+      ).toBe(false)
+    })
+
+    it('still evaluates melewatiSla as true when completedTime > maxSla', () => {
+      // completedTime=10:30 > maxSla=10:00 → melewatiSla true despite completedTime guard
+      jest.setSystemTime(new Date('2025-01-01T09:00:00Z'))
+      expect(
+        evaluateAlerts(
+          {
+            ...baseRow,
+            ata_vendor_wh_destination: '2025-01-01T10:30:00Z',
+          },
+          N,
+          M,
+        ).melewatiSla,
+      ).toBe(true)
+    })
+  })
+
   describe('melewatiTjph', () => {
     it('triggers when now > maxTjph (no ata_vendor_wh_destination)', () => {
       // ata_origin=08:00, tjph=04:00 → maxTjph=12:00; now=13:00
