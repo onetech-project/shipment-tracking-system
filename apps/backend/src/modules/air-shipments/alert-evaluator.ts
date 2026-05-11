@@ -110,10 +110,11 @@ export function evaluateAlerts(
       isEmptyValue(ataFlight),
 
     potensiMelebihiSla:
-      (ataFlightDate !== null &&
+      !melewatiSla &&
+      ((ataFlightDate !== null &&
         maxSla !== null &&
         new Date(ataFlightDate.getTime() + mMs) > maxSla) ||
-      (!isEmptyValue(atdFlight) && smuNotOnboard),
+      (!isEmptyValue(atdFlight) && smuNotOnboard)),
 
     melewatiSla,
 

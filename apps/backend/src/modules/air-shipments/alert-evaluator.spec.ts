@@ -135,6 +135,30 @@ describe('evaluateAlerts', () => {
       ).toBe(false)
     })
 
+    it('does NOT trigger when melewatiSla is true (shipment already past deadline)', () => {
+      // now=10:30 > maxSla=10:00 → melewatiSla=true; ata_flight+m would exceed maxSla but irrelevant
+      jest.setSystemTime(new Date('2025-01-01T10:30:00Z'))
+      expect(
+        evaluateAlerts(
+          { ...baseRow, ata_flight: '2025-01-01T09:30:00Z' },
+          N,
+          M,
+        ).potensiMelebihiSla,
+      ).toBe(false)
+    })
+
+    it('does NOT trigger via SMU path when melewatiSla is true', () => {
+      // now=10:30 > maxSla=10:00 → melewatiSla=true; SMU not onboard but irrelevant
+      jest.setSystemTime(new Date('2025-01-01T10:30:00Z'))
+      expect(
+        evaluateAlerts(
+          { ...baseRow, trackingan_smu: 'In Transit' },
+          N,
+          M,
+        ).potensiMelebihiSla,
+      ).toBe(false)
+    })
+
     it('does NOT trigger when sla is missing', () => {
       jest.setSystemTime(new Date('2025-01-01T09:30:00Z'))
       expect(
