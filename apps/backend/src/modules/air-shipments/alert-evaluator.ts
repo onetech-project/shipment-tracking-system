@@ -5,7 +5,7 @@ export type AlertType =
   | 'potensiMelebihiTjph'
   | 'melewatiTjph'
 
-export type AlertFilter = AlertType | 'normal'
+export type AlertFilter = AlertType | 'normal' | 'any'
 
 export interface AlertFlags {
   reservasiPenerbangan: boolean
@@ -133,7 +133,7 @@ export const ALERT_TYPES: AlertType[] = [
   'melewatiTjph',
 ]
 
-export const ALERT_FILTERS: AlertFilter[] = [...ALERT_TYPES, 'normal']
+export const ALERT_FILTERS: AlertFilter[] = [...ALERT_TYPES, 'normal', 'any']
 
 export const ALERT_TYPE_LABELS: Record<AlertType, string> = {
   reservasiPenerbangan: 'Reservasi Penerbangan',

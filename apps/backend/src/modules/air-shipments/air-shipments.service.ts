@@ -514,6 +514,9 @@ export class AirShipmentsService {
         if (alertFilter === 'normal') {
           return !Object.values(alerts).some(Boolean)
         }
+        if (alertFilter === 'any') {
+          return Object.values(alerts).some(Boolean)
+        }
         return alerts[alertFilter as AlertType]
       })
   }

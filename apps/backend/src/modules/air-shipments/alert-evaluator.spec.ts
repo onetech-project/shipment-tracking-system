@@ -463,4 +463,17 @@ describe('evaluateAlerts', () => {
       'melewatiTjph',
     ])
   })
+
+  it("ALERT_FILTERS array contains all 5 alert types plus 'normal' and 'any'", () => {
+    const { ALERT_FILTERS } = require('./alert-evaluator')
+    expect(ALERT_FILTERS).toEqual([
+      'reservasiPenerbangan',
+      'potensiMelebihiSla',
+      'melewatiSla',
+      'potensiMelebihiTjph',
+      'melewatiTjph',
+      'normal',
+      'any',
+    ])
+  })
 })
