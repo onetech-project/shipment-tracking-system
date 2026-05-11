@@ -27,14 +27,21 @@ function toDateStr(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
-function defaultStartDate(): string {
-  const d = new Date()
-  d.setDate(d.getDate() - 15)
-  return toDateStr(d)
-}
-
-function defaultEndDate(): string {
-  return toDateStr(new Date())
+function defaultDateRange(): { start: string; end: string } {
+  const today = new Date()
+  const y = today.getFullYear()
+  const m = today.getMonth() // 0-indexed
+  if (today.getDate() <= 15) {
+    return {
+      start: toDateStr(new Date(y, m, 1)),
+      end: toDateStr(new Date(y, m, 15)),
+    }
+  }
+  const lastDay = new Date(y, m + 1, 0).getDate()
+  return {
+    start: toDateStr(new Date(y, m, 16)),
+    end: toDateStr(new Date(y, m, lastDay)),
+  }
 }
 
 function computeDays(startDate: string, endDate: string): number {
@@ -70,18 +77,13 @@ export function SlaPage() {
   const { isConnected, lastSyncAt, lastCompletedSheet } = useSyncNotification()
   const { params: generalParams, reload: reloadGeneralParams, loaded: paramsLoaded } = useGeneralParams()
 
-  const daysRange = useMemo(() => {
-    const p = generalParams.find((p) => p.key === 'days_range')
-    return p ? parseInt(p.value, 10) || 15 : 15
-  }, [generalParams])
-
   const tableRef = useRef<HTMLDivElement | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const shouldScrollOnLoad = useRef(!!(searchParams.get('alert') || searchParams.get('route')))
   const pendingScrollRef = useRef(false)
 
-  const [startDate, setStartDate] = useState(defaultStartDate)
-  const [endDate, setEndDate] = useState(defaultEndDate)
+  const [startDate, setStartDate] = useState(() => defaultDateRange().start)
+  const [endDate, setEndDate] = useState(() => defaultDateRange().end)
   const [dateError, setDateError] = useState<string | null>(null)
 
   const [summary, setSummary] = useState<DashboardAlertSummary | null>(null)
@@ -184,16 +186,6 @@ export function SlaPage() {
   }
 
   // ── Effects ─────────────────────────────────────────────────────────────────
-
-  const initialDateSet = useRef(false)
-  useEffect(() => {
-    if (!paramsLoaded || initialDateSet.current) return
-    initialDateSet.current = true
-    const d = new Date()
-    d.setDate(d.getDate() - daysRange)
-    setStartDate(toDateStr(d))
-    setEndDate(defaultEndDate())
-  }, [paramsLoaded, daysRange])
 
   useEffect(() => {
     if (!paramsLoaded) return
