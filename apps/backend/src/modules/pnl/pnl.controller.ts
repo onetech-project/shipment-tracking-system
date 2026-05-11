@@ -21,9 +21,13 @@ export class PnlController {
     return this.pnlService.getSummary(cycle, start, end)
   }
 
-  @Get('trend')
-  getTrend() {
-    return this.pnlService.getTrend()
+  @Get('daily-margin')
+  getDailyMargin(
+    @Query('cycle') cycle?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+  ) {
+    return this.pnlService.getDailyMargin(cycle, start, end)
   }
 
   @Get('awb-drilldown')
@@ -50,5 +54,68 @@ export class PnlController {
   @Get('data-quality')
   getDataQuality() {
     return this.pnlService.getDataQuality()
+  }
+
+  @Get('breakdown/revenue-by-route')
+  getRevenueByRoute(
+    @Query('cycle') cycle?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+  ) {
+    return this.pnlService.getRevenueByRoute(cycle, start, end)
+  }
+
+  @Get('breakdown/cost-totals')
+  getCostTotals(
+    @Query('cycle') cycle?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+  ) {
+    return this.pnlService.getCostTotals(cycle, start, end)
+  }
+
+  @Get('breakdown/cost-by-vendor')
+  getCostByVendor(
+    @Query('cycle') cycle?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+  ) {
+    return this.pnlService.getCostByVendor(cycle, start, end)
+  }
+
+  @Get('breakdown/cost-by-ra')
+  getCostByRa(
+    @Query('cycle') cycle?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+  ) {
+    return this.pnlService.getCostByRa(cycle, start, end)
+  }
+
+  @Get('breakdown/cost-by-sg-out')
+  getCostBySgOut(
+    @Query('cycle') cycle?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+  ) {
+    return this.pnlService.getCostBySgOut(cycle, start, end)
+  }
+
+  @Get('breakdown/cost-by-sg-in')
+  getCostBySgIn(
+    @Query('cycle') cycle?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+  ) {
+    return this.pnlService.getCostBySgIn(cycle, start, end)
+  }
+
+  @Get('breakdown/profit-by-route')
+  getProfitByRoute(
+    @Query('cycle') cycle?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+  ) {
+    return this.pnlService.getProfitByRoute(cycle, start, end)
   }
 }

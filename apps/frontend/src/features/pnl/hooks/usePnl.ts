@@ -15,12 +15,12 @@ export interface PnlSummary {
   grossMarginPct: number
 }
 
-export interface PnlTrendItem {
-  cyclePeriod: string
-  totalRevenue: number
-  totalCost: number
-  grossProfit: number
-  totalTos: number
+export interface PnlDailyMarginItem {
+  date: string
+  revenue: number
+  cost: number
+  marginPct: number | null
+  hasIncompleteCost: boolean
 }
 
 export interface PnlAwbRow {
@@ -33,6 +33,7 @@ export interface PnlAwbRow {
   costSmu: number | null
   costRa: number | null
   costSgOut: number | null
+  costSgIn: number | null
   totalCost: number | null
   grossProfit: number | null
   grossMarginPct: number | null
@@ -46,6 +47,7 @@ export interface PnlToRow {
   costSmu: number | null
   costRa: number | null
   costSg: number | null
+  costSgIn: number | null
   totalCost: number | null
   grossProfit: number | null
   marginPct: number | null
@@ -55,6 +57,54 @@ export interface PnlDataQualityItem {
   toNumber: string | null
   awb: string
   issue: string
+}
+
+export interface PnlRevenueByRouteItem {
+  route: string
+  totalWeight: number
+  totalRevenue: number
+}
+
+export interface PnlCostTotals {
+  smu: number
+  ra: number
+  sgOut: number
+  sgIn: number
+}
+
+export interface PnlAirlineCostItem {
+  airline: string
+  totalWeight: number
+  totalCost: number
+}
+
+export interface PnlVendorCostItem {
+  vendor: string
+  totalWeight: number
+  totalCost: number
+  airlines: PnlAirlineCostItem[]
+}
+
+export interface PnlNamedCostItem {
+  name: string
+  totalWeight: number
+  totalCost: number
+}
+
+export interface PnlSgInRouteCostItem {
+  route: string
+  totalWeight: number
+  totalCost: number
+}
+
+export interface PnlProfitByRouteItem {
+  route: string
+  totalRevenue: number
+  totalMargin: number
+  avgWeightPerDay: number
+  avgCostPerKg: number
+  avgMarginPerKg: number
+  avgMarginPerDay: number
 }
 
 function filterToParams(filter: PnlFilter) {
@@ -81,11 +131,15 @@ export function usePnlSummary(filter: PnlFilter | undefined) {
   })
 }
 
-export function usePnlTrend() {
-  return useQuery<PnlTrendItem[]>({
-    queryKey: ['pnl', 'trend'],
-    queryFn: () => apiClient.get('/pnl/trend').then((r) => r.data),
-    staleTime: 5 * 60 * 1000,
+export function usePnlDailyMargin(filter: PnlFilter | undefined) {
+  return useQuery<PnlDailyMarginItem[]>({
+    queryKey: ['pnl', 'daily-margin', filter],
+    queryFn: () =>
+      apiClient
+        .get('/pnl/daily-margin', { params: filterToParams(filter!) })
+        .then((r) => r.data),
+    enabled: !!filter,
+    staleTime: 60 * 1000,
   })
 }
 
@@ -118,5 +172,89 @@ export function usePnlDataQuality() {
     queryKey: ['pnl', 'data-quality'],
     queryFn: () => apiClient.get('/pnl/data-quality').then((r) => r.data),
     staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function usePnlRevenueByRoute(filter: PnlFilter | undefined) {
+  return useQuery<PnlRevenueByRouteItem[]>({
+    queryKey: ['pnl', 'revenue-by-route', filter],
+    queryFn: () =>
+      apiClient
+        .get('/pnl/breakdown/revenue-by-route', { params: filterToParams(filter!) })
+        .then((r) => r.data),
+    enabled: !!filter,
+    staleTime: 60 * 1000,
+  })
+}
+
+export function usePnlCostTotals(filter: PnlFilter | undefined) {
+  return useQuery<PnlCostTotals>({
+    queryKey: ['pnl', 'cost-totals', filter],
+    queryFn: () =>
+      apiClient
+        .get('/pnl/breakdown/cost-totals', { params: filterToParams(filter!) })
+        .then((r) => r.data),
+    enabled: !!filter,
+    staleTime: 60 * 1000,
+  })
+}
+
+export function usePnlCostByVendor(filter: PnlFilter | undefined, enabled = true) {
+  return useQuery<PnlVendorCostItem[]>({
+    queryKey: ['pnl', 'cost-by-vendor', filter],
+    queryFn: () =>
+      apiClient
+        .get('/pnl/breakdown/cost-by-vendor', { params: filterToParams(filter!) })
+        .then((r) => r.data),
+    enabled: !!filter && enabled,
+    staleTime: 60 * 1000,
+  })
+}
+
+export function usePnlCostByRa(filter: PnlFilter | undefined, enabled = true) {
+  return useQuery<PnlNamedCostItem[]>({
+    queryKey: ['pnl', 'cost-by-ra', filter],
+    queryFn: () =>
+      apiClient
+        .get('/pnl/breakdown/cost-by-ra', { params: filterToParams(filter!) })
+        .then((r) => r.data),
+    enabled: !!filter && enabled,
+    staleTime: 60 * 1000,
+  })
+}
+
+export function usePnlCostBySgOut(filter: PnlFilter | undefined, enabled = true) {
+  return useQuery<PnlNamedCostItem[]>({
+    queryKey: ['pnl', 'cost-by-sg-out', filter],
+    queryFn: () =>
+      apiClient
+        .get('/pnl/breakdown/cost-by-sg-out', { params: filterToParams(filter!) })
+        .then((r) => r.data),
+    enabled: !!filter && enabled,
+    staleTime: 60 * 1000,
+  })
+}
+
+export function usePnlCostBySgIn(filter: PnlFilter | undefined, enabled = true) {
+  return useQuery<PnlSgInRouteCostItem[]>({
+    queryKey: ['pnl', 'cost-by-sg-in', filter],
+    queryFn: () =>
+      apiClient
+        .get('/pnl/breakdown/cost-by-sg-in', { params: filterToParams(filter!) })
+        .then((r) => r.data),
+    enabled: !!filter && enabled,
+    staleTime: 60 * 1000,
+  })
+}
+
+export function usePnlProfitByRoute(filter: PnlFilter | undefined) {
+  return useQuery<PnlProfitByRouteItem[]>({
+    queryKey: ['pnl', 'profit-by-route', filter],
+    queryFn: () =>
+      apiClient
+        .get('/pnl/breakdown/profit-by-route', { params: filterToParams(filter!) })
+        .then((r) => r.data),
+    enabled: !!filter,
+    staleTime: 60 * 1000,
   })
 }

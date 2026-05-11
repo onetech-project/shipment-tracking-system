@@ -1,12 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { Fragment, useState, useEffect } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { usePnlAwbDrilldown, usePnlAwbTos, PnlFilter, PnlToRow } from '../hooks/usePnl'
-
-const fmt = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 })
-const pct = (n: number | null) => (n == null ? '—' : `${n.toFixed(1)}%`)
-const num = (n: number) => n.toLocaleString('id-ID')
+import { fmt, num, pct } from '../utils/format'
 
 interface ToSubTableProps {
   awb: string
@@ -18,7 +15,7 @@ function ToSubTable({ awb, filter }: ToSubTableProps) {
 
   return (
     <tr>
-      <td colSpan={12} className="p-0">
+      <td colSpan={13} className="p-0">
         <div className="border-t border-b bg-muted/20 px-4 py-2">
           {isLoading && <p className="py-2 text-xs text-muted-foreground">Loading TOs…</p>}
           {data && data.length === 0 && (
@@ -33,7 +30,8 @@ function ToSubTable({ awb, filter }: ToSubTableProps) {
                   <th className="py-1 pr-3 text-right">Revenue</th>
                   <th className="py-1 pr-3 text-right">Cost SMU</th>
                   <th className="py-1 pr-3 text-right">Cost RA</th>
-                  <th className="py-1 pr-3 text-right">Cost SG</th>
+                  <th className="py-1 pr-3 text-right">Cost SG Out</th>
+                  <th className="py-1 pr-3 text-right">Cost SG In</th>
                   <th className="py-1 pr-3 text-right">Total Cost</th>
                   <th className="py-1 pr-3 text-right">GP</th>
                   <th className="py-1 text-right">Margin</th>
@@ -48,6 +46,7 @@ function ToSubTable({ awb, filter }: ToSubTableProps) {
                     <td className="py-1 pr-3 text-right">{to.costSmu != null ? fmt.format(to.costSmu) : <span className="text-amber-600">NULL</span>}</td>
                     <td className="py-1 pr-3 text-right">{to.costRa != null ? fmt.format(to.costRa) : <span className="text-amber-600">NULL</span>}</td>
                     <td className="py-1 pr-3 text-right">{to.costSg != null ? fmt.format(to.costSg) : <span className="text-amber-600">NULL</span>}</td>
+                    <td className="py-1 pr-3 text-right">{to.costSgIn != null ? fmt.format(to.costSgIn) : <span className="text-amber-600">NULL</span>}</td>
                     <td className="py-1 pr-3 text-right">{to.totalCost != null ? fmt.format(to.totalCost) : <span className="text-amber-600">NULL</span>}</td>
                     <td className="py-1 pr-3 text-right">{to.grossProfit != null ? fmt.format(to.grossProfit) : '—'}</td>
                     <td className="py-1 text-right font-medium">{pct(to.marginPct)}</td>
@@ -69,12 +68,26 @@ interface PnlAwbDrilldownProps {
 export function PnlAwbDrilldown({ filter }: PnlAwbDrilldownProps) {
   const [page, setPage] = useState(1)
   const [expandedAwb, setExpandedAwb] = useState<string | null>(null)
-  const { data, isLoading } = usePnlAwbDrilldown(filter, page)
+
+  useEffect(() => {
+    setPage(1)
+    setExpandedAwb(null)
+  }, [filter])
+  const { data, isLoading, isError, refetch } = usePnlAwbDrilldown(filter, page)
   const totalPages = data ? Math.ceil(data.total / 50) : 0
   const title = filter.mode === 'cycle' ? filter.cycle : `${filter.start} → ${filter.end}`
 
   function toggleAwb(awb: string) {
     setExpandedAwb((prev) => (prev === awb ? null : awb))
+  }
+
+  if (isError) {
+    return (
+      <div className="rounded-lg border bg-card p-6 text-center">
+        <p className="text-sm text-muted-foreground">Failed to load AWB drilldown.</p>
+        <button onClick={() => refetch()} className="mt-2 text-sm text-primary underline">Retry</button>
+      </div>
+    )
   }
 
   return (
@@ -95,7 +108,8 @@ export function PnlAwbDrilldown({ filter }: PnlAwbDrilldownProps) {
               <th className="px-3 py-2 text-right">Revenue</th>
               <th className="px-3 py-2 text-right">Cost SMU</th>
               <th className="px-3 py-2 text-right">Cost RA</th>
-              <th className="px-3 py-2 text-right">Cost SG</th>
+              <th className="px-3 py-2 text-right">Cost SG Out</th>
+              <th className="px-3 py-2 text-right">Cost SG In</th>
               <th className="px-3 py-2 text-right">Total Cost</th>
               <th className="px-3 py-2 text-right">GP</th>
               <th className="px-3 py-2 text-right">Margin</th>
@@ -103,7 +117,7 @@ export function PnlAwbDrilldown({ filter }: PnlAwbDrilldownProps) {
           </thead>
           <tbody>
             {isLoading && (
-              <tr><td colSpan={12} className="px-3 py-4 text-center text-muted-foreground">Loading…</td></tr>
+              <tr><td colSpan={13} className="px-3 py-4 text-center text-muted-foreground">Loading…</td></tr>
             )}
             {data?.data.map((row, idx) => {
               const isExpanded = expandedAwb === row.awb
@@ -113,9 +127,8 @@ export function PnlAwbDrilldown({ filter }: PnlAwbDrilldownProps) {
                   ? 'bg-muted/70'
                   : ''
               return (
-                <>
+                <Fragment key={row.awb}>
                   <tr
-                    key={row.awb}
                     className={`border-b cursor-pointer hover:bg-muted/50 ${rowBg}`}
                     onClick={() => toggleAwb(row.awb)}
                   >
@@ -130,14 +143,13 @@ export function PnlAwbDrilldown({ filter }: PnlAwbDrilldownProps) {
                     <td className="px-3 py-2 text-right">{row.costSmu != null ? fmt.format(row.costSmu) : <span className="text-amber-600">NULL</span>}</td>
                     <td className="px-3 py-2 text-right">{row.costRa != null ? fmt.format(row.costRa) : <span className="text-amber-600">NULL</span>}</td>
                     <td className="px-3 py-2 text-right">{row.costSgOut != null ? fmt.format(row.costSgOut) : <span className="text-amber-600">NULL</span>}</td>
+                    <td className="px-3 py-2 text-right">{row.costSgIn != null ? fmt.format(row.costSgIn) : <span className="text-amber-600">NULL</span>}</td>
                     <td className="px-3 py-2 text-right">{row.totalCost != null ? fmt.format(row.totalCost) : <span className="text-amber-600">NULL</span>}</td>
                     <td className="px-3 py-2 text-right">{row.grossProfit != null ? fmt.format(row.grossProfit) : '—'}</td>
                     <td className="px-3 py-2 text-right font-medium">{pct(row.grossMarginPct)}</td>
                   </tr>
-                  {isExpanded && (
-                    <ToSubTable key={`${row.awb}-tos`} awb={row.awb} filter={filter} />
-                  )}
-                </>
+                  {isExpanded && <ToSubTable awb={row.awb} filter={filter} />}
+                </Fragment>
               )
             })}
           </tbody>
