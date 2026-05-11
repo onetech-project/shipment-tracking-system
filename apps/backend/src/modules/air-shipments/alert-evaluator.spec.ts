@@ -346,6 +346,28 @@ describe('evaluateAlerts', () => {
         ).melewatiSla,
       ).toBe(true)
     })
+
+    it('melewatiTjph still fires when completedTime > maxTjph (melewatiTjph early-return takes priority)', () => {
+      // ata_origin=08:00, tjph=04:00 → maxTjph=12:00
+      // completedTime=13:00 > maxTjph → melewatiTjph early-return fires before completedTime guard
+      jest.setSystemTime(new Date('2025-01-01T09:00:00Z'))
+      expect(
+        evaluateAlerts(
+          {
+            ...baseRow,
+            ata_vendor_wh_destination: '2025-01-01T13:00:00Z',
+          },
+          N,
+          M,
+        ),
+      ).toEqual({
+        reservasiPenerbangan: false,
+        potensiMelebihiSla: false,
+        melewatiSla: false,
+        potensiMelebihiTjph: false,
+        melewatiTjph: true,
+      })
+    })
   })
 
   describe('melewatiTjph', () => {

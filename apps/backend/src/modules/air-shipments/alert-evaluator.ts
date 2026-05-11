@@ -89,7 +89,8 @@ export function evaluateAlerts(
     }
   }
 
-  // NEW: shipment already delivered — suppress in-flight alerts
+  // Shipment already delivered — suppress in-flight alerts.
+  // melewatiTjph is always false here (handled by the early-return above).
   if (completedTime !== null) {
     return {
       reservasiPenerbangan: false,
