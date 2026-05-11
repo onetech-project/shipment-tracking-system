@@ -58,8 +58,17 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Toolti
 }
 
 export function PnlDailyMarginChart({ filter }: PnlDailyMarginChartProps) {
-  const { data, isLoading } = usePnlDailyMargin(filter)
+  const { data, isLoading, isError, refetch } = usePnlDailyMargin(filter)
   const hasAnyIncomplete = data?.some((d) => d.hasIncompleteCost) ?? false
+
+  if (isError) {
+    return (
+      <div className="rounded-lg border bg-card p-6 text-center">
+        <p className="text-sm text-muted-foreground">Failed to load daily margin chart.</p>
+        <button onClick={() => refetch()} className="mt-2 text-sm text-primary underline">Retry</button>
+      </div>
+    )
+  }
 
   return (
     <div className="rounded-lg border bg-card p-4">

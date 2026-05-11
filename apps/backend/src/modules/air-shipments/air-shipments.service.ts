@@ -584,6 +584,10 @@ export class AirShipmentsService {
       }
     }
 
+    if (totalUpserted > 0) {
+      await this.refreshPnlViewIfNeeded(affectedTables)
+    }
+
     if (totalUpserted > 0 && this.gateway) {
       const payload = {
         affectedTables,
@@ -603,6 +607,25 @@ export class AirShipmentsService {
     }
 
     return { affectedTables, totalUpserted }
+  }
+
+  private static readonly PNL_TABLES = new Set([
+    'air_shipments_compileaircgk',
+    'air_shipments_smu_rate_cgk_spx',
+    'air_shipments_smu',
+    'air_shipments_ra',
+    'air_shipments_sg_outgoing',
+    'air_shipments_sg_incoming',
+  ])
+
+  private async refreshPnlViewIfNeeded(affectedTables: string[]): Promise<void> {
+    if (!affectedTables.some((t) => AirShipmentsService.PNL_TABLES.has(t))) return
+    try {
+      await this.dataSource.query('REFRESH MATERIALIZED VIEW CONCURRENTLY v_pnl_to')
+      this.logger.log('[sync] v_pnl_to refreshed')
+    } catch (err) {
+      this.logger.error('[sync] v_pnl_to refresh failed', err)
+    }
   }
 
   private async processSingleSheet(sheet: SheetResult): Promise<{

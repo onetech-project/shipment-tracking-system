@@ -68,12 +68,21 @@ interface PnlAwbDrilldownProps {
 export function PnlAwbDrilldown({ filter }: PnlAwbDrilldownProps) {
   const [page, setPage] = useState(1)
   const [expandedAwb, setExpandedAwb] = useState<string | null>(null)
-  const { data, isLoading } = usePnlAwbDrilldown(filter, page)
+  const { data, isLoading, isError, refetch } = usePnlAwbDrilldown(filter, page)
   const totalPages = data ? Math.ceil(data.total / 50) : 0
   const title = filter.mode === 'cycle' ? filter.cycle : `${filter.start} → ${filter.end}`
 
   function toggleAwb(awb: string) {
     setExpandedAwb((prev) => (prev === awb ? null : awb))
+  }
+
+  if (isError) {
+    return (
+      <div className="rounded-lg border bg-card p-6 text-center">
+        <p className="text-sm text-muted-foreground">Failed to load AWB drilldown.</p>
+        <button onClick={() => refetch()} className="mt-2 text-sm text-primary underline">Retry</button>
+      </div>
+    )
   }
 
   return (

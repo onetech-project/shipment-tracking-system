@@ -7,14 +7,23 @@ const ISSUE_LABELS: Record<string, string> = {
   smu_lookup_failed:       'SMU rate not found',
   ra_lookup_failed:        'RA rate not found',
   sg_lookup_failed:        'SG Outgoing rate not found',
+  sg_in_lookup_failed:     'SG Incoming rate not found',
   all_cost_lookup_failed:  'All cost lookups failed',
   unknown:                 'Unknown cost issue',
 }
 
 export function PnlDataQuality() {
-  const { data, isLoading } = usePnlDataQuality()
+  const { data, isLoading, isError, refetch } = usePnlDataQuality()
 
   if (isLoading) return null
+  if (isError) {
+    return (
+      <div className="rounded-lg border bg-card p-4 text-center">
+        <p className="text-sm text-muted-foreground">Failed to load data quality report.</p>
+        <button onClick={() => refetch()} className="mt-2 text-sm text-primary underline">Retry</button>
+      </div>
+    )
+  }
   if (!data || data.length === 0) return null
 
   return (

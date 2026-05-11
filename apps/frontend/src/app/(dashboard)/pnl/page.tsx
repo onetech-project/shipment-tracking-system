@@ -40,7 +40,7 @@ function PnlSkeleton() {
 type FilterMode = 'cycle' | 'range'
 
 export default function PnlPage() {
-  const { data: cycles, isLoading: isLoadingCycles } = usePnlCycles()
+  const { data: cycles, isLoading: isLoadingCycles, isError: isCyclesError, refetch: refetchCycles } = usePnlCycles()
   const [mode, setMode] = useState<FilterMode>('cycle')
   const [cycle, setCycle] = useState<string | undefined>(undefined)
   const [startDate, setStartDate] = useState('')
@@ -58,8 +58,9 @@ export default function PnlPage() {
       ? cycle ? { mode: 'cycle', cycle } : undefined
       : startDate && endDate ? { mode: 'range', start: startDate, end: endDate } : undefined
 
-  const { data: summary, isLoading: isSummaryLoading } = usePnlSummary(filter)
+  const { data: summary, isLoading: isSummaryLoading, isError: isSummaryError, refetch: refetchSummary } = usePnlSummary(filter)
   const isPageLoading = !cycles || (!!filter && isSummaryLoading && !summary)
+  const isPageError = isCyclesError || isSummaryError
 
   const cycleDateHint =
     cycle && mode === 'cycle'
@@ -135,7 +136,19 @@ export default function PnlPage() {
 
       <PnlFormulaPanel />
 
-      {isPageLoading ? (
+      {isPageError ? (
+        <div className="rounded-lg border bg-card p-8 text-center">
+          <p className="text-sm text-muted-foreground">
+            {isCyclesError ? 'Failed to load billing cycles.' : 'Failed to load summary data.'}
+          </p>
+          <button
+            onClick={() => isCyclesError ? refetchCycles() : refetchSummary()}
+            className="mt-2 text-sm text-primary underline"
+          >
+            Retry
+          </button>
+        </div>
+      ) : isPageLoading ? (
         <PnlSkeleton />
       ) : (
         <>
