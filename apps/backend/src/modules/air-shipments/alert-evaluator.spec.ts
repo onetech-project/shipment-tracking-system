@@ -195,22 +195,22 @@ describe('evaluateAlerts', () => {
   })
 
   describe('melewatiSla', () => {
-    it('triggers when now > maxSla (no completed_time)', () => {
+    it('triggers when now > maxSla (no ata_vendor_wh_destination)', () => {
       // ata_origin=08:00, sla=02:00 → maxSla=10:00; now=10:30
       jest.setSystemTime(new Date('2025-01-01T10:30:00Z'))
       expect(evaluateAlerts(baseRow, N, M).melewatiSla).toBe(true)
     })
 
-    it('triggers when completed_time > maxSla (even if now < maxSla)', () => {
-      // now=09:00 < maxSla=10:00, but completed_time=10:30 > maxSla → trigger
+    it('triggers when ata_vendor_wh_destination > maxSla (even if now < maxSla)', () => {
+      // now=09:00 < maxSla=10:00, but ata_vendor_wh_destination=10:30 > maxSla → trigger
       jest.setSystemTime(new Date('2025-01-01T09:00:00Z'))
       expect(
         evaluateAlerts({ ...baseRow, ata_vendor_wh_destination: '2025-01-01T10:30:00Z' }, N, M).melewatiSla,
       ).toBe(true)
     })
 
-    it('does NOT trigger when completed_time <= maxSla (even if now > maxSla)', () => {
-      // now=10:30 > maxSla=10:00, but completed_time=09:30 < maxSla → no trigger
+    it('does NOT trigger when ata_vendor_wh_destination <= maxSla (even if now > maxSla)', () => {
+      // now=10:30 > maxSla=10:00, but ata_vendor_wh_destination=09:30 < maxSla → no trigger
       jest.setSystemTime(new Date('2025-01-01T10:30:00Z'))
       expect(
         evaluateAlerts({ ...baseRow, ata_vendor_wh_destination: '2025-01-01T09:30:00Z' }, N, M).melewatiSla,
@@ -267,22 +267,22 @@ describe('evaluateAlerts', () => {
   })
 
   describe('melewatiTjph', () => {
-    it('triggers when now > maxTjph (no completed_time)', () => {
+    it('triggers when now > maxTjph (no ata_vendor_wh_destination)', () => {
       // ata_origin=08:00, tjph=04:00 → maxTjph=12:00; now=13:00
       jest.setSystemTime(new Date('2025-01-01T13:00:00Z'))
       expect(evaluateAlerts(baseRow, N, M).melewatiTjph).toBe(true)
     })
 
-    it('triggers when completed_time > maxTjph (even if now < maxTjph)', () => {
-      // now=09:00 < maxTjph=12:00, but completed_time=13:00 > maxTjph → trigger
+    it('triggers when ata_vendor_wh_destination > maxTjph (even if now < maxTjph)', () => {
+      // now=09:00 < maxTjph=12:00, but ata_vendor_wh_destination=13:00 > maxTjph → trigger
       jest.setSystemTime(new Date('2025-01-01T09:00:00Z'))
       expect(
         evaluateAlerts({ ...baseRow, ata_vendor_wh_destination: '2025-01-01T13:00:00Z' }, N, M).melewatiTjph,
       ).toBe(true)
     })
 
-    it('does NOT trigger when completed_time <= maxTjph (even if now > maxTjph)', () => {
-      // now=13:00 > maxTjph=12:00, but completed_time=11:00 < maxTjph → no trigger
+    it('does NOT trigger when ata_vendor_wh_destination <= maxTjph (even if now > maxTjph)', () => {
+      // now=13:00 > maxTjph=12:00, but ata_vendor_wh_destination=11:00 < maxTjph → no trigger
       jest.setSystemTime(new Date('2025-01-01T13:00:00Z'))
       expect(
         evaluateAlerts({ ...baseRow, ata_vendor_wh_destination: '2025-01-01T11:00:00Z' }, N, M).melewatiTjph,
