@@ -16,6 +16,7 @@ export interface PnlDailyMarginItem {
   revenue: number
   cost: number
   marginPct: number | null
+  hasIncompleteCost: boolean
 }
 
 export interface PnlAwbRow {
@@ -208,7 +209,8 @@ export class PnlService {
       SELECT
         TO_CHAR(TO_TIMESTAMP(completed_time, 'DD-Mon-YYYY HH24:MI')::DATE, 'YYYY-MM-DD') AS date,
         COALESCE(SUM(revenue_total), 0) AS revenue,
-        COALESCE(SUM(cost_to), 0)       AS cost
+        COALESCE(SUM(cost_to), 0)       AS cost,
+        BOOL_OR(cost_to IS NULL)        AS has_incomplete_cost
       FROM v_pnl_to
       WHERE ${where}
         AND completed_time IS NOT NULL
@@ -227,6 +229,7 @@ export class PnlService {
         revenue,
         cost,
         marginPct: revenue > 0 ? (gp / revenue) * 100 : null,
+        hasIncompleteCost: r.has_incomplete_cost === true || r.has_incomplete_cost === 't',
       }
     })
   }
@@ -260,7 +263,7 @@ export class PnlService {
           SUM(cost_sg_in_to)                      AS cost_sg_in,
           MAX(cost_total_awb) + COALESCE(SUM(cost_sg_in_to), 0) AS total_cost,
           COALESCE(SUM(gross_profit_to), 0)       AS gross_profit,
-          (MAX(cost_total_awb) IS NULL)            AS has_null_cost
+          (MAX(cost_total_awb) IS NULL OR MAX(cost_sg_in_to) IS NULL) AS has_null_cost
         FROM v_pnl_to
         WHERE ${where}
         GROUP BY awb, vendor, airline

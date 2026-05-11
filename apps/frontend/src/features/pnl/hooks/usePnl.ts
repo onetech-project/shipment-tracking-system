@@ -20,6 +20,7 @@ export interface PnlDailyMarginItem {
   revenue: number
   cost: number
   marginPct: number | null
+  hasIncompleteCost: boolean
 }
 
 export interface PnlAwbRow {

@@ -9,10 +9,38 @@ import { PnlAwbDrilldown } from '@/features/pnl/components/PnlAwbDrilldown'
 import { PnlDataQuality } from '@/features/pnl/components/PnlDataQuality'
 import { PnlFormulaPanel } from '@/features/pnl/components/PnlFormulaPanel'
 
+function PnlSkeleton() {
+  return (
+    <div className="space-y-6 animate-pulse">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="rounded-lg border bg-card p-4 space-y-2">
+            <div className="h-3 w-20 rounded bg-muted" />
+            <div className="h-6 w-28 rounded bg-muted" />
+            <div className="h-3 w-16 rounded bg-muted opacity-60" />
+          </div>
+        ))}
+      </div>
+      <div className="rounded-lg border bg-card p-4">
+        <div className="mb-4 h-4 w-48 rounded bg-muted" />
+        <div className="h-[280px] rounded bg-muted opacity-50" />
+      </div>
+      <div className="rounded-lg border bg-card p-4">
+        <div className="mb-3 h-4 w-32 rounded bg-muted" />
+        <div className="space-y-2">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="h-9 rounded bg-muted opacity-50" />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 type FilterMode = 'cycle' | 'range'
 
 export default function PnlPage() {
-  const { data: cycles } = usePnlCycles()
+  const { data: cycles, isLoading: isLoadingCycles } = usePnlCycles()
   const [mode, setMode] = useState<FilterMode>('cycle')
   const [cycle, setCycle] = useState<string | undefined>(undefined)
   const [startDate, setStartDate] = useState('')
@@ -30,7 +58,8 @@ export default function PnlPage() {
       ? cycle ? { mode: 'cycle', cycle } : undefined
       : startDate && endDate ? { mode: 'range', start: startDate, end: endDate } : undefined
 
-  const { data: summary, isLoading } = usePnlSummary(filter)
+  const { data: summary, isLoading: isSummaryLoading } = usePnlSummary(filter)
+  const isPageLoading = !cycles || (!!filter && isSummaryLoading && !summary)
 
   const cycleDateHint =
     cycle && mode === 'cycle'
@@ -106,14 +135,19 @@ export default function PnlPage() {
 
       <PnlFormulaPanel />
 
-      {isLoading && <p className="text-muted-foreground text-sm">Loading summary…</p>}
-      {summary && (
-        <PnlKpiCards summary={summary} activeKpi={activeKpi} onSelect={handleKpiSelect} />
+      {isPageLoading ? (
+        <PnlSkeleton />
+      ) : (
+        <>
+          {summary && (
+            <PnlKpiCards summary={summary} activeKpi={activeKpi} onSelect={handleKpiSelect} />
+          )}
+          {filter && <PnlDailyMarginChart filter={filter} />}
+          {filter && <PnlBreakdownPanel filter={filter} activeKpi={activeKpi} />}
+          {filter && <PnlAwbDrilldown filter={filter} />}
+          <PnlDataQuality />
+        </>
       )}
-      {filter && <PnlDailyMarginChart filter={filter} />}
-      {filter && <PnlBreakdownPanel filter={filter} activeKpi={activeKpi} />}
-      {filter && <PnlAwbDrilldown filter={filter} />}
-      <PnlDataQuality />
     </div>
   )
 }

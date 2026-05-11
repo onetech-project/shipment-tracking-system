@@ -81,7 +81,6 @@ export class PnlViewAddSgIncoming20260508000002 implements MigrationInterface {
             * (c.gross_weight / NULLIF(ac.sum_gw_per_awb, 0))
           - COALESCE(c.gross_weight * sgi.sg_inc, 0)                        AS gross_profit_to
       FROM air_shipments_compileaircgk c
-      JOIN awb_totals at ON at.awb = c.awb
       LEFT JOIN booking  b  ON b.awb  = c.awb
       LEFT JOIN awb_cost ac ON ac.awb = c.awb
       LEFT JOIN air_shipments_sg_incoming sgi
@@ -159,7 +158,6 @@ export class PnlViewAddSgIncoming20260508000002 implements MigrationInterface {
           - (ac.cost_smu + ac.cost_ra + ac.cost_sg_out)
             * (c.gross_weight / NULLIF(ac.sum_gw_per_awb, 0))               AS gross_profit_to
       FROM air_shipments_compileaircgk c
-      JOIN awb_totals at ON at.awb = c.awb
       LEFT JOIN booking  b  ON b.awb  = c.awb
       LEFT JOIN awb_cost ac ON ac.awb = c.awb
     `)
