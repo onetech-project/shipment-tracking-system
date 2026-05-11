@@ -192,7 +192,8 @@ export class AirShipmentsService {
     let otpOnTimeTotal = 0
     let otpLateTotal = 0
 
-    for (const row of rows) {
+    const alertRows = rows.filter((row) => !AirShipmentsService.isVoidRow(row))
+    for (const row of alertRows) {
       const alerts = evaluateAlerts(row, nHours, mHours)
       const origin = String(getFieldValue(row, 'origin') ?? '').trim()
       const destination = String(getFieldValue(row, 'destination') ?? '').trim()
@@ -208,7 +209,7 @@ export class AirShipmentsService {
       }
 
       // OTP: only process completed shipments
-      const completedTimeRaw = getFieldValue(row, 'completed_time')
+      const completedTimeRaw = getFieldValue(row, 'ata_vendor_wh_destination')
       const isCompleted =
         completedTimeRaw !== null &&
         completedTimeRaw !== undefined &&
@@ -346,7 +347,8 @@ export class AirShipmentsService {
     }
     const byRoute = new Map<string, RouteAlertItem>()
 
-    for (const row of rows) {
+    const alertRows = rows.filter((row) => !AirShipmentsService.isVoidRow(row))
+    for (const row of alertRows) {
       const alerts = evaluateAlerts(row, nHours, mHours)
       const origin = String(getFieldValue(row, 'origin') ?? '').trim()
       const destination = String(getFieldValue(row, 'destination') ?? '').trim()
@@ -371,7 +373,7 @@ export class AirShipmentsService {
       }
 
       // OTP: only completed shipments
-      const completedTimeRaw = getFieldValue(row, 'completed_time')
+      const completedTimeRaw = getFieldValue(row, 'ata_vendor_wh_destination')
       const isCompleted = completedTimeRaw !== null && completedTimeRaw !== undefined && String(completedTimeRaw).trim() !== ''
       if (isCompleted) {
         const ataOriginRaw = getFieldValue(row, 'ata_origin')
@@ -451,6 +453,11 @@ export class AirShipmentsService {
     return undefined
   }
 
+  private static isVoidRow(row: Record<string, unknown>): boolean {
+    const val = AirShipmentsService.getFieldValueFromRow(row, 'ata_vendor_wh_destination')
+    return typeof val === 'string' && val.trim().toUpperCase() === 'VOID'
+  }
+
   /**
    * Loads {awb → trackingan_smu} from the Reservasi sheet table.
    * Returns an empty Map when the table name is blank or the table doesn't exist.
@@ -500,13 +507,15 @@ export class AirShipmentsService {
     nHours: number,
     mHours: number,
   ) {
-    return rows.filter((row) => {
-      const alerts = evaluateAlerts(row, nHours, mHours)
-      if (alertFilter === 'normal') {
-        return !Object.values(alerts).some(Boolean)
-      }
-      return alerts[alertFilter as AlertType]
-    })
+    return rows
+      .filter((row) => !AirShipmentsService.isVoidRow(row))
+      .filter((row) => {
+        const alerts = evaluateAlerts(row, nHours, mHours)
+        if (alertFilter === 'normal') {
+          return !Object.values(alerts).some(Boolean)
+        }
+        return alerts[alertFilter as AlertType]
+      })
   }
 
   private normalizeSheetIdentifier(sheetName: string): string {
