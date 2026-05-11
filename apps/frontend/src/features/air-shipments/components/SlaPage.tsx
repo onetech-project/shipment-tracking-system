@@ -254,12 +254,12 @@ export function SlaPage() {
   }, [page, sortBy, sortOrder, activeAlert, activeRoute, searchQuery, startDate, endDate, paramsLoaded, dateError])
 
   useEffect(() => {
-    if (lastCompletedSheet === 'compileaircgk') {
-      void fetchAlertSummary()
-      void fetchRoutes()
-      void fetchRouteAlerts()
-      setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
-    }
+    if (lastCompletedSheet !== 'compileaircgk') return
+    const savedY = window.scrollY
+    void Promise.all([fetchAlertSummary(), fetchRoutes(), fetchRouteAlerts()]).then(() => {
+      requestAnimationFrame(() => window.scrollTo({ top: savedY, behavior: 'instant' }))
+    })
+    setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastCompletedSheet])
 
