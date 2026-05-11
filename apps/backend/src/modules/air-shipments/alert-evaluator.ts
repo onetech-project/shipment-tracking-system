@@ -83,7 +83,7 @@ export function evaluateAlerts(
     return {
       reservasiPenerbangan: false,
       potensiMelebihiSla: false,
-      melewatiSla: false,
+      melewatiSla, // propagate: SLA may also be breached when TJPH is
       potensiMelebihiTjph: false,
       melewatiTjph: true,
     }
@@ -103,6 +103,7 @@ export function evaluateAlerts(
 
   return {
     reservasiPenerbangan:
+      !melewatiSla &&
       ataOrigin !== null &&
       now > new Date(ataOrigin.getTime() + nMs) &&
       isEmptyValue(atdFlight) &&

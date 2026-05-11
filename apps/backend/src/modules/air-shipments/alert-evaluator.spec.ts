@@ -88,6 +88,18 @@ describe('evaluateAlerts', () => {
         ).reservasiPenerbangan,
       ).toBe(false)
     })
+
+    it('does NOT trigger when melewatiSla is true, even if flights are empty', () => {
+      // now=10:30 > maxSla=10:00 → melewatiSla=true → reservasiPenerbangan must be suppressed
+      jest.setSystemTime(new Date('2025-01-01T10:30:00Z'))
+      expect(
+        evaluateAlerts(
+          { ...baseRow, atd_flight: '', ata_flight: '' },
+          N,
+          M,
+        ).reservasiPenerbangan,
+      ).toBe(false)
+    })
   })
 
   describe('potensiMelebihiSla', () => {
@@ -347,9 +359,9 @@ describe('evaluateAlerts', () => {
       ).toBe(true)
     })
 
-    it('melewatiTjph still fires when completedTime > maxTjph (melewatiTjph early-return takes priority)', () => {
-      // ata_origin=08:00, tjph=04:00 → maxTjph=12:00
-      // completedTime=13:00 > maxTjph → melewatiTjph early-return fires before completedTime guard
+    it('melewatiTjph still fires when completedTime > maxTjph, and melewatiSla is also propagated', () => {
+      // ata_origin=08:00, sla=02:00 → maxSla=10:00, tjph=04:00 → maxTjph=12:00
+      // completedTime=13:00 > maxTjph AND > maxSla → both melewatiTjph and melewatiSla are true
       jest.setSystemTime(new Date('2025-01-01T09:00:00Z'))
       expect(
         evaluateAlerts(
@@ -363,7 +375,7 @@ describe('evaluateAlerts', () => {
       ).toEqual({
         reservasiPenerbangan: false,
         potensiMelebihiSla: false,
-        melewatiSla: false,
+        melewatiSla: true,
         potensiMelebihiTjph: false,
         melewatiTjph: true,
       })
@@ -393,10 +405,22 @@ describe('evaluateAlerts', () => {
       ).toBe(false)
     })
 
-    it('suppresses all other alerts when melewatiTjph is true', () => {
-      // now=13:00 → melewatiTjph=true → only melewatiTjph should be set
+    it('suppresses in-flight alerts when melewatiTjph is true, but propagates melewatiSla', () => {
+      // now=13:00 → melewatiTjph=true (maxTjph=12:00) AND melewatiSla=true (maxSla=10:00)
       jest.setSystemTime(new Date('2025-01-01T13:00:00Z'))
       expect(evaluateAlerts(baseRow, N, M)).toEqual({
+        reservasiPenerbangan: false,
+        potensiMelebihiSla: false,
+        melewatiSla: true,
+        potensiMelebihiTjph: false,
+        melewatiTjph: true,
+      })
+    })
+
+    it('returns only melewatiTjph when melewatiSla is not breached', () => {
+      // sla=10:00:00 → maxSla = 08:00+10h = 18:00; now=13:00 < maxSla → melewatiSla=false
+      jest.setSystemTime(new Date('2025-01-01T13:00:00Z'))
+      expect(evaluateAlerts({ ...baseRow, sla: '10:00:00' }, N, M)).toEqual({
         reservasiPenerbangan: false,
         potensiMelebihiSla: false,
         melewatiSla: false,
