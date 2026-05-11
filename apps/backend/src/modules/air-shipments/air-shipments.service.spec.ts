@@ -597,3 +597,121 @@ describe('AirShipmentsService — runSyncCycle()', () => {
     })
   })
 })
+
+describe('AirShipmentsService — isVoidRow / VOID filtering', () => {
+  let service: AirShipmentsService
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AirShipmentsService,
+        { provide: SheetsService, useValue: { getConfigs: jest.fn().mockReturnValue([]) } },
+        {
+          provide: DynamicTableService,
+          useValue: { ensureTable: jest.fn().mockResolvedValue({ success: true }) },
+        },
+        { provide: getRepositoryToken(AirShipmentCgk), useValue: makeRepo() },
+        { provide: getRepositoryToken(AirShipmentSub), useValue: makeRepo() },
+        { provide: getRepositoryToken(AirShipmentSda), useValue: makeRepo() },
+        { provide: getRepositoryToken(RatePerStation), useValue: makeRepo() },
+        { provide: getRepositoryToken(RouteMaster), useValue: makeRepo() },
+        { provide: getRepositoryToken(GoogleSheetConfig), useValue: makeRepo() },
+        { provide: getRepositoryToken(GoogleSheetSheetConfig), useValue: makeRepo() },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+        { provide: DataSource, useValue: { query: jest.fn().mockResolvedValue([]) } },
+        {
+          provide: GeneralParamsService,
+          useValue: { getValue: jest.fn().mockResolvedValue('5') },
+        },
+      ],
+    }).compile()
+
+    service = module.get<AirShipmentsService>(AirShipmentsService)
+  })
+
+  describe('isVoidRow', () => {
+    const svc = AirShipmentsService as any
+
+    it('returns true for ata_vendor_wh_destination = "VOID"', () => {
+      expect(svc.isVoidRow({ ata_vendor_wh_destination: 'VOID' })).toBe(true)
+    })
+
+    it('returns true for lowercase "void"', () => {
+      expect(svc.isVoidRow({ ata_vendor_wh_destination: 'void' })).toBe(true)
+    })
+
+    it('returns true for whitespace-padded "  VOID  "', () => {
+      expect(svc.isVoidRow({ ata_vendor_wh_destination: '  VOID  ' })).toBe(true)
+    })
+
+    it('returns false for a real datetime value', () => {
+      expect(svc.isVoidRow({ ata_vendor_wh_destination: '11-May-2026 10:30' })).toBe(false)
+    })
+
+    it('returns true when ata_vendor_wh_destination is "VOID" inside extra_fields', () => {
+      expect(svc.isVoidRow({ extra_fields: { ata_vendor_wh_destination: 'VOID' } })).toBe(true)
+    })
+
+    it('returns false when ata_vendor_wh_destination is absent', () => {
+      expect(svc.isVoidRow({})).toBe(false)
+    })
+  })
+
+  it('VOID rows are excluded from getAlertSummaryForTable alert counts', async () => {
+    const dataSource = service['dataSource'] as jest.Mocked<DataSource>
+    dataSource.query.mockImplementation((sql: string, _params: any[]) => {
+      if (sql.includes('information_schema.columns')) {
+        return Promise.resolve([{ column_name: 'extra_fields' }])
+      }
+      if (sql.startsWith('SELECT * FROM "air_shipments_compileaircgk"')) {
+        return Promise.resolve([
+          {
+            // Normal row that breaches SLA — should be counted
+            extra_fields: {
+              ata_origin: '2025-01-01T00:00:00Z',
+              sla: '24:00:00',
+              tjph: '480:00:00',
+              ata_flight: '2025-01-01T12:00:00Z',
+              atd_flight: '2025-01-01T06:00:00Z',
+              origin: 'CGK',
+              destination: 'SUB',
+              gross_weight: '10.00',
+            },
+          },
+          {
+            // VOID row — must be excluded from all alert counts
+            extra_fields: {
+              ata_origin: '2025-01-01T00:00:00Z',
+              sla: '24:00:00',
+              tjph: '480:00:00',
+              ata_flight: '2025-01-01T12:00:00Z',
+              atd_flight: '2025-01-01T06:00:00Z',
+              origin: 'CGK',
+              destination: 'MES',
+              gross_weight: '99.00',
+              ata_vendor_wh_destination: 'VOID',
+            },
+          },
+        ])
+      }
+      return Promise.resolve([])
+    })
+
+    jest.useFakeTimers()
+    jest.setSystemTime(new Date('2025-01-15T12:00:00Z'))
+
+    const summary = await service.getAlertSummaryForTable('air_shipments_compileaircgk', '2025-01-01', '2025-01-15')
+
+    // The VOID row contributes 99 kg — if it were counted, melewatiSla tonnage would be >= 99
+    // Only the normal row (10 kg) should appear
+    expect(summary.alerts.melewatiSla.tonnage).toBe(10)
+    expect(summary.alerts.melewatiSla.routes).toBe(1)
+    // The VOID row's route (CGK - MES) must not appear in any alert breakdown
+    for (const alertType of Object.keys(summary.alerts)) {
+      const breakdown = summary.alerts[alertType as keyof typeof summary.alerts].breakdown
+      expect(breakdown.find((b: { route: string }) => b.route === 'CGK - MES')).toBeUndefined()
+    }
+
+    jest.useRealTimers()
+  })
+})
