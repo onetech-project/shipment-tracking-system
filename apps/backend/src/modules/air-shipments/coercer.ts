@@ -65,6 +65,12 @@ export function coerceValue(value: string, context: CoercionContext): unknown {
     return Number(value)
   }
 
+  // 2.5. Percentage strings: "11%" → 11, "1,234%" → 1234
+  if (/^-?[\d,]+(\.\d+)?%$/.test(value)) {
+    const num = Number(value.replace(/[,%]/g, ''))
+    if (!isNaN(num)) return num
+  }
+
   // 3. Boolean strings
   const lower = value.toLowerCase()
   if (lower === 'true') return true

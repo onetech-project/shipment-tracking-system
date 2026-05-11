@@ -13,6 +13,8 @@ export interface SheetConfig {
   uniqueKey: string | string[]
   /** If true, columns with empty/null normalized headers are dropped */
   skipNullCols: boolean
+  /** Google Sheet ID */
+  sheetId: string
 }
 
 export interface SheetResult {
@@ -23,6 +25,10 @@ export interface SheetResult {
   headers: string[]
   /** Array of row objects keyed by normalized header */
   rows: Record<string, unknown>[]
+  /** Rows skipped because every cell was empty */
+  skippedEmpty?: number
+  /** Rows skipped because a required unique-key column was blank */
+  skippedMissingKey?: number
 }
 
 // Types dulu
