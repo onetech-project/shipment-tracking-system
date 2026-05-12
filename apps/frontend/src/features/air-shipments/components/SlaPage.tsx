@@ -63,10 +63,6 @@ function defaultDateRange(): { start: string; end: string } {
   }
 }
 
-function computeDays(startDate: string, endDate: string): number {
-  const diff = new Date(endDate).getTime() - new Date(startDate).getTime()
-  return Math.max(1, Math.round(diff / 86_400_000))
-}
 
 interface RouteOption {
   label: string
@@ -142,7 +138,7 @@ export function SlaPage() {
     setSummaryLoading(true)
     try {
       const response = await apiClient.get<DashboardAlertSummary>(
-        `${TABLE_ENDPOINT}/alert-summary?days=${computeDays(startDate, endDate)}`
+        `${TABLE_ENDPOINT}/alert-summary?startDate=${startDate}&endDate=${endDate}`
       )
       setSummary(response.data)
     } catch {
@@ -155,7 +151,7 @@ export function SlaPage() {
   const fetchRoutes = async () => {
     try {
       const response = await apiClient.get<{ routes: RouteOption[] }>(
-        `${TABLE_ENDPOINT}/routes?days=${computeDays(startDate, endDate)}`
+        `${TABLE_ENDPOINT}/routes?startDate=${startDate}&endDate=${endDate}`
       )
       setRoutes(response.data.routes ?? [])
     } catch {
@@ -170,7 +166,8 @@ export function SlaPage() {
       const params = new URLSearchParams({
         page: String(page),
         limit: '50',
-        days: String(computeDays(startDate, endDate)),
+        startDate,
+        endDate,
         sortBy,
         sortOrder,
       })
@@ -194,7 +191,7 @@ export function SlaPage() {
     setRouteAlertLoading(true)
     try {
       const response = await apiClient.get<RouteAlertRow[]>(
-        `${TABLE_ENDPOINT}/route-alert-summary?days=${computeDays(startDate, endDate)}`
+        `${TABLE_ENDPOINT}/route-alert-summary?startDate=${startDate}&endDate=${endDate}`
       )
       setRouteAlertData(response.data ?? [])
     } catch {
@@ -256,13 +253,12 @@ export function SlaPage() {
   useEffect(() => {
     if (lastCompletedSheet !== 'compileaircgk') return
     // Silent refresh — bypass loading-state setters to prevent layout shifts that move the scroll position
-    const days = computeDays(startDate, endDate)
     void Promise.all([
-      apiClient.get<DashboardAlertSummary>(`${TABLE_ENDPOINT}/alert-summary?days=${days}`)
+      apiClient.get<DashboardAlertSummary>(`${TABLE_ENDPOINT}/alert-summary?startDate=${startDate}&endDate=${endDate}`)
         .then(r => setSummary(r.data)).catch(() => setSummary(null)),
-      apiClient.get<{ routes: RouteOption[] }>(`${TABLE_ENDPOINT}/routes?days=${days}`)
+      apiClient.get<{ routes: RouteOption[] }>(`${TABLE_ENDPOINT}/routes?startDate=${startDate}&endDate=${endDate}`)
         .then(r => setRoutes(r.data.routes ?? [])).catch(() => setRoutes([])),
-      apiClient.get<RouteAlertRow[]>(`${TABLE_ENDPOINT}/route-alert-summary?days=${days}`)
+      apiClient.get<RouteAlertRow[]>(`${TABLE_ENDPOINT}/route-alert-summary?startDate=${startDate}&endDate=${endDate}`)
         .then(r => setRouteAlertData(r.data ?? [])).catch(() => setRouteAlertData([])),
     ])
     setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
