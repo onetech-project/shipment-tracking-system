@@ -191,6 +191,7 @@ export class AirShipmentsService {
     const otpByRoute = new Map<string, OtpRouteItem>()
     let otpOnTimeTotal = 0
     let otpLateTotal = 0
+    const now = new Date()
 
     const alertRows = rows.filter((row) => !AirShipmentsService.isVoidRow(row))
     for (const row of alertRows) {
@@ -208,34 +209,39 @@ export class AirShipmentsService {
         item.tonnage += grossWeight
       }
 
-      // OTP: only process completed shipments
-      const completedTimeRaw = getFieldValue(row, 'ata_vendor_wh_destination')
-      const isCompleted =
-        completedTimeRaw !== null &&
-        completedTimeRaw !== undefined &&
-        String(completedTimeRaw).trim() !== ''
-      if (isCompleted) {
-        const ataOriginRaw = getFieldValue(row, 'ata_origin')
-        const slaRaw = getFieldValue(row, 'sla')
-        let isOnTime = false
-        if (ataOriginRaw && slaRaw) {
-          const ataOrigin = new Date(String(ataOriginRaw))
-          const [h, m, s] = String(slaRaw).split(':').map(Number)
-          const slaDuration = (h * 3600 + m * 60 + s) * 1000
-          const maxSla = new Date(ataOrigin.getTime() + slaDuration)
-          const completedTime = new Date(String(completedTimeRaw))
-          isOnTime = !isNaN(completedTime.getTime()) && !isNaN(maxSla.getTime()) && completedTime <= maxSla
-        }
+      // OTP: requires ata_origin + sla to be parseable; skip if not
+      const ataOriginRaw = getFieldValue(row, 'ata_origin')
+      const slaRaw = getFieldValue(row, 'sla')
+      if (ataOriginRaw && slaRaw) {
+        const ataOrigin = new Date(String(ataOriginRaw))
+        const [h, m, s] = String(slaRaw).split(':').map(Number)
+        const slaDuration = (h * 3600 + m * 60 + s) * 1000
+        const maxSla = new Date(ataOrigin.getTime() + slaDuration)
+        if (!isNaN(ataOrigin.getTime()) && !isNaN(maxSla.getTime())) {
+          const completedTimeRaw = getFieldValue(row, 'ata_vendor_wh_destination')
+          const completedTimeStr = completedTimeRaw != null ? String(completedTimeRaw).trim() : ''
+          let isOnTime: boolean | null = null
+          if (completedTimeStr !== '') {
+            const completedTime = new Date(completedTimeStr)
+            if (!isNaN(completedTime.getTime())) {
+              isOnTime = completedTime <= maxSla
+            }
+          } else if (now > maxSla) {
+            isOnTime = false
+          }
 
-        const prev = otpByRoute.get(route) ?? { onTime: 0, late: 0 }
-        if (isOnTime) {
-          prev.onTime += grossWeight
-          otpOnTimeTotal += grossWeight
-        } else {
-          prev.late += grossWeight
-          otpLateTotal += grossWeight
+          if (isOnTime !== null) {
+            const prev = otpByRoute.get(route) ?? { onTime: 0, late: 0 }
+            if (isOnTime) {
+              prev.onTime += grossWeight
+              otpOnTimeTotal += grossWeight
+            } else {
+              prev.late += grossWeight
+              otpLateTotal += grossWeight
+            }
+            otpByRoute.set(route, prev)
+          }
         }
-        otpByRoute.set(route, prev)
       }
     }
 
@@ -346,6 +352,7 @@ export class AirShipmentsService {
       otpLateCount: number
     }
     const byRoute = new Map<string, RouteAlertItem>()
+    const routeNow = new Date()
 
     const alertRows = rows.filter((row) => !AirShipmentsService.isVoidRow(row))
     for (const row of alertRows) {
@@ -372,23 +379,29 @@ export class AirShipmentsService {
         }
       }
 
-      // OTP: only completed shipments
-      const completedTimeRaw = getFieldValue(row, 'ata_vendor_wh_destination')
-      const isCompleted = completedTimeRaw !== null && completedTimeRaw !== undefined && String(completedTimeRaw).trim() !== ''
-      if (isCompleted) {
-        const ataOriginRaw = getFieldValue(row, 'ata_origin')
-        const slaRaw = getFieldValue(row, 'sla')
-        let isOnTime = false
-        if (ataOriginRaw && slaRaw) {
-          const ataOrigin = new Date(String(ataOriginRaw))
-          const [h, m, s] = String(slaRaw).split(':').map(Number)
-          const slaDuration = (h * 3600 + m * 60 + s) * 1000
-          const maxSla = new Date(ataOrigin.getTime() + slaDuration)
-          const completedTime = new Date(String(completedTimeRaw))
-          isOnTime = !isNaN(completedTime.getTime()) && !isNaN(maxSla.getTime()) && completedTime <= maxSla
+      // OTP: requires ata_origin + sla to be parseable; skip if not
+      const ataOriginRaw = getFieldValue(row, 'ata_origin')
+      const slaRaw = getFieldValue(row, 'sla')
+      if (ataOriginRaw && slaRaw) {
+        const ataOrigin = new Date(String(ataOriginRaw))
+        const [h, m, s] = String(slaRaw).split(':').map(Number)
+        const slaDuration = (h * 3600 + m * 60 + s) * 1000
+        const maxSla = new Date(ataOrigin.getTime() + slaDuration)
+        if (!isNaN(ataOrigin.getTime()) && !isNaN(maxSla.getTime())) {
+          const completedTimeRaw = getFieldValue(row, 'ata_vendor_wh_destination')
+          const completedTimeStr = completedTimeRaw != null ? String(completedTimeRaw).trim() : ''
+          let isOnTime: boolean | null = null
+          if (completedTimeStr !== '') {
+            const completedTime = new Date(completedTimeStr)
+            if (!isNaN(completedTime.getTime())) {
+              isOnTime = completedTime <= maxSla
+            }
+          } else if (routeNow > maxSla) {
+            isOnTime = false
+          }
+          if (isOnTime === true) { item.otpOnTime += grossWeight; item.otpOnTimeCount += 1 }
+          else if (isOnTime === false) { item.otpLate += grossWeight; item.otpLateCount += 1 }
         }
-        if (isOnTime) { item.otpOnTime += grossWeight; item.otpOnTimeCount += 1 }
-        else { item.otpLate += grossWeight; item.otpLateCount += 1 }
       }
     }
 
