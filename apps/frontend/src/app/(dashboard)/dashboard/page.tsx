@@ -36,10 +36,6 @@ function defaultDateRange(): { start: string; end: string } {
   }
 }
 
-function computeDays(startDate: string, endDate: string): number {
-  const diff = new Date(endDate).getTime() - new Date(startDate).getTime()
-  return Math.max(1, Math.round(diff / 86_400_000))
-}
 
 export default function DashboardPage() {
   const { isConnected, lastSyncAt, lastCompletedSheet } = useSyncNotification()
@@ -60,7 +56,7 @@ export default function DashboardPage() {
     setSummaryLoading(true)
     try {
       const response = await apiClient.get<DashboardAlertSummary>(
-        `${TABLE_ENDPOINT}/alert-summary?days=${computeDays(startDate, endDate)}`
+        `${TABLE_ENDPOINT}/alert-summary?startDate=${startDate}&endDate=${endDate}`
       )
       setSummary(response.data)
     } catch {
