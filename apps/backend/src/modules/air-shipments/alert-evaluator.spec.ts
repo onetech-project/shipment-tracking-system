@@ -11,20 +11,22 @@ describe('evaluateAlerts', () => {
 
   // Base row: all fields present, now is well within all deadlines
   const baseRow = {
-    ata_origin: '2025-01-01T08:00:00Z', // now set to 08:30 — 30min after arrival
+    atd_origin: '2025-01-01T08:00:00Z', // now set to 08:30 — 30min after departure
+    awb: 'AWB123', // has AWB → flightTracking path (not reservasiPenerbangan)
     sla: '02:00:00', // maxSla = 10:00
     tjph: '04:00:00', // maxTjph = 12:00
     ata_flight: '2025-01-01T09:00:00Z',
     atd_flight: '2025-01-01T08:30:00Z',
     trackingan_smu: 'Onboard', // SMU already onboard — potensiMelebihiSla SMU path suppressed
   }
-  const N = 1 // n_hours = 1h: now must be > ata_origin + 1h
+  const N = 1 // n_hours = 1h: now must be > atd_origin + 1h
   const M = 1 // m_hours = 1h: ata_flight + 1h vs deadlines
 
   it('returns all false when no alerts are triggered', () => {
-    jest.setSystemTime(new Date('2025-01-01T08:30:00Z')) // 30min after ata_origin, all fields present
+    jest.setSystemTime(new Date('2025-01-01T08:30:00Z')) // 30min after atd_origin, all fields present
     expect(evaluateAlerts(baseRow, N, M)).toEqual({
       reservasiPenerbangan: false,
+      flightTracking: false,
       potensiMelebihiSla: false,
       melewatiSla: false,
       potensiMelebihiTjph: false,
@@ -33,23 +35,23 @@ describe('evaluateAlerts', () => {
   })
 
   describe('reservasiPenerbangan', () => {
-    it('triggers when now > ataOrigin + nHours and both atd_flight and ata_flight are empty', () => {
-      // ata_origin = 08:00, n=1h → threshold = 09:00; now = 09:30 → should trigger
+    it('triggers when now > atdOrigin + nHours and both atd_flight and ata_flight are empty', () => {
+      // atd_origin = 08:00, n=1h → threshold = 09:00; now = 09:30 → should trigger
       jest.setSystemTime(new Date('2025-01-01T09:30:00Z'))
       expect(
         evaluateAlerts(
-          { ...baseRow, atd_flight: '', ata_flight: '' },
+          { ...baseRow, awb: '', atd_flight: '', ata_flight: '' },
           N,
           M,
         ).reservasiPenerbangan,
       ).toBe(true)
     })
 
-    it('does NOT trigger when now is before ataOrigin + nHours', () => {
-      jest.setSystemTime(new Date('2025-01-01T08:30:00Z')) // only 30min after ata_origin
+    it('does NOT trigger when now is before atdOrigin + nHours', () => {
+      jest.setSystemTime(new Date('2025-01-01T08:30:00Z')) // only 30min after atd_origin
       expect(
         evaluateAlerts(
-          { ...baseRow, atd_flight: '', ata_flight: '' },
+          { ...baseRow, awb: '', atd_flight: '', ata_flight: '' },
           N,
           M,
         ).reservasiPenerbangan,
@@ -60,7 +62,7 @@ describe('evaluateAlerts', () => {
       jest.setSystemTime(new Date('2025-01-01T09:30:00Z'))
       expect(
         evaluateAlerts(
-          { ...baseRow, ata_flight: '' }, // atd_flight is present in baseRow
+          { ...baseRow, awb: '', ata_flight: '' }, // atd_flight is present in baseRow
           N,
           M,
         ).reservasiPenerbangan,
@@ -71,40 +73,156 @@ describe('evaluateAlerts', () => {
       jest.setSystemTime(new Date('2025-01-01T09:30:00Z'))
       expect(
         evaluateAlerts(
-          { ...baseRow, atd_flight: '' }, // ata_flight is present in baseRow
+          { ...baseRow, awb: '', atd_flight: '' }, // ata_flight is present in baseRow
           N,
           M,
         ).reservasiPenerbangan,
       ).toBe(false)
     })
 
-    it('does NOT trigger when ata_origin is null', () => {
+    it('does NOT trigger when atd_origin is null', () => {
       jest.setSystemTime(new Date('2025-01-01T09:30:00Z'))
       expect(
         evaluateAlerts(
-          { ...baseRow, ata_origin: '', atd_flight: '', ata_flight: '' },
+          { ...baseRow, awb: '', atd_origin: '', atd_flight: '', ata_flight: '' },
           N,
           M,
         ).reservasiPenerbangan,
       ).toBe(false)
     })
 
-    it('does NOT trigger when melewatiSla is true, even if flights are empty', () => {
-      // now=10:30 > maxSla=10:00 → melewatiSla=true → reservasiPenerbangan must be suppressed
+    it('CAN fire together with melewatiSla when SLA also breached', () => {
+      // now=10:30 > maxSla=10:00 → melewatiSla=true; reservasiPenerbangan also fires (no guard)
       jest.setSystemTime(new Date('2025-01-01T10:30:00Z'))
+      const alerts = evaluateAlerts(
+        { ...baseRow, awb: '', atd_flight: '', ata_flight: '' },
+        N,
+        M,
+      )
+      expect(alerts.reservasiPenerbangan).toBe(true)
+      expect(alerts.melewatiSla).toBe(true)
+    })
+  })
+
+  describe('flightTracking', () => {
+    it('triggers when AWB present and same base conditions as reservasiPenerbangan', () => {
+      jest.setSystemTime(new Date('2025-01-01T09:30:00Z'))
+      expect(
+        evaluateAlerts(
+          { ...baseRow, atd_flight: '', ata_flight: '' }, // baseRow has awb: 'AWB123'
+          N, M,
+        ).flightTracking,
+      ).toBe(true)
+    })
+
+    it('does NOT trigger when AWB is empty', () => {
+      jest.setSystemTime(new Date('2025-01-01T09:30:00Z'))
+      expect(
+        evaluateAlerts(
+          { ...baseRow, awb: '', atd_flight: '', ata_flight: '' },
+          N, M,
+        ).flightTracking,
+      ).toBe(false)
+    })
+
+    it('does NOT trigger when now is before atdOrigin + nHours', () => {
+      jest.setSystemTime(new Date('2025-01-01T08:30:00Z'))
       expect(
         evaluateAlerts(
           { ...baseRow, atd_flight: '', ata_flight: '' },
-          N,
-          M,
-        ).reservasiPenerbangan,
+          N, M,
+        ).flightTracking,
       ).toBe(false)
+    })
+
+    it('does NOT trigger when atd_flight is present', () => {
+      jest.setSystemTime(new Date('2025-01-01T09:30:00Z'))
+      expect(
+        evaluateAlerts(
+          { ...baseRow, ata_flight: '' }, // atd_flight present in baseRow
+          N, M,
+        ).flightTracking,
+      ).toBe(false)
+    })
+
+    it('does NOT trigger when ata_flight is present', () => {
+      jest.setSystemTime(new Date('2025-01-01T09:30:00Z'))
+      expect(
+        evaluateAlerts(
+          { ...baseRow, atd_flight: '' }, // ata_flight present in baseRow
+          N, M,
+        ).flightTracking,
+      ).toBe(false)
+    })
+
+    it('does NOT trigger when shipment is completed', () => {
+      jest.setSystemTime(new Date('2025-01-01T09:30:00Z'))
+      expect(
+        evaluateAlerts(
+          { ...baseRow, atd_flight: '', ata_flight: '', ata_vendor_wh_destination: '2025-01-01T09:00:00Z' },
+          N, M,
+        ).flightTracking,
+      ).toBe(false)
+    })
+
+    it('CAN fire together with melewatiSla when SLA also breached', () => {
+      jest.setSystemTime(new Date('2025-01-01T11:00:00Z'))
+      const alerts = evaluateAlerts(
+        { ...baseRow, atd_flight: '', ata_flight: '' },
+        N, M,
+      )
+      expect(alerts.flightTracking).toBe(true)
+      expect(alerts.melewatiSla).toBe(true)
+    })
+  })
+
+  describe('multiple alerts can fire simultaneously', () => {
+    it('melewatiSla and melewatiTjph can both be true when both thresholds exceeded', () => {
+      // atd_origin=08:00, sla=2h (maxSla=10:00), tjph=4h (maxTjph=12:00), now=13:00
+      jest.setSystemTime(new Date('2025-01-01T13:00:00Z'))
+      const alerts = evaluateAlerts(baseRow, N, M)
+      expect(alerts.melewatiSla).toBe(true)
+      expect(alerts.melewatiTjph).toBe(true)
+    })
+
+    it('melewatiSla does NOT suppress potensiMelebihiSla', () => {
+      // SLA breached AND ata_flight + m > maxSla
+      jest.setSystemTime(new Date('2025-01-01T11:00:00Z'))
+      const alerts = evaluateAlerts(
+        { ...baseRow, ata_flight: '2025-01-01T09:30:00Z' }, // 09:30+1h=10:30 > maxSla 10:00
+        N, M,
+      )
+      expect(alerts.melewatiSla).toBe(true)
+      expect(alerts.potensiMelebihiSla).toBe(true)
+    })
+
+    it('melewatiTjph does NOT suppress reservasiPenerbangan', () => {
+      // TJPH breached AND no flight data AND AWB empty
+      jest.setSystemTime(new Date('2025-01-01T13:00:00Z'))
+      const alerts = evaluateAlerts(
+        { ...baseRow, awb: '', atd_flight: '', ata_flight: '' },
+        N, M,
+      )
+      expect(alerts.melewatiTjph).toBe(true)
+      expect(alerts.reservasiPenerbangan).toBe(true)
+    })
+
+    it('reservasiPenerbangan and flightTracking are mutually exclusive', () => {
+      jest.setSystemTime(new Date('2025-01-01T09:30:00Z'))
+      const rowNoAwb = { ...baseRow, awb: '', atd_flight: '', ata_flight: '' }
+      const rowHasAwb = { ...baseRow, awb: 'AWB123', atd_flight: '', ata_flight: '' }
+      const alertsNo = evaluateAlerts(rowNoAwb, N, M)
+      const alertsHas = evaluateAlerts(rowHasAwb, N, M)
+      expect(alertsNo.reservasiPenerbangan).toBe(true)
+      expect(alertsNo.flightTracking).toBe(false)
+      expect(alertsHas.reservasiPenerbangan).toBe(false)
+      expect(alertsHas.flightTracking).toBe(true)
     })
   })
 
   describe('potensiMelebihiSla', () => {
     it('triggers when ata_flight + mHours > maxSla', () => {
-      // ata_origin=08:00, sla=02:00 → maxSla=10:00
+      // atd_origin=08:00, sla=02:00 → maxSla=10:00
       // ata_flight=09:30, m=1h → ata_flight+m = 10:30 > maxSla=10:00 → trigger
       jest.setSystemTime(new Date('2025-01-01T08:30:00Z'))
       expect(
@@ -135,8 +253,8 @@ describe('evaluateAlerts', () => {
       ).toBe(false)
     })
 
-    it('does NOT trigger when melewatiSla is true (shipment already past deadline)', () => {
-      // now=10:30 > maxSla=10:00 → melewatiSla=true; ata_flight+m would exceed maxSla but irrelevant
+    it('still triggers when melewatiSla is true (no suppression)', () => {
+      // now=10:30 > maxSla=10:00 → melewatiSla=true; ata_flight+m also exceeds maxSla → both fire
       jest.setSystemTime(new Date('2025-01-01T10:30:00Z'))
       expect(
         evaluateAlerts(
@@ -144,11 +262,11 @@ describe('evaluateAlerts', () => {
           N,
           M,
         ).potensiMelebihiSla,
-      ).toBe(false)
+      ).toBe(true)
     })
 
-    it('does NOT trigger via SMU path when melewatiSla is true', () => {
-      // now=10:30 > maxSla=10:00 → melewatiSla=true; SMU not onboard but irrelevant
+    it('still triggers via SMU path when melewatiSla is true (no suppression)', () => {
+      // now=10:30 > maxSla=10:00 → melewatiSla=true; SMU not onboard and atd_flight present → both fire
       jest.setSystemTime(new Date('2025-01-01T10:30:00Z'))
       expect(
         evaluateAlerts(
@@ -156,7 +274,7 @@ describe('evaluateAlerts', () => {
           N,
           M,
         ).potensiMelebihiSla,
-      ).toBe(false)
+      ).toBe(true)
     })
 
     it('does NOT trigger when sla is missing', () => {
@@ -232,7 +350,7 @@ describe('evaluateAlerts', () => {
 
   describe('melewatiSla', () => {
     it('triggers when now > maxSla (no ata_vendor_wh_destination)', () => {
-      // ata_origin=08:00, sla=02:00 → maxSla=10:00; now=10:30
+      // atd_origin=08:00, sla=02:00 → maxSla=10:00; now=10:30
       jest.setSystemTime(new Date('2025-01-01T10:30:00Z'))
       expect(evaluateAlerts(baseRow, N, M).melewatiSla).toBe(true)
     })
@@ -263,15 +381,15 @@ describe('evaluateAlerts', () => {
       expect(evaluateAlerts({ ...baseRow, sla: '' }, N, M).melewatiSla).toBe(false)
     })
 
-    it('does NOT trigger when ata_origin is missing', () => {
+    it('does NOT trigger when atd_origin is missing', () => {
       jest.setSystemTime(new Date('2025-01-01T10:30:00Z'))
-      expect(evaluateAlerts({ ...baseRow, ata_origin: '' }, N, M).melewatiSla).toBe(false)
+      expect(evaluateAlerts({ ...baseRow, atd_origin: '' }, N, M).melewatiSla).toBe(false)
     })
   })
 
   describe('potensiMelebihiTjph', () => {
     it('triggers when ata_flight + mHours > maxTjph', () => {
-      // ata_origin=08:00, tjph=03:00 → maxTjph=11:00; ata_flight=10:30, m=1h → 11:30 > 11:00 → trigger
+      // atd_origin=08:00, tjph=03:00 → maxTjph=11:00; ata_flight=10:30, m=1h → 11:30 > 11:00 → trigger
       jest.setSystemTime(new Date('2025-01-01T09:00:00Z'))
       expect(
         evaluateAlerts(
@@ -304,12 +422,13 @@ describe('evaluateAlerts', () => {
 
   describe('ata_vendor_wh_destination exclusion', () => {
     it('suppresses reservasiPenerbangan when ata_vendor_wh_destination is filled', () => {
-      // Without completedTime, reservasiPenerbangan would fire (now > ataOrigin+nH, no flights)
+      // Without completedTime, reservasiPenerbangan would fire (now > atdOrigin+nH, no flights)
       jest.setSystemTime(new Date('2025-01-01T09:30:00Z'))
       expect(
         evaluateAlerts(
           {
             ...baseRow,
+            awb: '',
             atd_flight: '',
             ata_flight: '',
             ata_vendor_wh_destination: '2025-01-01T09:00:00Z',
@@ -384,7 +503,7 @@ describe('evaluateAlerts', () => {
     })
 
     it('melewatiTjph still fires when completedTime > maxTjph, and melewatiSla is also propagated', () => {
-      // ata_origin=08:00, sla=02:00 → maxSla=10:00, tjph=04:00 → maxTjph=12:00
+      // atd_origin=08:00, sla=02:00 → maxSla=10:00, tjph=04:00 → maxTjph=12:00
       // completedTime=13:00 > maxTjph AND > maxSla → both melewatiTjph and melewatiSla are true
       jest.setSystemTime(new Date('2025-01-01T09:00:00Z'))
       expect(
@@ -398,6 +517,7 @@ describe('evaluateAlerts', () => {
         ),
       ).toEqual({
         reservasiPenerbangan: false,
+        flightTracking: false,
         potensiMelebihiSla: false,
         melewatiSla: true,
         potensiMelebihiTjph: false,
@@ -408,7 +528,7 @@ describe('evaluateAlerts', () => {
 
   describe('melewatiTjph', () => {
     it('triggers when now > maxTjph (no ata_vendor_wh_destination)', () => {
-      // ata_origin=08:00, tjph=04:00 → maxTjph=12:00; now=13:00
+      // atd_origin=08:00, tjph=04:00 → maxTjph=12:00; now=13:00
       jest.setSystemTime(new Date('2025-01-01T13:00:00Z'))
       expect(evaluateAlerts(baseRow, N, M).melewatiTjph).toBe(true)
     })
@@ -429,11 +549,12 @@ describe('evaluateAlerts', () => {
       ).toBe(false)
     })
 
-    it('suppresses in-flight alerts when melewatiTjph is true, but propagates melewatiSla', () => {
+    it('fires melewatiTjph and melewatiSla simultaneously when both thresholds exceeded', () => {
       // now=13:00 → melewatiTjph=true (maxTjph=12:00) AND melewatiSla=true (maxSla=10:00)
       jest.setSystemTime(new Date('2025-01-01T13:00:00Z'))
       expect(evaluateAlerts(baseRow, N, M)).toEqual({
         reservasiPenerbangan: false,
+        flightTracking: false,
         potensiMelebihiSla: false,
         melewatiSla: true,
         potensiMelebihiTjph: false,
@@ -446,6 +567,7 @@ describe('evaluateAlerts', () => {
       jest.setSystemTime(new Date('2025-01-01T13:00:00Z'))
       expect(evaluateAlerts({ ...baseRow, sla: '10:00:00' }, N, M)).toEqual({
         reservasiPenerbangan: false,
+        flightTracking: false,
         potensiMelebihiSla: false,
         melewatiSla: false,
         potensiMelebihiTjph: false,
@@ -465,14 +587,14 @@ describe('evaluateAlerts', () => {
   })
 
   it('handles duration values with hours above 23', () => {
-    // ata_origin=2025-01-01T00:00:00Z, tjph=25:00:00 → maxTjph = 2025-01-02T01:00:00Z
+    // atd_origin=2025-01-01T00:00:00Z, tjph=25:00:00 → maxTjph = 2025-01-02T01:00:00Z
     // now = 2025-01-02T02:00:00Z → melewatiTjph = true
     jest.setSystemTime(new Date('2025-01-02T02:00:00Z'))
     expect(
       evaluateAlerts(
         {
           ...baseRow,
-          ata_origin: '2025-01-01T00:00:00Z',
+          atd_origin: '2025-01-01T00:00:00Z',
           sla: '24:00:00',
           tjph: '25:00:00',
         },
@@ -482,14 +604,36 @@ describe('evaluateAlerts', () => {
     ).toBe(true)
   })
 
+  it('parseDurationSafe accepts plain integer-string hours ("24" = 24h)', () => {
+    // atd_origin=08:00, sla="24" (hours) → maxSla=next day 08:00; now=25h later → breached
+    jest.setSystemTime(new Date('2025-01-02T09:00:00Z'))
+    expect(
+      evaluateAlerts(
+        { ...baseRow, sla: '24', tjph: '144' },
+        N, M,
+      ).melewatiSla,
+    ).toBe(true)
+  })
+
+  it('parseDurationSafe accepts numeric hours (24 = 24h)', () => {
+    jest.setSystemTime(new Date('2025-01-01T09:00:00Z')) // 1h after, within sla=24h
+    expect(
+      evaluateAlerts(
+        { ...baseRow, sla: 24 as any, tjph: 144 as any },
+        N, M,
+      ).melewatiSla,
+    ).toBe(false)
+  })
+
   it('reads fields from extra_fields JSONB when not on top-level', () => {
-    // ata_origin and sla in extra_fields; now > maxSla → melewatiSla
+    // atd_origin and sla in extra_fields; now > maxSla → melewatiSla
     jest.setSystemTime(new Date('2025-01-01T11:00:00Z'))
     expect(
       evaluateAlerts(
         {
           extra_fields: {
-            ata_origin: '2025-01-01T08:00:00Z',
+            atd_origin: '2025-01-01T08:00:00Z',
+            awb: 'AWB123',
             sla: '02:00:00',
             tjph: '04:00:00',
             ata_flight: '2025-01-01T09:00:00Z',
@@ -502,9 +646,10 @@ describe('evaluateAlerts', () => {
     ).toBe(true)
   })
 
-  it('ALERT_TYPES array contains exactly the 5 new types', () => {
+  it('ALERT_TYPES array contains exactly the 6 alert types', () => {
     expect(ALERT_TYPES).toEqual([
       'reservasiPenerbangan',
+      'flightTracking',
       'potensiMelebihiSla',
       'melewatiSla',
       'potensiMelebihiTjph',
@@ -512,10 +657,11 @@ describe('evaluateAlerts', () => {
     ])
   })
 
-  it("ALERT_FILTERS array contains all 5 alert types plus 'normal' and 'any'", () => {
+  it("ALERT_FILTERS array contains all 6 alert types plus 'normal' and 'any'", () => {
     const { ALERT_FILTERS } = require('./alert-evaluator')
     expect(ALERT_FILTERS).toEqual([
       'reservasiPenerbangan',
+      'flightTracking',
       'potensiMelebihiSla',
       'melewatiSla',
       'potensiMelebihiTjph',
