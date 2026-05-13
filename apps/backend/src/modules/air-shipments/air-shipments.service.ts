@@ -8,7 +8,7 @@ import { ChunkError, RowError, SheetResult } from './sheet-config.interface'
 import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
 import { GoogleSheetSheetConfig } from './entities/google-sheet-sheet-config.entity'
 import { GoogleSheetConfigDto } from './dto/google-sheet-config.dto'
-import { AlertType, AlertFilter, ALERT_TYPES, evaluateAlerts } from './alert-evaluator'
+import { AlertType, AlertFilter, ALERT_TYPES, evaluateAlerts, parseDurationSafe } from './alert-evaluator'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 import { GeneralParamsService } from '../general-params/general-params.service'
 
@@ -220,10 +220,9 @@ export class AirShipmentsService {
       // OTP: requires atd_origin + sla to be parseable; skip if not
       const atdOriginRaw = getFieldValue(row, 'atd_origin')
       const slaRaw = getFieldValue(row, 'sla')
-      if (atdOriginRaw && slaRaw) {
+      const slaDuration = parseDurationSafe(slaRaw)
+      if (atdOriginRaw && slaDuration !== null) {
         const atdOrigin = new Date(String(atdOriginRaw))
-        const [h, m, s] = String(slaRaw).split(':').map(Number)
-        const slaDuration = (h * 3600 + m * 60 + s) * 1000
         const maxSla = new Date(atdOrigin.getTime() + slaDuration)
         if (!isNaN(atdOrigin.getTime()) && !isNaN(maxSla.getTime())) {
           const completedTimeRaw = getFieldValue(row, 'ata_vendor_wh_destination')
@@ -394,10 +393,9 @@ export class AirShipmentsService {
       // OTP: requires atd_origin + sla to be parseable; skip if not
       const atdOriginRaw = getFieldValue(row, 'atd_origin')
       const slaRaw = getFieldValue(row, 'sla')
-      if (atdOriginRaw && slaRaw) {
+      const slaDuration = parseDurationSafe(slaRaw)
+      if (atdOriginRaw && slaDuration !== null) {
         const atdOrigin = new Date(String(atdOriginRaw))
-        const [h, m, s] = String(slaRaw).split(':').map(Number)
-        const slaDuration = (h * 3600 + m * 60 + s) * 1000
         const maxSla = new Date(atdOrigin.getTime() + slaDuration)
         if (!isNaN(atdOrigin.getTime()) && !isNaN(maxSla.getTime())) {
           const completedTimeRaw = getFieldValue(row, 'ata_vendor_wh_destination')

@@ -42,7 +42,7 @@ function parseDuration(value: string): number | null {
 // Handles two formats:
 //   HH:MM:SS (e.g. "24:00:00") — from air_shipments_compileaircgk
 //   plain integer hours (e.g. "24" or 24) — from air_shipments_data.sla / lost_treshold
-function parseDurationSafe(value: unknown): number | null {
+export function parseDurationSafe(value: unknown): number | null {
   if (value === null || value === undefined) return null
   const str = typeof value === 'number' ? String(value) : value
   if (typeof str !== 'string' || !str.trim()) return null
