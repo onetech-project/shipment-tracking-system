@@ -36,7 +36,6 @@ export const SLA_DEFAULT_VISIBLE = new Set([
   'remarks',
   'ata_flight',
   'atd_flight',
-  'ata_origin',
   'atd_origin',
   'remarks_sla',
   'ata_vendor_wh_destination',

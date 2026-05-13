@@ -4,6 +4,7 @@ import { useState, type ElementType } from 'react'
 import {
   AlertTriangle,
   Hourglass,
+  Plane,
   PlaneLanding,
   Clock,
   ShieldAlert,
@@ -18,6 +19,7 @@ import { SyncStatusBadge } from '@/features/air-shipments/components/SyncStatusB
 
 export type DashboardAlertKey =
   | 'reservasiPenerbangan'
+  | 'flightTracking'
   | 'potensiMelebihiSla'
   | 'melewatiSla'
   | 'potensiMelebihiTjph'
@@ -70,6 +72,7 @@ const ALERT_CARDS: Array<{
   icon: ElementType
 }> = [
   { key: 'reservasiPenerbangan', label: 'Flight Reservations', color: '#F97316', icon: Clock },
+  { key: 'flightTracking', label: 'Flight Tracking', color: '#3B82F6', icon: Plane },
   { key: 'potensiMelebihiSla', label: 'Potential SLA Breach', color: '#EAB308', icon: Hourglass },
   { key: 'melewatiSla', label: 'SLA Breach', color: '#EF4444', icon: AlertTriangle },
   { key: 'potensiMelebihiTjph', label: 'Potential TJPH Breach', color: '#8B5CF6', icon: PlaneLanding },

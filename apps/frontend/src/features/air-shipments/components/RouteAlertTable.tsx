@@ -6,6 +6,7 @@ export interface RouteAlertRow {
   totalCount: number
   alerts: {
     reservasiPenerbangan: number
+    flightTracking: number
     potensiMelebihiSla: number
     melewatiSla: number
     potensiMelebihiTjph: number
@@ -13,6 +14,7 @@ export interface RouteAlertRow {
   }
   alertCounts: {
     reservasiPenerbangan: number
+    flightTracking: number
     potensiMelebihiSla: number
     melewatiSla: number
     potensiMelebihiTjph: number
@@ -35,6 +37,7 @@ interface RouteAlertTableProps {
 
 const ALERT_COLS: Array<{ key: keyof RouteAlertRow['alerts']; label: string; color: string }> = [
   { key: 'reservasiPenerbangan', label: 'Flight Res.', color: '#F97316' },
+  { key: 'flightTracking', label: 'Flight Track.', color: '#3B82F6' },
   { key: 'potensiMelebihiSla', label: 'Pot. SLA', color: '#EAB308' },
   { key: 'melewatiSla', label: 'SLA Breach', color: '#EF4444' },
   { key: 'potensiMelebihiTjph', label: 'Pot. TJPH', color: '#8B5CF6' },
