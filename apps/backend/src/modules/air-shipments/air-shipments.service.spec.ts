@@ -457,11 +457,11 @@ describe('AirShipmentsService — runSyncCycle()', () => {
       if (sql.startsWith('SELECT * FROM "air_shipments_compileaircgk"')) {
         return Promise.resolve([
           {
-            // now=2025-01-15, ata_origin=2025-01-01, sla=24h→maxSla=2025-01-02
+            // now=2025-01-15, atd_origin=2025-01-01, sla=24h→maxSla=2025-01-02
             // tjph=480h(20 days)→maxTjph=2025-01-21 (not yet breached)
             // effectiveTime=now > maxSla → melewatiSla=true; now < maxTjph → melewatiTjph=false
             extra_fields: {
-              ata_origin: '2025-01-01T00:00:00Z',
+              atd_origin: '2025-01-01T00:00:00Z',
               sla: '24:00:00',
               tjph: '480:00:00',
               ata_flight: '2025-01-01T12:00:00Z',
@@ -472,11 +472,11 @@ describe('AirShipmentsService — runSyncCycle()', () => {
             },
           },
           {
-            // ata_origin=2025-01-12, sla=24h→maxSla=2025-01-13
+            // atd_origin=2025-01-12, sla=24h→maxSla=2025-01-13
             // tjph=480h→maxTjph=2025-01-31 (not yet breached)
             // now(2025-01-15) > maxSla → melewatiSla=true
             extra_fields: {
-              ata_origin: '2025-01-12T00:00:00Z',
+              atd_origin: '2025-01-12T00:00:00Z',
               sla: '24:00:00',
               tjph: '480:00:00',
               ata_flight: '2025-01-12T12:00:00Z',
@@ -668,7 +668,7 @@ describe('AirShipmentsService — isVoidRow / VOID filtering', () => {
           {
             // Normal row that breaches SLA — should be counted
             extra_fields: {
-              ata_origin: '2025-01-01T00:00:00Z',
+              atd_origin: '2025-01-01T00:00:00Z',
               sla: '24:00:00',
               tjph: '480:00:00',
               ata_flight: '2025-01-01T12:00:00Z',
@@ -681,7 +681,7 @@ describe('AirShipmentsService — isVoidRow / VOID filtering', () => {
           {
             // VOID row — must be excluded from all alert counts
             extra_fields: {
-              ata_origin: '2025-01-01T00:00:00Z',
+              atd_origin: '2025-01-01T00:00:00Z',
               sla: '24:00:00',
               tjph: '480:00:00',
               ata_flight: '2025-01-01T12:00:00Z',
