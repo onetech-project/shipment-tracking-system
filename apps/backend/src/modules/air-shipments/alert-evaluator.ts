@@ -33,8 +33,9 @@ const getFieldValue = (row: Record<string, unknown>, key: string): unknown => {
 }
 
 // SLA and TJPH are HH:MM:SS strings; hours CAN exceed 23 — do NOT use Date parsing
-function parseDuration(value: string): number {
+function parseDuration(value: string): number | null {
   const [hours, minutes, seconds] = value.split(':').map(Number)
+  if (isNaN(hours) || isNaN(minutes) || isNaN(seconds)) return null
   return (hours * 3600 + minutes * 60 + seconds) * 1000
 }
 
@@ -45,7 +46,7 @@ function parseDurationSafe(value: unknown): number | null {
   if (value === null || value === undefined) return null
   const str = typeof value === 'number' ? String(value) : value
   if (typeof str !== 'string' || !str.trim()) return null
-  if (str.includes(':')) return parseDuration(str)
+  if (str.includes(':')) return parseDuration(str) // may return null on malformed input
   const h = parseFloat(str)
   return isNaN(h) ? null : h * 3_600_000
 }
