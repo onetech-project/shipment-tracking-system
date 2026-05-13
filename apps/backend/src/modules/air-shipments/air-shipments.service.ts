@@ -115,7 +115,7 @@ export class AirShipmentsService {
 
     if (isJsonbSort && sortBy.toLowerCase().includes('date')) {
       const v = `NULLIF(extra_fields->>'${sortBy}', '')`
-      orderBySql = `ORDER BY (CASE WHEN ${v} ~ '^\\d{4}-\\d{2}-\\d{2}([ T]\\d{2}:\\d{2}|$)' THEN ${v}::timestamp END) ${sortOrder.toUpperCase()}`
+      orderBySql = `ORDER BY (CASE WHEN ${v} ~ '^\\d{4}-\\d{2}-\\d{2}([ T]\\d{1,2}:\\d{2}|$)' THEN ${v}::timestamp END) ${sortOrder.toUpperCase()}`
     }
 
     if (alertFilter) {
@@ -561,7 +561,7 @@ export class AirShipmentsService {
   private buildTimestampExpression(field: string, columns: string[]) {
     const fieldExpr = this.buildFieldValueExpression(field, columns)
     const v = `NULLIF(${fieldExpr}, '')`
-    return `(CASE WHEN ${v} ~ '^\\d{4}-\\d{2}-\\d{2}([ T]\\d{2}:\\d{2}|$)' THEN ${v}::timestamptz END)`
+    return `(CASE WHEN ${v} ~ '^\\d{4}-\\d{2}-\\d{2}([ T]\\d{1,2}:\\d{2}|$)' THEN ${v}::timestamptz END)`
   }
 
   /**

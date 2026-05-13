@@ -83,19 +83,17 @@ export function evaluateAlerts(
     return {
       reservasiPenerbangan: false,
       potensiMelebihiSla: false,
-      melewatiSla, // propagate: SLA may also be breached when TJPH is
+      melewatiSla: false,
       potensiMelebihiTjph: false,
       melewatiTjph: true,
     }
   }
 
-  // Shipment already delivered — suppress in-flight alerts.
-  // melewatiTjph is always false here (handled by the early-return above).
-  if (completedTime !== null) {
+  if (melewatiSla) {
     return {
       reservasiPenerbangan: false,
       potensiMelebihiSla: false,
-      melewatiSla,
+      melewatiSla: true,
       potensiMelebihiTjph: false,
       melewatiTjph: false,
     }
@@ -103,6 +101,7 @@ export function evaluateAlerts(
 
   return {
     reservasiPenerbangan:
+      isEmptyValue(completedTime) &&
       !melewatiSla &&
       ataOrigin !== null &&
       now > new Date(ataOrigin.getTime() + nMs) &&
@@ -110,15 +109,17 @@ export function evaluateAlerts(
       isEmptyValue(ataFlight),
 
     potensiMelebihiSla:
+      isEmptyValue(completedTime) &&
       !melewatiSla &&
       ((ataFlightDate !== null &&
         maxSla !== null &&
         new Date(ataFlightDate.getTime() + mMs) > maxSla) ||
       (!isEmptyValue(atdFlight) && smuNotOnboard)),
 
-    melewatiSla,
+    melewatiSla: false,
 
     potensiMelebihiTjph:
+      isEmptyValue(completedTime) &&
       ataFlightDate !== null &&
       maxTjph !== null &&
       new Date(ataFlightDate.getTime() + mMs) > maxTjph,
