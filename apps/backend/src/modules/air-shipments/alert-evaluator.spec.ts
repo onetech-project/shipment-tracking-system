@@ -615,11 +615,12 @@ describe('evaluateAlerts', () => {
     ).toBe(true)
   })
 
-  it('parseDurationSafe accepts numeric hours (24 = 24h)', () => {
-    jest.setSystemTime(new Date('2025-01-01T09:00:00Z')) // 1h after, within sla=24h
+  it('parseDurationSafe accepts numeric hours via extra_fields (24 = 24h)', () => {
+    // Numeric values arrive from DB as numbers in extra_fields; now=1h after atd_origin, within sla=24h
+    jest.setSystemTime(new Date('2025-01-01T09:00:00Z'))
     expect(
       evaluateAlerts(
-        { ...baseRow, sla: 24 as any, tjph: 144 as any },
+        { ...baseRow, extra_fields: { sla: 24, tjph: 144 } },
         N, M,
       ).melewatiSla,
     ).toBe(false)
