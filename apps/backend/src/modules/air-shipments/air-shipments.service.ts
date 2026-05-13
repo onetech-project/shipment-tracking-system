@@ -8,7 +8,7 @@ import { ChunkError, RowError, SheetResult } from './sheet-config.interface'
 import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
 import { GoogleSheetSheetConfig } from './entities/google-sheet-sheet-config.entity'
 import { GoogleSheetConfigDto } from './dto/google-sheet-config.dto'
-import { AlertType, AlertFilter, ALERT_TYPES, evaluateAlerts } from './alert-evaluator'
+import { AlertType, AlertFilter, ALERT_TYPES, evaluateAlerts, parseDurationSafe } from './alert-evaluator'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 import { GeneralParamsService } from '../general-params/general-params.service'
 
@@ -119,16 +119,20 @@ export class AirShipmentsService {
     }
 
     if (alertFilter) {
-      const [{ nHours, mHours }, reservasiTableName] = await Promise.all([
+      const [{ nHours, mHours }, reservasiTableName, slaLookup] = await Promise.all([
         this.getAlertNMHours(),
         this.generalParamsService.getValue('reservasi_table_name', ''),
+        this.getSlaLookupByOriginDest(),
       ])
       const reservasiByAwb = await this.getReservasiTrackinganByAwb(reservasiTableName)
       const rawRows = await this.dataSource.query(
         `SELECT * FROM "${tableName}" ${whereSql} ${orderBySql}`,
         params
       )
-      const rows = this.enrichRowsWithReservasi(rawRows, reservasiByAwb)
+      const rows = this.enrichRowsWithReservasi(
+        this.enrichRowsWithSlaLookup(rawRows, slaLookup),
+        reservasiByAwb,
+      )
       const filteredRows = this.filterRowsByAlert(rows, alertFilter, nHours, mHours)
       const total = filteredRows.length
       const data = filteredRows.slice(offset, offset + limit)
@@ -154,9 +158,10 @@ export class AirShipmentsService {
       throw new BadRequestException('Invalid table name')
     }
 
-    const [{ nHours, mHours }, reservasiTableName] = await Promise.all([
+    const [{ nHours, mHours }, reservasiTableName, slaLookup] = await Promise.all([
       this.getAlertNMHours(),
       this.generalParamsService.getValue('reservasi_table_name', ''),
+      this.getSlaLookupByOriginDest(),
     ])
     const reservasiByAwb = await this.getReservasiTrackinganByAwb(reservasiTableName)
     const columns = await this.getTableColumns(tableName)
@@ -171,7 +176,10 @@ export class AirShipmentsService {
       `SELECT * FROM "${tableName}" ${whereSql}`,
       params
     )
-    const rows = this.enrichRowsWithReservasi(rawRows, reservasiByAwb)
+    const rows = this.enrichRowsWithReservasi(
+      this.enrichRowsWithSlaLookup(rawRows, slaLookup),
+      reservasiByAwb,
+    )
 
     interface AlertSummaryItem {
       routes: number
@@ -209,15 +217,14 @@ export class AirShipmentsService {
         item.tonnage += grossWeight
       }
 
-      // OTP: requires ata_origin + sla to be parseable; skip if not
-      const ataOriginRaw = getFieldValue(row, 'ata_origin')
+      // OTP: requires atd_origin + sla to be parseable; skip if not
+      const atdOriginRaw = getFieldValue(row, 'atd_origin')
       const slaRaw = getFieldValue(row, 'sla')
-      if (ataOriginRaw && slaRaw) {
-        const ataOrigin = new Date(String(ataOriginRaw))
-        const [h, m, s] = String(slaRaw).split(':').map(Number)
-        const slaDuration = (h * 3600 + m * 60 + s) * 1000
-        const maxSla = new Date(ataOrigin.getTime() + slaDuration)
-        if (!isNaN(ataOrigin.getTime()) && !isNaN(maxSla.getTime())) {
+      const slaDuration = parseDurationSafe(slaRaw)
+      if (atdOriginRaw && slaDuration !== null) {
+        const atdOrigin = new Date(String(atdOriginRaw))
+        const maxSla = new Date(atdOrigin.getTime() + slaDuration)
+        if (!isNaN(atdOrigin.getTime()) && !isNaN(maxSla.getTime())) {
           const completedTimeRaw = getFieldValue(row, 'ata_vendor_wh_destination')
           const completedTimeStr = completedTimeRaw != null ? String(completedTimeRaw).trim() : ''
           let isOnTime: boolean | null = null
@@ -320,9 +327,10 @@ export class AirShipmentsService {
       throw new BadRequestException('Invalid table name')
     }
 
-    const [{ nHours, mHours }, reservasiTableName] = await Promise.all([
+    const [{ nHours, mHours }, reservasiTableName, slaLookup] = await Promise.all([
       this.getAlertNMHours(),
       this.generalParamsService.getValue('reservasi_table_name', ''),
+      this.getSlaLookupByOriginDest(),
     ])
     const reservasiByAwb = await this.getReservasiTrackinganByAwb(reservasiTableName)
     const columns = await this.getTableColumns(tableName)
@@ -337,7 +345,10 @@ export class AirShipmentsService {
       `SELECT * FROM "${tableName}" ${whereSql}`,
       params
     )
-    const rows = this.enrichRowsWithReservasi(rawRows, reservasiByAwb)
+    const rows = this.enrichRowsWithReservasi(
+      this.enrichRowsWithSlaLookup(rawRows, slaLookup),
+      reservasiByAwb,
+    )
 
     const getFieldValue = AirShipmentsService.getFieldValueFromRow
 
@@ -379,15 +390,14 @@ export class AirShipmentsService {
         }
       }
 
-      // OTP: requires ata_origin + sla to be parseable; skip if not
-      const ataOriginRaw = getFieldValue(row, 'ata_origin')
+      // OTP: requires atd_origin + sla to be parseable; skip if not
+      const atdOriginRaw = getFieldValue(row, 'atd_origin')
       const slaRaw = getFieldValue(row, 'sla')
-      if (ataOriginRaw && slaRaw) {
-        const ataOrigin = new Date(String(ataOriginRaw))
-        const [h, m, s] = String(slaRaw).split(':').map(Number)
-        const slaDuration = (h * 3600 + m * 60 + s) * 1000
-        const maxSla = new Date(ataOrigin.getTime() + slaDuration)
-        if (!isNaN(ataOrigin.getTime()) && !isNaN(maxSla.getTime())) {
+      const slaDuration = parseDurationSafe(slaRaw)
+      if (atdOriginRaw && slaDuration !== null) {
+        const atdOrigin = new Date(String(atdOriginRaw))
+        const maxSla = new Date(atdOrigin.getTime() + slaDuration)
+        if (!isNaN(atdOrigin.getTime()) && !isNaN(maxSla.getTime())) {
           const completedTimeRaw = getFieldValue(row, 'ata_vendor_wh_destination')
           const completedTimeStr = completedTimeRaw != null ? String(completedTimeRaw).trim() : ''
           let isOnTime: boolean | null = null
@@ -437,14 +447,14 @@ export class AirShipmentsService {
     endDate?: string,
     days?: number,
   ): string | null {
-    const ataOriginExpr = this.buildTimestampExpression('ata_origin', columns)
+    const atdOriginExpr = this.buildTimestampExpression('atd_origin', columns)
     if (startDate && endDate) {
-      const clause = `(${ataOriginExpr} >= $${params.length + 1}::timestamptz AND ${ataOriginExpr} <= $${params.length + 2}::timestamptz)`
+      const clause = `(${atdOriginExpr} >= $${params.length + 1}::timestamptz AND ${atdOriginExpr} <= $${params.length + 2}::timestamptz)`
       params.push(`${startDate}T00:00:00.000Z`, `${endDate}T23:59:59.999Z`)
       return clause
     }
     if (typeof days === 'number') {
-      const clause = `(${ataOriginExpr} >= NOW() - ($${params.length + 1} || ' days')::interval)`
+      const clause = `(${atdOriginExpr} >= NOW() - ($${params.length + 1} || ' days')::interval)`
       params.push(String(days))
       return clause
     }
@@ -498,6 +508,64 @@ export class AirShipmentsService {
       if (awb) map.set(String(awb).trim(), String(smu ?? '').trim())
     }
     return map
+  }
+
+  /**
+   * Loads { "origin|destination" → {sla, tjph} } from air_shipments_data.
+   * Matches on extra_fields.origin_dc / extra_fields.destination_dc.
+   * Returns empty Map when table doesn't exist.
+   */
+  private async getSlaLookupByOriginDest(): Promise<Map<string, { sla: string | null; tjph: string | null }>> {
+    const tableName = 'air_shipments_data'
+    const exists: { exists: boolean }[] = await this.dataSource.query(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.tables
+         WHERE table_schema = 'public' AND table_name = $1
+       ) AS exists`,
+      [tableName]
+    )
+    if (!exists[0]?.exists) return new Map()
+
+    const rows: Record<string, unknown>[] = await this.dataSource.query(
+      `SELECT * FROM "${tableName}"`
+    )
+    const map = new Map<string, { sla: string | null; tjph: string | null }>()
+    for (const row of rows) {
+      const originDc = AirShipmentsService.getFieldValueFromRow(row, 'origin_dc')
+      const destDc = AirShipmentsService.getFieldValueFromRow(row, 'destination_dc')
+      if (!originDc || !destDc) continue
+      const key = `${String(originDc).trim().toLowerCase()}|${String(destDc).trim().toLowerCase()}`
+      const sla = AirShipmentsService.getFieldValueFromRow(row, 'sla')
+      const lostTreshold = AirShipmentsService.getFieldValueFromRow(row, 'lost_treshold')
+      map.set(key, {
+        sla: sla != null ? String(sla) : null,
+        tjph: lostTreshold != null ? String(lostTreshold) : null,
+      })
+    }
+    return map
+  }
+
+  /**
+   * Injects sla/tjph from air_shipments_data into each row at the top level.
+   * Top-level keys take precedence in getFieldValue, overriding existing sla/tjph.
+   */
+  private enrichRowsWithSlaLookup(
+    rows: Record<string, unknown>[],
+    slaLookup: Map<string, { sla: string | null; tjph: string | null }>,
+  ): Record<string, unknown>[] {
+    if (!slaLookup.size) return rows
+    return rows.map((row) => {
+      const origin = String(AirShipmentsService.getFieldValueFromRow(row, 'origin') ?? '').trim().toLowerCase()
+      const dest = String(AirShipmentsService.getFieldValueFromRow(row, 'destination') ?? '').trim().toLowerCase()
+      if (!origin || !dest) return row
+      const lookup = slaLookup.get(`${origin}|${dest}`)
+      if (!lookup) return row
+      const overrides: Record<string, unknown> = {}
+      if (lookup.sla != null) overrides.sla = lookup.sla
+      if (lookup.tjph != null) overrides.tjph = lookup.tjph
+      if (!Object.keys(overrides).length) return row
+      return { ...row, ...overrides }
+    })
   }
 
   private enrichRowsWithReservasi(

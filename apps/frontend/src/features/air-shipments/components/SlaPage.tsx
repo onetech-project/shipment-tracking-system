@@ -78,6 +78,7 @@ type AlertFilterOption = DashboardAlertKey
 const ALERT_OPTIONS: Array<{ value: AlertFilterOption | null; label: string }> = [
   { value: null, label: 'All Alerts' },
   { value: 'reservasiPenerbangan', label: 'Flight Reservations' },
+  { value: 'flightTracking', label: 'Flight Tracking' },
   { value: 'potensiMelebihiSla', label: 'Potential SLA Breach' },
   { value: 'melewatiSla', label: 'SLA Breach' },
   { value: 'potensiMelebihiTjph', label: 'Potential TJPH Breach' },
