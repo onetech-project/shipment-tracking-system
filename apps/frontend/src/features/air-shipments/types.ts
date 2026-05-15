@@ -56,4 +56,5 @@ export interface GoogleSheetConfig {
   syncInterval: number
   enabled: boolean
   sheetConfigs?: SheetConfig[]
+  updatedAt?: string
 }

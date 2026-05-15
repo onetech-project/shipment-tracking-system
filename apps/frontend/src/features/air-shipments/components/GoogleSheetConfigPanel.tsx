@@ -9,6 +9,7 @@ import { normalizeTableName } from '../utils/normalizeTableName'
 import { GoogleSheetConfig, SheetConfig } from '../types'
 import Spinner from '@/components/ui/spinner'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import moment from 'moment'
 
 export function GoogleSheetConfigPanel() {
   // const [config, setConfig] = useState<GoogleSheetConfig | null>(null)
@@ -219,6 +220,12 @@ export function GoogleSheetConfigPanel() {
                 <div className="text-sm text-muted-foreground">
                   Status: {cfg.enabled ? 'Enabled' : 'Disabled'}
                 </div>
+                {cfg.updatedAt && (
+                  <div className="text-sm text-muted-foreground">
+                    Last Updated: {moment(cfg.updatedAt).fromNow()} (
+                    {moment(cfg.updatedAt).format('DD-MMM-YYYY HH:mm:ss')})
+                  </div>
+                )}
               </div>
               <div className="flex gap-2">
                 <Button onClick={() => handleEdit(cfg)}>Edit</Button>
