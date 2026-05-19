@@ -5,6 +5,7 @@ export type AlertType =
   | 'melewatiSla'
   | 'potensiMelebihiTjph'
   | 'melewatiTjph'
+  | 'spxTjphAlert'
 
 export type AlertFilter = AlertType | 'normal' | 'any'
 
@@ -15,6 +16,7 @@ export interface AlertFlags {
   melewatiSla: boolean
   potensiMelebihiTjph: boolean
   melewatiTjph: boolean
+  spxTjphAlert: boolean
 }
 
 const isEmptyValue = (value: unknown): boolean => {
@@ -87,6 +89,9 @@ export function evaluateAlerts(
   const completedTime = parseDate(getFieldValue(row, 'ata_vendor_wh_destination'))
   const effectiveTime = completedTime ?? now
 
+  const spxCompletedTime = parseDate(getFieldValue(row, 'completed_time'))
+  const spxEffectiveTime = spxCompletedTime ?? now
+
   const melewatiSla = maxSla !== null && effectiveTime > maxSla
   const melewatiTjph = maxTjph !== null && effectiveTime > maxTjph
 
@@ -120,6 +125,8 @@ export function evaluateAlerts(
       new Date(ataFlightDate.getTime() + mMs) > maxTjph,
 
     melewatiTjph,
+
+    spxTjphAlert: maxTjph !== null && spxEffectiveTime > maxTjph,
   }
 }
 
@@ -130,6 +137,7 @@ export const ALERT_TYPES: AlertType[] = [
   'melewatiSla',
   'potensiMelebihiTjph',
   'melewatiTjph',
+  'spxTjphAlert',
 ]
 
 export const ALERT_FILTERS: AlertFilter[] = [...ALERT_TYPES, 'normal', 'any']
@@ -141,4 +149,5 @@ export const ALERT_TYPE_LABELS: Record<AlertType, string> = {
   melewatiSla: 'Melewati SLA',
   potensiMelebihiTjph: 'Potensi Melebihi TJPH',
   melewatiTjph: 'Melewati TJPH',
+  spxTjphAlert: 'SPX TJPH Alert',
 }
