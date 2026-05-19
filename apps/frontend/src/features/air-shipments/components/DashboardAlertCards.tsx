@@ -13,6 +13,7 @@ import {
   ChevronUp,
   MapPin,
   Settings,
+  Timer,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { SyncStatusBadge } from '@/features/air-shipments/components/SyncStatusBadge'
@@ -24,6 +25,7 @@ export type DashboardAlertKey =
   | 'melewatiSla'
   | 'potensiMelebihiTjph'
   | 'melewatiTjph'
+  | 'spxTjphAlert'
 
 export interface AlertSummaryItem {
   routes: number
@@ -77,6 +79,7 @@ const ALERT_CARDS: Array<{
   { key: 'melewatiSla', label: 'SLA Breach', color: '#EF4444', icon: AlertTriangle },
   { key: 'potensiMelebihiTjph', label: 'Potential TJPH Breach', color: '#8B5CF6', icon: PlaneLanding },
   { key: 'melewatiTjph', label: 'TJPH Breach', color: '#DC2626', icon: ShieldAlert },
+  { key: 'spxTjphAlert', label: 'SPX TJPH Alert', color: '#0D9488', icon: Timer },
 ]
 
 export function DashboardAlertCards({
