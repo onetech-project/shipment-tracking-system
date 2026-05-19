@@ -87,7 +87,7 @@ export class InvitationsService {
         throw new BadRequestException('Invitation is not pending')
       invitation.status = 'revoked'
       await this.invitationRepo.save(invitation)
-      this.eventEmitter.emit('invitation.revoked', {
+      this.eventEmitter.emit('invitation.cancelled', {
         invitationId: id,
         organizationId: invitation.organizationId,
         actorId,

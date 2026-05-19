@@ -64,6 +64,9 @@ export class AuditService {
   @OnEvent('user.deactivated') onUserDeactivated(p: AuditPayload) {
     this.log('user.deactivated', p, 'user')
   }
+  @OnEvent('user.inactivated') onUserInactivated(p: AuditPayload) {
+    this.log('user.inactivated', p, 'user')
+  }
   @OnEvent('user.password_changed') onPasswordChanged(p: AuditPayload) {
     this.log('user.password_changed', p, 'user')
   }
@@ -98,6 +101,13 @@ export class AuditService {
   }
   @OnEvent('invitation.cancelled') onInvitationCancelled(p: AuditPayload) {
     this.log('invitation.cancelled', p, 'invitation')
+  }
+  @OnEvent('invitation.accepted') onInvitationAccepted(p: AuditPayload) {
+    this.log('invitation.accepted', p, 'invitation')
+  }
+
+  @OnEvent('general_params.updated') onGeneralParamsUpdated(p: AuditPayload) {
+    this.log('general_params.updated', p, 'general_params')
   }
 
   @OnEvent('google_sheet_config.created')
