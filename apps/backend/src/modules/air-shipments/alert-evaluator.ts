@@ -6,6 +6,7 @@ export type AlertType =
   | 'potensiMelebihiTjph'
   | 'melewatiTjph'
   | 'spxTjphAlert'
+  | 'spxSlaAlert'
 
 export type AlertFilter = AlertType | 'normal' | 'any'
 
@@ -17,6 +18,7 @@ export interface AlertFlags {
   potensiMelebihiTjph: boolean
   melewatiTjph: boolean
   spxTjphAlert: boolean
+  spxSlaAlert: boolean
 }
 
 const isEmptyValue = (value: unknown): boolean => {
@@ -127,6 +129,7 @@ export function evaluateAlerts(
     melewatiTjph,
 
     spxTjphAlert: maxTjph !== null && spxEffectiveTime > maxTjph,
+    spxSlaAlert: maxSla !== null && spxEffectiveTime > maxSla,
   }
 }
 
@@ -138,6 +141,7 @@ export const ALERT_TYPES: AlertType[] = [
   'potensiMelebihiTjph',
   'melewatiTjph',
   'spxTjphAlert',
+  'spxSlaAlert',
 ]
 
 export const ALERT_FILTERS: AlertFilter[] = [...ALERT_TYPES, 'normal', 'any']
@@ -150,4 +154,5 @@ export const ALERT_TYPE_LABELS: Record<AlertType, string> = {
   potensiMelebihiTjph: 'Potensi Melebihi TJPH',
   melewatiTjph: 'Melewati TJPH',
   spxTjphAlert: 'SPX TJPH Alert',
+  spxSlaAlert: 'SPX SLA Alert',
 }

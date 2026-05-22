@@ -11,6 +11,8 @@ export interface RouteAlertRow {
     melewatiSla: number
     potensiMelebihiTjph: number
     melewatiTjph: number
+    spxTjphAlert: number
+    spxSlaAlert: number
   }
   alertCounts: {
     reservasiPenerbangan: number
@@ -19,6 +21,8 @@ export interface RouteAlertRow {
     melewatiSla: number
     potensiMelebihiTjph: number
     melewatiTjph: number
+    spxTjphAlert: number
+    spxSlaAlert: number
   }
   otp: {
     percentage: number | null
@@ -42,6 +46,8 @@ const ALERT_COLS: Array<{ key: keyof RouteAlertRow['alerts']; label: string; col
   { key: 'melewatiSla', label: 'SLA Breach', color: '#EF4444' },
   { key: 'potensiMelebihiTjph', label: 'Pot. TJPH', color: '#8B5CF6' },
   { key: 'melewatiTjph', label: 'TJPH Breach', color: '#DC2626' },
+  { key: 'spxTjphAlert', label: 'SPX TJPH', color: '#0D9488' },
+  { key: 'spxSlaAlert', label: 'SPX SLA', color: '#0891B2' },
 ]
 
 function fmt(n: number) {
