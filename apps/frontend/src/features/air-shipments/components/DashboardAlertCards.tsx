@@ -26,6 +26,7 @@ export type DashboardAlertKey =
   | 'potensiMelebihiTjph'
   | 'melewatiTjph'
   | 'spxTjphAlert'
+  | 'spxSlaAlert'
 
 export interface AlertSummaryItem {
   routes: number
@@ -80,6 +81,7 @@ const ALERT_CARDS: Array<{
   { key: 'potensiMelebihiTjph', label: 'Potential TJPH Breach', color: '#8B5CF6', icon: PlaneLanding },
   { key: 'melewatiTjph', label: 'TJPH Breach', color: '#DC2626', icon: ShieldAlert },
   { key: 'spxTjphAlert', label: 'SPX TJPH Alert', color: '#0D9488', icon: Timer },
+  { key: 'spxSlaAlert', label: 'SPX SLA Alert', color: '#0891B2', icon: ShieldAlert },
 ]
 
 export function DashboardAlertCards({

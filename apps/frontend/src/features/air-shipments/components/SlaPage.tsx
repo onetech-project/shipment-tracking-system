@@ -84,6 +84,7 @@ const ALERT_OPTIONS: Array<{ value: AlertFilterOption | null; label: string }> =
   { value: 'potensiMelebihiTjph', label: 'Potential TJPH Breach' },
   { value: 'melewatiTjph', label: 'TJPH Breach' },
   { value: 'spxTjphAlert', label: 'SPX TJPH Alert' },
+  { value: 'spxSlaAlert', label: 'SPX SLA Alert' },
 ]
 
 type BatchOp = 'lock' | 'delete' | null
