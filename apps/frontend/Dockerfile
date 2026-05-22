@@ -17,6 +17,8 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 # ── Stage 2: Build ────────────────────────────────────────
 FROM node:24.14.0-alpine AS builder
 
+RUN corepack enable
+
 # Build-time environment variables
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_WS_URL
