@@ -114,7 +114,11 @@ pipeline {
 
         stage('Install') {
             steps {
-                sh 'npm ci --no-audit --no-fund --prefer-offline --progress=false --verbose'
+                sh '''
+                    corepack enable
+                    pnpm install --frozen-lockfile --filter=backend \
+                      --prefer-offline --store-dir /var/cache/pnpm-jenkins
+                '''
             }
         }
 

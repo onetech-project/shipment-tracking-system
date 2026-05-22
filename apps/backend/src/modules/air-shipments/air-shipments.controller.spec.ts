@@ -24,7 +24,7 @@ describe('AirShipmentsController', () => {
 
   it('getAlertSummary delegates to service.getAlertSummaryForTable', async () => {
     await controller.getAlertSummary('air_shipments_cgk')
-    expect(service.getAlertSummaryForTable).toHaveBeenCalledWith('air_shipments_cgk', undefined)
+    expect(service.getAlertSummaryForTable).toHaveBeenCalledWith('air_shipments_cgk', undefined, undefined, undefined)
   })
 
   it('findAllDynamic delegates to service.findAllForTable with query', async () => {
@@ -33,7 +33,7 @@ describe('AirShipmentsController', () => {
       limit: 10,
       sortBy: 'id',
       sortOrder: 'asc',
-      alertFilter: 'slaAlert',
+      alertFilter: 'melewatiSla',
     }
 
     await controller.findAllDynamic('air_shipments_cgk', dto)

@@ -34,7 +34,7 @@ describe('PnlService', () => {
         ['2026-04-2H'],
       )
       expect(result).toEqual({
-        cyclePeriod: '2026-04-2H',
+        label: '2026-04-2H',
         totalTos: 100,
         totalAwbs: 10,
         totalRevenue: 5000000,
