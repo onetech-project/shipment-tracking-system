@@ -12,6 +12,7 @@ import { GeneralParamsModal } from '@/features/general-params/components/General
 import { useGeneralParams } from '@/features/general-params/hooks/useGeneralParams'
 import { useSyncNotification } from '@/features/air-shipments/hooks/useSyncNotification'
 import { useAuth } from '@/features/auth/auth.context'
+import { usePermissions } from '@/shared/hooks/use-permissions'
 
 const TABLE_ENDPOINT = `/air-shipments/air_shipments_compileaircgk`
 
@@ -41,6 +42,8 @@ export default function DashboardPage() {
   const { isConnected, lastSyncAt, lastCompletedSheet } = useSyncNotification()
   const { params: generalParams, reload: reloadGeneralParams, loaded: paramsLoaded } = useGeneralParams()
   const { user } = useAuth()
+  const { hasPermission } = usePermissions()
+  const canReadSla = hasPermission('read.sla')
   const router = useRouter()
 
   const [startDate, setStartDate] = useState(() => defaultDateRange().start)
@@ -68,6 +71,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!paramsLoaded) return
+    if (!canReadSla) return
     const start = new Date(startDate)
     const end = new Date(endDate)
     const diff = Math.round((end.getTime() - start.getTime()) / 86_400_000)
@@ -77,15 +81,16 @@ export default function DashboardPage() {
     void fetchAlertSummary()
     setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startDate, endDate, paramsLoaded])
+  }, [startDate, endDate, paramsLoaded, canReadSla])
 
   useEffect(() => {
+    if (!canReadSla) return
     if (lastCompletedSheet === 'compileaircgk') {
       void fetchAlertSummary()
       setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastCompletedSheet])
+  }, [lastCompletedSheet, canReadSla])
 
   const handleRouteSelect = (alertKey: DashboardAlertKey, route: string) => {
     const params = new URLSearchParams()
@@ -105,33 +110,36 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <DashboardAlertCards
-          summary={summary}
-          activeAlert={null}
-          onRouteSelect={handleRouteSelect}
-          isLoading={summaryLoading}
-          startDate={startDate}
-          endDate={endDate}
-          onStartDateChange={setStartDate}
-          onEndDateChange={setEndDate}
-          dateError={dateError}
-          lastUpdated={lastUpdated}
-          syncNote="Live refresh is active for Compile Air CGK synchronization."
-          onConfigure={() => setShowConfigModal(true)}
-          isConnected={isConnected}
-          lastSyncAt={lastSyncAt}
-        />
-
-        <GeneralParamsModal
-          open={showConfigModal}
-          onClose={() => setShowConfigModal(false)}
-          onSaved={() => {
-            void reloadGeneralParams().then(() => {
-              void fetchAlertSummary()
-              setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
-            })
-          }}
-        />
+        {canReadSla && (
+          <>
+            <DashboardAlertCards
+              summary={summary}
+              activeAlert={null}
+              onRouteSelect={handleRouteSelect}
+              isLoading={summaryLoading}
+              startDate={startDate}
+              endDate={endDate}
+              onStartDateChange={setStartDate}
+              onEndDateChange={setEndDate}
+              dateError={dateError}
+              lastUpdated={lastUpdated}
+              syncNote="Live refresh is active for Compile Air CGK synchronization."
+              onConfigure={() => setShowConfigModal(true)}
+              isConnected={isConnected}
+              lastSyncAt={lastSyncAt}
+            />
+            <GeneralParamsModal
+              open={showConfigModal}
+              onClose={() => setShowConfigModal(false)}
+              onSaved={() => {
+                void reloadGeneralParams().then(() => {
+                  void fetchAlertSummary()
+                  setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
+                })
+              }}
+            />
+          </>
+        )}
       </section>
     </div>
   )

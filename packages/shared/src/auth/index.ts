@@ -57,6 +57,12 @@ export enum Permission {
   // Audit
   READ_AUDIT = 'read.audit',
 
+  // SLA
+  READ_SLA = 'read.sla',
+
+  // PNL
+  READ_PNL = 'read.pnl',
+
   // Google Sheet Config (for Air Shipments module)
   READ_GOOGLE_SHEET_CONFIG = 'read.google_sheet_config',
   CREATE_GOOGLE_SHEET_CONFIG = 'create.google_sheet_config',

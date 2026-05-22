@@ -113,6 +113,8 @@ export class AirShipmentsController {
   }
 
   @Get(':tableName/alert-summary')
+  @UseGuards(RbacGuard)
+  @Authorize(Permission.READ_SLA)
   async getAlertSummary(
     @Param('tableName') tableName: string,
     @Query('startDate') startDate?: string,
@@ -132,6 +134,8 @@ export class AirShipmentsController {
   }
 
   @Get(':tableName/routes')
+  @UseGuards(RbacGuard)
+  @Authorize(Permission.READ_SLA)
   async getRoutes(
     @Param('tableName') tableName: string,
     @Query('startDate') startDate?: string,
@@ -151,6 +155,8 @@ export class AirShipmentsController {
   }
 
   @Get(':tableName/route-alert-summary')
+  @UseGuards(RbacGuard)
+  @Authorize(Permission.READ_SLA)
   async getRouteAlertSummary(
     @Param('tableName') tableName: string,
     @Query('startDate') startDate?: string,

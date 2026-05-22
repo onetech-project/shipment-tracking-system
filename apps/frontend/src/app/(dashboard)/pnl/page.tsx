@@ -1,6 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/features/auth/auth.context'
+import { usePermissions } from '@/shared/hooks/use-permissions'
 import { usePnlCycles, usePnlSummary, PnlFilter } from '@/features/pnl/hooks/usePnl'
 import { PnlKpiCards, PnlKpiKey } from '@/features/pnl/components/PnlKpiCards'
 import { PnlDailyMarginChart } from '@/features/pnl/components/PnlDailyMarginChart'
@@ -39,7 +42,7 @@ function PnlSkeleton() {
 
 type FilterMode = 'cycle' | 'range'
 
-export default function PnlPage() {
+function PnlPageContent() {
   const { data: cycles, isLoading: isLoadingCycles, isError: isCyclesError, refetch: refetchCycles } = usePnlCycles()
   const [mode, setMode] = useState<FilterMode>('cycle')
   const [cycle, setCycle] = useState<string | undefined>(undefined)
@@ -188,4 +191,21 @@ export default function PnlPage() {
       )}
     </div>
   )
+}
+
+export default function PnlPage() {
+  const { user, loading } = useAuth()
+  const { hasPermission } = usePermissions()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!loading && user && !hasPermission('read.pnl')) {
+      router.replace('/dashboard')
+    }
+  }, [loading, user, hasPermission, router])
+
+  if (loading || !user) return null
+  if (!hasPermission('read.pnl')) return null
+
+  return <PnlPageContent />
 }
