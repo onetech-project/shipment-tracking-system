@@ -16,6 +16,15 @@ export class PnlGeneratedColumnsPricing20260503000002 implements MigrationInterf
         CONSTRAINT "air_shipments_smu_rate_cgk_spx_pkey" PRIMARY KEY (id)
       )
     `)
+    // awb is a real unique-key column added by DynamicTableService; add it here for fresh envs
+    await queryRunner.query(`ALTER TABLE air_shipments_smu_rate_cgk_spx ADD COLUMN IF NOT EXISTS awb TEXT`)
+    await queryRunner.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uq_air_shipments_smu_rate_cgk_spx_awb') THEN
+          ALTER TABLE air_shipments_smu_rate_cgk_spx ADD CONSTRAINT uq_air_shipments_smu_rate_cgk_spx_awb UNIQUE (awb);
+        END IF;
+      END$$
+    `)
     await queryRunner.query(`
       ALTER TABLE air_shipments_smu_rate_cgk_spx
         ADD COLUMN IF NOT EXISTS account  TEXT GENERATED ALWAYS AS (extra_fields->>'account') STORED,
@@ -66,6 +75,15 @@ export class PnlGeneratedColumnsPricing20260503000002 implements MigrationInterf
         CONSTRAINT "air_shipments_ra_pkey" PRIMARY KEY (id)
       )
     `)
+    // ra_name is a real unique-key column added by DynamicTableService; add it here for fresh envs
+    await queryRunner.query(`ALTER TABLE air_shipments_ra ADD COLUMN IF NOT EXISTS ra_name TEXT`)
+    await queryRunner.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'uq_air_shipments_ra_ra_name') THEN
+          ALTER TABLE air_shipments_ra ADD CONSTRAINT uq_air_shipments_ra_ra_name UNIQUE (ra_name);
+        END IF;
+      END$$
+    `)
     await queryRunner.query(`
       ALTER TABLE air_shipments_ra
         ADD COLUMN IF NOT EXISTS ra_name_lower TEXT    GENERATED ALWAYS AS (LOWER(extra_fields->>'ra_name')) STORED,
@@ -115,11 +133,13 @@ export class PnlGeneratedColumnsPricing20260503000002 implements MigrationInterf
 
     await queryRunner.query(`DROP INDEX IF EXISTS idx_ra_name_lower`)
     await queryRunner.query(`ALTER TABLE air_shipments_ra DROP COLUMN IF EXISTS ra_name_lower, DROP COLUMN IF EXISTS rate, DROP COLUMN IF EXISTS admin, DROP COLUMN IF EXISTS ppn`)
+    await queryRunner.query(`ALTER TABLE air_shipments_ra DROP COLUMN IF EXISTS ra_name`)
 
     await queryRunner.query(`DROP INDEX IF EXISTS idx_smu_lookup`)
     await queryRunner.query(`ALTER TABLE air_shipments_smu DROP COLUMN IF EXISTS vendor, DROP COLUMN IF EXISTS airlines, DROP COLUMN IF EXISTS origin, DROP COLUMN IF EXISTS destination, DROP COLUMN IF EXISTS total_cost_smu_per_kg, DROP COLUMN IF EXISTS admin_smu, DROP COLUMN IF EXISTS sg_out`)
 
     await queryRunner.query(`DROP INDEX IF EXISTS idx_smurate_lookup`)
     await queryRunner.query(`ALTER TABLE air_shipments_smu_rate_cgk_spx DROP COLUMN IF EXISTS account, DROP COLUMN IF EXISTS airlines, DROP COLUMN IF EXISTS via, DROP COLUMN IF EXISTS dest, DROP COLUMN IF EXISTS ra_name`)
+    await queryRunner.query(`ALTER TABLE air_shipments_smu_rate_cgk_spx DROP COLUMN IF EXISTS awb`)
   }
 }
