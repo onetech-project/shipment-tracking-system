@@ -28,7 +28,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY apps/frontend/ apps/frontend/
 COPY packages/shared/ packages/shared/
-COPY package.json ./
+COPY package.json pnpm-workspace.yaml .npmrc ./
 
 WORKDIR /app/apps/frontend
 
