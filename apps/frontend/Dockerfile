@@ -12,7 +12,7 @@ COPY apps/frontend/package.json apps/frontend/
 COPY packages/shared/package.json packages/shared/
 
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --filter=apps/frontend
+    pnpm install --frozen-lockfile --filter=frontend
 
 # ── Stage 2: Build ────────────────────────────────────────
 FROM node:24.14.0-alpine AS builder

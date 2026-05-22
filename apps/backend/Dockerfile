@@ -12,7 +12,7 @@ COPY apps/backend/package.json apps/backend/
 COPY packages/shared/package.json packages/shared/
 
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --filter=apps/backend
+    pnpm install --frozen-lockfile --filter=backend
 
 COPY apps/backend/ apps/backend/
 COPY packages/shared/ packages/shared/
