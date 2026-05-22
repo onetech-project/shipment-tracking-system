@@ -1,25 +1,26 @@
 {
   "name": "shipment-tracker",
   "private": true,
+  "packageManager": "pnpm@9.15.0",
   "workspaces": [
     "apps/backend",
     "apps/frontend",
     "packages/*"
   ],
   "scripts": {
-    "dev": "concurrently \"npm:dev:backend\" \"npm:dev:frontend\"",
-    "dev:backend": "npm run start:dev --workspace=apps/backend",
-    "dev:backend:debug": "npm run start:debug --workspace=apps/backend",
-    "dev:frontend": "npm run dev --workspace=apps/frontend",
-    "build": "npm run build --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
-    "test:e2e": "npm run test:e2e --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present",
-    "migration:run": "npm run migration:run --workspace=apps/backend",
-    "migration:revert": "npm run migration:revert --workspace=apps/backend",
-    "migration:generate": "npm run migration:generate --workspace=apps/backend",
-    "migration:show": "npm run migration:show --workspace=apps/backend",
-    "schema:drop": "npm run schema:drop --workspace=apps/backend"
+    "dev": "concurrently \"pnpm:dev:backend\" \"pnpm:dev:frontend\"",
+    "dev:backend": "pnpm --filter apps/backend start:dev",
+    "dev:backend:debug": "pnpm --filter apps/backend start:debug",
+    "dev:frontend": "pnpm --filter apps/frontend dev",
+    "build": "pnpm -r run build",
+    "test": "pnpm -r run test",
+    "test:e2e": "pnpm -r run test:e2e",
+    "lint": "pnpm -r run lint",
+    "migration:run": "pnpm --filter apps/backend migration:run",
+    "migration:revert": "pnpm --filter apps/backend migration:revert",
+    "migration:generate": "pnpm --filter apps/backend migration:generate",
+    "migration:show": "pnpm --filter apps/backend migration:show",
+    "schema:drop": "pnpm --filter apps/backend schema:drop"
   },
   "devDependencies": {
     "concurrently": "^8.2.0"

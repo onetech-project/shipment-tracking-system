@@ -3,24 +3,22 @@
 # ── Stage 1: Build ────────────────────────────────────────
 FROM node:24.14.1-slim AS builder
 
+RUN corepack enable
+
 WORKDIR /app
 
-# Copy workspace manifests
-COPY package.json package-lock.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY apps/backend/package.json apps/backend/
 COPY packages/shared/package.json packages/shared/
 
-# Install all workspace dependencies
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci --workspace=apps/backend --include-workspace-root
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --filter=apps/backend
 
-# Copy source
 COPY apps/backend/ apps/backend/
 COPY packages/shared/ packages/shared/
 
-# Build
 WORKDIR /app/apps/backend
-RUN npm run build
+RUN pnpm run build
 
 # ── Stage 2: Production ───────────────────────────────────
 FROM node:24.14.1-slim AS production
@@ -43,9 +41,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 ENV TZ=Asia/Jakarta
 RUN ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime && echo ${TZ} > /etc/timezone
 
-# Copy pre-built node_modules from builder (avoids second npm ci + compiler toolchain)
-# npm workspace hoisting puts everything in root node_modules; the workspace-local
-# directory only exists for version conflict overrides
+# Copy pre-built node_modules from builder
 COPY --from=builder /app/node_modules ./node_modules
 COPY package.json ./
 COPY apps/backend/package.json apps/backend/

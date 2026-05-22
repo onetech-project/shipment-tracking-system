@@ -3,19 +3,21 @@
 # ── Stage 1: Dependencies ─────────────────────────────────
 FROM node:24.14.0-alpine AS deps
 
+RUN corepack enable
+
 WORKDIR /app
 
-COPY package.json package-lock.json ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY apps/frontend/package.json apps/frontend/
 COPY packages/shared/package.json packages/shared/
 
-RUN --mount=type=cache,target=/root/.npm \
-    npm ci --workspace=apps/frontend --include-workspace-root
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --filter=apps/frontend
 
 # ── Stage 2: Build ────────────────────────────────────────
 FROM node:24.14.0-alpine AS builder
 
-# Build-time environment variables (CRA reads REACT_APP_* at build time)
+# Build-time environment variables
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_WS_URL
 
@@ -32,7 +34,7 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN npm run build
+RUN pnpm run build
 
 # ── Stage 3: Production ───────────────────────────────────
 FROM node:24.14.0-alpine AS production
@@ -50,7 +52,6 @@ RUN addgroup --system --gid 1001 nodejs && \
 COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/apps/frontend/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/frontend/.next/static ./.next/static
-# COPY --from=builder --chown=nextjs:nodejs /app/apps/frontend/public apps/frontend/public
 
 USER nextjs
 
