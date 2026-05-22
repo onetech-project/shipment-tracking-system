@@ -6,6 +6,17 @@ export class PnlGeneratedColumnsPricing20260503000002 implements MigrationInterf
   public async up(queryRunner: QueryRunner): Promise<void> {
     // smu_rate_cgk_spx — table exists; awb is already a real column with unique constraint
     await queryRunner.query(`
+      CREATE TABLE IF NOT EXISTS air_shipments_smu_rate_cgk_spx (
+        id             UUID        NOT NULL DEFAULT gen_random_uuid(),
+        is_locked      BOOLEAN     NOT NULL DEFAULT false,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+        last_synced_at TIMESTAMPTZ,
+        extra_fields   JSONB                DEFAULT '{}',
+        CONSTRAINT "air_shipments_smu_rate_cgk_spx_pkey" PRIMARY KEY (id)
+      )
+    `)
+    await queryRunner.query(`
       ALTER TABLE air_shipments_smu_rate_cgk_spx
         ADD COLUMN IF NOT EXISTS account  TEXT GENERATED ALWAYS AS (extra_fields->>'account') STORED,
         ADD COLUMN IF NOT EXISTS airlines TEXT GENERATED ALWAYS AS (extra_fields->>'airlines') STORED,

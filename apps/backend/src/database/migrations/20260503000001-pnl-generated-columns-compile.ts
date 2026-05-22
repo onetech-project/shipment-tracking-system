@@ -5,6 +5,17 @@ export class PnlGeneratedColumnsCompile20260503000001 implements MigrationInterf
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
+      CREATE TABLE IF NOT EXISTS air_shipments_compileaircgk (
+        id             UUID        NOT NULL DEFAULT gen_random_uuid(),
+        is_locked      BOOLEAN     NOT NULL DEFAULT false,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+        last_synced_at TIMESTAMPTZ,
+        extra_fields   JSONB                DEFAULT '{}',
+        CONSTRAINT "air_shipments_compileaircgk_pkey" PRIMARY KEY (id)
+      )
+    `)
+    await queryRunner.query(`
       ALTER TABLE air_shipments_compileaircgk
         ADD COLUMN IF NOT EXISTS awb             TEXT    GENERATED ALWAYS AS (extra_fields->>'awb') STORED,
         ADD COLUMN IF NOT EXISTS to_number       TEXT    GENERATED ALWAYS AS (extra_fields->>'to_number') STORED,
