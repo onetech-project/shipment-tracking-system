@@ -45,7 +45,9 @@ WORKDIR /app
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
-# Copy standalone output (bundles its own trimmed node_modules — no need to copy workspace node_modules)
+# Standalone output does not self-bundle workspace-level packages (e.g. next) without
+# outputFileTracingRoot set — copy workspace node_modules first, then overlay standalone
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/apps/frontend/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/frontend/.next/static ./.next/static
 # COPY --from=builder --chown=nextjs:nodejs /app/apps/frontend/public apps/frontend/public
