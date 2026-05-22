@@ -116,7 +116,7 @@ pipeline {
             steps {
                 sh '''
                     corepack enable
-                    pnpm install --frozen-lockfile --filter=apps/backend \
+                    pnpm install --frozen-lockfile --filter=backend \
                       --prefer-offline --store-dir /var/cache/pnpm-jenkins
                 '''
             }

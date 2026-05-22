@@ -9,18 +9,18 @@
   ],
   "scripts": {
     "dev": "concurrently \"pnpm:dev:backend\" \"pnpm:dev:frontend\"",
-    "dev:backend": "pnpm --filter apps/backend start:dev",
-    "dev:backend:debug": "pnpm --filter apps/backend start:debug",
-    "dev:frontend": "pnpm --filter apps/frontend dev",
+    "dev:backend": "pnpm --filter backend start:dev",
+    "dev:backend:debug": "pnpm --filter backend start:debug",
+    "dev:frontend": "pnpm --filter frontend dev",
     "build": "pnpm -r run build",
     "test": "pnpm -r run test",
     "test:e2e": "pnpm -r run test:e2e",
     "lint": "pnpm -r run lint",
-    "migration:run": "pnpm --filter apps/backend migration:run",
-    "migration:revert": "pnpm --filter apps/backend migration:revert",
-    "migration:generate": "pnpm --filter apps/backend migration:generate",
-    "migration:show": "pnpm --filter apps/backend migration:show",
-    "schema:drop": "pnpm --filter apps/backend schema:drop"
+    "migration:run": "pnpm --filter backend migration:run",
+    "migration:revert": "pnpm --filter backend migration:revert",
+    "migration:generate": "pnpm --filter backend migration:generate",
+    "migration:show": "pnpm --filter backend migration:show",
+    "schema:drop": "pnpm --filter backend schema:drop"
   },
   "devDependencies": {
     "concurrently": "^8.2.0"
