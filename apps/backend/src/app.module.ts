@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { ConfigModule, ConfigService } from '@nestjs/config'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { EventEmitterModule } from '@nestjs/event-emitter'
+import { ScheduleModule } from '@nestjs/schedule'
 import { ClsModule } from 'nestjs-cls'
 import { BullModule } from '@nestjs/bullmq'
 import { ThrottlerModule } from '@nestjs/throttler'
@@ -12,6 +13,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard'
 import { TenantClsInterceptor } from './common/interceptors/tenant-cls.interceptor'
 import { AppController } from './app.controller'
 import { AppLogger } from './common/logging/app-logger.service'
+import { LogArchiveService } from './common/logging/log-archive.service'
 import { AuthModule } from './modules/auth/auth.module'
 import { OrganizationsModule } from './modules/organizations/organizations.module'
 import { UsersModule } from './modules/users/users.module'
@@ -63,6 +65,7 @@ import { PnlModule } from './modules/pnl/pnl.module'
       }),
     }),
     EventEmitterModule.forRoot(),
+    ScheduleModule.forRoot(),
     ClsModule.forRoot({ global: true, middleware: { mount: true } }),
     BullModule.forRootAsync({
       inject: [ConfigService],
@@ -95,6 +98,7 @@ import { PnlModule } from './modules/pnl/pnl.module'
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_INTERCEPTOR, useClass: TenantClsInterceptor },
     AppLogger,
+    LogArchiveService,
   ],
 })
 export class AppModule {}

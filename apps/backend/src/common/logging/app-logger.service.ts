@@ -33,7 +33,7 @@ export class AppLogger implements LoggerService {
         const dd = String(date.getDate()).padStart(2, '0')
         return `app-${yyyy}-${mm}-${dd}.log`
       },
-      { interval: '1d', path: logsDir, compress: 'gzip' }
+      { interval: '1d', size: '50M', maxFiles: 90, path: logsDir, compress: 'gzip' }
     )
 
     const timestamp = () => {
