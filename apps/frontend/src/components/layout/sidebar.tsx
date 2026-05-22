@@ -106,20 +106,24 @@ export function Sidebar({ onNavClick, collapsed = false, onToggleCollapse }: Sid
               onClick={onNavClick}
               collapsed={collapsed}
             />
-            <NavLink
-              href="/pnl"
-              icon={<TrendingUp size={16} />}
-              label="P&L Analysis"
-              onClick={onNavClick}
-              collapsed={collapsed}
-            />
-            <NavLink
-              href="/sla"
-              icon={<ShieldAlert size={16} />}
-              label="SLA Monitoring"
-              onClick={onNavClick}
-              collapsed={collapsed}
-            />
+            {hasPermission('read.pnl') && (
+              <NavLink
+                href="/pnl"
+                icon={<TrendingUp size={16} />}
+                label="P&L Analysis"
+                onClick={onNavClick}
+                collapsed={collapsed}
+              />
+            )}
+            {hasPermission('read.sla') && (
+              <NavLink
+                href="/sla"
+                icon={<ShieldAlert size={16} />}
+                label="SLA Monitoring"
+                onClick={onNavClick}
+                collapsed={collapsed}
+              />
+            )}
             {hasPermission('read.google_sheet_config') && (
               <NavLink
                 href="/air-shipments/google-sheet-config"
