@@ -183,7 +183,7 @@ describe('InvitationsService', () => {
         expect.objectContaining({ status: 'revoked' })
       )
       expect(eventEmitter.emit).toHaveBeenCalledWith(
-        'invitation.revoked',
+        'invitation.cancelled',
         expect.objectContaining({ invitationId: 'inv-1' })
       )
     })

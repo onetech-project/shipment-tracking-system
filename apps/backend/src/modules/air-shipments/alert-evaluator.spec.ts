@@ -31,6 +31,8 @@ describe('evaluateAlerts', () => {
       melewatiSla: false,
       potensiMelebihiTjph: false,
       melewatiTjph: false,
+      spxTjphAlert: false,
+      spxSlaAlert: false,
     })
   })
 
@@ -522,6 +524,8 @@ describe('evaluateAlerts', () => {
         melewatiSla: true,
         potensiMelebihiTjph: false,
         melewatiTjph: true,
+        spxTjphAlert: false,
+        spxSlaAlert: false,
       })
     })
   })
@@ -559,6 +563,8 @@ describe('evaluateAlerts', () => {
         melewatiSla: true,
         potensiMelebihiTjph: false,
         melewatiTjph: true,
+        spxTjphAlert: true,
+        spxSlaAlert: true,
       })
     })
 
@@ -572,6 +578,8 @@ describe('evaluateAlerts', () => {
         melewatiSla: false,
         potensiMelebihiTjph: false,
         melewatiTjph: true,
+        spxTjphAlert: true,
+        spxSlaAlert: false,
       })
     })
 
@@ -647,7 +655,7 @@ describe('evaluateAlerts', () => {
     ).toBe(true)
   })
 
-  it('ALERT_TYPES array contains exactly the 6 alert types', () => {
+  it('ALERT_TYPES array contains exactly the 8 alert types', () => {
     expect(ALERT_TYPES).toEqual([
       'reservasiPenerbangan',
       'flightTracking',
@@ -655,10 +663,12 @@ describe('evaluateAlerts', () => {
       'melewatiSla',
       'potensiMelebihiTjph',
       'melewatiTjph',
+      'spxTjphAlert',
+      'spxSlaAlert',
     ])
   })
 
-  it("ALERT_FILTERS array contains all 6 alert types plus 'normal' and 'any'", () => {
+  it("ALERT_FILTERS array contains all 8 alert types plus 'normal' and 'any'", () => {
     const { ALERT_FILTERS } = require('./alert-evaluator')
     expect(ALERT_FILTERS).toEqual([
       'reservasiPenerbangan',
@@ -667,6 +677,8 @@ describe('evaluateAlerts', () => {
       'melewatiSla',
       'potensiMelebihiTjph',
       'melewatiTjph',
+      'spxTjphAlert',
+      'spxSlaAlert',
       'normal',
       'any',
     ])
