@@ -42,20 +42,7 @@ function PnlSkeleton() {
 
 type FilterMode = 'cycle' | 'range'
 
-export default function PnlPage() {
-  const { user, loading } = useAuth()
-  const { hasPermission } = usePermissions()
-  const router = useRouter()
-
-  useEffect(() => {
-    if (!loading && user && !hasPermission('read.pnl')) {
-      router.replace('/dashboard')
-    }
-  }, [loading, user, hasPermission, router])
-
-  if (loading || !user) return null
-  if (!hasPermission('read.pnl')) return null
-
+function PnlPageContent() {
   const { data: cycles, isLoading: isLoadingCycles, isError: isCyclesError, refetch: refetchCycles } = usePnlCycles()
   const [mode, setMode] = useState<FilterMode>('cycle')
   const [cycle, setCycle] = useState<string | undefined>(undefined)
@@ -204,4 +191,21 @@ export default function PnlPage() {
       )}
     </div>
   )
+}
+
+export default function PnlPage() {
+  const { user, loading } = useAuth()
+  const { hasPermission } = usePermissions()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!loading && user && !hasPermission('read.pnl')) {
+      router.replace('/dashboard')
+    }
+  }, [loading, user, hasPermission, router])
+
+  if (loading || !user) return null
+  if (!hasPermission('read.pnl')) return null
+
+  return <PnlPageContent />
 }
