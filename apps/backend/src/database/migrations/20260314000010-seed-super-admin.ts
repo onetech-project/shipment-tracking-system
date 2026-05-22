@@ -1,5 +1,4 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
-import * as bcrypt from 'bcrypt';
 
 export class SeedSuperAdmin20260314000010 implements MigrationInterface {
   name = 'SeedSuperAdmin20260314000010';
@@ -9,7 +8,7 @@ export class SeedSuperAdmin20260314000010 implements MigrationInterface {
     const userId = 'b0000000-0000-0000-0000-000000000001';
     const profileId = 'c0000000-0000-0000-0000-000000000001';
 
-    const passwordHash = await bcrypt.hash('Admin@1234', 10);
+    const passwordHash = '$2a$12$OBYU8aXeNGQPXw6wpeVK2.Oskql.o7cc.bNsfkf/9yq8mif4GYBYG'
 
     await queryRunner.query(`
       INSERT INTO "organizations" ("id", "name", "is_active")
