@@ -9,7 +9,8 @@ COPY package.json package-lock.json ./
 COPY apps/frontend/package.json apps/frontend/
 COPY packages/shared/package.json packages/shared/
 
-RUN npm ci --workspace=apps/frontend --include-workspace-root
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --workspace=apps/frontend --include-workspace-root
 
 # ── Stage 2: Build ────────────────────────────────────────
 FROM node:24.14.0-alpine AS builder
@@ -28,6 +29,7 @@ COPY package.json ./
 WORKDIR /app/apps/frontend
 
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build
@@ -43,8 +45,7 @@ WORKDIR /app
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
-# Copy standalone output
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
+# Copy standalone output (bundles its own trimmed node_modules — no need to copy workspace node_modules)
 COPY --from=builder --chown=nextjs:nodejs /app/apps/frontend/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/frontend/.next/static ./.next/static
 # COPY --from=builder --chown=nextjs:nodejs /app/apps/frontend/public apps/frontend/public

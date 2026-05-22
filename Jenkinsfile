@@ -114,7 +114,7 @@ pipeline {
 
         stage('Install') {
             steps {
-                sh 'npm ci --no-audit --no-fund --prefer-offline --progress=false --verbose'
+                sh 'NODE_OPTIONS="--max-old-space-size=512" npm ci --no-audit --no-fund --prefer-offline --progress=false --cache /var/cache/npm-jenkins'
             }
         }
 
