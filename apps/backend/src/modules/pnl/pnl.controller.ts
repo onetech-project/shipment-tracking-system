@@ -1,9 +1,12 @@
 import { Controller, Get, Query, UseGuards, DefaultValuePipe, ParseIntPipe } from '@nestjs/common'
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
+import { Authorize } from '../../common/decorators/authorize.decorator'
+import { Permission } from '@shared/auth'
 import { PnlService } from './pnl.service'
 
 @Controller('pnl')
 @UseGuards(JwtAuthGuard)
+@Authorize(Permission.READ_PNL)
 export class PnlController {
   constructor(private readonly pnlService: PnlService) {}
 
