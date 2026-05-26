@@ -1,5 +1,6 @@
 'use client'
 import moment from 'moment'
+import { Ban } from 'lucide-react'
 import { AirShipmentRow, CellProps, PaginationMeta, SortOrder } from '../types'
 import { colLabel, FROZEN_KEYS } from '../columns.config'
 
@@ -47,6 +48,11 @@ interface AirShipmentTableProps {
   onPageChange: (page: number) => void
   onToggleLock?: (id: string, locked: boolean) => void
   visibleColumns?: Record<string, boolean>
+  /** When provided AND alertFilter is a specific alert type (not 'any', 'normal', or null/undefined),
+   *  an Exclude button is rendered in each row's action area. */
+  onExclude?: (row: AirShipmentRow) => void
+  /** The currently active alert filter — used to decide whether to show the Exclude button. */
+  alertFilter?: string | null
 }
 
 export function AirShipmentTable({
@@ -58,7 +64,15 @@ export function AirShipmentTable({
   onPageChange,
   onToggleLock,
   visibleColumns,
+  onExclude,
+  alertFilter,
 }: AirShipmentTableProps) {
+  // Only show Exclude button when a specific alert type is selected (not 'any', 'normal', or empty)
+  const showExclude =
+    !!onExclude &&
+    !!alertFilter &&
+    alertFilter !== 'any' &&
+    alertFilter !== 'normal'
   const columns = visibleColumns
     ? Object.keys(visibleColumns).filter((col) => visibleColumns[col])
     : []
@@ -118,6 +132,11 @@ export function AirShipmentTable({
               >
                 #
               </th>
+              {showExclude && (
+                <th className="whitespace-nowrap px-4 py-2 text-left font-medium text-muted-foreground">
+                  Actions
+                </th>
+              )}
               {columns.map((col) => (
                 <th
                   key={col}
@@ -150,7 +169,7 @@ export function AirShipmentTable({
             {data.length === 0 ? (
               <tr>
                 <td
-                  colSpan={columns.length}
+                  colSpan={columns.length + (showExclude ? 2 : 1)}
                   className="px-4 py-6 text-center text-muted-foreground"
                 >
                   No records found.
@@ -173,6 +192,19 @@ export function AirShipmentTable({
                   >
                     {(meta.page - 1) * meta.limit + idx + 1}
                   </td>
+                  {showExclude && (
+                    <td className="whitespace-nowrap px-3 py-2">
+                      <button
+                        type="button"
+                        title="Exclude from this alert"
+                        onClick={() => onExclude!(row)}
+                        className="inline-flex items-center gap-1 rounded border border-destructive px-2 py-1 text-xs text-destructive hover:bg-destructive/10 transition-colors focus:outline-none focus:ring-2 focus:ring-destructive/40"
+                      >
+                        <Ban size={12} />
+                        Exclude
+                      </button>
+                    </td>
+                  )}
                   {columns.map((col) => (
                     <td
                       key={col}
