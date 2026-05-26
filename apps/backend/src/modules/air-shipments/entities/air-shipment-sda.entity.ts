@@ -24,6 +24,9 @@ export class AirShipmentSda {
   @Column({ name: 'is_locked', type: 'boolean', nullable: true })
   is_locked: boolean | null
 
+  @Column({ name: 'excluded_reasons', type: 'jsonb', nullable: true })
+  excluded_reasons: Record<string, string> | null
+
   @Column({ name: 'last_synced_at', type: 'timestamptz', nullable: true })
   last_synced_at: Date | null
 
