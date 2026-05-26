@@ -1396,6 +1396,9 @@ export class AirShipmentsService {
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
       throw new BadRequestException('Invalid table name')
     }
+    if (!['air_shipments_cgk', 'air_shipments_sda'].includes(tableName)) {
+      throw new BadRequestException(`Exclusion not supported for table: ${tableName}`)
+    }
     await this.dataSource.query(
       `UPDATE "${tableName}" SET excluded_reasons = COALESCE(excluded_reasons, '{}') || $1::jsonb WHERE id = $2`,
       [JSON.stringify({ [alertType]: reason }), id]
@@ -1410,8 +1413,11 @@ export class AirShipmentsService {
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
       throw new BadRequestException('Invalid table name')
     }
+    if (!['air_shipments_cgk', 'air_shipments_sda'].includes(tableName)) {
+      throw new BadRequestException(`Exclusion not supported for table: ${tableName}`)
+    }
     await this.dataSource.query(
-      `UPDATE "${tableName}" SET excluded_reasons = excluded_reasons - $1 WHERE id = $2`,
+      `UPDATE "${tableName}" SET excluded_reasons = NULLIF(excluded_reasons - $1, '{}') WHERE id = $2`,
       [alertType, id]
     )
   }
@@ -1422,6 +1428,9 @@ export class AirShipmentsService {
   ): Promise<{ data: Record<string, unknown>[]; meta: { total: number; page: number; limit: number } }> {
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
       throw new BadRequestException('Invalid table name')
+    }
+    if (!['air_shipments_cgk', 'air_shipments_sda'].includes(tableName)) {
+      throw new BadRequestException(`Exclusion not supported for table: ${tableName}`)
     }
 
     const { alertType, page = 1, limit = 50, startDate, endDate } = query
