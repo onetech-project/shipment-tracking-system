@@ -1,7 +1,7 @@
 'use client'
 import { useCallback, useEffect, useState } from 'react'
 import { apiClient } from '@/shared/api/client'
-import { AirShipmentsResponse, SortOrder } from '../types'
+import { AirShipmentsResponse, AirShipmentRow, SortOrder } from '../types'
 
 // interface UseAirShipmentsOptions {
 //   endpoint: string;
@@ -145,4 +145,58 @@ export async function batchDeleteAirShipments(
     end,
   })
   return res.data?.deleted ?? 0
+}
+
+export async function excludeRow(
+  tableName: string,
+  id: string,
+  alertType: string,
+  reason: string
+): Promise<void> {
+  await apiClient.patch(`/air-shipments/${tableName}/${id}/exclude`, {
+    alertType,
+    reason,
+  })
+}
+
+export async function restoreRow(
+  tableName: string,
+  id: string,
+  alertType: string
+): Promise<void> {
+  await apiClient.patch(`/air-shipments/${tableName}/${id}/restore`, {
+    alertType,
+  })
+}
+
+interface ExcludedResponse {
+  data: AirShipmentRow[]
+  meta: {
+    total: number
+    page: number
+    limit: number
+  }
+}
+
+export async function fetchExcluded(
+  tableName: string,
+  params: {
+    alertType?: string
+    page?: number
+    limit?: number
+    startDate?: string
+    endDate?: string
+  }
+): Promise<{ data: AirShipmentRow[]; meta: { total: number; page: number; limit: number } }> {
+  const queryParams = new URLSearchParams()
+  if (params.alertType) queryParams.set('alertType', params.alertType)
+  if (params.page !== undefined) queryParams.set('page', String(params.page))
+  if (params.limit !== undefined) queryParams.set('limit', String(params.limit))
+  if (params.startDate) queryParams.set('startDate', params.startDate)
+  if (params.endDate) queryParams.set('endDate', params.endDate)
+
+  const res = await apiClient.get<ExcludedResponse>(
+    `/air-shipments/${tableName}/excluded?${queryParams}`
+  )
+  return res.data
 }
