@@ -843,10 +843,23 @@ export function SlaPage() {
         )}
 
         {/* ── Excluded Tab ── */}
-        {activeTab === 'excluded' && (
+        {activeTab === 'excluded' && (() => {
+          // Expand each row into one entry per alert-type exclusion
+          const expandedExcludedRows = excludedRows.flatMap((row) => {
+            const reasons = row['excluded_reasons'] as Record<string, string> | null
+            if (!reasons) return []
+            return Object.entries(reasons).map(([alertType, reason]) => ({
+              row,
+              alertType,
+              reason,
+            }))
+          })
+          const uniqueAlertTypes = Array.from(new Set(expandedExcludedRows.map((e) => e.alertType))).filter(Boolean)
+
+          return (
           <>
             {/* Alert type filter chips */}
-            {excludedRows.length > 0 && (
+            {expandedExcludedRows.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -859,7 +872,7 @@ export function SlaPage() {
                 >
                   All
                 </button>
-                {Array.from(new Set(excludedRows.map((r) => String(r['excluded_alert_type'] ?? '')))).filter(Boolean).map((at) => (
+                {uniqueAlertTypes.map((at) => (
                   <button
                     key={at}
                     type="button"
@@ -876,7 +889,7 @@ export function SlaPage() {
               </div>
             )}
 
-            {excludedRows.length === 0 ? (
+            {expandedExcludedRows.length === 0 ? (
               <div className="rounded-2xl border border-border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
                 No excluded alerts
               </div>
@@ -893,39 +906,40 @@ export function SlaPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {excludedRows.map((row, idx) => {
-                      const alertType = String(row['excluded_alert_type'] ?? '')
-                      const badgeColor = ALERT_BADGE_COLORS[alertType] ?? '#6B7280'
-                      return (
-                        <tr key={row.id} className={idx % 2 === 1 ? 'bg-muted/70' : ''}>
-                          <td className="whitespace-nowrap px-4 py-2">{String(row['to_number'] ?? '—')}</td>
-                          <td className="whitespace-nowrap px-4 py-2">{String(row['lt_number'] ?? '—')}</td>
-                          <td className="whitespace-nowrap px-4 py-2">
-                            <span
-                              className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
-                              style={{ backgroundColor: `${badgeColor}22`, color: badgeColor }}
-                            >
-                              {ALERT_TYPE_LABELS[alertType] ?? alertType}
-                            </span>
-                          </td>
-                          <td className="px-4 py-2 max-w-[280px]">
-                            <span className="block truncate text-muted-foreground" title={String(row['excluded_reason'] ?? '')}>
-                              {String(row['excluded_reason'] ?? '—')}
-                            </span>
-                          </td>
-                          <td className="whitespace-nowrap px-4 py-2">
-                            <button
-                              type="button"
-                              onClick={() => void handleRestoreRow(row, alertType)}
-                              className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs hover:bg-muted transition-colors focus:outline-none focus:ring-2 focus:ring-ring"
-                            >
-                              <RotateCcw size={12} />
-                              Restore
-                            </button>
-                          </td>
-                        </tr>
-                      )
-                    })}
+                    {expandedExcludedRows
+                      .filter(({ alertType }) => excludedAlertTypeFilter === 'all' || alertType === excludedAlertTypeFilter)
+                      .map(({ row, alertType, reason }, idx) => {
+                        const badgeColor = ALERT_BADGE_COLORS[alertType] ?? '#6B7280'
+                        return (
+                          <tr key={`${row.id}-${alertType}-${idx}`} className={idx % 2 === 1 ? 'bg-muted/70' : ''}>
+                            <td className="whitespace-nowrap px-4 py-2">{String(row['to_number'] ?? '—')}</td>
+                            <td className="whitespace-nowrap px-4 py-2">{String(row['lt_number'] ?? '—')}</td>
+                            <td className="whitespace-nowrap px-4 py-2">
+                              <span
+                                className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+                                style={{ backgroundColor: `${badgeColor}22`, color: badgeColor }}
+                              >
+                                {ALERT_TYPE_LABELS[alertType] ?? alertType}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2 max-w-[280px]">
+                              <span className="block truncate text-muted-foreground" title={reason}>
+                                {reason.length > 60 ? reason.slice(0, 60) + '…' : reason}
+                              </span>
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-2">
+                              <button
+                                type="button"
+                                onClick={() => void handleRestoreRow(row, alertType)}
+                                className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs hover:bg-muted transition-colors focus:outline-none focus:ring-2 focus:ring-ring"
+                              >
+                                <RotateCcw size={12} />
+                                Restore
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })}
                   </tbody>
                 </table>
               </div>
@@ -956,7 +970,8 @@ export function SlaPage() {
               </div>
             )}
           </>
-        )}
+          )
+        })()}
       </section>
 
       {/* ── Exclude Modal ── */}

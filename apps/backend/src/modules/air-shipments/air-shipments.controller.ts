@@ -17,8 +17,7 @@ import { GoogleSheetConfigDto } from './dto/google-sheet-config.dto'
 import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
 import { Permission } from '@shared/auth'
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator'
-import { AlertType } from './alert-evaluator'
-import { ExcludedQueryDto } from './dto/excluded-query.dto'
+import { ExcludedQueryDto, ExcludeRowDto, RestoreRowDto } from './dto/excluded-query.dto'
 
 @Controller('air-shipments')
 @UseGuards(JwtAuthGuard)
@@ -194,7 +193,7 @@ export class AirShipmentsController {
   async excludeRow(
     @Param('tableName') tableName: string,
     @Param('id') id: string,
-    @Body() body: { alertType: AlertType; reason: string },
+    @Body() body: ExcludeRowDto,
   ): Promise<void> {
     return this.service.excludeRow(tableName, id, body.alertType, body.reason)
   }
@@ -203,9 +202,9 @@ export class AirShipmentsController {
   async restoreRow(
     @Param('tableName') tableName: string,
     @Param('id') id: string,
-    @Body('alertType') alertType: AlertType,
+    @Body() body: RestoreRowDto,
   ): Promise<void> {
-    return this.service.restoreRow(tableName, id, alertType)
+    return this.service.restoreRow(tableName, id, body.alertType)
   }
 
   @Get(':tableName')
