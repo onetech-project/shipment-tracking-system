@@ -238,15 +238,20 @@ export function SlaPage() {
   }
 
   const fetchExcludedRows = useCallback(async () => {
-    const result = await fetchExcluded(TABLE_NAME, {
-      alertType: excludedAlertTypeFilter !== 'all' ? excludedAlertTypeFilter : undefined,
-      page: excludedPage,
-      limit: 50,
-      startDate,
-      endDate,
-    })
-    setExcludedRows(result.data)
-    setExcludedMeta(result.meta)
+    try {
+      const result = await fetchExcluded(TABLE_NAME, {
+        alertType: excludedAlertTypeFilter !== 'all' ? excludedAlertTypeFilter : undefined,
+        page: excludedPage,
+        limit: 50,
+        startDate,
+        endDate,
+      })
+      setExcludedRows(result.data)
+      setExcludedMeta(result.meta)
+    } catch {
+      setExcludedRows([])
+      setExcludedMeta(null)
+    }
   }, [excludedAlertTypeFilter, excludedPage, startDate, endDate])
 
   const refresh = useCallback(() => {
@@ -469,16 +474,30 @@ export function SlaPage() {
 
   async function handleExcludeConfirm(reason: string) {
     if (!excludeModal) return
-    await excludeRow(TABLE_NAME, excludeModal.row.id, excludeModal.alertType, reason)
-    setExcludeModal(null)
-    refresh()
-    void fetchExcludedRows()
+    try {
+      await excludeRow(TABLE_NAME, excludeModal.row.id, excludeModal.alertType, reason)
+      setExcludeModal(null)
+      refresh()
+      void fetchExcludedRows()
+    } catch (err) {
+      window.alert(
+        `Failed to exclude row: ${err instanceof Error ? err.message : 'Unknown error'}`
+      )
+      // re-throw so ExcludeModal's loading state is cleared by its own finally block
+      throw err
+    }
   }
 
   async function handleRestoreRow(row: AirShipmentRow, alertType: string) {
-    await restoreRow(TABLE_NAME, row.id, alertType)
-    refresh()
-    void fetchExcludedRows()
+    try {
+      await restoreRow(TABLE_NAME, row.id, alertType)
+      refresh()
+      void fetchExcludedRows()
+    } catch (err) {
+      window.alert(
+        `Failed to restore row: ${err instanceof Error ? err.message : 'Unknown error'}`
+      )
+    }
   }
 
   // ── Alert filter helpers ────────────────────────────────────────────────────
@@ -523,8 +542,8 @@ export function SlaPage() {
           isLoading={summaryLoading}
           startDate={startDate}
           endDate={endDate}
-          onStartDateChange={(d) => { setStartDate(d); setPage(1) }}
-          onEndDateChange={(d) => { setEndDate(d); setPage(1) }}
+          onStartDateChange={(d) => { setStartDate(d); setPage(1); setExcludedPage(1) }}
+          onEndDateChange={(d) => { setEndDate(d); setPage(1); setExcludedPage(1) }}
           dateError={dateError}
           lastUpdated={lastUpdated}
           syncNote="Live refresh is active for Compile Air CGK synchronization."
