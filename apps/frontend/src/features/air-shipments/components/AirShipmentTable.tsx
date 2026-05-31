@@ -132,11 +132,6 @@ export function AirShipmentTable({
               >
                 #
               </th>
-              {showExclude && (
-                <th className="whitespace-nowrap px-4 py-2 text-left font-medium text-muted-foreground">
-                  Actions
-                </th>
-              )}
               {columns.map((col) => (
                 <th
                   key={col}
@@ -163,6 +158,11 @@ export function AirShipmentTable({
                   {sortIndicator(col)}
                 </th>
               ))}
+              {showExclude && (
+                <th className="whitespace-nowrap px-4 py-2 text-left font-medium text-muted-foreground">
+                  Actions
+                </th>
+              )}
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -192,19 +192,6 @@ export function AirShipmentTable({
                   >
                     {(meta.page - 1) * meta.limit + idx + 1}
                   </td>
-                  {showExclude && (
-                    <td className="whitespace-nowrap px-3 py-2">
-                      <button
-                        type="button"
-                        title="Exclude from this alert"
-                        onClick={() => onExclude!(row)}
-                        className="inline-flex items-center gap-1 rounded border border-destructive px-2 py-1 text-xs text-destructive hover:bg-destructive/10 transition-colors focus:outline-none focus:ring-2 focus:ring-destructive/40"
-                      >
-                        <Ban size={12} />
-                        Exclude
-                      </button>
-                    </td>
-                  )}
                   {columns.map((col) => (
                     <td
                       key={col}
@@ -247,6 +234,19 @@ export function AirShipmentTable({
                           : ''}
                     </td>
                   ))}
+                  {showExclude && (
+                    <td className="whitespace-nowrap px-3 py-2">
+                      <button
+                        type="button"
+                        title="Exclude from this alert"
+                        onClick={() => onExclude!(row)}
+                        className="inline-flex items-center gap-1 rounded border border-destructive px-2 py-1 text-xs text-destructive hover:bg-destructive/10 transition-colors focus:outline-none focus:ring-2 focus:ring-destructive/40"
+                      >
+                        <Ban size={12} />
+                        Exclude
+                      </button>
+                    </td>
+                  )}
                 </tr>
                 )
               })
