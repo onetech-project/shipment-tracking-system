@@ -9,6 +9,7 @@ import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
 import { GoogleSheetSheetConfig } from './entities/google-sheet-sheet-config.entity'
 import { GoogleSheetConfigDto } from './dto/google-sheet-config.dto'
 import { AlertType, AlertFilter, ALERT_TYPES, evaluateAlerts, parseDurationSafe } from './alert-evaluator'
+import { ExcludedQueryDto } from './dto/excluded-query.dto'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 import { GeneralParamsService } from '../general-params/general-params.service'
 
@@ -209,8 +210,10 @@ export class AirShipmentsService {
       const route = origin && destination ? `${origin} - ${destination}` : ''
       const grossWeight = parseFloat(String(getFieldValue(row, 'gross_weight') ?? '0')) || 0
 
+      const excludedReasons = row.excluded_reasons as Record<string, string> | null
       for (const type of ALERT_TYPES) {
         if (!alerts[type]) continue
+        if (excludedReasons?.[type]) continue  // skip if excluded for this specific type
         const item = acc[type]
         const prev = item.breakdown.get(route) ?? 0
         item.breakdown.set(route, prev + grossWeight)
@@ -481,6 +484,15 @@ export class AirShipmentsService {
     return typeof val === 'string' && val.trim().toUpperCase() === 'VOID'
   }
 
+  private static isExcludedForAlert(
+    row: Record<string, unknown>,
+    alertFilter: AlertFilter,
+  ): boolean {
+    if (alertFilter === 'normal' || alertFilter === 'any') return false
+    const excluded = row.excluded_reasons as Record<string, string> | null
+    return Boolean(excluded?.[alertFilter])
+  }
+
   /**
    * Loads {awb → trackingan_smu} from the Reservasi sheet table.
    * Returns an empty Map when the table name is blank or the table doesn't exist.
@@ -590,6 +602,7 @@ export class AirShipmentsService {
   ) {
     return rows
       .filter((row) => !AirShipmentsService.isVoidRow(row))
+      .filter((row) => !AirShipmentsService.isExcludedForAlert(row, alertFilter))
       .filter((row) => {
         const alerts = evaluateAlerts(row, nHours, mHours)
         if (alertFilter === 'normal') {
@@ -1372,6 +1385,78 @@ export class AirShipmentsService {
       deleted,
     })
     return deleted
+  }
+
+  async excludeRow(
+    tableName: string,
+    id: string,
+    alertType: AlertType,
+    reason: string,
+  ): Promise<void> {
+    if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
+      throw new BadRequestException('Invalid table name')
+    }
+    await this.dataSource.query(
+      `UPDATE "${tableName}" SET excluded_reasons = COALESCE(excluded_reasons, '{}') || $1::jsonb WHERE id = $2`,
+      [JSON.stringify({ [alertType]: reason }), id]
+    )
+  }
+
+  async restoreRow(
+    tableName: string,
+    id: string,
+    alertType: AlertType,
+  ): Promise<void> {
+    if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
+      throw new BadRequestException('Invalid table name')
+    }
+    await this.dataSource.query(
+      `UPDATE "${tableName}" SET excluded_reasons = NULLIF(excluded_reasons - $1, '{}') WHERE id = $2`,
+      [alertType, id]
+    )
+  }
+
+  async findExcludedRows(
+    tableName: string,
+    query: ExcludedQueryDto,
+  ): Promise<{ data: Record<string, unknown>[]; meta: { total: number; page: number; limit: number } }> {
+    if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
+      throw new BadRequestException('Invalid table name')
+    }
+
+    const { alertType, page = 1, limit = 50, startDate, endDate } = query
+    const offset = (page - 1) * limit
+
+    const whereClauses: string[] = [
+      `excluded_reasons IS NOT NULL AND excluded_reasons != '{}'::jsonb`,
+    ]
+    const params: any[] = []
+
+    if (alertType) {
+      whereClauses.push(`excluded_reasons ? $${params.length + 1}`)
+      params.push(alertType)
+    }
+
+    const columns = await this.getTableColumns(tableName)
+    const dateClause = this.buildDateRangeClause(columns, params, startDate, endDate)
+    if (dateClause) whereClauses.push(dateClause)
+
+    const whereSql = `WHERE ${whereClauses.join(' AND ')}`
+
+    const [data, countRes] = await Promise.all([
+      this.dataSource.query(
+        `SELECT * FROM "${tableName}" ${whereSql} ORDER BY id ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      ),
+      this.dataSource.query(
+        `SELECT count(*)::int FROM "${tableName}" ${whereSql}`,
+        params
+      ),
+    ])
+
+    const total = countRes?.[0]?.count ?? 0
+
+    return { data, meta: { total, page, limit } }
   }
 
   async getLastSyncAt(): Promise<{ lastSyncAt: string | null; byTable: Record<string, string | null> }> {

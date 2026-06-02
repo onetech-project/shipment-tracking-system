@@ -657,6 +657,39 @@ describe('AirShipmentsService — isVoidRow / VOID filtering', () => {
     })
   })
 
+  describe('isExcludedForAlert', () => {
+    const svc = AirShipmentsService as any
+
+    it('returns false when alertFilter is "any"', () => {
+      const row = { excluded_reasons: { melewatiSla: 'manual' } }
+      expect(svc.isExcludedForAlert(row, 'any')).toBe(false)
+    })
+
+    it('returns false when alertFilter is "normal"', () => {
+      const row = { excluded_reasons: { melewatiSla: 'manual' } }
+      expect(svc.isExcludedForAlert(row, 'normal')).toBe(false)
+    })
+
+    it('returns true when the alert key is present in excluded_reasons', () => {
+      const row = { excluded_reasons: { melewatiSla: 'manual exclusion' } }
+      expect(svc.isExcludedForAlert(row, 'melewatiSla')).toBe(true)
+    })
+
+    it('returns false when the alert key is absent from excluded_reasons', () => {
+      const row = { excluded_reasons: { flightTracking: 'reason' } }
+      expect(svc.isExcludedForAlert(row, 'melewatiSla')).toBe(false)
+    })
+
+    it('returns false when excluded_reasons is null', () => {
+      const row = { excluded_reasons: null }
+      expect(svc.isExcludedForAlert(row, 'melewatiSla')).toBe(false)
+    })
+
+    it('returns false when excluded_reasons is absent', () => {
+      expect(svc.isExcludedForAlert({}, 'melewatiSla')).toBe(false)
+    })
+  })
+
   it('VOID rows are excluded from getAlertSummaryForTable alert counts', async () => {
     const dataSource = service['dataSource'] as jest.Mocked<DataSource>
     dataSource.query.mockImplementation((sql: string, _params: any[]) => {
@@ -711,6 +744,72 @@ describe('AirShipmentsService — isVoidRow / VOID filtering', () => {
       const breakdown = summary.alerts[alertType as keyof typeof summary.alerts].breakdown
       expect(breakdown.find((b: { route: string }) => b.route === 'CGK - MES')).toBeUndefined()
     }
+
+    jest.useRealTimers()
+  })
+})
+
+describe('AirShipmentsService — filterRowsByAlert()', () => {
+  let service: AirShipmentsService
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AirShipmentsService,
+        { provide: SheetsService, useValue: { getConfigs: jest.fn().mockReturnValue([]) } },
+        {
+          provide: DynamicTableService,
+          useValue: { ensureTable: jest.fn().mockResolvedValue({ success: true }) },
+        },
+        { provide: getRepositoryToken(AirShipmentCgk), useValue: makeRepo() },
+        { provide: getRepositoryToken(AirShipmentSub), useValue: makeRepo() },
+        { provide: getRepositoryToken(AirShipmentSda), useValue: makeRepo() },
+        { provide: getRepositoryToken(RatePerStation), useValue: makeRepo() },
+        { provide: getRepositoryToken(RouteMaster), useValue: makeRepo() },
+        { provide: getRepositoryToken(GoogleSheetConfig), useValue: makeRepo() },
+        { provide: getRepositoryToken(GoogleSheetSheetConfig), useValue: makeRepo() },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+        { provide: DataSource, useValue: { query: jest.fn().mockResolvedValue([]) } },
+        {
+          provide: GeneralParamsService,
+          useValue: { getValue: jest.fn().mockResolvedValue('5') },
+        },
+      ],
+    }).compile()
+
+    service = module.get<AirShipmentsService>(AirShipmentsService)
+  })
+
+  it('excludes rows whose excluded_reasons contains the matching alert key', () => {
+    // Row has the melewatiSla alert but is excluded for it
+    const row = {
+      excluded_reasons: { melewatiSla: 'manual exclusion' },
+      extra_fields: {
+        atd_origin: '2020-01-01T00:00:00Z',
+        sla: '1:00:00',
+      },
+    }
+    // filterRowsByAlert is private — access via bracket notation
+    const result = (service as any).filterRowsByAlert([row], 'melewatiSla', 5, 5)
+    expect(result).toHaveLength(0)
+  })
+
+  it('includes rows excluded for a different alert key', () => {
+    // Row is excluded for flightTracking, but we filter by melewatiSla
+    // The row must pass the exclusion gate; alert evaluation is what determines final inclusion.
+    // Use a row that would trigger melewatiSla (old atd_origin, sla=1h) so it actually passes the alert filter too.
+    jest.useFakeTimers()
+    jest.setSystemTime(new Date('2025-06-01T00:00:00Z'))
+
+    const row = {
+      excluded_reasons: { flightTracking: 'reason' },
+      extra_fields: {
+        atd_origin: '2020-01-01T00:00:00Z',
+        sla: '1:00:00',
+      },
+    }
+    const result = (service as any).filterRowsByAlert([row], 'melewatiSla', 5, 5)
+    expect(result).toHaveLength(1)
 
     jest.useRealTimers()
   })

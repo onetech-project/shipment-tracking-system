@@ -17,6 +17,7 @@ import { GoogleSheetConfigDto } from './dto/google-sheet-config.dto'
 import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
 import { Permission } from '@shared/auth'
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator'
+import { ExcludedQueryDto, ExcludeRowDto, RestoreRowDto } from './dto/excluded-query.dto'
 
 @Controller('air-shipments')
 @UseGuards(JwtAuthGuard)
@@ -178,6 +179,32 @@ export class AirShipmentsController {
   @Get('last-sync')
   getLastSyncAt() {
     return this.service.getLastSyncAt()
+  }
+
+  @Get(':tableName/excluded')
+  async getExcluded(
+    @Param('tableName') tableName: string,
+    @Query() query: ExcludedQueryDto,
+  ): Promise<{ data: Record<string, unknown>[]; meta: { total: number; page: number; limit: number } }> {
+    return this.service.findExcludedRows(tableName, query)
+  }
+
+  @Patch(':tableName/:id/exclude')
+  async excludeRow(
+    @Param('tableName') tableName: string,
+    @Param('id') id: string,
+    @Body() body: ExcludeRowDto,
+  ): Promise<void> {
+    return this.service.excludeRow(tableName, id, body.alertType, body.reason)
+  }
+
+  @Patch(':tableName/:id/restore')
+  async restoreRow(
+    @Param('tableName') tableName: string,
+    @Param('id') id: string,
+    @Body() body: RestoreRowDto,
+  ): Promise<void> {
+    return this.service.restoreRow(tableName, id, body.alertType)
   }
 
   @Get(':tableName')
