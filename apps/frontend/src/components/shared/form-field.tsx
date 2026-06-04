@@ -9,15 +9,17 @@ export interface FormFieldProps {
   hint?: string;
   htmlFor?: string;
   className?: string;
+  labelExtra?: React.ReactNode;
   children: React.ReactElement;
 }
 
-export function FormField({ label, error, required, hint, htmlFor, className, children }: FormFieldProps) {
+export function FormField({ label, error, required, hint, htmlFor, className, labelExtra, children }: FormFieldProps) {
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
-      <label className="text-sm font-medium leading-none" htmlFor={htmlFor}>
+      <label className="flex items-center gap-1 text-sm font-medium leading-none" htmlFor={htmlFor}>
         {label}
         {required && <span className="text-destructive ml-0.5" aria-hidden="true">*</span>}
+        {labelExtra}
       </label>
       {children}
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}

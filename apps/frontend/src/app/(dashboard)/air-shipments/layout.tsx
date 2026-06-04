@@ -36,11 +36,20 @@ export default function AirShipmentsLayout({ children }: { children: React.React
           const links = config.sheetConfigs?.map((sheetConfig) => {
             const label = getAirShipmentsTabName(sheetConfig.sheetName) || sheetConfig.sheetName
             const href = `/air-shipments/${sheetConfig.tableName}`
-            return { label, href }
+            return { sheetName: sheetConfig.sheetName, label, href }
           })
           return links || []
         })
-        const flattenedLinks = sheetLinks.flat()
+        // Dedupe tabs by sheet name so identical sheet names render a single tab
+        const seenSheetNames = new Set<string>()
+        const flattenedLinks = sheetLinks
+          .flat()
+          .filter(({ sheetName }: { sheetName: string }) => {
+            if (seenSheetNames.has(sheetName)) return false
+            seenSheetNames.add(sheetName)
+            return true
+          })
+          .map(({ label, href }: { label: string; href: string }) => ({ label, href }))
         setSublinks((prev) => [...flattenedLinks, ...prev])
         if (pathname === '/air-shipments' || pathname === '/air-shipments/') {
           router.push(flattenedLinks[0]?.href || '/air-shipments/google-sheet-config') // Redirect to first sublink or default config page

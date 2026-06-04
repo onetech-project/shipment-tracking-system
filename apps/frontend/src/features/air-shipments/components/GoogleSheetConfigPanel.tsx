@@ -5,11 +5,15 @@ import { apiClient } from '@/shared/api/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { FormField } from '@/components/shared/form-field'
+import { InfoTooltip } from '@/components/shared/info-tooltip'
 import { normalizeTableName } from '../utils/normalizeTableName'
 import { GoogleSheetConfig, SheetConfig } from '../types'
 import Spinner from '@/components/ui/spinner'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import { AlertTriangle, Info } from 'lucide-react'
 import moment from 'moment'
+
+const SYNC_SERVICE_ACCOUNT_EMAIL = 'esp-dashboard@fluted-arch-489408-b1.iam.gserviceaccount.com'
 
 export function GoogleSheetConfigPanel() {
   // const [config, setConfig] = useState<GoogleSheetConfig | null>(null)
@@ -140,8 +144,35 @@ export function GoogleSheetConfigPanel() {
     })
   }
 
+  const sheetConfigs = form?.sheetConfigs || []
+  const hasSheetConfigs = sheetConfigs.length > 0
+
+  const isSheetConfigComplete = (s: SheetConfig) => {
+    const uniqueKeys = Array.isArray(s.uniqueKey)
+      ? s.uniqueKey
+      : String(s.uniqueKey || '').split(',')
+    return (
+      !!s.sheetName?.trim() &&
+      !!s.tableName?.trim() &&
+      typeof s.headerRow === 'number' &&
+      !Number.isNaN(s.headerRow) &&
+      s.headerRow > 0 &&
+      uniqueKeys.some((k) => !!k?.trim())
+    )
+  }
+
+  const allSheetConfigsComplete = hasSheetConfigs && sheetConfigs.every(isSheetConfigComplete)
+
   const handleSave = async () => {
     if (!form) return
+    if (!hasSheetConfigs) {
+      setError('Add at least one sheet config before saving.')
+      return
+    }
+    if (!allSheetConfigsComplete) {
+      setError('Fill in all sheet config fields (Sheet Name, Header Row, Unique Key) before saving.')
+      return
+    }
     setLoading(true)
     setError(null)
     let endpoint: string
@@ -248,21 +279,55 @@ export function GoogleSheetConfigPanel() {
       {editMode && form && (
         <>
           <div className="space-y-4">
-            <FormField label="Label" required>
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950/30">
+              <div className="flex items-start gap-2">
+                <Info size={16} className="mt-0.5 shrink-0 text-blue-600 dark:text-blue-400" />
+                <div className="text-sm text-blue-800 dark:text-blue-200">
+                  <p className="mb-1 font-medium">Before syncing, share your Google Sheet</p>
+                  <p>
+                    Invite{' '}
+                    <code className="rounded bg-blue-100 px-1 py-0.5 font-mono text-xs dark:bg-blue-900/50">
+                      {SYNC_SERVICE_ACCOUNT_EMAIL}
+                    </code>{' '}
+                    as a <strong>Viewer (read permission)</strong> on the Google Sheet you want to
+                    sync, otherwise the sync will fail.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <FormField
+              label="Label"
+              required
+              labelExtra={
+                <InfoTooltip text="A friendly name to identify this Google Sheet configuration in the list." />
+              }
+            >
               <Input
                 value={form?.label || ''}
                 onChange={(e) => handleChange('label', e.target.value)}
                 disabled={!editMode}
               />
             </FormField>
-            <FormField label="Google Sheet Link" required>
+            <FormField
+              label="Google Sheet Link"
+              required
+              labelExtra={
+                <InfoTooltip text="The full URL of the Google Sheet to sync. Make sure the service account above is invited as a Viewer." />
+              }
+            >
               <Input
                 value={form?.sheetLink || ''}
                 onChange={(e) => handleChange('sheetLink', e.target.value)}
                 disabled={!editMode}
               />
             </FormField>
-            <FormField label="Sync Interval (seconds)" required>
+            <FormField
+              label="Sync Interval (seconds)"
+              required
+              labelExtra={
+                <InfoTooltip text="How often the system re-reads the sheet and syncs its data. Minimum 15 seconds." />
+              }
+            >
               <Input
                 type="number"
                 value={form?.syncInterval}
@@ -271,7 +336,13 @@ export function GoogleSheetConfigPanel() {
                 min={15}
               />
             </FormField>
-            <FormField label="Enable Google Sheet Sync" className="flex-row">
+            <FormField
+              label="Enable Google Sheet Sync"
+              className="flex-row"
+              labelExtra={
+                <InfoTooltip text="Turn syncing on or off for this configuration without deleting it." />
+              }
+            >
               <input
                 type="checkbox"
                 checked={form?.enabled}
@@ -283,24 +354,50 @@ export function GoogleSheetConfigPanel() {
               <div className="flex flex-col">
                 <span className="font-semibold">Sheet Configs</span>
               </div>
+              {editMode && !allSheetConfigsComplete && (
+                <div className="my-2 flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+                  <AlertTriangle size={14} className="shrink-0" />
+                  {!hasSheetConfigs
+                    ? 'Add at least one sheet config before saving.'
+                    : 'Fill in all sheet config fields (Sheet Name, Header Row, Unique Key) before saving.'}
+                </div>
+              )}
               {form?.sheetConfigs?.map((sheet, idx) => (
                 <div key={idx} className="border rounded p-3 mb-2 space-y-2 bg-muted/30">
                   <div className="flex gap-2">
-                    <FormField label="Sheet Name" required>
+                    <FormField
+                      label="Sheet Name"
+                      required
+                      labelExtra={
+                        <InfoTooltip text="The exact name of the tab/worksheet inside the Google Sheet to read rows from." />
+                      }
+                    >
                       <Input
                         value={sheet.sheetName}
                         onChange={(e) => handleSheetConfigChange(idx, 'sheetName', e.target.value)}
                         disabled={!editMode}
                       />
                     </FormField>
-                    <FormField label="Table Name" required>
+                    <FormField
+                      label="Table Name"
+                      required
+                      labelExtra={
+                        <InfoTooltip text="Auto-generated from the sheet name. This is the database table where the sheet's rows are stored." />
+                      }
+                    >
                       <Input
                         value={sheet.tableName}
                         onChange={(e) => handleSheetConfigChange(idx, 'tableName', e.target.value)}
                         disabled
                       />
                     </FormField>
-                    <FormField label="Header Row" required>
+                    <FormField
+                      label="Header Row"
+                      required
+                      labelExtra={
+                        <InfoTooltip text="The row number that contains the column headers. Rows below it are treated as data." />
+                      }
+                    >
                       <Input
                         type="number"
                         value={sheet.headerRow}
@@ -310,7 +407,13 @@ export function GoogleSheetConfigPanel() {
                         disabled={!editMode}
                       />
                     </FormField>
-                    <FormField label="Unique Key (comma separated)" required>
+                    <FormField
+                      label="Unique Key (comma separated)"
+                      required
+                      labelExtra={
+                        <InfoTooltip text="Column(s) that uniquely identify each row, used by the sync to update existing records instead of creating duplicates. Enter the Postgres column name format — lowercase snake_case (spaces and symbols become underscores), not the original sheet header. Example: a sheet header 'AWB Number' becomes awb_number. For a composite key, comma-separate: awb_number,flight_date" />
+                      }
+                    >
                       <Input
                         value={sheet.uniqueKey?.join(',') || ''}
                         onChange={(e) => handleSheetConfigChange(idx, 'uniqueKey', e.target.value)}
@@ -346,7 +449,7 @@ export function GoogleSheetConfigPanel() {
               </div>
             </div>
             <div className="flex gap-2 mt-4">
-              <Button onClick={handleSave} disabled={!editMode}>
+              <Button onClick={handleSave} disabled={!editMode || !allSheetConfigsComplete}>
                 Save
               </Button>
               <Button variant="outline" onClick={handleCancel} disabled={!editMode}>
