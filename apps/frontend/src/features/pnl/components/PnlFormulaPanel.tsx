@@ -250,10 +250,6 @@ export function PnlFormulaPanel() {
                   <td className="py-1.5 font-mono text-foreground/80">SUM(revenue_total) — all TOs in cycle</td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 pr-4">Est. Discount</td>
-                  <td className="py-1.5 font-mono text-foreground/80">SUM(amount_revenue × 1.5%) — all TOs in cycle</td>
-                </tr>
-                <tr>
                   <td className="py-1.5 pr-4">Est. Cost</td>
                   <td className="py-1.5 font-mono text-foreground/80">SUM(cost_to) — only TOs with complete cost data</td>
                 </tr>

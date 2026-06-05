@@ -1297,6 +1297,22 @@ export class AirShipmentsService {
   }
 
   /**
+   * Resolve the SQL date-basis expression for batch-by-date operations.
+   * Tables that carry a business `date` field (compileaircgk, smu_rate_cgk_spx) filter on it;
+   * date-less rate/reference tables fall back to the real `created_at` column so the feature works
+   * on every sheet. The returned fragment is fixed internal SQL (never user input); callers
+   * regex-guard `tableName`.
+   */
+  private async resolveDateExpr(tableName: string): Promise<string> {
+    const rows = await this.dataSource.query(
+      `SELECT EXISTS(SELECT 1 FROM "${tableName}" WHERE extra_fields ? 'date' LIMIT 1) AS has_date`
+    )
+    return rows?.[0]?.has_date
+      ? `parse_flexible_timestamp(extra_fields->>'date')`
+      : `created_at::timestamp`
+  }
+
+  /**
    * Batch lock/unlock rows by date range. Returns number of affected rows.
    */
   async batchLockByDate(
@@ -1316,19 +1332,10 @@ export class AirShipmentsService {
     if (isNaN(s.getTime()) || isNaN(e.getTime()))
       throw new BadRequestException('Invalid date range')
 
-    // Ensure table has a `date` column
-    const colRes = await this.dataSource.query(`
-      SELECT 1
-      FROM ${tableName}
-      WHERE extra_fields ? 'date'
-      LIMIT 1
-    `)
-    if (!colRes || colRes.length === 0)
-      throw new BadRequestException('Table does not have a date column')
-
+    const dateExpr = await this.resolveDateExpr(tableName)
     const res = await this.dataSource.query(
-      `UPDATE "${tableName}" SET is_locked = $1, updated_at = NOW() 
-      WHERE (NULLIF(extra_fields->>'date', ''))::timestamp BETWEEN $2::timestamp AND $3::timestamp RETURNING id`,
+      `UPDATE "${tableName}" SET is_locked = $1, updated_at = NOW()
+      WHERE ${dateExpr} BETWEEN $2::timestamp AND $3::timestamp RETURNING id`,
       [locked, start, end]
     )
     const affected = res?.[1] ?? 0
@@ -1362,18 +1369,9 @@ export class AirShipmentsService {
     if (isNaN(s.getTime()) || isNaN(e.getTime()))
       throw new BadRequestException('Invalid date range')
 
-    // Ensure table has a `date` column
-    const colRes = await this.dataSource.query(`
-      SELECT 1
-      FROM ${tableName}
-      WHERE extra_fields ? 'date'
-      LIMIT 1
-    `)
-    if (!colRes || colRes.length === 0)
-      throw new BadRequestException('Table does not have a date column')
-
+    const dateExpr = await this.resolveDateExpr(tableName)
     const res = await this.dataSource.query(
-      `DELETE FROM "${tableName}" WHERE (NULLIF(extra_fields->>'date', ''))::timestamp BETWEEN $1::timestamp AND $2::timestamp RETURNING id`,
+      `DELETE FROM "${tableName}" WHERE ${dateExpr} BETWEEN $1::timestamp AND $2::timestamp RETURNING id`,
       [start, end]
     )
     const deleted = res?.[1] ?? 0
@@ -1385,6 +1383,29 @@ export class AirShipmentsService {
       deleted,
     })
     return deleted
+  }
+
+  /**
+   * Count rows a batch lock/delete over the given date range would affect. Read-only — used to
+   * populate the confirm dialog before a destructive batch delete.
+   */
+  async batchCountByDate(tableName: string, start: string, end: string): Promise<number> {
+    if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
+      throw new BadRequestException('Invalid table name')
+    }
+    if (!start || !end) throw new BadRequestException('Start and end dates are required')
+
+    const s = new Date(start)
+    const e = new Date(end)
+    if (isNaN(s.getTime()) || isNaN(e.getTime()))
+      throw new BadRequestException('Invalid date range')
+
+    const dateExpr = await this.resolveDateExpr(tableName)
+    const rows = await this.dataSource.query(
+      `SELECT count(*)::int AS count FROM "${tableName}" WHERE ${dateExpr} BETWEEN $1::timestamp AND $2::timestamp`,
+      [start, end]
+    )
+    return rows?.[0]?.count ?? 0
   }
 
   async excludeRow(

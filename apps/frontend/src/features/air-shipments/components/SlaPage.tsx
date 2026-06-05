@@ -17,6 +17,7 @@ import {
   lockAirShipmentRow,
   batchLockAirShipments,
   batchDeleteAirShipments,
+  batchCountAirShipments,
   excludeRow,
   restoreRow,
   fetchExcluded,
@@ -453,6 +454,14 @@ export function SlaPage() {
         )
         window.alert(`Locked ${affected} row(s)`)
       } else {
+        const count = await batchCountAirShipments(TABLE_NAME, batchDialog.start, batchDialog.end)
+        if (
+          !window.confirm(
+            `This will permanently delete ${count} row(s) from "${TABLE_NAME}". Continue?`
+          )
+        ) {
+          return
+        }
         const deleted = await batchDeleteAirShipments(
           TABLE_NAME,
           batchDialog.start,
@@ -728,24 +737,22 @@ export function SlaPage() {
                   </div>
                 )}
 
-                {allColumns.includes('date') && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => openBatch('lock')}
-                      className="border rounded px-2 py-1 text-xs bg-background hover:bg-accent flex items-center gap-1"
-                    >
-                      <Lock size={14} /> Batch Lock
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openBatch('delete')}
-                      className="border border-destructive rounded px-2 py-1 text-xs bg-background hover:bg-accent text-destructive flex items-center gap-1"
-                    >
-                      <Trash2 size={14} /> Batch Delete
-                    </button>
-                  </div>
-                )}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openBatch('lock')}
+                    className="border rounded px-2 py-1 text-xs bg-background hover:bg-accent flex items-center gap-1"
+                  >
+                    <Lock size={14} /> Batch Lock
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openBatch('delete')}
+                    className="border border-destructive rounded px-2 py-1 text-xs bg-background hover:bg-accent text-destructive flex items-center gap-1"
+                  >
+                    <Trash2 size={14} /> Batch Delete
+                  </button>
+                </div>
 
                 {batchDialog.op && (
                   <div className="absolute right-0 top-full mt-2 w-[300px] p-3 rounded-lg border border-border bg-popover shadow-lg z-50">

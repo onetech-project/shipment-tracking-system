@@ -113,6 +113,15 @@ export class AirShipmentsController {
     }
   }
 
+  @Post(':tableName/batch-count')
+  async batchCount(
+    @Param('tableName') tableName: string,
+    @Body() body: { start: string; end: string }
+  ): Promise<{ count: number }> {
+    const count = await this.service.batchCountByDate(tableName, body.start, body.end)
+    return { count }
+  }
+
   @Get(':tableName/alert-summary')
   @UseGuards(RbacGuard)
   @Authorize(Permission.READ_SLA)
