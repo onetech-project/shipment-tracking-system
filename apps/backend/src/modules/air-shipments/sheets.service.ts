@@ -4,6 +4,7 @@ import { DataSource } from 'typeorm'
 import { google, sheets_v4 } from 'googleapis'
 import { normalizeHeader, makeUniqueHeaders } from './normalizer'
 import { coerceValue } from './coercer'
+import { mergeRangeValues } from './cell-merge'
 import { SheetConfig, SheetResult } from './sheet-config.interface'
 import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
 import { InjectRepository } from '@nestjs/typeorm'
@@ -137,13 +138,31 @@ export class SheetsService implements OnApplicationBootstrap {
     let valueRanges: sheets_v4.Schema$ValueRange[]
 
     try {
-      const response = await this.sheetsApi.spreadsheets.values.batchGet({
-        spreadsheetId: cfg.sheetId,
-        ranges,
-        valueRenderOption: 'FORMATTED_VALUE',
-        dateTimeRenderOption: 'FORMATTED_STRING',
-      })
-      valueRanges = response.data.valueRanges ?? []
+      // Fetch FORMATTED (keeps "%"/date renderings the pipeline relies on) and UNFORMATTED
+      // (keeps full numeric precision the display format would truncate) and merge per cell.
+      const [formattedRes, unformattedRes] = await Promise.all([
+        this.sheetsApi.spreadsheets.values.batchGet({
+          spreadsheetId: cfg.sheetId,
+          ranges,
+          valueRenderOption: 'FORMATTED_VALUE',
+          dateTimeRenderOption: 'FORMATTED_STRING',
+        }),
+        this.sheetsApi.spreadsheets.values.batchGet({
+          spreadsheetId: cfg.sheetId,
+          ranges,
+          valueRenderOption: 'UNFORMATTED_VALUE',
+          dateTimeRenderOption: 'FORMATTED_STRING',
+        }),
+      ])
+      const formattedRanges = formattedRes.data.valueRanges ?? []
+      const unformattedRanges = unformattedRes.data.valueRanges ?? []
+      valueRanges = formattedRanges.map((vr, i) => ({
+        ...vr,
+        values: mergeRangeValues(
+          (vr.values ?? []) as unknown[][],
+          (unformattedRanges[i]?.values ?? []) as unknown[][]
+        ),
+      }))
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
       this.logger.error(
@@ -283,14 +302,24 @@ export class SheetsService implements OnApplicationBootstrap {
       )
 
       try {
-        const response = await this.sheetsApi.spreadsheets.values.batchGet({
-          spreadsheetId: sheetId,
-          ranges: [`${sheetName}!A:ZZ`],
-          valueRenderOption: 'FORMATTED_VALUE',
-          dateTimeRenderOption: 'FORMATTED_STRING',
-        })
-        const data = (response.data.valueRanges?.[0]?.values ?? []) as unknown[][]
-        if (data.length > 0) return data
+        const [formattedRes, unformattedRes] = await Promise.all([
+          this.sheetsApi.spreadsheets.values.batchGet({
+            spreadsheetId: sheetId,
+            ranges: [`${sheetName}!A:ZZ`],
+            valueRenderOption: 'FORMATTED_VALUE',
+            dateTimeRenderOption: 'FORMATTED_STRING',
+          }),
+          this.sheetsApi.spreadsheets.values.batchGet({
+            spreadsheetId: sheetId,
+            ranges: [`${sheetName}!A:ZZ`],
+            valueRenderOption: 'UNFORMATTED_VALUE',
+            dateTimeRenderOption: 'FORMATTED_STRING',
+          }),
+        ])
+        const formatted = (formattedRes.data.valueRanges?.[0]?.values ?? []) as unknown[][]
+        if (formatted.length === 0) continue
+        const unformatted = (unformattedRes.data.valueRanges?.[0]?.values ?? []) as unknown[][]
+        return mergeRangeValues(formatted, unformatted)
       } catch (_err) {
         // Swallow per-retry errors; let the outer caller handle the empty result
       }

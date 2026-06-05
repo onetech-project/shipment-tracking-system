@@ -1,15 +1,19 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/client'
 
+export type DateBasis = 'completed_time' | 'ata_vendor_wh_destination' | 'atd_origin'
+export const DEFAULT_DATE_BASIS: DateBasis = 'ata_vendor_wh_destination'
+
 export type PnlFilter =
-  | { mode: 'cycle'; cycle: string }
-  | { mode: 'range'; start: string; end: string }
+  | { mode: 'cycle'; cycle: string; basis: DateBasis }
+  | { mode: 'range'; start: string; end: string; basis: DateBasis }
 
 export interface PnlSummary {
   label: string
   totalTos: number
   totalAwbs: number
   totalRevenue: number
+  totalDiscount: number
   totalCost: number
   grossProfit: number
   grossMarginPct: number
@@ -30,6 +34,7 @@ export interface PnlAwbRow {
   toCount: number
   sumGw: number
   totalRevenue: number
+  totalDiscount: number
   costSmu: number | null
   costRa: number | null
   costSgOut: number | null
@@ -38,6 +43,7 @@ export interface PnlAwbRow {
   grossProfit: number | null
   grossMarginPct: number | null
   hasNullCost: boolean
+  issue: string | null
 }
 
 export interface PnlToRow {
@@ -51,12 +57,19 @@ export interface PnlToRow {
   totalCost: number | null
   grossProfit: number | null
   marginPct: number | null
+  issue: string | null
 }
 
 export interface PnlDataQualityItem {
   toNumber: string | null
   awb: string
   issue: string
+}
+
+export interface PnlDataQualitySummaryItem {
+  issue: string
+  rows: number
+  awbs: number
 }
 
 export interface PnlRevenueByRouteItem {
@@ -109,14 +122,14 @@ export interface PnlProfitByRouteItem {
 
 function filterToParams(filter: PnlFilter) {
   return filter.mode === 'cycle'
-    ? { cycle: filter.cycle }
-    : { start: filter.start, end: filter.end }
+    ? { cycle: filter.cycle, basis: filter.basis }
+    : { start: filter.start, end: filter.end, basis: filter.basis }
 }
 
-export function usePnlCycles() {
+export function usePnlCycles(basis: DateBasis = DEFAULT_DATE_BASIS) {
   return useQuery<string[]>({
-    queryKey: ['pnl', 'cycles'],
-    queryFn: () => apiClient.get('/pnl/cycles').then((r) => r.data),
+    queryKey: ['pnl', 'cycles', basis],
+    queryFn: () => apiClient.get('/pnl/cycles', { params: { basis } }).then((r) => r.data),
     staleTime: 5 * 60 * 1000,
   })
 }
@@ -167,10 +180,19 @@ export function usePnlAwbTos(awb: string | null, filter: PnlFilter | undefined) 
   })
 }
 
-export function usePnlDataQuality() {
-  return useQuery<PnlDataQualityItem[]>({
-    queryKey: ['pnl', 'data-quality'],
-    queryFn: () => apiClient.get('/pnl/data-quality').then((r) => r.data),
+export function usePnlDataQuality(page: number, limit = 25) {
+  return useQuery<{ data: PnlDataQualityItem[]; total: number }>({
+    queryKey: ['pnl', 'data-quality', page, limit],
+    queryFn: () =>
+      apiClient.get('/pnl/data-quality', { params: { page, limit } }).then((r) => r.data),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function usePnlDataQualitySummary() {
+  return useQuery<PnlDataQualitySummaryItem[]>({
+    queryKey: ['pnl', 'data-quality', 'summary'],
+    queryFn: () => apiClient.get('/pnl/data-quality/summary').then((r) => r.data),
     staleTime: 5 * 60 * 1000,
   })
 }

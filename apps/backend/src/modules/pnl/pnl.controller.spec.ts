@@ -32,15 +32,27 @@ describe('PnlController', () => {
     expect(await controller.getCycles()).toEqual(['2026-04-2H'])
   })
 
-  it('getSummary passes cycle query param', async () => {
+  it('getSummary passes cycle + basis query params', async () => {
     mockService.getSummary.mockResolvedValueOnce({ cyclePeriod: '2026-04-2H' })
-    await controller.getSummary('2026-04-2H')
-    expect(mockService.getSummary).toHaveBeenCalledWith('2026-04-2H', undefined, undefined)
+    await controller.getSummary('2026-04-2H', undefined, undefined, 'atd_origin')
+    expect(mockService.getSummary).toHaveBeenCalledWith('2026-04-2H', undefined, undefined, 'atd_origin')
   })
 
-  it('getAwbDrilldown defaults page=1 limit=50', async () => {
+  it('getCycles passes basis through', async () => {
+    mockService.getCycles.mockResolvedValueOnce(['2026-05-1H'])
+    await controller.getCycles('atd_origin')
+    expect(mockService.getCycles).toHaveBeenCalledWith('atd_origin')
+  })
+
+  it('getAwbDrilldown defaults page=1 limit=50 and forwards basis', async () => {
     mockService.getAwbDrilldown.mockResolvedValueOnce({ data: [], total: 0 })
-    await controller.getAwbDrilldown(1, 50, '2026-04-2H')
-    expect(mockService.getAwbDrilldown).toHaveBeenCalledWith(1, 50, '2026-04-2H', undefined, undefined)
+    await controller.getAwbDrilldown(1, 50, '2026-04-2H', undefined, undefined, 'ata_vendor_wh_destination')
+    expect(mockService.getAwbDrilldown).toHaveBeenCalledWith(1, 50, '2026-04-2H', undefined, undefined, 'ata_vendor_wh_destination')
+  })
+
+  it('getDataQuality passes page/limit', async () => {
+    mockService.getDataQuality.mockResolvedValueOnce({ data: [], total: 0 })
+    await controller.getDataQuality(2, 25)
+    expect(mockService.getDataQuality).toHaveBeenCalledWith(2, 25)
   })
 })

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
-import { usePnlCycles, usePnlSummary, PnlFilter } from '@/features/pnl/hooks/usePnl'
+import { usePnlCycles, usePnlSummary, PnlFilter, DateBasis, DEFAULT_DATE_BASIS } from '@/features/pnl/hooks/usePnl'
 import { PnlKpiCards, PnlKpiKey } from '@/features/pnl/components/PnlKpiCards'
 import { PnlDailyMarginChart } from '@/features/pnl/components/PnlDailyMarginChart'
 import { PnlBreakdownPanel } from '@/features/pnl/components/PnlBreakdownPanel'
@@ -42,8 +42,15 @@ function PnlSkeleton() {
 
 type FilterMode = 'cycle' | 'range'
 
+const BASIS_OPTIONS: { value: DateBasis; label: string }[] = [
+  { value: 'ata_vendor_wh_destination', label: 'ATA Vendor WH dest' },
+  { value: 'atd_origin', label: 'ATD origin' },
+  { value: 'completed_time', label: 'Completed time' },
+]
+
 function PnlPageContent() {
-  const { data: cycles, isLoading: isLoadingCycles, isError: isCyclesError, refetch: refetchCycles } = usePnlCycles()
+  const [dateBasis, setDateBasis] = useState<DateBasis>(DEFAULT_DATE_BASIS)
+  const { data: cycles, isLoading: isLoadingCycles, isError: isCyclesError, refetch: refetchCycles } = usePnlCycles(dateBasis)
   const [mode, setMode] = useState<FilterMode>('cycle')
   const [cycle, setCycle] = useState<string | undefined>(undefined)
   const [startDate, setStartDate] = useState('')
@@ -52,15 +59,22 @@ function PnlPageContent() {
   const [showDq, setShowDq] = useState(false)
 
   useEffect(() => {
-    if (cycles && cycles.length > 0 && !cycle) {
+    if (cycles && cycles.length > 0 && (!cycle || !cycles.includes(cycle))) {
       setCycle(cycles[0])
     }
   }, [cycles, cycle])
 
+  // Changing the date basis re-derives the cycle list; drop the stale selection so the effect
+  // above repicks the newest available cycle for the new basis.
+  function handleBasisChange(next: DateBasis) {
+    setDateBasis(next)
+    setCycle(undefined)
+  }
+
   const filter: PnlFilter | undefined =
     mode === 'cycle'
-      ? cycle ? { mode: 'cycle', cycle } : undefined
-      : startDate && endDate ? { mode: 'range', start: startDate, end: endDate } : undefined
+      ? cycle ? { mode: 'cycle', cycle, basis: dateBasis } : undefined
+      : startDate && endDate ? { mode: 'range', start: startDate, end: endDate, basis: dateBasis } : undefined
 
   const { data: summary, isLoading: isSummaryLoading, isError: isSummaryError, refetch: refetchSummary } = usePnlSummary(filter)
   const isPageLoading = !cycles || (!!filter && isSummaryLoading && !summary)
@@ -101,8 +115,19 @@ function PnlPageContent() {
             </button>
           </div>
 
-          {mode === 'cycle' && (
-            <div className="flex flex-col items-end gap-1">
+          <div className="flex items-center gap-2">
+            <select
+              className="rounded-md border bg-background px-3 py-1.5 text-sm"
+              value={dateBasis}
+              onChange={(e) => handleBasisChange(e.target.value as DateBasis)}
+              title="Date field used to assign the billing cycle / filter the range"
+            >
+              {BASIS_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+
+            {mode === 'cycle' && (
               <select
                 className="rounded-md border bg-background px-3 py-1.5 text-sm"
                 value={cycle ?? ''}
@@ -122,28 +147,28 @@ function PnlPageContent() {
                   </optgroup>
                 ))}
               </select>
-              {cycleDateHint && (
-                <p className="text-xs text-muted-foreground">{cycleDateHint}</p>
-              )}
-            </div>
-          )}
+            )}
 
-          {mode === 'range' && (
-            <div className="flex items-center gap-2">
-              <input
-                type="date"
-                className="rounded-md border bg-background px-2 py-1.5 text-sm"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-              <span className="text-xs text-muted-foreground">to</span>
-              <input
-                type="date"
-                className="rounded-md border bg-background px-2 py-1.5 text-sm"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
-            </div>
+            {mode === 'range' && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  className="rounded-md border bg-background px-2 py-1.5 text-sm"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                />
+                <span className="text-xs text-muted-foreground">to</span>
+                <input
+                  type="date"
+                  className="rounded-md border bg-background px-2 py-1.5 text-sm"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                />
+              </div>
+            )}
+          </div>
+          {mode === 'cycle' && cycleDateHint && (
+            <p className="text-xs text-muted-foreground">{cycleDateHint}</p>
           )}
         </div>
       </div>

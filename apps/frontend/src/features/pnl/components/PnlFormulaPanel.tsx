@@ -52,9 +52,9 @@ export function PnlFormulaPanel() {
           <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
             <p className="font-medium mb-0.5">Estimated figures — not actual billing</p>
             <p className="text-amber-700 dark:text-amber-300">
-              The billing cycle is assigned by <em>arrival date</em> (<Col name="completed_time" /> or{' '}
-              <Col name="ata_vendor_wh_destination" />), which indicates when the shipment reached the destination —
-              not when the customer was invoiced or paid.
+              The billing cycle is assigned by the <em>selected date basis</em> (default arrival,{' '}
+              <Col name="ata_vendor_wh_destination" />), which reflects shipment movement — not when the
+              customer was invoiced or paid.
             </p>
           </div>
 
@@ -62,30 +62,32 @@ export function PnlFormulaPanel() {
 
           {/* ── BILLING CYCLE ── */}
           <Section title="1. Billing Cycle Assignment">
-            <p className="mb-2 text-muted-foreground">Source: <Sheet name="Compile Air CGK" /></p>
+            <p className="mb-2 text-muted-foreground">
+              Source: <Sheet name="Compile Air CGK" />. The <strong>date basis</strong> is selectable in the
+              header (defaults to <Col name="ata_vendor_wh_destination" />); the cycle and the custom range
+              both filter on the chosen field.
+            </p>
             <table className="w-full">
               <tbody className="divide-y divide-border/40">
                 <tr>
-                  <td className="py-1.5 pr-4 w-40">Primary date</td>
-                  <td className="py-1.5"><Col name="completed_time" /> — date the TO was marked complete</td>
-                </tr>
-                <tr>
-                  <td className="py-1.5 pr-4">Fallback date</td>
+                  <td className="py-1.5 pr-4 w-40">Date basis options</td>
                   <td className="py-1.5">
-                    <Col name="ata_vendor_wh_destination" /> — used when <Col name="completed_time" /> is blank,
-                    only if the value looks like a date (starts with a digit)
+                    <Col name="ata_vendor_wh_destination" /> (arrival, default) ·{' '}
+                    <Col name="atd_origin" /> (departure) · <Col name="completed_time" /> (TO completed)
                   </td>
                 </tr>
                 <tr>
                   <td className="py-1.5 pr-4">Supported formats</td>
                   <td className="py-1.5 font-mono text-foreground/80">
-                    <Col name="DD-Mon-YYYY HH:MM" /> and <Col name="D Mon YYYY H:MM" /> (single-digit day)
+                    <Col name="YYYY-MM-DD HH:MM" /> (ISO), <Col name="DD-Mon-YYYY HH:MM" />, and{' '}
+                    <Col name="D Mon YYYY H:MM" /> (single-digit day)
                   </td>
                 </tr>
                 <tr>
                   <td className="py-1.5 pr-4">Cycle label</td>
                   <td className="py-1.5">
                     <Col name="YYYY-MM-1H" /> for days 1–15 · <Col name="YYYY-MM-2H" /> for days 16–31
+                    (of the chosen basis date)
                   </td>
                 </tr>
               </tbody>
@@ -107,9 +109,13 @@ export function PnlFormulaPanel() {
                   <td className="py-1.5 pr-4">+ Packing surcharge</td>
                   <td className="py-1.5"><Col name="additional_amount_packing_kayu" /> (0 when blank)</td>
                 </tr>
+                <tr>
+                  <td className="py-1.5 pr-4">− Discount (1.5%)</td>
+                  <td className="py-1.5"><Col name="amount_revenue" /> × 1.5% (freight revenue only)</td>
+                </tr>
                 <tr className="font-medium">
                   <td className="py-1.5 pr-4">= Revenue per TO</td>
-                  <td className="py-1.5 font-mono">amount_revenue + packing_kayu</td>
+                  <td className="py-1.5 font-mono">amount_revenue − (amount_revenue × 1.5%) + packing_kayu</td>
                 </tr>
               </tbody>
             </table>
@@ -121,7 +127,9 @@ export function PnlFormulaPanel() {
           <Section title="3. Cost Lookup (per AWB)">
             <p className="mb-3 text-muted-foreground">
               The booking entry in <Sheet name="SMU Rate CGK SPX" /> maps each AWB to its vendor, airline, and rate tables.
-              Cost is computed at AWB level then prorated to each TO by weight share.
+              Cost is computed at AWB level then prorated to each TO by weight share. AWB-level costs use{' '}
+              <strong>chargeable weight</strong> (<Col name="chwt_airlines" />), falling back to gross weight when
+              chargeable weight is missing.
             </p>
 
             <div className="space-y-3">
@@ -133,20 +141,29 @@ export function PnlFormulaPanel() {
                   <Col name="airlines" /> × <Col name="origin" /> × <Col name="destination" />
                 </p>
                 <p className="font-mono text-foreground/80">
-                  total_AWB_weight × <Col name="total_cost_smukg" /> + <Col name="admin_smu" />
+                  ((<Col name="freight_rate" /> + <Col name="sc" /> + <Col name="fbc" /> + <Col name="myc" /> +{' '}
+                  <Col name="other" />) × w + <Col name="admin_smu" />) × (1 + <Col name="ppn" />/100) − (
+                  <Col name="freight_rate" /> × w) × <Col name="komisi" />/100
                 </p>
-                <p className="text-muted-foreground">NULL when no matching row in <Sheet name="SMU" /></p>
+                <p className="text-muted-foreground">
+                  Built from the SMU rate components (matches the workbook&apos;s Origin CGK cols O–X), where{' '}
+                  <span className="font-mono">w</span> = AWB chargeable weight. PPN is charged on freight + all
+                  surcharges + admin; komisi (commission rebate) is deducted on the freight portion only.{' '}
+                  <Col name="ppn" /> and <Col name="komisi" /> are percentages (11 = 11%, 2.94 = 2.94%).
+                  NULL when no matching row in <Sheet name="SMU" />.
+                </p>
               </div>
 
               <div className="rounded border p-3 space-y-1.5">
                 <p className="font-medium">RA Cost</p>
                 <p className="text-muted-foreground">
-                  Join: <Sheet name="SMU Rate CGK SPX" /> <Col name="ra" /> → <Sheet name="RA" /> <Col name="ra_name" /> (case-insensitive)
+                  Join: <Sheet name="SMU Rate CGK SPX" /> <Col name="ra" /> → <Sheet name="RA" /> <Col name="ra_name" /> (case &amp; punctuation-insensitive)
                 </p>
                 <p className="font-mono text-foreground/80">
-                  total_AWB_weight × <Col name="rate" /> × (1 + <Col name="ppn" /> / 100) + <Col name="admin" />
+                  (AWB_chargeable_weight × <Col name="rate" /> + <Col name="admin" />) × (1 + <Col name="ppn" /> / 100)
                 </p>
                 <p className="text-muted-foreground">
+                  PPN applies to amount + admin. <strong>0 for Surabaya origin</strong> (no RA at SUB).
                   0 when <Col name="ra" /> is blank or starts with &quot;include&quot;.
                   NULL when no matching row in <Sheet name="RA" />.
                   <Col name="ppn" /> is stored as a percentage (e.g. 11 = 11% VAT).
@@ -156,12 +173,14 @@ export function PnlFormulaPanel() {
               <div className="rounded border p-3 space-y-1.5">
                 <p className="font-medium">SG Outgoing Cost</p>
                 <p className="text-muted-foreground">
-                  Join: <Sheet name="SMU" /> <Col name="sg_out" /> → <Sheet name="SG Outgoing" /> <Col name="sg_outgoing_name" />
+                  Join: <Sheet name="SMU" /> <Col name="sg_out" /> → <Sheet name="SG Outgoing" /> <Col name="sg_outgoing_name" /> (case &amp; punctuation-insensitive)
                 </p>
                 <p className="font-mono text-foreground/80">
-                  total_AWB_weight × <Col name="rate" /> × (1 + <Col name="ppn" /> / 100) + <Col name="admin" />
+                  AWB_chargeable_weight × <Col name="rate" /> × (1 + <Col name="ppn" /> / 100) + <Col name="admin" />
                 </p>
                 <p className="text-muted-foreground">
+                  Surabaya origin charges PPN on amount + admin instead:{' '}
+                  <span className="font-mono">(weight × rate + admin) × (1 + ppn / 100)</span>.
                   0 when <Col name="sg_out" /> is blank or starts with &quot;include&quot;.
                   NULL when no matching row in <Sheet name="SG Outgoing" />.
                   <Col name="ppn" /> is stored as a percentage.
@@ -176,11 +195,13 @@ export function PnlFormulaPanel() {
                   <Col name="destination" />
                 </p>
                 <p className="font-mono text-foreground/80">
-                  TO_gross_weight × <Col name="sg_inc" />
+                  weight_share × (AWB_chargeable_weight × <Col name="sg_inc" /> + admin)
                 </p>
                 <p className="text-muted-foreground">
-                  Looked up per TO (not per AWB) using the route. Treated as 0 when no match in{' '}
-                  <Sheet name="SG Incoming" /> so cost is not nullified for unconfigured routes.
+                  Looked up per route (<Col name="origin_station" /> × <Col name="destination_station" />). Uses
+                  chargeable weight plus a flat admin (5,000 for CGK/Jabo, 0 for Surabaya), prorated to each TO by
+                  weight share so the admin is counted once per AWB. Shown as NULL when no matching route in{' '}
+                  <Sheet name="SG Incoming" />, but Total Cost treats a missing route as 0 so it is not nullified.
                 </p>
               </div>
 
@@ -229,12 +250,16 @@ export function PnlFormulaPanel() {
                   <td className="py-1.5 font-mono text-foreground/80">SUM(revenue_total) — all TOs in cycle</td>
                 </tr>
                 <tr>
+                  <td className="py-1.5 pr-4">Est. Discount</td>
+                  <td className="py-1.5 font-mono text-foreground/80">SUM(amount_revenue × 1.5%) — all TOs in cycle</td>
+                </tr>
+                <tr>
                   <td className="py-1.5 pr-4">Est. Cost</td>
                   <td className="py-1.5 font-mono text-foreground/80">SUM(cost_to) — only TOs with complete cost data</td>
                 </tr>
                 <tr>
                   <td className="py-1.5 pr-4">Est. Gross Profit</td>
-                  <td className="py-1.5 font-mono text-foreground/80">Est. Revenue − Est. Cost</td>
+                  <td className="py-1.5 font-mono text-foreground/80">Est. Revenue − Est. Discount − Est. Cost</td>
                 </tr>
                 <tr>
                   <td className="py-1.5 pr-4">Est. Gross Margin</td>

@@ -11,8 +11,8 @@ export class PnlController {
   constructor(private readonly pnlService: PnlService) {}
 
   @Get('cycles')
-  getCycles() {
-    return this.pnlService.getCycles()
+  getCycles(@Query('basis') basis?: string) {
+    return this.pnlService.getCycles(basis)
   }
 
   @Get('summary')
@@ -20,8 +20,9 @@ export class PnlController {
     @Query('cycle') cycle?: string,
     @Query('start') start?: string,
     @Query('end') end?: string,
+    @Query('basis') basis?: string,
   ) {
-    return this.pnlService.getSummary(cycle, start, end)
+    return this.pnlService.getSummary(cycle, start, end, basis)
   }
 
   @Get('daily-margin')
@@ -29,8 +30,9 @@ export class PnlController {
     @Query('cycle') cycle?: string,
     @Query('start') start?: string,
     @Query('end') end?: string,
+    @Query('basis') basis?: string,
   ) {
-    return this.pnlService.getDailyMargin(cycle, start, end)
+    return this.pnlService.getDailyMargin(cycle, start, end, basis)
   }
 
   @Get('awb-drilldown')
@@ -40,8 +42,9 @@ export class PnlController {
     @Query('cycle') cycle?: string,
     @Query('start') start?: string,
     @Query('end') end?: string,
+    @Query('basis') basis?: string,
   ) {
-    return this.pnlService.getAwbDrilldown(page, limit, cycle, start, end)
+    return this.pnlService.getAwbDrilldown(page, limit, cycle, start, end, basis)
   }
 
   @Get('awb-tos')
@@ -50,13 +53,22 @@ export class PnlController {
     @Query('cycle') cycle?: string,
     @Query('start') start?: string,
     @Query('end') end?: string,
+    @Query('basis') basis?: string,
   ) {
-    return this.pnlService.getAwbTos(awb, cycle, start, end)
+    return this.pnlService.getAwbTos(awb, cycle, start, end, basis)
   }
 
   @Get('data-quality')
-  getDataQuality() {
-    return this.pnlService.getDataQuality()
+  getDataQuality(
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
+    @Query('limit', new DefaultValuePipe(25), ParseIntPipe) limit: number,
+  ) {
+    return this.pnlService.getDataQuality(page, limit)
+  }
+
+  @Get('data-quality/summary')
+  getDataQualitySummary() {
+    return this.pnlService.getDataQualitySummary()
   }
 
   @Get('breakdown/revenue-by-route')
@@ -64,8 +76,9 @@ export class PnlController {
     @Query('cycle') cycle?: string,
     @Query('start') start?: string,
     @Query('end') end?: string,
+    @Query('basis') basis?: string,
   ) {
-    return this.pnlService.getRevenueByRoute(cycle, start, end)
+    return this.pnlService.getRevenueByRoute(cycle, start, end, basis)
   }
 
   @Get('breakdown/cost-totals')
@@ -73,8 +86,9 @@ export class PnlController {
     @Query('cycle') cycle?: string,
     @Query('start') start?: string,
     @Query('end') end?: string,
+    @Query('basis') basis?: string,
   ) {
-    return this.pnlService.getCostTotals(cycle, start, end)
+    return this.pnlService.getCostTotals(cycle, start, end, basis)
   }
 
   @Get('breakdown/cost-by-vendor')
@@ -82,8 +96,9 @@ export class PnlController {
     @Query('cycle') cycle?: string,
     @Query('start') start?: string,
     @Query('end') end?: string,
+    @Query('basis') basis?: string,
   ) {
-    return this.pnlService.getCostByVendor(cycle, start, end)
+    return this.pnlService.getCostByVendor(cycle, start, end, basis)
   }
 
   @Get('breakdown/cost-by-ra')
@@ -91,8 +106,9 @@ export class PnlController {
     @Query('cycle') cycle?: string,
     @Query('start') start?: string,
     @Query('end') end?: string,
+    @Query('basis') basis?: string,
   ) {
-    return this.pnlService.getCostByRa(cycle, start, end)
+    return this.pnlService.getCostByRa(cycle, start, end, basis)
   }
 
   @Get('breakdown/cost-by-sg-out')
@@ -100,8 +116,9 @@ export class PnlController {
     @Query('cycle') cycle?: string,
     @Query('start') start?: string,
     @Query('end') end?: string,
+    @Query('basis') basis?: string,
   ) {
-    return this.pnlService.getCostBySgOut(cycle, start, end)
+    return this.pnlService.getCostBySgOut(cycle, start, end, basis)
   }
 
   @Get('breakdown/cost-by-sg-in')
@@ -109,8 +126,9 @@ export class PnlController {
     @Query('cycle') cycle?: string,
     @Query('start') start?: string,
     @Query('end') end?: string,
+    @Query('basis') basis?: string,
   ) {
-    return this.pnlService.getCostBySgIn(cycle, start, end)
+    return this.pnlService.getCostBySgIn(cycle, start, end, basis)
   }
 
   @Get('breakdown/profit-by-route')
@@ -118,7 +136,8 @@ export class PnlController {
     @Query('cycle') cycle?: string,
     @Query('start') start?: string,
     @Query('end') end?: string,
+    @Query('basis') basis?: string,
   ) {
-    return this.pnlService.getProfitByRoute(cycle, start, end)
+    return this.pnlService.getProfitByRoute(cycle, start, end, basis)
   }
 }
