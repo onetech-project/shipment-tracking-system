@@ -18,11 +18,28 @@ export class PnlAlignWithSheet20260604000001 implements MigrationInterface {
   name = 'PnlAlignWithSheet20260604000001'
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Tolerant numeric parser: strip thousands separators, NULL on anything non-numeric.
+    // Sheet cells are free text and may hold labels (e.g. "DO") in number columns — a bare
+    // ::NUMERIC cast in a generated column would abort the whole ALTER on the first such row.
+    // Mirrors pnl_parse_date in 20260605000002-pnl-date-basis.ts.
+    await queryRunner.query(`
+      CREATE OR REPLACE FUNCTION pnl_parse_numeric(txt TEXT) RETURNS NUMERIC AS $$
+      DECLARE
+        s TEXT := NULLIF(REPLACE(BTRIM(txt), ',', ''), '');
+      BEGIN
+        IF s IS NULL THEN RETURN NULL; END IF;
+        RETURN s::NUMERIC;
+      EXCEPTION WHEN OTHERS THEN
+        RETURN NULL;
+      END;
+      $$ LANGUAGE plpgsql IMMUTABLE;
+    `)
+
     // Chargeable weight (col M "ChWt Airlines" in the sheet) lives on the booking table.
     await queryRunner.query(`
       ALTER TABLE air_shipments_smu_rate_cgk_spx
         ADD COLUMN IF NOT EXISTS chwt NUMERIC GENERATED ALWAYS AS (
-          NULLIF(REPLACE(extra_fields->>'chwt_airlines', ',', ''), '')::NUMERIC
+          pnl_parse_numeric(extra_fields->>'chwt_airlines')
         ) STORED
     `)
 
@@ -30,7 +47,7 @@ export class PnlAlignWithSheet20260604000001 implements MigrationInterface {
     await queryRunner.query(`
       ALTER TABLE air_shipments_sg_incoming
         ADD COLUMN IF NOT EXISTS admin NUMERIC GENERATED ALWAYS AS (
-          NULLIF(REPLACE(extra_fields->>'admin', ',', ''), '')::NUMERIC
+          pnl_parse_numeric(extra_fields->>'admin')
         ) STORED
     `)
 

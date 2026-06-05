@@ -18,29 +18,46 @@ export class PnlSmuComponents20260605000001 implements MigrationInterface {
   name = 'PnlSmuComponents20260605000001'
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // Tolerant numeric parser (strip thousands separators, NULL on non-numeric). Defined in
+    // 20260604000001 but re-declared here (CREATE OR REPLACE is idempotent) so this migration
+    // is self-contained — sheet number columns may hold stray labels that a bare ::NUMERIC
+    // cast would choke on, aborting the ALTER for every row.
+    await queryRunner.query(`
+      CREATE OR REPLACE FUNCTION pnl_parse_numeric(txt TEXT) RETURNS NUMERIC AS $$
+      DECLARE
+        s TEXT := NULLIF(REPLACE(BTRIM(txt), ',', ''), '');
+      BEGIN
+        IF s IS NULL THEN RETURN NULL; END IF;
+        RETURN s::NUMERIC;
+      EXCEPTION WHEN OTHERS THEN
+        RETURN NULL;
+      END;
+      $$ LANGUAGE plpgsql IMMUTABLE;
+    `)
+
     // WS1 — SMU component rates (already present in extra_fields, just not surfaced as columns).
     await queryRunner.query(`
       ALTER TABLE air_shipments_smu
         ADD COLUMN IF NOT EXISTS freight_rate NUMERIC GENERATED ALWAYS AS (
-          NULLIF(REPLACE(extra_fields->>'freight_rate', ',', ''), '')::NUMERIC
+          pnl_parse_numeric(extra_fields->>'freight_rate')
         ) STORED,
         ADD COLUMN IF NOT EXISTS sc_per_kg NUMERIC GENERATED ALWAYS AS (
-          NULLIF(REPLACE(extra_fields->>'sc_250kg_pelita', ',', ''), '')::NUMERIC
+          pnl_parse_numeric(extra_fields->>'sc_250kg_pelita')
         ) STORED,
         ADD COLUMN IF NOT EXISTS fbc_per_kg NUMERIC GENERATED ALWAYS AS (
-          NULLIF(REPLACE(extra_fields->>'fbc_citilink', ',', ''), '')::NUMERIC
+          pnl_parse_numeric(extra_fields->>'fbc_citilink')
         ) STORED,
         ADD COLUMN IF NOT EXISTS myc_per_kg NUMERIC GENERATED ALWAYS AS (
-          NULLIF(REPLACE(extra_fields->>'myc_fuel_surcharge', ',', ''), '')::NUMERIC
+          pnl_parse_numeric(extra_fields->>'myc_fuel_surcharge')
         ) STORED,
         ADD COLUMN IF NOT EXISTS other_per_kg NUMERIC GENERATED ALWAYS AS (
-          NULLIF(REPLACE(extra_fields->>'other_charges_ga_td_origin_sub', ',', ''), '')::NUMERIC
+          pnl_parse_numeric(extra_fields->>'other_charges_ga_td_origin_sub')
         ) STORED,
         ADD COLUMN IF NOT EXISTS ppn_pct NUMERIC GENERATED ALWAYS AS (
-          NULLIF(REPLACE(extra_fields->>'ppn', ',', ''), '')::NUMERIC
+          pnl_parse_numeric(extra_fields->>'ppn')
         ) STORED,
         ADD COLUMN IF NOT EXISTS komisi_pct NUMERIC GENERATED ALWAYS AS (
-          NULLIF(REPLACE(extra_fields->>'komisi', ',', ''), '')::NUMERIC
+          pnl_parse_numeric(extra_fields->>'komisi')
         ) STORED
     `)
 
