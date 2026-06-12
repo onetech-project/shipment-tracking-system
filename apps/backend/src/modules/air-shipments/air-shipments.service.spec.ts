@@ -454,37 +454,36 @@ describe('AirShipmentsService — runSyncCycle()', () => {
       if (sql.includes('information_schema.columns')) {
         return Promise.resolve([{ column_name: 'extra_fields' }])
       }
-      if (sql.startsWith('SELECT * FROM "air_shipments_compileaircgk"')) {
+      // Narrow alert projection: fields come back as top-level aliases, not extra_fields
+      if (sql.startsWith('SELECT id,') && sql.includes('FROM "air_shipments_compileaircgk"')) {
         return Promise.resolve([
           {
             // now=2025-01-15, atd_origin=2025-01-01, sla=24h→maxSla=2025-01-02
             // tjph=480h(20 days)→maxTjph=2025-01-21 (not yet breached)
             // effectiveTime=now > maxSla → melewatiSla=true; now < maxTjph → melewatiTjph=false
-            extra_fields: {
-              atd_origin: '2025-01-01T00:00:00Z',
-              sla: '24:00:00',
-              tjph: '480:00:00',
-              ata_flight: '2025-01-01T12:00:00Z',
-              atd_flight: '2025-01-01T06:00:00Z',
-              origin: 'CGK',
-              destination: 'SUB',
-              gross_weight: '9.15',
-            },
+            id: 1,
+            atd_origin: '2025-01-01T00:00:00Z',
+            sla: '24:00:00',
+            tjph: '480:00:00',
+            ata_flight: '2025-01-01T12:00:00Z',
+            atd_flight: '2025-01-01T06:00:00Z',
+            origin: 'CGK',
+            destination: 'SUB',
+            gross_weight: '9.15',
           },
           {
             // atd_origin=2025-01-12, sla=24h→maxSla=2025-01-13
             // tjph=480h→maxTjph=2025-01-31 (not yet breached)
             // now(2025-01-15) > maxSla → melewatiSla=true
-            extra_fields: {
-              atd_origin: '2025-01-12T00:00:00Z',
-              sla: '24:00:00',
-              tjph: '480:00:00',
-              ata_flight: '2025-01-12T12:00:00Z',
-              atd_flight: '2025-01-12T06:00:00Z',
-              origin: 'CGK',
-              destination: 'DPS',
-              gross_weight: '5.00',
-            },
+            id: 2,
+            atd_origin: '2025-01-12T00:00:00Z',
+            sla: '24:00:00',
+            tjph: '480:00:00',
+            ata_flight: '2025-01-12T12:00:00Z',
+            atd_flight: '2025-01-12T06:00:00Z',
+            origin: 'CGK',
+            destination: 'DPS',
+            gross_weight: '5.00',
           },
         ])
       }
@@ -696,34 +695,33 @@ describe('AirShipmentsService — isVoidRow / VOID filtering', () => {
       if (sql.includes('information_schema.columns')) {
         return Promise.resolve([{ column_name: 'extra_fields' }])
       }
-      if (sql.startsWith('SELECT * FROM "air_shipments_compileaircgk"')) {
+      // Narrow alert projection: fields come back as top-level aliases, not extra_fields
+      if (sql.startsWith('SELECT id,') && sql.includes('FROM "air_shipments_compileaircgk"')) {
         return Promise.resolve([
           {
             // Normal row that breaches SLA — should be counted
-            extra_fields: {
-              atd_origin: '2025-01-01T00:00:00Z',
-              sla: '24:00:00',
-              tjph: '480:00:00',
-              ata_flight: '2025-01-01T12:00:00Z',
-              atd_flight: '2025-01-01T06:00:00Z',
-              origin: 'CGK',
-              destination: 'SUB',
-              gross_weight: '10.00',
-            },
+            id: 1,
+            atd_origin: '2025-01-01T00:00:00Z',
+            sla: '24:00:00',
+            tjph: '480:00:00',
+            ata_flight: '2025-01-01T12:00:00Z',
+            atd_flight: '2025-01-01T06:00:00Z',
+            origin: 'CGK',
+            destination: 'SUB',
+            gross_weight: '10.00',
           },
           {
             // VOID row — must be excluded from all alert counts
-            extra_fields: {
-              atd_origin: '2025-01-01T00:00:00Z',
-              sla: '24:00:00',
-              tjph: '480:00:00',
-              ata_flight: '2025-01-01T12:00:00Z',
-              atd_flight: '2025-01-01T06:00:00Z',
-              origin: 'CGK',
-              destination: 'MES',
-              gross_weight: '99.00',
-              ata_vendor_wh_destination: 'VOID',
-            },
+            id: 2,
+            atd_origin: '2025-01-01T00:00:00Z',
+            sla: '24:00:00',
+            tjph: '480:00:00',
+            ata_flight: '2025-01-01T12:00:00Z',
+            atd_flight: '2025-01-01T06:00:00Z',
+            origin: 'CGK',
+            destination: 'MES',
+            gross_weight: '99.00',
+            ata_vendor_wh_destination: 'VOID',
           },
         ])
       }
@@ -812,5 +810,86 @@ describe('AirShipmentsService — filterRowsByAlert()', () => {
     expect(result).toHaveLength(1)
 
     jest.useRealTimers()
+  })
+})
+
+describe('AirShipmentsService — loadCached() / invalidateLookupCaches()', () => {
+  let service: AirShipmentsService
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AirShipmentsService,
+        { provide: SheetsService, useValue: { getConfigs: jest.fn().mockReturnValue([]) } },
+        {
+          provide: DynamicTableService,
+          useValue: { ensureTable: jest.fn().mockResolvedValue({ success: true }) },
+        },
+        { provide: getRepositoryToken(AirShipmentCgk), useValue: makeRepo() },
+        { provide: getRepositoryToken(AirShipmentSub), useValue: makeRepo() },
+        { provide: getRepositoryToken(AirShipmentSda), useValue: makeRepo() },
+        { provide: getRepositoryToken(RatePerStation), useValue: makeRepo() },
+        { provide: getRepositoryToken(RouteMaster), useValue: makeRepo() },
+        { provide: getRepositoryToken(GoogleSheetConfig), useValue: makeRepo() },
+        { provide: getRepositoryToken(GoogleSheetSheetConfig), useValue: makeRepo() },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+        { provide: DataSource, useValue: { query: jest.fn().mockResolvedValue([]) } },
+        {
+          provide: GeneralParamsService,
+          useValue: { getValue: jest.fn().mockResolvedValue('5') },
+        },
+      ],
+    }).compile()
+
+    service = module.get<AirShipmentsService>(AirShipmentsService)
+  })
+
+  it('invokes the loader once for concurrent calls (in-flight dedupe)', async () => {
+    const loader = jest.fn().mockResolvedValue('value')
+    const [a, b] = await Promise.all([
+      (service as any).loadCached('key', loader),
+      (service as any).loadCached('key', loader),
+    ])
+    expect(a).toBe('value')
+    expect(b).toBe('value')
+    expect(loader).toHaveBeenCalledTimes(1)
+  })
+
+  it('reloads after the TTL expires', async () => {
+    jest.useFakeTimers()
+    const loader = jest.fn().mockResolvedValue('value')
+    await (service as any).loadCached('key', loader)
+    await (service as any).loadCached('key', loader)
+    expect(loader).toHaveBeenCalledTimes(1)
+
+    jest.advanceTimersByTime(5 * 60_000 + 1)
+    await (service as any).loadCached('key', loader)
+    expect(loader).toHaveBeenCalledTimes(2)
+    jest.useRealTimers()
+  })
+
+  it('evicts rejected loads so the next call retries', async () => {
+    const loader = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce('recovered')
+    await expect((service as any).loadCached('key', loader)).rejects.toThrow('boom')
+    await expect((service as any).loadCached('key', loader)).resolves.toBe('recovered')
+    expect(loader).toHaveBeenCalledTimes(2)
+  })
+
+  it('invalidateLookupCaches evicts the sla and reservasi entries for affected tables', async () => {
+    const loader = jest.fn().mockResolvedValue('value')
+    await (service as any).loadCached('sla:air_shipments_data', loader)
+    await (service as any).loadCached('reservasi:air_shipments_reservasi', loader)
+    await (service as any).loadCached('reservasi:air_shipments_other', loader)
+
+    ;(service as any).invalidateLookupCaches(['air_shipments_data', 'air_shipments_reservasi'])
+
+    await (service as any).loadCached('sla:air_shipments_data', loader)
+    await (service as any).loadCached('reservasi:air_shipments_reservasi', loader)
+    await (service as any).loadCached('reservasi:air_shipments_other', loader)
+    // sla + reservasi entries reloaded; the untouched table stays cached
+    expect(loader).toHaveBeenCalledTimes(5)
   })
 })

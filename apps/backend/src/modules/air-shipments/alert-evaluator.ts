@@ -64,10 +64,9 @@ function parseDate(value: unknown): Date | null {
 export function evaluateAlerts(
   row: Record<string, unknown>,
   nHours: number,
-  mHours: number
+  mHours: number,
+  now: Date = new Date()
 ): AlertFlags {
-  const now = new Date()
-
   const atdOrigin = parseDate(getFieldValue(row, 'atd_origin'))
   const slaTime = parseDurationSafe(getFieldValue(row, 'sla'))
   const tjphTime = parseDurationSafe(getFieldValue(row, 'tjph'))

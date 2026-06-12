@@ -67,11 +67,30 @@ function defaultDateRange(): { start: string; end: string } {
   }
 }
 
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * Initial date range from URL params (set when navigating from the Dashboard),
+ * falling back to the default split-month range when absent or invalid.
+ */
+function initialDateRange(sp: URLSearchParams): { start: string; end: string } {
+  const s = sp.get('startDate')
+  const e = sp.get('endDate')
+  const valid = (v: string | null): v is string => !!v && DATE_RE.test(v) && !isNaN(new Date(v).getTime())
+  return valid(s) && valid(e) ? { start: s, end: e } : defaultDateRange()
+}
+
 
 interface RouteOption {
   label: string
   origin: string
   destination: string
+}
+
+interface SlaOverviewResponse {
+  summary: DashboardAlertSummary
+  routes: { routes: RouteOption[] }
+  routeAlerts: RouteAlertRow[]
 }
 
 const TABLE_NAME = 'air_shipments_compileaircgk'
@@ -121,8 +140,8 @@ export function SlaPage() {
   const shouldScrollOnLoad = useRef(!!(searchParams.get('alert') || searchParams.get('route')))
   const pendingScrollRef = useRef(false)
 
-  const [startDate, setStartDate] = useState(() => defaultDateRange().start)
-  const [endDate, setEndDate] = useState(() => defaultDateRange().end)
+  const [startDate, setStartDate] = useState(() => initialDateRange(searchParams).start)
+  const [endDate, setEndDate] = useState(() => initialDateRange(searchParams).end)
   const [dateError, setDateError] = useState<string | null>(null)
 
   const [summary, setSummary] = useState<DashboardAlertSummary | null>(null)
@@ -170,28 +189,29 @@ export function SlaPage() {
 
   // ── Fetch helpers ───────────────────────────────────────────────────────────
 
-  const fetchAlertSummary = async () => {
-    setSummaryLoading(true)
+  // Single request replacing the former alert-summary + routes + route-alert-summary trio —
+  // the backend computes all three in one table scan.
+  const fetchSlaOverview = async (options?: { silent?: boolean }) => {
+    if (!options?.silent) {
+      setSummaryLoading(true)
+      setRouteAlertLoading(true)
+    }
     try {
-      const response = await apiClient.get<DashboardAlertSummary>(
-        `${TABLE_ENDPOINT}/alert-summary?startDate=${startDate}&endDate=${endDate}`
+      const response = await apiClient.get<SlaOverviewResponse>(
+        `${TABLE_ENDPOINT}/sla-overview?startDate=${startDate}&endDate=${endDate}`
       )
-      setSummary(response.data)
+      setSummary(response.data.summary)
+      setRoutes(response.data.routes?.routes ?? [])
+      setRouteAlertData(response.data.routeAlerts ?? [])
     } catch {
       setSummary(null)
-    } finally {
-      setSummaryLoading(false)
-    }
-  }
-
-  const fetchRoutes = async () => {
-    try {
-      const response = await apiClient.get<{ routes: RouteOption[] }>(
-        `${TABLE_ENDPOINT}/routes?startDate=${startDate}&endDate=${endDate}`
-      )
-      setRoutes(response.data.routes ?? [])
-    } catch {
       setRoutes([])
+      setRouteAlertData([])
+    } finally {
+      if (!options?.silent) {
+        setSummaryLoading(false)
+        setRouteAlertLoading(false)
+      }
     }
   }
 
@@ -220,20 +240,6 @@ export function SlaPage() {
       setData(null)
     } finally {
       setIsLoading(false)
-    }
-  }
-
-  const fetchRouteAlerts = async () => {
-    setRouteAlertLoading(true)
-    try {
-      const response = await apiClient.get<RouteAlertRow[]>(
-        `${TABLE_ENDPOINT}/route-alert-summary?startDate=${startDate}&endDate=${endDate}`
-      )
-      setRouteAlertData(response.data ?? [])
-    } catch {
-      setRouteAlertData([])
-    } finally {
-      setRouteAlertLoading(false)
     }
   }
 
@@ -276,9 +282,7 @@ export function SlaPage() {
       return
     }
     setDateError(null)
-    void fetchAlertSummary()
-    void fetchRoutes()
-    void fetchRouteAlerts()
+    void fetchSlaOverview()
     setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startDate, endDate, paramsLoaded])
@@ -317,14 +321,7 @@ export function SlaPage() {
   useEffect(() => {
     if (lastCompletedSheet !== 'compileaircgk') return
     // Silent refresh — bypass loading-state setters to prevent layout shifts that move the scroll position
-    void Promise.all([
-      apiClient.get<DashboardAlertSummary>(`${TABLE_ENDPOINT}/alert-summary?startDate=${startDate}&endDate=${endDate}`)
-        .then(r => setSummary(r.data)).catch(() => setSummary(null)),
-      apiClient.get<{ routes: RouteOption[] }>(`${TABLE_ENDPOINT}/routes?startDate=${startDate}&endDate=${endDate}`)
-        .then(r => setRoutes(r.data.routes ?? [])).catch(() => setRoutes([])),
-      apiClient.get<RouteAlertRow[]>(`${TABLE_ENDPOINT}/route-alert-summary?startDate=${startDate}&endDate=${endDate}`)
-        .then(r => setRouteAlertData(r.data ?? [])).catch(() => setRouteAlertData([])),
-    ])
+    void fetchSlaOverview({ silent: true })
     setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastCompletedSheet])
@@ -510,6 +507,8 @@ export function SlaPage() {
     const params = new URLSearchParams()
     params.set('alert', alertKey)
     params.set('route', route)
+    params.set('startDate', startDate)
+    params.set('endDate', endDate)
     router.replace(`/sla?${params.toString()}`, { scroll: false })
   }
 
@@ -524,6 +523,8 @@ export function SlaPage() {
     const params = new URLSearchParams()
     if (newAlert) params.set('alert', newAlert)
     if (activeRoute) params.set('route', activeRoute)
+    params.set('startDate', startDate)
+    params.set('endDate', endDate)
     router.replace(`/sla?${params.toString()}`, { scroll: false })
   }
 
@@ -557,9 +558,7 @@ export function SlaPage() {
           onClose={() => setShowConfigModal(false)}
           onSaved={() => {
             void reloadGeneralParams().then(() => {
-              void fetchAlertSummary()
-              void fetchRoutes()
-              void fetchRouteAlerts()
+              void fetchSlaOverview()
               void fetchTableData()
               setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
             })
@@ -648,6 +647,8 @@ export function SlaPage() {
                     const params = new URLSearchParams()
                     if (activeAlert) params.set('alert', activeAlert)
                     if (newRoute) params.set('route', newRoute)
+                    params.set('startDate', startDate)
+                    params.set('endDate', endDate)
                     router.replace(`/sla?${params.toString()}`, { scroll: false })
                   }}
                   className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"

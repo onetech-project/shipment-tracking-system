@@ -96,6 +96,8 @@ export default function DashboardPage() {
     const params = new URLSearchParams()
     params.set('alert', alertKey)
     params.set('route', route)
+    params.set('startDate', startDate)
+    params.set('endDate', endDate)
     router.push(`/sla?${params.toString()}`)
   }
 

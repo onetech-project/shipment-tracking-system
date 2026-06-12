@@ -21,6 +21,10 @@ export class AirShipmentsService {
   private readonly logger = new Logger(AirShipmentsService.name)
   private readonly repoMap: Map<string, Repository<any>>
 
+  /** TTL fallback for lookup caches — covers manual DB edits and multi-instance deployments */
+  private static readonly LOOKUP_CACHE_TTL_MS = 5 * 60_000
+  private readonly lookupCache = new Map<string, { promise: Promise<unknown>; loadedAt: number }>()
+
   constructor(
     private readonly sheetsService: SheetsService,
     @Optional() private readonly gateway: SyncNotificationGateway | null,
@@ -125,18 +129,33 @@ export class AirShipmentsService {
         this.generalParamsService.getValue('reservasi_table_name', ''),
         this.getSlaLookupByOriginDest(),
       ])
-      const reservasiByAwb = await this.getReservasiTrackinganByAwb(reservasiTableName)
-      const rawRows = await this.dataSource.query(
-        `SELECT * FROM "${tableName}" ${whereSql} ${orderBySql}`,
+      const reservasiByAwb = await this.getCachedReservasiTrackinganByAwb(reservasiTableName)
+      // Phase 1: narrow scan (no extra_fields) to decide which rows match the alert filter
+      const projectedRows: Record<string, unknown>[] = await this.dataSource.query(
+        `SELECT ${this.buildAlertProjection(columns)} FROM "${tableName}" ${whereSql} ${orderBySql}`,
         params
       )
-      const rows = this.enrichRowsWithReservasi(
-        this.enrichRowsWithSlaLookup(rawRows, slaLookup),
+      const enriched = this.enrichRowsWithReservasi(
+        this.enrichRowsWithSlaLookup(projectedRows, slaLookup),
         reservasiByAwb,
       )
-      const filteredRows = this.filterRowsByAlert(rows, alertFilter, nHours, mHours)
+      const filteredRows = this.filterRowsByAlert(enriched, alertFilter, nHours, mHours)
       const total = filteredRows.length
-      const data = filteredRows.slice(offset, offset + limit)
+      const pageIds = filteredRows.slice(offset, offset + limit).map((row) => row.id)
+      // Phase 2: fetch full rows (incl. extra_fields) for the current page only
+      let data: Record<string, unknown>[] = []
+      if (pageIds.length > 0) {
+        const fullRows: Record<string, unknown>[] = await this.dataSource.query(
+          `SELECT * FROM "${tableName}" WHERE id = ANY($1)`,
+          [pageIds]
+        )
+        const orderIndex = new Map(pageIds.map((id, i) => [id, i]))
+        fullRows.sort((a, b) => (orderIndex.get(a.id) ?? 0) - (orderIndex.get(b.id) ?? 0))
+        data = this.enrichRowsWithReservasi(
+          this.enrichRowsWithSlaLookup(fullRows, slaLookup),
+          reservasiByAwb,
+        )
+      }
       return { data, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } }
     }
 
@@ -154,7 +173,18 @@ export class AirShipmentsService {
     return { data: rows, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } }
   }
 
+  /** Thin delegate kept for the Dashboard / AlertPieChart consumers. */
   async getAlertSummaryForTable(tableName: string, startDate?: string, endDate?: string, days?: number) {
+    const { summary } = await this.getSlaOverviewForTable(tableName, startDate, endDate, days)
+    return summary
+  }
+
+  /**
+   * Computes everything the SLA page needs in a single table scan:
+   * the alert summary (incl. OTP), the distinct route list, and the
+   * per-route alert/OTP breakdown.
+   */
+  async getSlaOverviewForTable(tableName: string, startDate?: string, endDate?: string, days?: number) {
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
       throw new BadRequestException('Invalid table name')
     }
@@ -162,9 +192,9 @@ export class AirShipmentsService {
     const [{ nHours, mHours }, reservasiTableName, slaLookup] = await Promise.all([
       this.getAlertNMHours(),
       this.generalParamsService.getValue('reservasi_table_name', ''),
-      this.getSlaLookupByOriginDest(),
+      this.getCachedSlaLookup(),
     ])
-    const reservasiByAwb = await this.getReservasiTrackinganByAwb(reservasiTableName)
+    const reservasiByAwb = await this.getCachedReservasiTrackinganByAwb(reservasiTableName)
     const columns = await this.getTableColumns(tableName)
     const whereClauses: string[] = []
     const params: any[] = []
@@ -174,7 +204,7 @@ export class AirShipmentsService {
 
     const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
     const rawRows: Record<string, unknown>[] = await this.dataSource.query(
-      `SELECT * FROM "${tableName}" ${whereSql}`,
+      `SELECT ${this.buildAlertProjection(columns)} FROM "${tableName}" ${whereSql}`,
       params
     )
     const rows = this.enrichRowsWithReservasi(
@@ -202,9 +232,33 @@ export class AirShipmentsService {
     let otpLateTotal = 0
     const now = new Date()
 
+    // Per-route accumulators (route-alert-summary shape)
+    interface RouteAlertItem {
+      totalTonnage: number
+      totalCount: number
+      alerts: Record<AlertType, number>
+      alertCounts: Record<AlertType, number>
+      otpOnTime: number
+      otpOnTimeCount: number
+      otpLate: number
+      otpLateCount: number
+    }
+    const byRoute = new Map<string, RouteAlertItem>()
+
+    // Distinct route list — collected from ALL rows (no void filter), matching
+    // the SELECT DISTINCT semantics of getRoutesForTable
+    const routesByLabel = new Map<string, { label: string; origin: string; destination: string }>()
+    for (const row of rows) {
+      const origin = String(getFieldValue(row, 'origin') ?? '').trim()
+      const destination = String(getFieldValue(row, 'destination') ?? '').trim()
+      if (!origin || !destination) continue
+      const label = `${origin} - ${destination}`
+      if (!routesByLabel.has(label)) routesByLabel.set(label, { label, origin, destination })
+    }
+
     const alertRows = rows.filter((row) => !AirShipmentsService.isVoidRow(row))
     for (const row of alertRows) {
-      const alerts = evaluateAlerts(row, nHours, mHours)
+      const alerts = evaluateAlerts(row, nHours, mHours, now)
       const origin = String(getFieldValue(row, 'origin') ?? '').trim()
       const destination = String(getFieldValue(row, 'destination') ?? '').trim()
       const route = origin && destination ? `${origin} - ${destination}` : ''
@@ -218,6 +272,28 @@ export class AirShipmentsService {
         const prev = item.breakdown.get(route) ?? 0
         item.breakdown.set(route, prev + grossWeight)
         item.tonnage += grossWeight
+      }
+
+      // Per-route accumulation (route-alert-summary semantics: no exclusion check)
+      let routeItem: RouteAlertItem | null = null
+      if (origin && destination) {
+        let existing = byRoute.get(route)
+        if (!existing) {
+          const emptyAlerts = {} as Record<AlertType, number>
+          const emptyCounts = {} as Record<AlertType, number>
+          for (const t of ALERT_TYPES) { emptyAlerts[t] = 0; emptyCounts[t] = 0 }
+          existing = { totalTonnage: 0, totalCount: 0, alerts: emptyAlerts, alertCounts: emptyCounts, otpOnTime: 0, otpOnTimeCount: 0, otpLate: 0, otpLateCount: 0 }
+          byRoute.set(route, existing)
+        }
+        routeItem = existing
+        routeItem.totalTonnage += grossWeight
+        routeItem.totalCount += 1
+        for (const type of ALERT_TYPES) {
+          if (alerts[type]) {
+            routeItem.alerts[type] += grossWeight
+            routeItem.alertCounts[type] += 1
+          }
+        }
       }
 
       // OTP: requires atd_origin + sla to be parseable; skip if not
@@ -250,6 +326,15 @@ export class AirShipmentsService {
               otpLateTotal += grossWeight
             }
             otpByRoute.set(route, prev)
+            if (routeItem) {
+              if (isOnTime) {
+                routeItem.otpOnTime += grossWeight
+                routeItem.otpOnTimeCount += 1
+              } else {
+                routeItem.otpLate += grossWeight
+                routeItem.otpLateCount += 1
+              }
+            }
           }
         }
       }
@@ -291,7 +376,39 @@ export class AirShipmentsService {
       breakdown: otpBreakdown,
     }
 
-    return { nHours, mHours, alerts, otp }
+    const routes = Array.from(routesByLabel.values()).sort(
+      (a, b) => a.origin.localeCompare(b.origin) || a.destination.localeCompare(b.destination)
+    )
+
+    const routeAlerts = Array.from(byRoute.entries())
+      .map(([route, item]) => {
+        const otpTotal = item.otpOnTime + item.otpLate
+        return {
+          route,
+          totalTonnage: Math.round(item.totalTonnage * 100) / 100,
+          totalCount: item.totalCount,
+          alerts: Object.fromEntries(
+            ALERT_TYPES.map((t) => [t, Math.round(item.alerts[t] * 100) / 100])
+          ) as Record<AlertType, number>,
+          alertCounts: Object.fromEntries(
+            ALERT_TYPES.map((t) => [t, item.alertCounts[t]])
+          ) as Record<AlertType, number>,
+          otp: {
+            percentage: otpTotal > 0 ? Math.round((item.otpOnTime / otpTotal) * 10000) / 100 : null,
+            onTimeWeight: Math.round(item.otpOnTime * 100) / 100,
+            onTimeCount: item.otpOnTimeCount,
+            lateWeight: Math.round(item.otpLate * 100) / 100,
+            lateCount: item.otpLateCount,
+          },
+        }
+      })
+      .sort((a, b) => a.route.localeCompare(b.route))
+
+    return {
+      summary: { nHours, mHours, alerts, otp },
+      routes: { routes },
+      routeAlerts,
+    }
   }
 
   async getRoutesForTable(tableName: string, startDate?: string, endDate?: string, days?: number) {
@@ -325,122 +442,10 @@ export class AirShipmentsService {
     }
   }
 
+  /** Thin delegate kept for the standalone route-alert-summary endpoint. */
   async getRouteAlertSummary(tableName: string, startDate?: string, endDate?: string, days?: number) {
-    if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
-      throw new BadRequestException('Invalid table name')
-    }
-
-    const [{ nHours, mHours }, reservasiTableName, slaLookup] = await Promise.all([
-      this.getAlertNMHours(),
-      this.generalParamsService.getValue('reservasi_table_name', ''),
-      this.getSlaLookupByOriginDest(),
-    ])
-    const reservasiByAwb = await this.getReservasiTrackinganByAwb(reservasiTableName)
-    const columns = await this.getTableColumns(tableName)
-    const whereClauses: string[] = []
-    const params: any[] = []
-
-    const dateClause = this.buildDateRangeClause(columns, params, startDate, endDate, days)
-    if (dateClause) whereClauses.push(dateClause)
-
-    const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
-    const rawRows: Record<string, unknown>[] = await this.dataSource.query(
-      `SELECT * FROM "${tableName}" ${whereSql}`,
-      params
-    )
-    const rows = this.enrichRowsWithReservasi(
-      this.enrichRowsWithSlaLookup(rawRows, slaLookup),
-      reservasiByAwb,
-    )
-
-    const getFieldValue = AirShipmentsService.getFieldValueFromRow
-
-    interface RouteAlertItem {
-      totalTonnage: number
-      totalCount: number
-      alerts: Record<AlertType, number>
-      alertCounts: Record<AlertType, number>
-      otpOnTime: number
-      otpOnTimeCount: number
-      otpLate: number
-      otpLateCount: number
-    }
-    const byRoute = new Map<string, RouteAlertItem>()
-    const routeNow = new Date()
-
-    const alertRows = rows.filter((row) => !AirShipmentsService.isVoidRow(row))
-    for (const row of alertRows) {
-      const alerts = evaluateAlerts(row, nHours, mHours)
-      const origin = String(getFieldValue(row, 'origin') ?? '').trim()
-      const destination = String(getFieldValue(row, 'destination') ?? '').trim()
-      if (!origin || !destination) continue
-      const route = `${origin} - ${destination}`
-      const grossWeight = parseFloat(String(getFieldValue(row, 'gross_weight') ?? '0')) || 0
-
-      if (!byRoute.has(route)) {
-        const emptyAlerts = {} as Record<AlertType, number>
-        const emptyCounts = {} as Record<AlertType, number>
-        for (const t of ALERT_TYPES) { emptyAlerts[t] = 0; emptyCounts[t] = 0 }
-        byRoute.set(route, { totalTonnage: 0, totalCount: 0, alerts: emptyAlerts, alertCounts: emptyCounts, otpOnTime: 0, otpOnTimeCount: 0, otpLate: 0, otpLateCount: 0 })
-      }
-      const item = byRoute.get(route)!
-      item.totalTonnage += grossWeight
-      item.totalCount += 1
-      for (const type of ALERT_TYPES) {
-        if (alerts[type]) {
-          item.alerts[type] += grossWeight
-          item.alertCounts[type] += 1
-        }
-      }
-
-      // OTP: requires atd_origin + sla to be parseable; skip if not
-      const atdOriginRaw = getFieldValue(row, 'atd_origin')
-      const slaRaw = getFieldValue(row, 'sla')
-      const slaDuration = parseDurationSafe(slaRaw)
-      if (atdOriginRaw && slaDuration !== null) {
-        const atdOrigin = new Date(String(atdOriginRaw))
-        const maxSla = new Date(atdOrigin.getTime() + slaDuration)
-        if (!isNaN(atdOrigin.getTime()) && !isNaN(maxSla.getTime())) {
-          const completedTimeRaw = getFieldValue(row, 'ata_vendor_wh_destination')
-          const completedTimeStr = completedTimeRaw != null ? String(completedTimeRaw).trim() : ''
-          let isOnTime: boolean | null = null
-          if (completedTimeStr !== '') {
-            const completedTime = new Date(completedTimeStr)
-            if (!isNaN(completedTime.getTime())) {
-              isOnTime = completedTime <= maxSla
-            }
-          } else if (routeNow > maxSla) {
-            isOnTime = false
-          }
-          if (isOnTime === true) { item.otpOnTime += grossWeight; item.otpOnTimeCount += 1 }
-          else if (isOnTime === false) { item.otpLate += grossWeight; item.otpLateCount += 1 }
-        }
-      }
-    }
-
-    return Array.from(byRoute.entries())
-      .map(([route, item]) => {
-        const otpTotal = item.otpOnTime + item.otpLate
-        return {
-          route,
-          totalTonnage: Math.round(item.totalTonnage * 100) / 100,
-          totalCount: item.totalCount,
-          alerts: Object.fromEntries(
-            ALERT_TYPES.map((t) => [t, Math.round(item.alerts[t] * 100) / 100])
-          ) as Record<AlertType, number>,
-          alertCounts: Object.fromEntries(
-            ALERT_TYPES.map((t) => [t, item.alertCounts[t]])
-          ) as Record<AlertType, number>,
-          otp: {
-            percentage: otpTotal > 0 ? Math.round((item.otpOnTime / otpTotal) * 10000) / 100 : null,
-            onTimeWeight: Math.round(item.otpOnTime * 100) / 100,
-            onTimeCount: item.otpOnTimeCount,
-            lateWeight: Math.round(item.otpLate * 100) / 100,
-            lateCount: item.otpLateCount,
-          },
-        }
-      })
-      .sort((a, b) => a.route.localeCompare(b.route))
+    const { routeAlerts } = await this.getSlaOverviewForTable(tableName, startDate, endDate, days)
+    return routeAlerts
   }
 
   private buildDateRangeClause(
@@ -491,6 +496,45 @@ export class AirShipmentsService {
     if (alertFilter === 'normal' || alertFilter === 'any') return false
     const excluded = row.excluded_reasons as Record<string, string> | null
     return Boolean(excluded?.[alertFilter])
+  }
+
+  /**
+   * Returns a cached promise for `key`, invoking `loader` only when the entry is
+   * missing or older than LOOKUP_CACHE_TTL_MS. The promise is stored synchronously,
+   * so concurrent callers (e.g. the SLA page's parallel requests) share one load.
+   * Failed loads are evicted so the next call retries.
+   */
+  private loadCached<T>(key: string, loader: () => Promise<T>): Promise<T> {
+    const entry = this.lookupCache.get(key)
+    if (entry && Date.now() - entry.loadedAt <= AirShipmentsService.LOOKUP_CACHE_TTL_MS) {
+      return entry.promise as Promise<T>
+    }
+    const promise = loader()
+    this.lookupCache.set(key, { promise, loadedAt: Date.now() })
+    promise.catch(() => {
+      if (this.lookupCache.get(key)?.promise === promise) this.lookupCache.delete(key)
+    })
+    return promise
+  }
+
+  /** Evicts lookup caches whose source tables were touched by a sync cycle. */
+  private invalidateLookupCaches(affectedTables: string[]): void {
+    if (affectedTables.includes('air_shipments_data')) {
+      this.lookupCache.delete('sla:air_shipments_data')
+    }
+    for (const table of affectedTables) {
+      this.lookupCache.delete(`reservasi:${table}`)
+    }
+  }
+
+  private getCachedSlaLookup(): Promise<Map<string, { sla: string | null; tjph: string | null }>> {
+    return this.loadCached('sla:air_shipments_data', () => this.getSlaLookupByOriginDest())
+  }
+
+  private getCachedReservasiTrackinganByAwb(reservasiTableName: string): Promise<Map<string, string>> {
+    return this.loadCached(`reservasi:${reservasiTableName}`, () =>
+      this.getReservasiTrackinganByAwb(reservasiTableName)
+    )
   }
 
   /**
@@ -560,38 +604,40 @@ export class AirShipmentsService {
   /**
    * Injects sla/tjph from air_shipments_data into each row at the top level.
    * Top-level keys take precedence in getFieldValue, overriding existing sla/tjph.
+   * Mutates the rows in place — callers must own the row objects (all callers
+   * pass arrays fresh from dataSource.query).
    */
   private enrichRowsWithSlaLookup(
     rows: Record<string, unknown>[],
     slaLookup: Map<string, { sla: string | null; tjph: string | null }>,
   ): Record<string, unknown>[] {
     if (!slaLookup.size) return rows
-    return rows.map((row) => {
+    for (const row of rows) {
       const origin = String(AirShipmentsService.getFieldValueFromRow(row, 'origin') ?? '').trim().toLowerCase()
       const dest = String(AirShipmentsService.getFieldValueFromRow(row, 'destination') ?? '').trim().toLowerCase()
-      if (!origin || !dest) return row
+      if (!origin || !dest) continue
       const lookup = slaLookup.get(`${origin}|${dest}`)
-      if (!lookup) return row
-      const overrides: Record<string, unknown> = {}
-      if (lookup.sla != null) overrides.sla = lookup.sla
-      if (lookup.tjph != null) overrides.tjph = lookup.tjph
-      if (!Object.keys(overrides).length) return row
-      return { ...row, ...overrides }
-    })
+      if (!lookup) continue
+      if (lookup.sla != null) row.sla = lookup.sla
+      if (lookup.tjph != null) row.tjph = lookup.tjph
+    }
+    return rows
   }
 
+  /** Mutates the rows in place — see enrichRowsWithSlaLookup. */
   private enrichRowsWithReservasi(
     rows: Record<string, unknown>[],
     reservasiByAwb: Map<string, string>,
   ): Record<string, unknown>[] {
     if (!reservasiByAwb.size) return rows
-    return rows.map((row) => {
+    for (const row of rows) {
       const awb = AirShipmentsService.getFieldValueFromRow(row, 'awb')
-      if (!awb) return row
+      if (!awb) continue
       const trackinganSmu = reservasiByAwb.get(String(awb).trim())
-      if (trackinganSmu === undefined) return row
-      return { ...row, trackingan_smu: trackinganSmu }
-    })
+      if (trackinganSmu === undefined) continue
+      row.trackingan_smu = trackinganSmu
+    }
+    return rows
   }
 
   private filterRowsByAlert(
@@ -600,11 +646,12 @@ export class AirShipmentsService {
     nHours: number,
     mHours: number,
   ) {
+    const now = new Date()
     return rows
       .filter((row) => !AirShipmentsService.isVoidRow(row))
       .filter((row) => !AirShipmentsService.isExcludedForAlert(row, alertFilter))
       .filter((row) => {
-        const alerts = evaluateAlerts(row, nHours, mHours)
+        const alerts = evaluateAlerts(row, nHours, mHours, now)
         if (alertFilter === 'normal') {
           return !Object.values(alerts).some(Boolean)
         }
@@ -628,6 +675,38 @@ export class AirShipmentsService {
       [tableName]
     )
     return cols.map((c) => c.column_name)
+  }
+
+  /** Every field read by evaluateAlerts / the summary aggregation loops. */
+  private static readonly ALERT_PROJECTION_FIELDS = [
+    'awb',
+    'atd_origin',
+    'sla',
+    'tjph',
+    'ata_flight',
+    'atd_flight',
+    'trackingan_smu',
+    'completed_time',
+    'ata_vendor_wh_destination',
+    'origin',
+    'destination',
+    'gross_weight',
+  ] as const
+
+  /**
+   * Narrow SELECT list for alert evaluation: only the fields the alert loops read,
+   * each merged from the real column and extra_fields via buildFieldValueExpression.
+   * Avoids shipping the full extra_fields JSONB for every row. Note: the aliases
+   * exist as top-level keys (null when empty), so field lookups never fall through
+   * to extra_fields — which is correct, since the alias already COALESCEs both sources.
+   */
+  private buildAlertProjection(columns: string[]): string {
+    const parts = ['id']
+    if (columns.includes('excluded_reasons')) parts.push('excluded_reasons')
+    for (const field of AirShipmentsService.ALERT_PROJECTION_FIELDS) {
+      parts.push(`${this.buildFieldValueExpression(field, columns)} AS "${field}"`)
+    }
+    return parts.join(', ')
   }
 
   private buildFieldValueExpression(field: string, columns: string[]) {
@@ -663,6 +742,7 @@ export class AirShipmentsService {
 
     const affectedTables = sheetResults.filter((r) => r.upserted > 0).map((r) => r.tableName)
     const totalUpserted = sheetResults.reduce((sum, r) => sum + r.upserted, 0)
+    this.invalidateLookupCaches(affectedTables)
 
     const durationMs = Date.now() - startedAt
     this.logger.log(
