@@ -18,7 +18,7 @@ import {
 import { num } from '@/features/pnl/utils/format'
 
 const ALLOWED = /\.(xlsx|xls|csv)$/i
-const MAX_BYTES = 10 * 1024 * 1024
+const MAX_BYTES = 50 * 1024 * 1024
 
 interface Props {
   open: boolean
@@ -56,7 +56,7 @@ export function SettlementUploadDialog({ open, onClose }: Props) {
     }
     if (f && f.size > MAX_BYTES) {
       setFile(null)
-      setClientError('Ukuran file melebihi 10 MB.')
+      setClientError('Ukuran file melebihi 50 MB.')
       return
     }
     setFile(f)

@@ -33,6 +33,7 @@ export interface PnlAwbRow {
   airline: string | null
   toCount: number
   sumGw: number
+  chwt: number | null
   totalRevenue: number
   totalDiscount: number
   costSmu: number | null
@@ -49,6 +50,7 @@ export interface PnlAwbRow {
 export interface PnlToRow {
   toNumber: string
   grossWeight: number
+  chwt: number | null
   revenue: number
   costSmu: number | null
   costRa: number | null
@@ -248,6 +250,7 @@ export class PnlService {
           airline,
           COUNT(*)::int                           AS to_count,
           SUM(gross_weight)                       AS sum_gw,
+          MAX(chwt_awb)                           AS chwt,
           COALESCE(SUM(revenue_total), 0)         AS total_revenue,
           COALESCE(SUM(revenue_discount), 0)      AS total_discount,
           MAX(cost_smu_awb)                       AS cost_smu,
@@ -287,6 +290,7 @@ export class PnlService {
         airline: r.airline as string | null,
         toCount: Number(r.to_count),
         sumGw: Number(r.sum_gw),
+        chwt: r.chwt != null ? Number(r.chwt) : null,
         totalRevenue: rev,
         totalDiscount: Number(r.total_discount),
         costSmu: r.cost_smu != null ? Number(r.cost_smu) : null,
@@ -365,6 +369,7 @@ export class PnlService {
       SELECT
         to_number,
         gross_weight,
+        chwt_awb * weight_share                AS chwt,
         revenue_total,
         cost_smu_awb  * weight_share          AS cost_smu,
         cost_ra_awb   * weight_share          AS cost_ra,
@@ -386,6 +391,7 @@ export class PnlService {
     return rows.map((r: Record<string, unknown>) => ({
       toNumber: r.to_number as string,
       grossWeight: Number(r.gross_weight),
+      chwt: r.chwt != null ? Number(r.chwt) : null,
       revenue: Number(r.revenue_total),
       costSmu: r.cost_smu != null ? Number(r.cost_smu) : null,
       costRa: r.cost_ra != null ? Number(r.cost_ra) : null,

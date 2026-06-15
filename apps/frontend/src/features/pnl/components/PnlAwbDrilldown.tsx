@@ -16,7 +16,7 @@ function ToSubTable({ awb, filter }: ToSubTableProps) {
 
   return (
     <tr>
-      <td colSpan={13} className="p-0">
+      <td colSpan={15} className="p-0">
         <div className="border-t border-b bg-muted/20 px-4 py-2">
           {isLoading && <p className="py-2 text-xs text-muted-foreground">Loading TOs…</p>}
           {data && data.length === 0 && (
@@ -28,6 +28,12 @@ function ToSubTable({ awb, filter }: ToSubTableProps) {
                 <tr className="text-muted-foreground">
                   <th className="py-1 pr-3 text-left">TO Number</th>
                   <th className="py-1 pr-3 text-right">GW (kg)</th>
+                  <th
+                    className="py-1 pr-3 text-right cursor-help underline decoration-dotted"
+                    title="ChWt per TO = proporsi gross weight: ChWt AWB × (GW TO ÷ total GW AWB)"
+                  >
+                    ChWt (kg)
+                  </th>
                   <th className="py-1 pr-3 text-right">Revenue</th>
                   <th className="py-1 pr-3 text-right">Cost SMU</th>
                   <th className="py-1 pr-3 text-right">Cost RA</th>
@@ -44,6 +50,7 @@ function ToSubTable({ awb, filter }: ToSubTableProps) {
                   <tr key={to.toNumber} className={idx % 2 === 0 ? '' : 'bg-muted/30'}>
                     <td className="py-1 pr-3 font-mono">{to.toNumber}</td>
                     <td className="py-1 pr-3 text-right">{num(to.grossWeight)}</td>
+                    <td className="py-1 pr-3 text-right">{to.chwt != null ? num(to.chwt) : '—'}</td>
                     <td className="py-1 pr-3 text-right">{fmt.format(to.revenue)}</td>
                     <td className="py-1 pr-3 text-right">{to.costSmu != null ? fmt.format(to.costSmu) : <span className="text-amber-600">NULL</span>}</td>
                     <td className="py-1 pr-3 text-right">{to.costRa != null ? fmt.format(to.costRa) : <span className="text-amber-600">NULL</span>}</td>
@@ -108,6 +115,8 @@ export function PnlAwbDrilldown({ filter }: PnlAwbDrilldownProps) {
               <th className="px-3 py-2 text-left">Vendor</th>
               <th className="px-3 py-2 text-left">Airline</th>
               <th className="px-3 py-2 text-right">TOs</th>
+              <th className="px-3 py-2 text-right">GW</th>
+              <th className="px-3 py-2 text-right">ChWt</th>
               <th className="px-3 py-2 text-right">Revenue</th>
               <th className="px-3 py-2 text-right">Cost SMU</th>
               <th className="px-3 py-2 text-right">Cost RA</th>
@@ -120,7 +129,7 @@ export function PnlAwbDrilldown({ filter }: PnlAwbDrilldownProps) {
           </thead>
           <tbody>
             {isLoading && (
-              <tr><td colSpan={13} className="px-3 py-4 text-center text-muted-foreground">Loading…</td></tr>
+              <tr><td colSpan={15} className="px-3 py-4 text-center text-muted-foreground">Loading…</td></tr>
             )}
             {data?.data.map((row, idx) => {
               const isExpanded = expandedAwb === row.awb
@@ -152,6 +161,8 @@ export function PnlAwbDrilldown({ filter }: PnlAwbDrilldownProps) {
                     <td className="px-3 py-2">{row.vendor ?? '—'}</td>
                     <td className="px-3 py-2">{row.airline ?? '—'}</td>
                     <td className="px-3 py-2 text-right">{row.toCount}</td>
+                    <td className="px-3 py-2 text-right">{num(row.sumGw)}</td>
+                    <td className="px-3 py-2 text-right">{row.chwt != null ? num(row.chwt) : '—'}</td>
                     <td className="px-3 py-2 text-right">{fmt.format(row.totalRevenue)}</td>
                     <td className="px-3 py-2 text-right">{row.costSmu != null ? fmt.format(row.costSmu) : <span className="text-amber-600">NULL</span>}</td>
                     <td className="px-3 py-2 text-right">{row.costRa != null ? fmt.format(row.costRa) : <span className="text-amber-600">NULL</span>}</td>

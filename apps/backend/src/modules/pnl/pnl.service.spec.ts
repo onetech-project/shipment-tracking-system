@@ -174,7 +174,7 @@ describe('PnlService', () => {
         .mockResolvedValueOnce([
           {
             awb: '888-2', vendor: 'ESP', airline: 'Citilink CGK',
-            to_count: '1', sum_gw: '10', total_revenue: '100', total_discount: '1.5',
+            to_count: '1', sum_gw: '10', chwt: '12.5', total_revenue: '100', total_discount: '1.5',
             cost_smu: '10', cost_ra: '5', cost_sg_out: '5', cost_sg_in: '1',
             total_cost: '21', gross_profit: '77.5', has_null_cost: false, issue_rank: null,
           },
@@ -183,6 +183,23 @@ describe('PnlService', () => {
 
       const { data } = await service.getAwbDrilldown(1, 50)
       expect(data[0].issue).toBeNull()
+      expect(data[0].chwt).toBe(12.5)
+    })
+
+    it('maps chwt as null when the AWB has no chargeable weight', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([
+          {
+            awb: '888-3', vendor: 'ESP', airline: 'Citilink CGK',
+            to_count: '1', sum_gw: '10', chwt: null, total_revenue: '100', total_discount: '1.5',
+            cost_smu: '10', cost_ra: '5', cost_sg_out: '5', cost_sg_in: '1',
+            total_cost: '21', gross_profit: '77.5', has_null_cost: false, issue_rank: null,
+          },
+        ])
+        .mockResolvedValueOnce([{ total: '1' }])
+
+      const { data } = await service.getAwbDrilldown(1, 50)
+      expect(data[0].chwt).toBeNull()
     })
   })
 
@@ -190,7 +207,7 @@ describe('PnlService', () => {
     it('passes through the per-TO issue reason', async () => {
       dataSource.query.mockResolvedValueOnce([
         {
-          to_number: 'TO-1', gross_weight: '10', revenue_total: '100',
+          to_number: 'TO-1', gross_weight: '10', chwt: '7.5', revenue_total: '100',
           cost_smu: null, cost_ra: '5', cost_sg: '5', cost_sg_in: '1',
           cost_to: null, gross_profit_to: null, margin_pct: null, issue: 'smu_rate_missing',
         },
@@ -199,6 +216,8 @@ describe('PnlService', () => {
       const result = await service.getAwbTos('888-1', '2026-04-2H')
       expect(result[0].issue).toBe('smu_rate_missing')
       expect(result[0].costSmu).toBeNull()
+      // Per-TO chwt = proportional allocation (chwt_awb × weight_share), computed in SQL.
+      expect(result[0].chwt).toBe(7.5)
     })
   })
 })

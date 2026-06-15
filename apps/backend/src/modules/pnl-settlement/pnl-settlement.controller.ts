@@ -16,7 +16,7 @@ import { Authorize } from '../../common/decorators/authorize.decorator'
 import { Permission } from '@shared/auth'
 import { PnlSettlementService } from './pnl-settlement.service'
 
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 const ALLOWED_EXT = /\.(xlsx|xls|csv)$/i
 
 // Minimal shape of a multer in-memory upload. Declared locally so we don't depend on the global

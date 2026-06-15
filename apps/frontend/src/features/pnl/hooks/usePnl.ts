@@ -33,6 +33,7 @@ export interface PnlAwbRow {
   airline: string | null
   toCount: number
   sumGw: number
+  chwt: number | null
   totalRevenue: number
   totalDiscount: number
   costSmu: number | null
@@ -49,6 +50,7 @@ export interface PnlAwbRow {
 export interface PnlToRow {
   toNumber: string
   grossWeight: number
+  chwt: number | null
   revenue: number
   costSmu: number | null
   costRa: number | null
