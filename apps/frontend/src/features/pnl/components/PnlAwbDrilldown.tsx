@@ -4,6 +4,7 @@ import { Fragment, useState, useEffect } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { usePnlAwbDrilldown, usePnlAwbTos, PnlFilter, PnlToRow } from '../hooks/usePnl'
 import { fmt, num, pct } from '../utils/format'
+import { issueLabel } from '../utils/issueLabels'
 
 interface ToSubTableProps {
   awb: string
@@ -34,7 +35,8 @@ function ToSubTable({ awb, filter }: ToSubTableProps) {
                   <th className="py-1 pr-3 text-right">Cost SG In</th>
                   <th className="py-1 pr-3 text-right">Total Cost</th>
                   <th className="py-1 pr-3 text-right">GP</th>
-                  <th className="py-1 text-right">Margin</th>
+                  <th className="py-1 pr-3 text-right">Margin</th>
+                  <th className="py-1 text-left">Issue</th>
                 </tr>
               </thead>
               <tbody>
@@ -49,7 +51,8 @@ function ToSubTable({ awb, filter }: ToSubTableProps) {
                     <td className="py-1 pr-3 text-right">{to.costSgIn != null ? fmt.format(to.costSgIn) : <span className="text-amber-600">NULL</span>}</td>
                     <td className="py-1 pr-3 text-right">{to.totalCost != null ? fmt.format(to.totalCost) : <span className="text-amber-600">NULL</span>}</td>
                     <td className="py-1 pr-3 text-right">{to.grossProfit != null ? fmt.format(to.grossProfit) : '—'}</td>
-                    <td className="py-1 text-right font-medium">{pct(to.marginPct)}</td>
+                    <td className="py-1 pr-3 text-right font-medium">{pct(to.marginPct)}</td>
+                    <td className="py-1 text-left text-amber-600">{to.issue ? issueLabel(to.issue) : ''}</td>
                   </tr>
                 ))}
               </tbody>
@@ -135,7 +138,17 @@ export function PnlAwbDrilldown({ filter }: PnlAwbDrilldownProps) {
                     <td className="px-2 py-2 text-muted-foreground">
                       {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                     </td>
-                    <td className="px-3 py-2 font-mono text-xs">{row.awb}</td>
+                    <td className="px-3 py-2 font-mono text-xs">
+                      {row.awb}
+                      {row.issue && (
+                        <span
+                          className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-normal text-amber-700 dark:bg-amber-900/50 dark:text-amber-300"
+                          title="Fix in source Google Sheet, then re-sync"
+                        >
+                          {issueLabel(row.issue)}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-3 py-2">{row.vendor ?? '—'}</td>
                     <td className="px-3 py-2">{row.airline ?? '—'}</td>
                     <td className="px-3 py-2 text-right">{row.toCount}</td>

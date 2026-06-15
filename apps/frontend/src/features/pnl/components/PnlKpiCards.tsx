@@ -75,7 +75,7 @@ export function PnlKpiCards({ summary, activeKpi, onSelect }: PnlKpiCardsProps) 
       <KpiCard
         label="Est. Gross Profit"
         value={fmt.format(summary.grossProfit)}
-        sub="revenue − cost"
+        sub="revenue − discount − cost"
         active={activeKpi === 'gp'}
         onClick={() => onSelect('gp')}
       />

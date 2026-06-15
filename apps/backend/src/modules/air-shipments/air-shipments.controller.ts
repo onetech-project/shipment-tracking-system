@@ -113,25 +113,13 @@ export class AirShipmentsController {
     }
   }
 
-  @Get(':tableName/sla-overview')
-  @UseGuards(RbacGuard)
-  @Authorize(Permission.READ_SLA)
-  async getSlaOverview(
+  @Post(':tableName/batch-count')
+  async batchCount(
     @Param('tableName') tableName: string,
-    @Query('startDate') startDate?: string,
-    @Query('endDate') endDate?: string,
-    @Query('days') days?: string,
-  ) {
-    const daysNum = days != null && !isNaN(Number(days)) ? Number(days) : undefined
-    try {
-      return await this.service.getSlaOverviewForTable(tableName, startDate, endDate, daysNum)
-    } catch (err: unknown) {
-      this.logger.error(
-        `[GET /air-shipments/${tableName}/sla-overview]`,
-        err instanceof Error ? err.stack : String(err)
-      )
-      throw new InternalServerErrorException()
-    }
+    @Body() body: { start: string; end: string }
+  ): Promise<{ count: number }> {
+    const count = await this.service.batchCountByDate(tableName, body.start, body.end)
+    return { count }
   }
 
   @Get(':tableName/alert-summary')
@@ -141,7 +129,7 @@ export class AirShipmentsController {
     @Param('tableName') tableName: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
-    @Query('days') days?: string,
+    @Query('days') days?: string
   ) {
     const daysNum = days != null && !isNaN(Number(days)) ? Number(days) : undefined
     try {
@@ -162,7 +150,7 @@ export class AirShipmentsController {
     @Param('tableName') tableName: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
-    @Query('days') days?: string,
+    @Query('days') days?: string
   ) {
     const daysNum = days != null && !isNaN(Number(days)) ? Number(days) : undefined
     try {
@@ -183,7 +171,7 @@ export class AirShipmentsController {
     @Param('tableName') tableName: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
-    @Query('days') days?: string,
+    @Query('days') days?: string
   ) {
     const daysNum = days != null && !isNaN(Number(days)) ? Number(days) : undefined
     try {
@@ -205,8 +193,11 @@ export class AirShipmentsController {
   @Get(':tableName/excluded')
   async getExcluded(
     @Param('tableName') tableName: string,
-    @Query() query: ExcludedQueryDto,
-  ): Promise<{ data: Record<string, unknown>[]; meta: { total: number; page: number; limit: number } }> {
+    @Query() query: ExcludedQueryDto
+  ): Promise<{
+    data: Record<string, unknown>[]
+    meta: { total: number; page: number; limit: number }
+  }> {
     return this.service.findExcludedRows(tableName, query)
   }
 
@@ -214,7 +205,7 @@ export class AirShipmentsController {
   async excludeRow(
     @Param('tableName') tableName: string,
     @Param('id') id: string,
-    @Body() body: ExcludeRowDto,
+    @Body() body: ExcludeRowDto
   ): Promise<void> {
     return this.service.excludeRow(tableName, id, body.alertType, body.reason)
   }
@@ -223,7 +214,7 @@ export class AirShipmentsController {
   async restoreRow(
     @Param('tableName') tableName: string,
     @Param('id') id: string,
-    @Body() body: RestoreRowDto,
+    @Body() body: RestoreRowDto
   ): Promise<void> {
     return this.service.restoreRow(tableName, id, body.alertType)
   }

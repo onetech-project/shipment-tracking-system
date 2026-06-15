@@ -147,6 +147,19 @@ export async function batchDeleteAirShipments(
   return res.data?.deleted ?? 0
 }
 
+// Number of rows a batch lock/delete over [start, end] would affect — used to confirm before delete.
+export async function batchCountAirShipments(
+  tableName: string,
+  start: string,
+  end: string
+): Promise<number> {
+  const res = await apiClient.post(`/air-shipments/${tableName}/batch-count`, {
+    start,
+    end,
+  })
+  return res.data?.count ?? 0
+}
+
 export async function excludeRow(
   tableName: string,
   id: string,

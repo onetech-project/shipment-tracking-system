@@ -6,6 +6,7 @@ export interface PnlSummary {
   totalTos: number
   totalAwbs: number
   totalRevenue: number
+  totalDiscount: number
   totalCost: number
   grossProfit: number
   grossMarginPct: number
@@ -26,6 +27,7 @@ export interface PnlAwbRow {
   toCount: number
   sumGw: number
   totalRevenue: number
+  totalDiscount: number
   costSmu: number | null
   costRa: number | null
   costSgOut: number | null
@@ -34,6 +36,7 @@ export interface PnlAwbRow {
   grossProfit: number | null
   grossMarginPct: number | null
   hasNullCost: boolean
+  issue: string | null
 }
 
 export interface PnlToRow {
@@ -47,6 +50,7 @@ export interface PnlToRow {
   totalCost: number | null
   grossProfit: number | null
   marginPct: number | null
+  issue: string | null
 }
 
 export interface PnlDataQualityItem {
@@ -54,6 +58,26 @@ export interface PnlDataQualityItem {
   awb: string
   issue: string
 }
+
+export interface PnlDataQualitySummaryItem {
+  issue: string
+  rows: number
+  awbs: number
+}
+
+// Severity order for the canonical v_pnl_to.issue values (root cause first). Shared by the
+// per-AWB drilldown (which aggregates the most-severe issue across an AWB's TOs).
+const ISSUE_RANK: Record<string, number> = {
+  no_booking: 1,
+  smu_rate_missing: 2,
+  ra_rate_missing: 3,
+  sgout_name_missing: 4,
+  revenue_missing: 5,
+  sg_in_rate_missing: 6,
+}
+const ISSUE_BY_RANK: Record<number, string> = Object.fromEntries(
+  Object.entries(ISSUE_RANK).map(([k, v]) => [v, k]),
+)
 
 export interface PnlRevenueByRouteItem {
   route: string
@@ -103,26 +127,46 @@ export interface PnlProfitByRouteItem {
   avgMarginPerDay: number
 }
 
-// Builds a WHERE clause and its bound params for either cycle or date-range mode.
-// Date range uses TO_TIMESTAMP since completed_time is stored as "DD-Mon-YYYY HH24:MI" text.
+// Date basis the cycle/period and date-range filters run off. Each maps to a pair of precomputed
+// v_pnl_to columns (parsed in migration 20260605000002). Default is ata_vendor_wh_destination.
+export type DateBasis = 'completed_time' | 'ata_vendor_wh_destination' | 'atd_origin'
+const BASIS_COLS: Record<DateBasis, { cycle: string; date: string }> = {
+  completed_time: { cycle: 'cycle_completed', date: 'date_completed' },
+  ata_vendor_wh_destination: { cycle: 'cycle_ata', date: 'date_ata' },
+  atd_origin: { cycle: 'cycle_atd', date: 'date_atd' },
+}
+const DEFAULT_BASIS: DateBasis = 'ata_vendor_wh_destination'
+export function resolveBasis(basis?: string): DateBasis {
+  return basis && basis in BASIS_COLS ? (basis as DateBasis) : DEFAULT_BASIS
+}
+
+// Builds a WHERE clause and its bound params for either cycle or date-range mode, against the
+// chosen date basis. The date_* columns are real timestamps, so the range compares directly.
+// `alias` prefixes the columns when the query joins v_pnl_to under an alias (e.g. 'v.').
 function buildFilter(
+  basis: string | undefined,
   cyclePeriod?: string,
   startDate?: string,
   endDate?: string,
-): { where: string; params: unknown[] } {
+  alias = '',
+): { where: string; params: unknown[]; cycleCol: string; dateCol: string } {
+  const cols = BASIS_COLS[resolveBasis(basis)]
+  const cycleCol = `${alias}${cols.cycle}`
+  const dateCol = `${alias}${cols.date}`
   if (cyclePeriod) {
-    return { where: 'cycle_period = $1', params: [cyclePeriod] }
+    return { where: `${cycleCol} = $1`, params: [cyclePeriod], cycleCol, dateCol }
   }
   if (startDate && endDate) {
     return {
-      where: `completed_time IS NOT NULL
-              AND completed_time != ''
-              AND TO_TIMESTAMP(completed_time, 'DD-Mon-YYYY HH24:MI') >= $1::DATE
-              AND TO_TIMESTAMP(completed_time, 'DD-Mon-YYYY HH24:MI') <= $2::DATE`,
+      where: `${dateCol} IS NOT NULL
+              AND ${dateCol} >= $1::DATE
+              AND ${dateCol} <= $2::DATE`,
       params: [startDate, endDate],
+      cycleCol,
+      dateCol,
     }
   }
-  return { where: '1=0', params: [] }
+  return { where: '1=0', params: [], cycleCol, dateCol }
 }
 
 // Number of calendar days the filter spans. Used as denominator for "per day" averages.
@@ -154,11 +198,12 @@ function calendarDaysForFilter(
 export class PnlService {
   constructor(private readonly dataSource: DataSource) {}
 
-  async getCycles(): Promise<string[]> {
+  async getCycles(basis?: string): Promise<string[]> {
+    const cycleCol = BASIS_COLS[resolveBasis(basis)].cycle
     const rows = await this.dataSource.query(`
-      SELECT DISTINCT cycle_period
+      SELECT DISTINCT ${cycleCol} AS cycle_period
       FROM v_pnl_to
-      WHERE cycle_period IS NOT NULL
+      WHERE ${cycleCol} IS NOT NULL
       ORDER BY cycle_period DESC
     `)
     return rows.map((r: { cycle_period: string }) => r.cycle_period)
@@ -168,14 +213,16 @@ export class PnlService {
     cyclePeriod?: string,
     startDate?: string,
     endDate?: string,
+    basis?: string,
   ): Promise<PnlSummary> {
-    const { where, params } = buildFilter(cyclePeriod, startDate, endDate)
+    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate)
     const rows = await this.dataSource.query(
       `
       SELECT
         COUNT(*)::int                           AS total_tos,
         COUNT(DISTINCT awb)::int                AS total_awbs,
         COALESCE(SUM(revenue_total), 0)         AS total_revenue,
+        COALESCE(SUM(revenue_discount), 0)      AS total_discount,
         COALESCE(SUM(cost_to), 0)               AS total_cost
       FROM v_pnl_to
       WHERE ${where}
@@ -184,14 +231,17 @@ export class PnlService {
     )
     const row = rows[0]
     const totalRevenue = Number(row.total_revenue)
+    const totalDiscount = Number(row.total_discount)
     const totalCost = Number(row.total_cost)
-    const grossProfit = totalRevenue - totalCost
+    // Margin nets the 1.5% revenue discount, matching the sheet's Margin formula.
+    const grossProfit = totalRevenue - totalDiscount - totalCost
     const label = cyclePeriod ?? `${startDate} to ${endDate}`
     return {
       label,
       totalTos: Number(row.total_tos),
       totalAwbs: Number(row.total_awbs),
       totalRevenue,
+      totalDiscount,
       totalCost,
       grossProfit,
       grossMarginPct: totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0,
@@ -202,19 +252,20 @@ export class PnlService {
     cyclePeriod?: string,
     startDate?: string,
     endDate?: string,
+    basis?: string,
   ): Promise<PnlDailyMarginItem[]> {
-    const { where, params } = buildFilter(cyclePeriod, startDate, endDate)
+    const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate)
     const rows = await this.dataSource.query(
       `
       SELECT
-        TO_CHAR(TO_TIMESTAMP(completed_time, 'DD-Mon-YYYY HH24:MI')::DATE, 'YYYY-MM-DD') AS date,
-        COALESCE(SUM(revenue_total), 0) AS revenue,
-        COALESCE(SUM(cost_to), 0)       AS cost,
-        BOOL_OR(cost_to IS NULL)        AS has_incomplete_cost
+        TO_CHAR(${dateCol}::DATE, 'YYYY-MM-DD') AS date,
+        COALESCE(SUM(revenue_total), 0)    AS revenue,
+        COALESCE(SUM(revenue_discount), 0) AS discount,
+        COALESCE(SUM(cost_to), 0)          AS cost,
+        BOOL_OR(cost_to IS NULL)           AS has_incomplete_cost
       FROM v_pnl_to
       WHERE ${where}
-        AND completed_time IS NOT NULL
-        AND completed_time != ''
+        AND ${dateCol} IS NOT NULL
       GROUP BY 1
       ORDER BY 1
       `,
@@ -223,7 +274,7 @@ export class PnlService {
     return rows.map((r: Record<string, unknown>) => {
       const revenue = Number(r.revenue)
       const cost = Number(r.cost)
-      const gp = revenue - cost
+      const gp = revenue - Number(r.discount) - cost
       return {
         date: r.date as string,
         revenue,
@@ -240,8 +291,9 @@ export class PnlService {
     cyclePeriod?: string,
     startDate?: string,
     endDate?: string,
+    basis?: string,
   ): Promise<{ data: PnlAwbRow[]; total: number }> {
-    const { where, params } = buildFilter(cyclePeriod, startDate, endDate)
+    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate)
     const offset = (page - 1) * limit
     const dataParams = [...params, limit, offset]
     const countParams = [...params]
@@ -257,13 +309,19 @@ export class PnlService {
           COUNT(*)::int                           AS to_count,
           SUM(gross_weight)                       AS sum_gw,
           COALESCE(SUM(revenue_total), 0)         AS total_revenue,
+          COALESCE(SUM(revenue_discount), 0)      AS total_discount,
           MAX(cost_smu_awb)                       AS cost_smu,
           MAX(cost_ra_awb)                        AS cost_ra,
           MAX(cost_sg_out_awb)                    AS cost_sg_out,
           SUM(cost_sg_in_to)                      AS cost_sg_in,
           MAX(cost_total_awb) + COALESCE(SUM(cost_sg_in_to), 0) AS total_cost,
           COALESCE(SUM(gross_profit_to), 0)       AS gross_profit,
-          (MAX(cost_total_awb) IS NULL OR MAX(cost_sg_in_to) IS NULL) AS has_null_cost
+          (MAX(cost_total_awb) IS NULL OR MAX(cost_sg_in_to) IS NULL) AS has_null_cost,
+          MIN(CASE issue
+                WHEN 'no_booking' THEN 1 WHEN 'smu_rate_missing' THEN 2
+                WHEN 'ra_rate_missing' THEN 3 WHEN 'sgout_name_missing' THEN 4
+                WHEN 'revenue_missing' THEN 5 WHEN 'sg_in_rate_missing' THEN 6
+              END)                                  AS issue_rank
         FROM v_pnl_to
         WHERE ${where}
         GROUP BY awb, vendor, airline
@@ -290,6 +348,7 @@ export class PnlService {
         toCount: Number(r.to_count),
         sumGw: Number(r.sum_gw),
         totalRevenue: rev,
+        totalDiscount: Number(r.total_discount),
         costSmu: r.cost_smu != null ? Number(r.cost_smu) : null,
         costRa: r.cost_ra != null ? Number(r.cost_ra) : null,
         costSgOut: r.cost_sg_out != null ? Number(r.cost_sg_out) : null,
@@ -298,37 +357,58 @@ export class PnlService {
         grossProfit: gp,
         grossMarginPct: rev > 0 ? (gp / rev) * 100 : null,
         hasNullCost: r.has_null_cost === true || r.has_null_cost === 't',
+        issue: r.issue_rank != null ? (ISSUE_BY_RANK[Number(r.issue_rank)] ?? null) : null,
       }
     })
     return { data, total }
   }
 
-  async getDataQuality(): Promise<PnlDataQualityItem[]> {
-    const rows = await this.dataSource.query(`
-      SELECT
-        to_number,
-        awb,
-        CASE
-          WHEN cost_smu_awb IS NULL AND cost_ra_awb IS NULL AND cost_sg_out_awb IS NULL
-            THEN 'all_cost_lookup_failed'
-          WHEN cost_smu_awb IS NULL THEN 'smu_lookup_failed'
-          WHEN cost_ra_awb IS NULL  THEN 'ra_lookup_failed'
-          WHEN cost_sg_out_awb IS NULL THEN 'sg_lookup_failed'
-          WHEN cost_sg_in_to IS NULL THEN 'sg_in_lookup_failed'
-          ELSE 'unknown'
-        END AS issue
-      FROM v_pnl_to
-      WHERE cost_smu_awb IS NULL
-         OR cost_ra_awb  IS NULL
-         OR cost_sg_out_awb IS NULL
-         OR cost_sg_in_to IS NULL
-      ORDER BY awb, to_number
-      LIMIT 500
-    `)
-    return rows.map((r: Record<string, string>) => ({
+  // Per-AWB worklist of costing failures, using the canonical v_pnl_to.issue (root cause first).
+  // One row per (awb, issue), paginated server-side.
+  async getDataQuality(
+    page = 1,
+    limit = 25,
+  ): Promise<{ data: PnlDataQualityItem[]; total: number }> {
+    const offset = (page - 1) * limit
+    const [rows, countRows] = await Promise.all([
+      this.dataSource.query(
+        `
+        SELECT awb, issue, MIN(to_number) AS to_number
+        FROM v_pnl_to
+        WHERE issue IS NOT NULL
+        GROUP BY awb, issue
+        ORDER BY issue, awb
+        LIMIT $1 OFFSET $2
+        `,
+        [limit, offset],
+      ),
+      this.dataSource.query(`
+        SELECT COUNT(*)::int AS total
+        FROM (SELECT 1 FROM v_pnl_to WHERE issue IS NOT NULL GROUP BY awb, issue) g
+      `),
+    ])
+    const data: PnlDataQualityItem[] = rows.map((r: Record<string, string>) => ({
       toNumber: r.to_number,
       awb: r.awb,
       issue: r.issue,
+    }))
+    return { data, total: Number(countRows[0].total) }
+  }
+
+  // Headline costing-coverage counts: rows + distinct AWBs per failure reason. Drives the
+  // frontend coverage panel so the team can fill the source sheets until 0% NULL.
+  async getDataQualitySummary(): Promise<PnlDataQualitySummaryItem[]> {
+    const rows = await this.dataSource.query(`
+      SELECT issue, COUNT(*)::int AS rows, COUNT(DISTINCT awb)::int AS awbs
+      FROM v_pnl_to
+      WHERE issue IS NOT NULL
+      GROUP BY issue
+      ORDER BY rows DESC
+    `)
+    return rows.map((r: Record<string, string>) => ({
+      issue: r.issue,
+      rows: Number(r.rows),
+      awbs: Number(r.awbs),
     }))
   }
 
@@ -337,8 +417,9 @@ export class PnlService {
     cyclePeriod?: string,
     startDate?: string,
     endDate?: string,
+    basis?: string,
   ): Promise<PnlToRow[]> {
-    const { where, params } = buildFilter(cyclePeriod, startDate, endDate)
+    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate)
     const rows = await this.dataSource.query(
       `
       SELECT
@@ -354,7 +435,8 @@ export class PnlService {
         CASE WHEN revenue_total > 0 AND gross_profit_to IS NOT NULL
              THEN (gross_profit_to / revenue_total) * 100
              ELSE NULL
-        END AS margin_pct
+        END AS margin_pct,
+        issue
       FROM v_pnl_to
       WHERE awb = $1 AND ${where.replace(/\$(\d+)/g, (_, n) => `$${Number(n) + 1}`)}
       ORDER BY to_number
@@ -372,6 +454,7 @@ export class PnlService {
       totalCost: r.cost_to != null ? Number(r.cost_to) : null,
       grossProfit: r.gross_profit_to != null ? Number(r.gross_profit_to) : null,
       marginPct: r.margin_pct != null ? Number(r.margin_pct) : null,
+      issue: (r.issue as string | null) ?? null,
     }))
   }
 
@@ -379,8 +462,9 @@ export class PnlService {
     cyclePeriod?: string,
     startDate?: string,
     endDate?: string,
+    basis?: string,
   ): Promise<PnlRevenueByRouteItem[]> {
-    const { where, params } = buildFilter(cyclePeriod, startDate, endDate)
+    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate)
     const rows = await this.dataSource.query(
       `
       SELECT
@@ -406,8 +490,9 @@ export class PnlService {
     cyclePeriod?: string,
     startDate?: string,
     endDate?: string,
+    basis?: string,
   ): Promise<PnlCostTotals> {
-    const { where, params } = buildFilter(cyclePeriod, startDate, endDate)
+    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate)
     // SMU/RA/SG Out are AWB-level → take MAX per AWB then sum.
     // SG In is per-TO → straight sum.
     const rows = await this.dataSource.query(
@@ -448,8 +533,9 @@ export class PnlService {
     cyclePeriod?: string,
     startDate?: string,
     endDate?: string,
+    basis?: string,
   ): Promise<PnlVendorCostItem[]> {
-    const { where, params } = buildFilter(cyclePeriod, startDate, endDate)
+    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate)
     // SMU is AWB-level: take per-AWB cost (MAX since identical across rows of same AWB)
     // and per-AWB sum_gw, then aggregate by vendor / airline.
     const rows = await this.dataSource.query(
@@ -506,8 +592,9 @@ export class PnlService {
     cyclePeriod?: string,
     startDate?: string,
     endDate?: string,
+    basis?: string,
   ): Promise<PnlNamedCostItem[]> {
-    const { where, params } = buildFilter(cyclePeriod, startDate, endDate)
+    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate, 'v.')
     const rows = await this.dataSource.query(
       `
       WITH per_awb AS (
@@ -518,7 +605,7 @@ export class PnlService {
           MAX(v.sum_gw_per_awb) AS sum_gw
         FROM v_pnl_to v
         LEFT JOIN air_shipments_smu_rate_cgk_spx srx ON srx.awb = v.awb
-        WHERE ${where.replace(/\bcompleted_time\b/g, 'v.completed_time').replace(/\bcycle_period\b/g, 'v.cycle_period')}
+        WHERE ${where}
         GROUP BY v.awb, srx.ra_name
       )
       SELECT
@@ -542,8 +629,9 @@ export class PnlService {
     cyclePeriod?: string,
     startDate?: string,
     endDate?: string,
+    basis?: string,
   ): Promise<PnlNamedCostItem[]> {
-    const { where, params } = buildFilter(cyclePeriod, startDate, endDate)
+    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate, 'v.')
     // sg_out (the name) lives on air_shipments_smu, looked up by booking key.
     const rows = await this.dataSource.query(
       `
@@ -560,7 +648,7 @@ export class PnlService {
           AND s.airlines    = srx.airlines
           AND s.origin      = srx.via
           AND s.destination = srx.dest
-        WHERE ${where.replace(/\bcompleted_time\b/g, 'v.completed_time').replace(/\bcycle_period\b/g, 'v.cycle_period')}
+        WHERE ${where}
         GROUP BY v.awb, s.sg_out
       )
       SELECT
@@ -584,8 +672,9 @@ export class PnlService {
     cyclePeriod?: string,
     startDate?: string,
     endDate?: string,
+    basis?: string,
   ): Promise<PnlSgInRouteCostItem[]> {
-    const { where, params } = buildFilter(cyclePeriod, startDate, endDate)
+    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate)
     const rows = await this.dataSource.query(
       `
       SELECT
@@ -611,8 +700,9 @@ export class PnlService {
     cyclePeriod?: string,
     startDate?: string,
     endDate?: string,
+    basis?: string,
   ): Promise<PnlProfitByRouteItem[]> {
-    const { where, params } = buildFilter(cyclePeriod, startDate, endDate)
+    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate)
     const days = calendarDaysForFilter(cyclePeriod, startDate, endDate)
     const rows = await this.dataSource.query(
       `
@@ -620,21 +710,24 @@ export class PnlService {
         COALESCE(NULLIF(origin_station, ''), '?') || ' → ' ||
         COALESCE(NULLIF(dest_station,   ''), '?') AS route,
         COALESCE(SUM(revenue_total), 0)           AS total_revenue,
-        COALESCE(SUM(gross_profit_to), 0)         AS total_margin,
+        COALESCE(SUM(revenue_discount), 0)        AS total_discount,
         COALESCE(SUM(gross_weight), 0)            AS total_weight,
         COALESCE(SUM(cost_to), 0)                 AS total_cost
       FROM v_pnl_to
       WHERE ${where}
       GROUP BY 1
-      ORDER BY total_margin DESC NULLS LAST
+      -- Margin uses the KPI convention (revenue − discount − cost) so route totals reconcile
+      -- with the headline Est. Gross Profit; uncosted TOs count revenue but not cost.
+      ORDER BY (COALESCE(SUM(revenue_total), 0) - COALESCE(SUM(revenue_discount), 0)
+                - COALESCE(SUM(cost_to), 0)) DESC NULLS LAST
       `,
       params,
     )
     return rows.map((r: Record<string, unknown>) => {
       const totalRevenue = Number(r.total_revenue)
-      const totalMargin = Number(r.total_margin)
       const totalWeight = Number(r.total_weight)
       const totalCost = Number(r.total_cost)
+      const totalMargin = totalRevenue - Number(r.total_discount) - totalCost
       return {
         route: r.route as string,
         totalRevenue,
