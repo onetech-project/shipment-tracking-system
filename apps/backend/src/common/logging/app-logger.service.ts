@@ -3,6 +3,26 @@ import pino, { Logger as PinoLogger } from 'pino'
 import { join } from 'path'
 import { mkdirSync } from 'fs'
 
+/**
+ * Filename generator for rotating-file-stream.
+ *
+ * rotating-file-stream calls this with `(null)` for the active file name, and with
+ * `(time, index)` for rotation targets, where `index` runs 1..999 in findName() until a
+ * non-existent name is found.
+ */
+export function buildLogFilename(time: number | Date | null, index?: number): string {
+  if (!time) return 'app.log'
+  const date = new Date(time)
+  const yyyy = date.getFullYear()
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  // `index` (1..999) disambiguates multiple rotations on the same day (e.g. size-based
+  // rotation). Without it, findName() can never locate a free name and throws RFS-TOO-MANY.
+  // `.log.gz` matches the gzip-compressed output and LogArchiveService's archive filter.
+  const seq = String(index ?? 1).padStart(2, '0')
+  return `app-${yyyy}-${mm}-${dd}-${seq}.log.gz`
+}
+
 @Injectable()
 export class AppLogger implements LoggerService {
   private readonly consoleLogger: PinoLogger
@@ -24,17 +44,20 @@ export class AppLogger implements LoggerService {
     // We require dynamically to avoid TS type issues if types are not present
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const rfs = require('rotating-file-stream')
-    const fileStream = rfs.createStream(
-      (time: any) => {
-        if (!time) return 'app.log'
-        const date = new Date(time)
-        const yyyy = date.getFullYear()
-        const mm = String(date.getMonth() + 1).padStart(2, '0')
-        const dd = String(date.getDate()).padStart(2, '0')
-        return `app-${yyyy}-${mm}-${dd}.log`
-      },
-      { interval: '1d', size: '50M', maxFiles: 90, path: logsDir, compress: 'gzip' }
-    )
+    const fileStream = rfs.createStream(buildLogFilename, {
+      interval: '1d',
+      size: '50M',
+      maxFiles: 90,
+      path: logsDir,
+      compress: 'gzip',
+    })
+
+    // Defense-in-depth: an unhandled 'error' event on this stream would otherwise crash the
+    // whole process. Degrade logging to console instead of taking down the backend.
+    fileStream.on('error', (err: unknown) => {
+      // eslint-disable-next-line no-console
+      console.error('[AppLogger] log file stream error (logging degraded to console):', err)
+    })
 
     const timestamp = () => {
       const now = new Date()
