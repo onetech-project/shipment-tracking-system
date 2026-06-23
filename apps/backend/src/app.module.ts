@@ -25,6 +25,7 @@ import { AuditModule } from './modules/audit/audit.module'
 import { AirShipmentsModule } from './modules/air-shipments/air-shipments.module'
 import { GeneralParamsModule } from './modules/general-params/general-params.module'
 import { PnlModule } from './modules/pnl/pnl.module'
+import { PnlSettlementModule } from './modules/pnl-settlement/pnl-settlement.module'
 
 @Module({
   imports: [
@@ -91,6 +92,7 @@ import { PnlModule } from './modules/pnl/pnl.module'
     AirShipmentsModule,
     GeneralParamsModule,
     PnlModule,
+    PnlSettlementModule,
   ],
   controllers: [AppController],
   providers: [

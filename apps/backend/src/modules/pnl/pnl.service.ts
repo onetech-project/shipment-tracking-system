@@ -1,5 +1,12 @@
 import { Injectable } from '@nestjs/common'
 import { DataSource } from 'typeorm'
+import {
+  DateBasis,
+  BASIS_COLS,
+  resolveBasis,
+  buildFilter,
+  calendarDaysForFilter,
+} from './pnl-filter.util'
 
 export interface PnlSummary {
   label: string
@@ -26,6 +33,7 @@ export interface PnlAwbRow {
   airline: string | null
   toCount: number
   sumGw: number
+  chwt: number | null
   totalRevenue: number
   totalDiscount: number
   costSmu: number | null
@@ -42,6 +50,7 @@ export interface PnlAwbRow {
 export interface PnlToRow {
   toNumber: string
   grossWeight: number
+  chwt: number | null
   revenue: number
   costSmu: number | null
   costRa: number | null
@@ -125,73 +134,6 @@ export interface PnlProfitByRouteItem {
   avgCostPerKg: number
   avgMarginPerKg: number
   avgMarginPerDay: number
-}
-
-// Date basis the cycle/period and date-range filters run off. Each maps to a pair of precomputed
-// v_pnl_to columns (parsed in migration 20260605000002). Default is ata_vendor_wh_destination.
-export type DateBasis = 'completed_time' | 'ata_vendor_wh_destination' | 'atd_origin'
-const BASIS_COLS: Record<DateBasis, { cycle: string; date: string }> = {
-  completed_time: { cycle: 'cycle_completed', date: 'date_completed' },
-  ata_vendor_wh_destination: { cycle: 'cycle_ata', date: 'date_ata' },
-  atd_origin: { cycle: 'cycle_atd', date: 'date_atd' },
-}
-const DEFAULT_BASIS: DateBasis = 'ata_vendor_wh_destination'
-export function resolveBasis(basis?: string): DateBasis {
-  return basis && basis in BASIS_COLS ? (basis as DateBasis) : DEFAULT_BASIS
-}
-
-// Builds a WHERE clause and its bound params for either cycle or date-range mode, against the
-// chosen date basis. The date_* columns are real timestamps, so the range compares directly.
-// `alias` prefixes the columns when the query joins v_pnl_to under an alias (e.g. 'v.').
-function buildFilter(
-  basis: string | undefined,
-  cyclePeriod?: string,
-  startDate?: string,
-  endDate?: string,
-  alias = '',
-): { where: string; params: unknown[]; cycleCol: string; dateCol: string } {
-  const cols = BASIS_COLS[resolveBasis(basis)]
-  const cycleCol = `${alias}${cols.cycle}`
-  const dateCol = `${alias}${cols.date}`
-  if (cyclePeriod) {
-    return { where: `${cycleCol} = $1`, params: [cyclePeriod], cycleCol, dateCol }
-  }
-  if (startDate && endDate) {
-    return {
-      where: `${dateCol} IS NOT NULL
-              AND ${dateCol} >= $1::DATE
-              AND ${dateCol} <= $2::DATE`,
-      params: [startDate, endDate],
-      cycleCol,
-      dateCol,
-    }
-  }
-  return { where: '1=0', params: [], cycleCol, dateCol }
-}
-
-// Number of calendar days the filter spans. Used as denominator for "per day" averages.
-function calendarDaysForFilter(
-  cyclePeriod?: string,
-  startDate?: string,
-  endDate?: string,
-): number {
-  if (cyclePeriod) {
-    // YYYY-MM-1H = 15 days (1–15); YYYY-MM-2H = remaining days of month.
-    const m = /^(\d{4})-(\d{2})-(1H|2H)$/.exec(cyclePeriod)
-    if (!m) return 15
-    if (m[3] === '1H') return 15
-    const year = Number(m[1])
-    const month = Number(m[2])
-    const lastDay = new Date(year, month, 0).getDate()
-    return Math.max(1, lastDay - 15)
-  }
-  if (startDate && endDate) {
-    const a = new Date(startDate)
-    const b = new Date(endDate)
-    const diff = Math.round((b.getTime() - a.getTime()) / 86_400_000) + 1
-    return Math.max(1, diff)
-  }
-  return 1
 }
 
 @Injectable()
@@ -308,6 +250,7 @@ export class PnlService {
           airline,
           COUNT(*)::int                           AS to_count,
           SUM(gross_weight)                       AS sum_gw,
+          MAX(chwt_awb)                           AS chwt,
           COALESCE(SUM(revenue_total), 0)         AS total_revenue,
           COALESCE(SUM(revenue_discount), 0)      AS total_discount,
           MAX(cost_smu_awb)                       AS cost_smu,
@@ -347,6 +290,7 @@ export class PnlService {
         airline: r.airline as string | null,
         toCount: Number(r.to_count),
         sumGw: Number(r.sum_gw),
+        chwt: r.chwt != null ? Number(r.chwt) : null,
         totalRevenue: rev,
         totalDiscount: Number(r.total_discount),
         costSmu: r.cost_smu != null ? Number(r.cost_smu) : null,
@@ -425,6 +369,7 @@ export class PnlService {
       SELECT
         to_number,
         gross_weight,
+        chwt_awb * weight_share                AS chwt,
         revenue_total,
         cost_smu_awb  * weight_share          AS cost_smu,
         cost_ra_awb   * weight_share          AS cost_ra,
@@ -446,6 +391,7 @@ export class PnlService {
     return rows.map((r: Record<string, unknown>) => ({
       toNumber: r.to_number as string,
       grossWeight: Number(r.gross_weight),
+      chwt: r.chwt != null ? Number(r.chwt) : null,
       revenue: Number(r.revenue_total),
       costSmu: r.cost_smu != null ? Number(r.cost_smu) : null,
       costRa: r.cost_ra != null ? Number(r.cost_ra) : null,

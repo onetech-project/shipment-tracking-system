@@ -11,6 +11,7 @@ import { PnlBreakdownPanel } from '@/features/pnl/components/PnlBreakdownPanel'
 import { PnlAwbDrilldown } from '@/features/pnl/components/PnlAwbDrilldown'
 import { PnlDataQuality } from '@/features/pnl/components/PnlDataQuality'
 import { PnlFormulaPanel } from '@/features/pnl/components/PnlFormulaPanel'
+import { SettlementView } from '@/features/pnl-settlement/components/SettlementView'
 
 function PnlSkeleton() {
   return (
@@ -57,6 +58,7 @@ function PnlPageContent() {
   const [endDate, setEndDate] = useState('')
   const [activeKpi, setActiveKpi] = useState<PnlKpiKey | null>(null)
   const [showDq, setShowDq] = useState(false)
+  const [view, setView] = useState<'estimate' | 'actual'>('estimate')
 
   useEffect(() => {
     if (cycles && cycles.length > 0 && (!cycle || !cycles.includes(cycle))) {
@@ -96,7 +98,25 @@ function PnlPageContent() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">P&amp;L Analysis</h1>
-          <p className="text-muted-foreground text-sm">Estimated P&amp;L based on arrival date — not yet billed</p>
+          <p className="text-muted-foreground text-sm">
+            {view === 'estimate'
+              ? 'Estimated P&L based on arrival date — not yet billed'
+              : 'Actual revenue from settled invoices vs estimate'}
+          </p>
+          <div className="mt-2 flex w-fit rounded-md border text-sm overflow-hidden">
+            <button
+              className={`px-3 py-1.5 ${view === 'estimate' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+              onClick={() => setView('estimate')}
+            >
+              Estimated
+            </button>
+            <button
+              className={`px-3 py-1.5 border-l ${view === 'actual' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+              onClick={() => setView('actual')}
+            >
+              Actual vs Estimate
+            </button>
+          </div>
         </div>
 
         <div className="flex flex-col items-end gap-2">
@@ -191,6 +211,8 @@ function PnlPageContent() {
         <div className="rounded-lg border bg-card p-8 text-center">
           <p className="text-sm text-muted-foreground">Select a start and end date above to view P&amp;L data.</p>
         </div>
+      ) : view === 'actual' ? (
+        <SettlementView filter={filter} />
       ) : (
         <>
           <PnlFormulaPanel />

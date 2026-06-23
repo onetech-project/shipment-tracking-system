@@ -62,6 +62,9 @@ export enum Permission {
 
   // PNL
   READ_PNL = 'read.pnl',
+  // Invoice settlement upload. Uses the "create" action because the permission-name check
+  // constraint only allows read|create|update|delete verbs.
+  CREATE_PNL_SETTLEMENT = 'create.pnl_settlement',
 
   // Google Sheet Config (for Air Shipments module)
   READ_GOOGLE_SHEET_CONFIG = 'read.google_sheet_config',
