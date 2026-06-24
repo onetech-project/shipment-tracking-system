@@ -75,6 +75,10 @@ export enum Permission {
   // Tracking_SMU offload evidence (Flight Tracking alert). Reads reuse READ_SLA;
   // this guards the evidence write that excludes an AWB + its TOs from the alert.
   UPDATE_TRACKING_SMU = 'update.tracking_smu',
+
+  // Airline tracking source registry (carrier_code → endpoint config). Reads reuse
+  // READ_SLA; this guards create/update/delete of airline endpoint configs.
+  UPDATE_AIRLINE_TRACKING_SOURCE = 'update.airline_tracking_source',
 }
 
 // ── Auth Response DTOs ────────────────────────────────────────────────────────

@@ -29,6 +29,9 @@ export class AirShipmentsService {
   /** Tracking_SMU flight-offload source (drives the Flight Tracking alert). */
   private static readonly TRACKING_SMU_TABLE = 'air_shipments_tracking_smu'
   private static readonly OFFLOAD_CACHE_KEY = 'tracking_smu:offload'
+  /** Airline-API offload source (overrides the sheet for configured carriers). */
+  private static readonly AIRLINE_TRACKING_TABLE = 'air_shipments_awb_flight_tracking'
+  private static readonly API_CARRIERS_CACHE_KEY = 'airline:carriers'
 
   constructor(
     private readonly sheetsService: SheetsService,
@@ -605,6 +608,10 @@ export class AirShipmentsService {
     )
     if (!exists[0]?.exists) return new Map()
 
+    // Carriers whose offload is API-driven: the sheet's offload_status is ignored for
+    // them (their offload comes solely from the airline-API overlay below).
+    const apiCarriers = new Set(await this.getEnabledApiCarrierCodes())
+
     const rows: Record<string, unknown>[] = await this.dataSource.query(
       `SELECT awb, offload_status, evidence FROM "${tableName}"`
     )
@@ -612,16 +619,53 @@ export class AirShipmentsService {
     for (const row of rows) {
       const awb = AirShipmentsService.getFieldValueFromRow(row, 'awb')
       if (!awb) continue
+      const key = String(awb).trim()
+      const carrier = key.split('-')[0]
       const status = String(AirShipmentsService.getFieldValueFromRow(row, 'offload_status') ?? '')
         .trim()
         .toLowerCase()
       const evidence = AirShipmentsService.getFieldValueFromRow(row, 'evidence')
-      map.set(String(awb).trim(), {
-        offload: status === 'offload',
+      map.set(key, {
+        offload: !apiCarriers.has(carrier) && status === 'offload',
         hasEvidence: evidence != null && String(evidence).trim() !== '',
       })
     }
+
+    // Overlay airline-API offload: authoritative for configured carriers (126/888/778).
+    // Keeps hasEvidence from the sheet/evidence row; adds API-only AWBs with no evidence.
+    try {
+      const apiRows: { awb: string; offload: boolean }[] = await this.dataSource.query(
+        `SELECT awb, offload FROM "${AirShipmentsService.AIRLINE_TRACKING_TABLE}"`
+      )
+      for (const r of apiRows) {
+        if (!r.awb) continue
+        const key = String(r.awb).trim()
+        map.set(key, { offload: r.offload === true, hasEvidence: map.get(key)?.hasEvidence ?? false })
+      }
+    } catch {
+      // Airline tracking table absent (pre-migration) — sheet offload only.
+    }
     return map
+  }
+
+  /** Public hook: lets the airline-tracking job refresh the offload alert after a fetch cycle. */
+  evictOffloadCache(): void {
+    this.lookupCache.delete(AirShipmentsService.OFFLOAD_CACHE_KEY)
+    this.lookupCache.delete(AirShipmentsService.API_CARRIERS_CACHE_KEY)
+  }
+
+  /** Enabled carrier codes whose offload is API-driven (so the sheet list can exclude them). */
+  private getEnabledApiCarrierCodes(): Promise<string[]> {
+    return this.loadCached(AirShipmentsService.API_CARRIERS_CACHE_KEY, async () => {
+      try {
+        const rows: { carrier_code: string }[] = await this.dataSource.query(
+          `SELECT carrier_code FROM airline_tracking_source WHERE enabled = true`
+        )
+        return rows.map((r) => String(r.carrier_code))
+      } catch {
+        return []
+      }
+    })
   }
 
   /**
@@ -1648,61 +1692,101 @@ export class AirShipmentsService {
    * link (the active Flight Tracking alert); with `withEvidence=true` returns the
    * already-justified AWBs (the Excluded view).
    */
-  async findOffloadedAwbs(
-    query: OffloadedAwbQueryDto,
-  ): Promise<{ data: Record<string, unknown>[]; meta: { total: number; page: number; limit: number } }> {
-    const tableName = AirShipmentsService.TRACKING_SMU_TABLE
-    const exists: { exists: boolean }[] = await this.dataSource.query(
+  private async tableExists(tableName: string): Promise<boolean> {
+    const rows: { exists: boolean }[] = await this.dataSource.query(
       `SELECT EXISTS (
          SELECT 1 FROM information_schema.tables
          WHERE table_schema = 'public' AND table_name = $1
        ) AS exists`,
       [tableName]
     )
-    if (!exists[0]?.exists) {
-      return { data: [], meta: { total: 0, page: query.page ?? 1, limit: query.limit ?? 50 } }
-    }
+    return Boolean(rows[0]?.exists)
+  }
 
+  /**
+   * Offloaded AWBs for the drill-in list: a UNION of sheet-driven rows (Tracking_SMU,
+   * excluding the API-driven carriers) and airline-API rows. Both project identical
+   * columns + a `source` flag; evidence (kept on Tracking_SMU) gates the active vs
+   * Excluded view in both branches.
+   */
+  async findOffloadedAwbs(
+    query: OffloadedAwbQueryDto,
+  ): Promise<{ data: Record<string, unknown>[]; meta: { total: number; page: number; limit: number } }> {
     const { search, withEvidence = false, page = 1, limit = 50 } = query
     const offset = (page - 1) * limit
 
-    const whereClauses: string[] = [`offload_status = 'offload'`]
-    const params: any[] = []
-
-    whereClauses.push(
-      withEvidence
-        ? `(evidence IS NOT NULL AND BTRIM(evidence) <> '')`
-        : `(evidence IS NULL OR BTRIM(evidence) = '')`
-    )
-
-    if (search && search.trim()) {
-      whereClauses.push(`awb ILIKE $${params.length + 1}`)
-      params.push(`%${search.trim()}%`)
+    const sheetTable = AirShipmentsService.TRACKING_SMU_TABLE
+    const apiTable = AirShipmentsService.AIRLINE_TRACKING_TABLE
+    const [sheetExists, apiExists] = await Promise.all([
+      this.tableExists(sheetTable),
+      this.tableExists(apiTable),
+    ])
+    if (!sheetExists && !apiExists) {
+      return { data: [], meta: { total: 0, page, limit } }
     }
 
-    const whereSql = `WHERE ${whereClauses.join(' AND ')}`
-    const selectCols = `id, awb, airline, std_booking, std_flight_no, actual_flight_dep, dep_flight_no,
-      dep2, dep2_flight_no, dep3, dep3_flight_no, dep4, dep4_flight_no, dep5, dep5_flight_no,
-      remarks_offload, offload_status, evidence, updated_at`
+    const apiCarriers = await this.getEnabledApiCarrierCodes()
+    const params: any[] = [apiCarriers] // $1
+    let searchIdx = 0
+    if (search && search.trim()) {
+      params.push(`%${search.trim()}%`)
+      searchIdx = params.length // $2
+    }
+    const evid = (col: string) =>
+      withEvidence
+        ? `(${col} IS NOT NULL AND BTRIM(${col}) <> '')`
+        : `(${col} IS NULL OR BTRIM(${col}) = '')`
 
+    const branches: string[] = []
+    if (sheetExists) {
+      branches.push(`
+        SELECT awb AS id, awb, airline, std_booking, std_flight_no, actual_flight_dep, dep_flight_no,
+          dep2, dep2_flight_no, dep3, dep3_flight_no, dep4, dep4_flight_no, dep5, dep5_flight_no,
+          remarks_offload, evidence, 'sheet'::text AS source, NULL::timestamptz AS fetched_at, NULL::text AS error
+        FROM "${sheetTable}"
+        WHERE offload_status = 'offload'
+          AND split_part(awb, '-', 1) <> ALL($1::text[])
+          AND ${evid('evidence')}
+          ${searchIdx ? `AND awb ILIKE $${searchIdx}` : ''}
+      `)
+    }
+    if (apiExists) {
+      const join = sheetExists ? `LEFT JOIN "${sheetTable}" t ON t.awb = a.awb` : ''
+      const evidenceCol = sheetExists ? 't.evidence' : 'NULL::text'
+      branches.push(`
+        SELECT a.awb AS id, a.awb, NULL::text AS airline, a.std_booking, a.std_flight_no, a.actual_flight_dep, a.dep_flight_no,
+          a.dep2, a.dep2_flight_no, a.dep3, a.dep3_flight_no, a.dep4, a.dep4_flight_no, a.dep5, a.dep5_flight_no,
+          NULL::text AS remarks_offload, ${evidenceCol} AS evidence, 'api'::text AS source, a.fetched_at, a.error
+        FROM "${apiTable}" a ${join}
+        WHERE a.offload = true
+          AND ${evid(evidenceCol)}
+          ${searchIdx ? `AND a.awb ILIKE $${searchIdx}` : ''}
+      `)
+    }
+
+    const union = branches.map((b) => `(${b})`).join(' UNION ALL ')
     const [data, countRes] = await Promise.all([
       this.dataSource.query(
-        `SELECT ${selectCols} FROM "${tableName}" ${whereSql} ORDER BY awb ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        `SELECT * FROM (${union}) u ORDER BY awb ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, limit, offset]
       ),
-      this.dataSource.query(`SELECT count(*)::int FROM "${tableName}" ${whereSql}`, params),
+      this.dataSource.query(`SELECT count(*)::int AS count FROM (${union}) u`, params),
     ])
 
-    const total = countRes?.[0]?.count ?? 0
-    return { data, meta: { total, page, limit } }
+    return { data, meta: { total: countRes?.[0]?.count ?? 0, page, limit } }
   }
 
-  /** Records the evidence link for an AWB, excluding it (and all its TOs) from the alert. */
+  /**
+   * Records the evidence link for an AWB, excluding it (and all its TOs) from the alert.
+   * Upserts so it also works for API-driven AWBs that have no Tracking_SMU sheet row
+   * (evidence lives on Tracking_SMU; the stub row survives sheet re-sync).
+   */
   async setEvidenceByAwb(awb: string, evidence: string): Promise<void> {
     if (!awb || !awb.trim()) throw new BadRequestException('AWB is required')
     await this.dataSource.query(
-      `UPDATE "${AirShipmentsService.TRACKING_SMU_TABLE}" SET evidence = $1, updated_at = NOW() WHERE awb = $2`,
-      [evidence, awb]
+      `INSERT INTO "${AirShipmentsService.TRACKING_SMU_TABLE}" (awb, evidence) VALUES ($1, $2)
+       ON CONFLICT (awb) DO UPDATE SET evidence = EXCLUDED.evidence, updated_at = NOW()`,
+      [awb, evidence]
     )
     // Evidence is user-edited (not a sync), so evict the offload cache explicitly.
     this.lookupCache.delete(AirShipmentsService.OFFLOAD_CACHE_KEY)
