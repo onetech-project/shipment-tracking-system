@@ -48,6 +48,7 @@ function EvidenceCell({ value }: { value?: string | null }) {
 
 const HEADERS = [
   'AWB',
+  'Source',
   'Airline',
   'STD Booking',
   'Actual (DEP)',
@@ -59,6 +60,26 @@ const HEADERS = [
   'Evidence',
   'Actions',
 ]
+
+function SourceBadge({ row }: { row: OffloadedAwbRow }) {
+  const isApi = String(row.source ?? '').toLowerCase() === 'api'
+  const label = isApi ? 'API' : 'Sheet'
+  const title = isApi
+    ? [row.fetched_at ? `fetched ${row.fetched_at}` : null, row.error ? `error: ${row.error}` : null]
+        .filter(Boolean)
+        .join(' · ') || 'Airline tracking API'
+    : 'Tracking_SMU sheet'
+  return (
+    <span
+      title={title}
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+        isApi ? 'bg-blue-100 text-blue-700' : 'bg-muted text-muted-foreground'
+      }`}
+    >
+      {label}
+    </span>
+  )
+}
 
 export function OffloadedAwbTable({
   data,
@@ -97,6 +118,7 @@ export function OffloadedAwbTable({
             {data.map((row, idx) => (
               <tr key={row.id ?? row.awb} className={idx % 2 === 1 ? 'bg-muted/70' : ''}>
                 <td className="whitespace-nowrap px-3 py-2 font-medium">{String(row.awb ?? '—')}</td>
+                <td className="whitespace-nowrap px-3 py-2"><SourceBadge row={row} /></td>
                 <td className="whitespace-nowrap px-3 py-2">{String(row.airline ?? '—')}</td>
                 <td className="whitespace-nowrap px-3 py-2">
                   <Leg value={row.std_booking} flightNo={row.std_flight_no} />

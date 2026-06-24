@@ -40,6 +40,10 @@ export interface OffloadedAwbRow {
   offload_status?: string | null
   evidence?: string | null
   updated_at?: string | null
+  /** 'sheet' (Tracking_SMU) or 'api' (airline tracking endpoint) */
+  source?: string | null
+  fetched_at?: string | null
+  error?: string | null
   [key: string]: unknown
 }
 

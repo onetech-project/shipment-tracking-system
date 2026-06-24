@@ -19,13 +19,20 @@ import { Permission } from '@shared/auth'
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator'
 import { ExcludedQueryDto, ExcludeRowDto, RestoreRowDto } from './dto/excluded-query.dto'
 import { OffloadedAwbQueryDto, SetEvidenceDto } from './dto/tracking-smu.dto'
+import { AirlineTrackingSourceService, AirlineSource } from './airline-tracking/airline-tracking-source.service'
+import { AirlineTrackingService } from './airline-tracking/airline-tracking.service'
+import { CreateAirlineSourceDto, UpdateAirlineSourceDto } from './airline-tracking/dto/airline-source.dto'
 
 @Controller('air-shipments')
 @UseGuards(JwtAuthGuard)
 export class AirShipmentsController {
   private readonly logger = new Logger(AirShipmentsController.name)
 
-  constructor(private readonly service: AirShipmentsService) {}
+  constructor(
+    private readonly service: AirShipmentsService,
+    private readonly airlineSources: AirlineTrackingSourceService,
+    private readonly airlineTracking: AirlineTrackingService,
+  ) {}
 
   @Get('google-sheet-config')
   @UseGuards(RbacGuard)
@@ -269,6 +276,47 @@ export class AirShipmentsController {
   @Authorize(Permission.UPDATE_TRACKING_SMU)
   async clearAwbEvidence(@Param('awb') awb: string): Promise<void> {
     return this.service.clearEvidenceByAwb(awb)
+  }
+
+  // ── Airline tracking source registry (carrier_code → endpoint config) ─────────
+
+  @Get('airline-sources')
+  @UseGuards(RbacGuard)
+  @Authorize(Permission.READ_SLA)
+  async listAirlineSources(): Promise<AirlineSource[]> {
+    return this.airlineSources.list()
+  }
+
+  @Post('airline-sources')
+  @UseGuards(RbacGuard)
+  @Authorize(Permission.UPDATE_AIRLINE_TRACKING_SOURCE)
+  async createAirlineSource(@Body() dto: CreateAirlineSourceDto): Promise<AirlineSource> {
+    return this.airlineSources.create(dto)
+  }
+
+  @Put('airline-sources/:carrierCode')
+  @UseGuards(RbacGuard)
+  @Authorize(Permission.UPDATE_AIRLINE_TRACKING_SOURCE)
+  async updateAirlineSource(
+    @Param('carrierCode') carrierCode: string,
+    @Body() dto: UpdateAirlineSourceDto
+  ): Promise<AirlineSource> {
+    return this.airlineSources.update(carrierCode, dto)
+  }
+
+  @Delete('airline-sources/:carrierCode')
+  @UseGuards(RbacGuard)
+  @Authorize(Permission.UPDATE_AIRLINE_TRACKING_SOURCE)
+  async deleteAirlineSource(@Param('carrierCode') carrierCode: string): Promise<void> {
+    return this.airlineSources.remove(carrierCode)
+  }
+
+  /** Manually trigger an airline-API DEP refresh cycle (useful for testing). */
+  @Post('airline-tracking/refresh')
+  @UseGuards(RbacGuard)
+  @Authorize(Permission.UPDATE_AIRLINE_TRACKING_SOURCE)
+  async refreshAirlineTracking() {
+    return this.airlineTracking.refreshRecentActive()
   }
 
   @Get(':tableName')
