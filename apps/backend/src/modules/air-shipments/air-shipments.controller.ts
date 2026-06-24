@@ -18,6 +18,7 @@ import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
 import { Permission } from '@shared/auth'
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator'
 import { ExcludedQueryDto, ExcludeRowDto, RestoreRowDto } from './dto/excluded-query.dto'
+import { OffloadedAwbQueryDto, SetEvidenceDto } from './dto/tracking-smu.dto'
 
 @Controller('air-shipments')
 @UseGuards(JwtAuthGuard)
@@ -238,6 +239,36 @@ export class AirShipmentsController {
     @Body() body: RestoreRowDto
   ): Promise<void> {
     return this.service.restoreRow(tableName, id, body.alertType)
+  }
+
+  // ── Tracking_SMU offload alert (per-AWB) ──────────────────────────────────────
+  // Literal `tracking-smu/...` paths, declared above the catch-all `:tableName`.
+
+  @Get('tracking-smu/offloaded')
+  @UseGuards(RbacGuard)
+  @Authorize(Permission.READ_SLA)
+  async getOffloadedAwbs(@Query() query: OffloadedAwbQueryDto): Promise<{
+    data: Record<string, unknown>[]
+    meta: { total: number; page: number; limit: number }
+  }> {
+    return this.service.findOffloadedAwbs(query)
+  }
+
+  @Patch('tracking-smu/awb/:awb/evidence')
+  @UseGuards(RbacGuard)
+  @Authorize(Permission.UPDATE_TRACKING_SMU)
+  async setAwbEvidence(
+    @Param('awb') awb: string,
+    @Body() body: SetEvidenceDto
+  ): Promise<void> {
+    return this.service.setEvidenceByAwb(awb, body.evidence)
+  }
+
+  @Delete('tracking-smu/awb/:awb/evidence')
+  @UseGuards(RbacGuard)
+  @Authorize(Permission.UPDATE_TRACKING_SMU)
+  async clearAwbEvidence(@Param('awb') awb: string): Promise<void> {
+    return this.service.clearEvidenceByAwb(awb)
   }
 
   @Get(':tableName')

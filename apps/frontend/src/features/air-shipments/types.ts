@@ -19,6 +19,35 @@ export interface AirShipmentsResponse {
   meta: PaginationMeta
 }
 
+/** One offloaded AWB from air_shipments_tracking_smu (Flight Tracking alert). */
+export interface OffloadedAwbRow {
+  id: string
+  awb: string
+  airline?: string | null
+  std_booking?: string | null
+  std_flight_no?: string | null
+  actual_flight_dep?: string | null
+  dep_flight_no?: string | null
+  dep2?: string | null
+  dep2_flight_no?: string | null
+  dep3?: string | null
+  dep3_flight_no?: string | null
+  dep4?: string | null
+  dep4_flight_no?: string | null
+  dep5?: string | null
+  dep5_flight_no?: string | null
+  remarks_offload?: string | null
+  offload_status?: string | null
+  evidence?: string | null
+  updated_at?: string | null
+  [key: string]: unknown
+}
+
+export interface OffloadedAwbResponse {
+  data: OffloadedAwbRow[]
+  meta: { total: number; page: number; limit: number }
+}
+
 export type SortOrder = 'asc' | 'desc'
 
 export type SyncStatus = 'connected' | 'disconnected'

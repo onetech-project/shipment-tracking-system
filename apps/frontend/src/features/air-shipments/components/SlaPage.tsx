@@ -21,10 +21,21 @@ import {
   excludeRow,
   restoreRow,
   fetchExcluded,
+  fetchOffloadedAwbs,
+  setAwbEvidence,
+  clearAwbEvidence,
 } from '@/features/air-shipments/hooks/useAirShipments'
 import { ExcludeModal } from '@/features/air-shipments/components/ExcludeModal'
+import { EvidenceModal } from '@/features/air-shipments/components/EvidenceModal'
+import { OffloadedAwbTable } from '@/features/air-shipments/components/OffloadedAwbTable'
 import { SLA_FROZEN_KEYS, SLA_DEFAULT_VISIBLE, colLabel } from '@/features/air-shipments/columns.config'
-import { AirShipmentRow, AirShipmentsResponse, SortOrder } from '@/features/air-shipments/types'
+import {
+  AirShipmentRow,
+  AirShipmentsResponse,
+  OffloadedAwbResponse,
+  OffloadedAwbRow,
+  SortOrder,
+} from '@/features/air-shipments/types'
 import { Lock, Trash2, RotateCcw } from 'lucide-react'
 import { AxiosError } from 'axios'
 
@@ -188,6 +199,14 @@ export function SlaPage() {
   const [excludedPage, setExcludedPage] = useState(1)
   const [excludedAlertTypeFilter, setExcludedAlertTypeFilter] = useState<string>('all')
 
+  // ── Flight Tracking (Tracking_SMU offload) state ──────────────────────────────
+  // The Flight Tracking alert is driven by offloaded AWBs (one row per AWB), not TOs.
+  const isFlightTracking = activeAlert === 'flightTracking'
+  const [offloadedData, setOffloadedData] = useState<OffloadedAwbResponse | null>(null)
+  const [offloadedPage, setOffloadedPage] = useState(1)
+  const [excludedOffloaded, setExcludedOffloaded] = useState<OffloadedAwbResponse | null>(null)
+  const [evidenceModal, setEvidenceModal] = useState<{ awb: string; initial: string } | null>(null)
+
   // ── Fetch helpers ───────────────────────────────────────────────────────────
 
   // Single request replacing the former alert-summary + routes + route-alert-summary trio —
@@ -261,6 +280,24 @@ export function SlaPage() {
     }
   }, [excludedAlertTypeFilter, excludedPage, startDate, endDate])
 
+  const fetchOffloadedActive = useCallback(async () => {
+    try {
+      const res = await fetchOffloadedAwbs({ page: offloadedPage, limit: 50, search: searchQuery, withEvidence: false })
+      setOffloadedData(res)
+    } catch {
+      setOffloadedData(null)
+    }
+  }, [offloadedPage, searchQuery])
+
+  const fetchOffloadedExcluded = useCallback(async () => {
+    try {
+      const res = await fetchOffloadedAwbs({ page: excludedPage, limit: 50, search: searchQuery, withEvidence: true })
+      setExcludedOffloaded(res)
+    } catch {
+      setExcludedOffloaded(null)
+    }
+  }, [excludedPage, searchQuery])
+
   const refresh = useCallback(() => {
     void fetchTableData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -303,6 +340,7 @@ export function SlaPage() {
     const handler = window.setTimeout(() => {
       setSearchQuery(searchInput)
       setPage(1)
+      setOffloadedPage(1)
     }, 700)
     return () => window.clearTimeout(handler)
   }, [searchInput])
@@ -318,6 +356,15 @@ export function SlaPage() {
       void fetchExcludedRows()
     }
   }, [activeTab, fetchExcludedRows])
+
+  // Flight Tracking shows offloaded AWBs (per-AWB) instead of the per-TO table.
+  useEffect(() => {
+    if (activeTab === 'active' && isFlightTracking) void fetchOffloadedActive()
+  }, [activeTab, isFlightTracking, fetchOffloadedActive])
+
+  useEffect(() => {
+    if (activeTab === 'excluded' && isFlightTracking) void fetchOffloadedExcluded()
+  }, [activeTab, isFlightTracking, fetchOffloadedExcluded])
 
   useEffect(() => {
     if (lastCompletedSheet !== 'compileaircgk') return
@@ -506,6 +553,41 @@ export function SlaPage() {
     }
   }
 
+  // ── Flight Tracking evidence (per-AWB) ───────────────────────────────────────
+
+  async function handleSaveEvidence(evidence: string) {
+    if (!evidenceModal) return
+    try {
+      await setAwbEvidence(evidenceModal.awb, evidence)
+      setEvidenceModal(null)
+      // Refresh both AWB lists, the cards/route tonnage, and the per-TO table.
+      void fetchOffloadedActive()
+      void fetchOffloadedExcluded()
+      void fetchSlaOverview()
+      void fetchTableData()
+    } catch (err) {
+      window.alert(
+        `Failed to save evidence: ${err instanceof Error ? err.message : 'Unknown error'}`
+      )
+      // re-throw so EvidenceModal's loading state is cleared by its own finally block
+      throw err
+    }
+  }
+
+  async function handleRestoreOffloaded(row: OffloadedAwbRow) {
+    try {
+      await clearAwbEvidence(String(row.awb))
+      void fetchOffloadedActive()
+      void fetchOffloadedExcluded()
+      void fetchSlaOverview()
+      void fetchTableData()
+    } catch (err) {
+      window.alert(
+        `Failed to clear evidence: ${err instanceof Error ? err.message : 'Unknown error'}`
+      )
+    }
+  }
+
   // ── Alert filter helpers ────────────────────────────────────────────────────
 
   const applyRouteAlertFilter = (alertKey: DashboardAlertKey, route: string) => {
@@ -513,6 +595,7 @@ export function SlaPage() {
     setActiveAlert(alertKey)
     setActiveRoute(route)
     setPage(1)
+    setOffloadedPage(1)
     const params = new URLSearchParams()
     params.set('alert', alertKey)
     params.set('route', route)
@@ -529,6 +612,7 @@ export function SlaPage() {
     const newAlert = value === 'null' ? null : (value as AlertFilterOption)
     setActiveAlert(newAlert)
     setPage(1)
+    setOffloadedPage(1)
     const params = new URLSearchParams()
     if (newAlert) params.set('alert', newAlert)
     if (activeRoute) params.set('route', activeRoute)
@@ -607,11 +691,16 @@ export function SlaPage() {
             }`}
           >
             Excluded
-            {(excludedMeta?.total ?? 0) > 0 && (
-              <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-                {excludedMeta!.total}
-              </span>
-            )}
+            {(() => {
+              const excludedCount = isFlightTracking
+                ? excludedOffloaded?.meta.total ?? 0
+                : excludedMeta?.total ?? 0
+              return excludedCount > 0 ? (
+                <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                  {excludedCount}
+                </span>
+              ) : null
+            })()}
           </button>
         </div>
 
@@ -811,6 +900,16 @@ export function SlaPage() {
               <div className="rounded-2xl border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                 {error}
               </div>
+            ) : isFlightTracking ? (
+              <OffloadedAwbTable
+                data={offloadedData?.data ?? []}
+                meta={offloadedData?.meta ?? { total: 0, page: 1, limit: 50 }}
+                mode="active"
+                onAddEvidence={(row) =>
+                  setEvidenceModal({ awb: String(row.awb), initial: '' })
+                }
+                onPageChange={setOffloadedPage}
+              />
             ) : (
               <div className="rounded-3xl border border-border bg-panel p-4 shadow-sm">
                 <AirShipmentTable
@@ -850,8 +949,22 @@ export function SlaPage() {
           </>
         )}
 
-        {/* ── Excluded Tab ── */}
-        {activeTab === 'excluded' && (() => {
+        {/* ── Excluded Tab: Flight Tracking shows evidenced AWBs (per-AWB) ── */}
+        {activeTab === 'excluded' && isFlightTracking && (
+          <OffloadedAwbTable
+            data={excludedOffloaded?.data ?? []}
+            meta={excludedOffloaded?.meta ?? { total: 0, page: 1, limit: 50 }}
+            mode="excluded"
+            onEditEvidence={(row) =>
+              setEvidenceModal({ awb: String(row.awb), initial: String(row.evidence ?? '') })
+            }
+            onRestore={handleRestoreOffloaded}
+            onPageChange={setExcludedPage}
+          />
+        )}
+
+        {/* ── Excluded Tab: per-TO exclusions for all other alert types ── */}
+        {activeTab === 'excluded' && !isFlightTracking && (() => {
           // Expand each row into one entry per alert-type exclusion
           const expandedExcludedRows = excludedRows.flatMap((row) => {
             const reasons = row['excluded_reasons'] as Record<string, string> | null
@@ -990,6 +1103,15 @@ export function SlaPage() {
         alertTypeLabel={excludeModal?.alertTypeLabel ?? ''}
         onConfirm={handleExcludeConfirm}
         onClose={() => setExcludeModal(null)}
+      />
+
+      {/* ── Evidence Modal (Flight Tracking offload) ── */}
+      <EvidenceModal
+        open={evidenceModal !== null}
+        awb={evidenceModal?.awb ?? null}
+        initialEvidence={evidenceModal?.initial ?? ''}
+        onConfirm={handleSaveEvidence}
+        onClose={() => setEvidenceModal(null)}
       />
 
     </div>

@@ -1,7 +1,7 @@
 'use client'
 import { useCallback, useEffect, useState } from 'react'
 import { apiClient } from '@/shared/api/client'
-import { AirShipmentsResponse, AirShipmentRow, SortOrder } from '../types'
+import { AirShipmentsResponse, AirShipmentRow, OffloadedAwbResponse, SortOrder } from '../types'
 
 // interface UseAirShipmentsOptions {
 //   endpoint: string;
@@ -212,4 +212,34 @@ export async function fetchExcluded(
     `/air-shipments/${tableName}/excluded?${queryParams}`
   )
   return res.data
+}
+
+// ── Tracking_SMU offload alert (per-AWB) ────────────────────────────────────────
+
+export async function fetchOffloadedAwbs(params: {
+  page?: number
+  limit?: number
+  search?: string
+  withEvidence?: boolean
+}): Promise<OffloadedAwbResponse> {
+  const queryParams = new URLSearchParams()
+  if (params.page !== undefined) queryParams.set('page', String(params.page))
+  if (params.limit !== undefined) queryParams.set('limit', String(params.limit))
+  if (params.search && params.search.trim()) queryParams.set('search', params.search.trim())
+  if (params.withEvidence) queryParams.set('withEvidence', 'true')
+
+  const res = await apiClient.get<OffloadedAwbResponse>(
+    `/air-shipments/tracking-smu/offloaded?${queryParams}`
+  )
+  return res.data
+}
+
+export async function setAwbEvidence(awb: string, evidence: string): Promise<void> {
+  await apiClient.patch(`/air-shipments/tracking-smu/awb/${encodeURIComponent(awb)}/evidence`, {
+    evidence,
+  })
+}
+
+export async function clearAwbEvidence(awb: string): Promise<void> {
+  await apiClient.delete(`/air-shipments/tracking-smu/awb/${encodeURIComponent(awb)}/evidence`)
 }

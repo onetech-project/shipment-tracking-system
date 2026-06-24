@@ -75,6 +75,13 @@ export function evaluateAlerts(
   const ataFlightDate = parseDate(ataFlight)
   const trackinganSmu = getFieldValue(row, 'trackingan_smu')
   const awb = getFieldValue(row, 'awb')
+  // Flight offload state for this AWB, joined from Tracking_SMU (air_shipments_tracking_smu)
+  // by the service enrichment. `offload_has_evidence` is true once a justification link
+  // is recorded — which excludes the AWB (and all its TOs) from the Flight Tracking alert.
+  const offloadStatus = getFieldValue(row, 'offload_status')
+  const isOffloaded =
+    typeof offloadStatus === 'string' && offloadStatus.trim().toLowerCase() === 'offload'
+  const offloadHasEvidence = getFieldValue(row, 'offload_has_evidence') === true
   // Only flag SMU as "not onboard" when there is an explicit non-empty status that isn't "Onboard".
   // Missing/empty means no Reservasi record was found — don't trigger on absence of data.
   const smuNotOnboard =
@@ -107,8 +114,8 @@ export function evaluateAlerts(
   return {
     // No AWB = flight hasn't been booked yet
     reservasiPenerbangan: isEmptyValue(awb) && flightBookingAlertBase,
-    // Has AWB = flight booked but no tracking data yet
-    flightTracking: !isEmptyValue(awb) && flightBookingAlertBase,
+    // AWB offloaded per Tracking_SMU and not yet justified with an evidence link
+    flightTracking: isOffloaded && !offloadHasEvidence,
 
     potensiMelebihiSla:
       isEmptyValue(completedTime) &&

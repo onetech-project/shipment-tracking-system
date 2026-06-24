@@ -106,73 +106,55 @@ describe('evaluateAlerts', () => {
     })
   })
 
-  describe('flightTracking', () => {
-    it('triggers when AWB present and same base conditions as reservasiPenerbangan', () => {
-      jest.setSystemTime(new Date('2025-01-01T09:30:00Z'))
+  describe('flightTracking (Tracking_SMU offload)', () => {
+    it('triggers when offload_status is "offload" and no evidence recorded', () => {
+      jest.setSystemTime(new Date('2025-01-01T08:30:00Z'))
       expect(
-        evaluateAlerts(
-          { ...baseRow, atd_flight: '', ata_flight: '' }, // baseRow has awb: 'AWB123'
-          N, M,
-        ).flightTracking,
+        evaluateAlerts({ ...baseRow, offload_status: 'offload' }, N, M).flightTracking,
       ).toBe(true)
     })
 
-    it('does NOT trigger when AWB is empty', () => {
-      jest.setSystemTime(new Date('2025-01-01T09:30:00Z'))
+    it('does NOT trigger when offload_status is "onboard"', () => {
+      jest.setSystemTime(new Date('2025-01-01T08:30:00Z'))
       expect(
-        evaluateAlerts(
-          { ...baseRow, awb: '', atd_flight: '', ata_flight: '' },
-          N, M,
-        ).flightTracking,
+        evaluateAlerts({ ...baseRow, offload_status: 'onboard' }, N, M).flightTracking,
       ).toBe(false)
     })
 
-    it('does NOT trigger when now is before atdOrigin + nHours', () => {
+    it('does NOT trigger when offload_status is absent (AWB not in Tracking_SMU)', () => {
+      jest.setSystemTime(new Date('2025-01-01T08:30:00Z'))
+      expect(evaluateAlerts(baseRow, N, M).flightTracking).toBe(false)
+    })
+
+    it('does NOT trigger when offloaded but evidence has been recorded', () => {
       jest.setSystemTime(new Date('2025-01-01T08:30:00Z'))
       expect(
         evaluateAlerts(
-          { ...baseRow, atd_flight: '', ata_flight: '' },
+          { ...baseRow, offload_status: 'offload', offload_has_evidence: true },
           N, M,
         ).flightTracking,
       ).toBe(false)
     })
 
-    it('does NOT trigger when atd_flight is present', () => {
-      jest.setSystemTime(new Date('2025-01-01T09:30:00Z'))
+    it('is case-insensitive on offload_status', () => {
+      jest.setSystemTime(new Date('2025-01-01T08:30:00Z'))
       expect(
-        evaluateAlerts(
-          { ...baseRow, ata_flight: '' }, // atd_flight present in baseRow
-          N, M,
-        ).flightTracking,
-      ).toBe(false)
+        evaluateAlerts({ ...baseRow, offload_status: '  OFFLOAD  ' }, N, M).flightTracking,
+      ).toBe(true)
     })
 
-    it('does NOT trigger when ata_flight is present', () => {
-      jest.setSystemTime(new Date('2025-01-01T09:30:00Z'))
+    it('fires independently of flight-booking conditions (flight data present, within deadlines)', () => {
+      // baseRow has atd_flight + ata_flight present and is within all deadlines,
+      // yet an offloaded AWB still raises the alert.
+      jest.setSystemTime(new Date('2025-01-01T08:30:00Z'))
       expect(
-        evaluateAlerts(
-          { ...baseRow, atd_flight: '' }, // ata_flight present in baseRow
-          N, M,
-        ).flightTracking,
-      ).toBe(false)
-    })
-
-    it('does NOT trigger when shipment is completed', () => {
-      jest.setSystemTime(new Date('2025-01-01T09:30:00Z'))
-      expect(
-        evaluateAlerts(
-          { ...baseRow, atd_flight: '', ata_flight: '', ata_vendor_wh_destination: '2025-01-01T09:00:00Z' },
-          N, M,
-        ).flightTracking,
-      ).toBe(false)
+        evaluateAlerts({ ...baseRow, offload_status: 'offload' }, N, M).flightTracking,
+      ).toBe(true)
     })
 
     it('CAN fire together with melewatiSla when SLA also breached', () => {
       jest.setSystemTime(new Date('2025-01-01T11:00:00Z'))
-      const alerts = evaluateAlerts(
-        { ...baseRow, atd_flight: '', ata_flight: '' },
-        N, M,
-      )
+      const alerts = evaluateAlerts({ ...baseRow, offload_status: 'offload' }, N, M)
       expect(alerts.flightTracking).toBe(true)
       expect(alerts.melewatiSla).toBe(true)
     })
@@ -209,16 +191,18 @@ describe('evaluateAlerts', () => {
       expect(alerts.reservasiPenerbangan).toBe(true)
     })
 
-    it('reservasiPenerbangan and flightTracking are mutually exclusive', () => {
+    it('reservasiPenerbangan (no AWB, no flight data) and flightTracking (offload) are independent', () => {
       jest.setSystemTime(new Date('2025-01-01T09:30:00Z'))
-      const rowNoAwb = { ...baseRow, awb: '', atd_flight: '', ata_flight: '' }
-      const rowHasAwb = { ...baseRow, awb: 'AWB123', atd_flight: '', ata_flight: '' }
-      const alertsNo = evaluateAlerts(rowNoAwb, N, M)
-      const alertsHas = evaluateAlerts(rowHasAwb, N, M)
-      expect(alertsNo.reservasiPenerbangan).toBe(true)
-      expect(alertsNo.flightTracking).toBe(false)
-      expect(alertsHas.reservasiPenerbangan).toBe(false)
-      expect(alertsHas.flightTracking).toBe(true)
+      // No AWB + no flight data + past threshold → reservasiPenerbangan, not flightTracking
+      const rowReservasi = { ...baseRow, awb: '', atd_flight: '', ata_flight: '' }
+      // Offloaded AWB → flightTracking, not reservasiPenerbangan
+      const rowOffload = { ...baseRow, offload_status: 'offload' }
+      const alertsReservasi = evaluateAlerts(rowReservasi, N, M)
+      const alertsOffload = evaluateAlerts(rowOffload, N, M)
+      expect(alertsReservasi.reservasiPenerbangan).toBe(true)
+      expect(alertsReservasi.flightTracking).toBe(false)
+      expect(alertsOffload.reservasiPenerbangan).toBe(false)
+      expect(alertsOffload.flightTracking).toBe(true)
     })
   })
 
