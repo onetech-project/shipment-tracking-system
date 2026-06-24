@@ -10,6 +10,7 @@ import { GoogleSheetSheetConfig } from './entities/google-sheet-sheet-config.ent
 import { GoogleSheetConfigDto } from './dto/google-sheet-config.dto'
 import { AlertType, AlertFilter, ALERT_TYPES, evaluateAlerts, parseDurationSafe } from './alert-evaluator'
 import { ExcludedQueryDto } from './dto/excluded-query.dto'
+import { OffloadedAwbQueryDto } from './dto/tracking-smu.dto'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 import { GeneralParamsService } from '../general-params/general-params.service'
 
@@ -24,6 +25,10 @@ export class AirShipmentsService {
   /** TTL fallback for lookup caches — covers manual DB edits and multi-instance deployments */
   private static readonly LOOKUP_CACHE_TTL_MS = 5 * 60_000
   private readonly lookupCache = new Map<string, { promise: Promise<unknown>; loadedAt: number }>()
+
+  /** Tracking_SMU flight-offload source (drives the Flight Tracking alert). */
+  private static readonly TRACKING_SMU_TABLE = 'air_shipments_tracking_smu'
+  private static readonly OFFLOAD_CACHE_KEY = 'tracking_smu:offload'
 
   constructor(
     private readonly sheetsService: SheetsService,
@@ -124,10 +129,11 @@ export class AirShipmentsService {
     }
 
     if (alertFilter) {
-      const [{ nHours, mHours }, reservasiTableName, slaLookup] = await Promise.all([
+      const [{ nHours, mHours }, reservasiTableName, slaLookup, offloadByAwb] = await Promise.all([
         this.getAlertNMHours(),
         this.generalParamsService.getValue('reservasi_table_name', ''),
         this.getSlaLookupByOriginDest(),
+        this.getCachedOffloadByAwb(),
       ])
       const reservasiByAwb = await this.getCachedReservasiTrackinganByAwb(reservasiTableName)
       // Phase 1: narrow scan (no extra_fields) to decide which rows match the alert filter
@@ -135,9 +141,12 @@ export class AirShipmentsService {
         `SELECT ${this.buildAlertProjection(columns)} FROM "${tableName}" ${whereSql} ${orderBySql}`,
         params
       )
-      const enriched = this.enrichRowsWithReservasi(
-        this.enrichRowsWithSlaLookup(projectedRows, slaLookup),
-        reservasiByAwb,
+      const enriched = this.enrichRowsWithOffload(
+        this.enrichRowsWithReservasi(
+          this.enrichRowsWithSlaLookup(projectedRows, slaLookup),
+          reservasiByAwb,
+        ),
+        offloadByAwb,
       )
       const filteredRows = this.filterRowsByAlert(enriched, alertFilter, nHours, mHours)
       const total = filteredRows.length
@@ -151,9 +160,12 @@ export class AirShipmentsService {
         )
         const orderIndex = new Map(pageIds.map((id, i) => [id, i]))
         fullRows.sort((a, b) => (orderIndex.get(a.id) ?? 0) - (orderIndex.get(b.id) ?? 0))
-        data = this.enrichRowsWithReservasi(
-          this.enrichRowsWithSlaLookup(fullRows, slaLookup),
-          reservasiByAwb,
+        data = this.enrichRowsWithOffload(
+          this.enrichRowsWithReservasi(
+            this.enrichRowsWithSlaLookup(fullRows, slaLookup),
+            reservasiByAwb,
+          ),
+          offloadByAwb,
         )
       }
       return { data, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } }
@@ -189,10 +201,11 @@ export class AirShipmentsService {
       throw new BadRequestException('Invalid table name')
     }
 
-    const [{ nHours, mHours }, reservasiTableName, slaLookup] = await Promise.all([
+    const [{ nHours, mHours }, reservasiTableName, slaLookup, offloadByAwb] = await Promise.all([
       this.getAlertNMHours(),
       this.generalParamsService.getValue('reservasi_table_name', ''),
       this.getCachedSlaLookup(),
+      this.getCachedOffloadByAwb(),
     ])
     const reservasiByAwb = await this.getCachedReservasiTrackinganByAwb(reservasiTableName)
     const columns = await this.getTableColumns(tableName)
@@ -207,9 +220,12 @@ export class AirShipmentsService {
       `SELECT ${this.buildAlertProjection(columns)} FROM "${tableName}" ${whereSql}`,
       params
     )
-    const rows = this.enrichRowsWithReservasi(
-      this.enrichRowsWithSlaLookup(rawRows, slaLookup),
-      reservasiByAwb,
+    const rows = this.enrichRowsWithOffload(
+      this.enrichRowsWithReservasi(
+        this.enrichRowsWithSlaLookup(rawRows, slaLookup),
+        reservasiByAwb,
+      ),
+      offloadByAwb,
     )
 
     interface AlertSummaryItem {
@@ -522,6 +538,9 @@ export class AirShipmentsService {
     if (affectedTables.includes('air_shipments_data')) {
       this.lookupCache.delete('sla:air_shipments_data')
     }
+    if (affectedTables.includes(AirShipmentsService.TRACKING_SMU_TABLE)) {
+      this.lookupCache.delete(AirShipmentsService.OFFLOAD_CACHE_KEY)
+    }
     for (const table of affectedTables) {
       this.lookupCache.delete(`reservasi:${table}`)
     }
@@ -562,6 +581,45 @@ export class AirShipmentsService {
       const awb = AirShipmentsService.getFieldValueFromRow(row, 'awb')
       const smu = AirShipmentsService.getFieldValueFromRow(row, 'trackingan_smu')
       if (awb) map.set(String(awb).trim(), String(smu ?? '').trim())
+    }
+    return map
+  }
+
+  private getCachedOffloadByAwb(): Promise<Map<string, { offload: boolean; hasEvidence: boolean }>> {
+    return this.loadCached(AirShipmentsService.OFFLOAD_CACHE_KEY, () => this.getOffloadByAwb())
+  }
+
+  /**
+   * Loads { awb → { offload, hasEvidence } } from air_shipments_tracking_smu.
+   * `offload_status` is the computed flight-offload flag; `evidence` is the
+   * user-supplied justification link. Returns an empty Map when the table is absent.
+   */
+  private async getOffloadByAwb(): Promise<Map<string, { offload: boolean; hasEvidence: boolean }>> {
+    const tableName = AirShipmentsService.TRACKING_SMU_TABLE
+    const exists: { exists: boolean }[] = await this.dataSource.query(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.tables
+         WHERE table_schema = 'public' AND table_name = $1
+       ) AS exists`,
+      [tableName]
+    )
+    if (!exists[0]?.exists) return new Map()
+
+    const rows: Record<string, unknown>[] = await this.dataSource.query(
+      `SELECT awb, offload_status, evidence FROM "${tableName}"`
+    )
+    const map = new Map<string, { offload: boolean; hasEvidence: boolean }>()
+    for (const row of rows) {
+      const awb = AirShipmentsService.getFieldValueFromRow(row, 'awb')
+      if (!awb) continue
+      const status = String(AirShipmentsService.getFieldValueFromRow(row, 'offload_status') ?? '')
+        .trim()
+        .toLowerCase()
+      const evidence = AirShipmentsService.getFieldValueFromRow(row, 'evidence')
+      map.set(String(awb).trim(), {
+        offload: status === 'offload',
+        hasEvidence: evidence != null && String(evidence).trim() !== '',
+      })
     }
     return map
   }
@@ -636,6 +694,28 @@ export class AirShipmentsService {
       const trackinganSmu = reservasiByAwb.get(String(awb).trim())
       if (trackinganSmu === undefined) continue
       row.trackingan_smu = trackinganSmu
+    }
+    return rows
+  }
+
+  /**
+   * Injects the AWB's Tracking_SMU offload state into each row at the top level,
+   * so evaluateAlerts can drive the Flight Tracking alert. Rows whose AWB is not
+   * in Tracking_SMU are left untouched (treated as onboard / no evidence).
+   * Mutates the rows in place — see enrichRowsWithSlaLookup.
+   */
+  private enrichRowsWithOffload(
+    rows: Record<string, unknown>[],
+    offloadByAwb: Map<string, { offload: boolean; hasEvidence: boolean }>,
+  ): Record<string, unknown>[] {
+    if (!offloadByAwb.size) return rows
+    for (const row of rows) {
+      const awb = AirShipmentsService.getFieldValueFromRow(row, 'awb')
+      if (!awb) continue
+      const hit = offloadByAwb.get(String(awb).trim())
+      if (!hit) continue
+      row.offload_status = hit.offload ? 'offload' : 'onboard'
+      row.offload_has_evidence = hit.hasEvidence
     }
     return rows
   }
@@ -1558,6 +1638,84 @@ export class AirShipmentsService {
     const total = countRes?.[0]?.count ?? 0
 
     return { data, meta: { total, page, limit } }
+  }
+
+  // ── Tracking_SMU offload / evidence ──────────────────────────────────────────
+
+  /**
+   * Paginated list of offloaded AWBs from air_shipments_tracking_smu. With
+   * `withEvidence=false` (default) returns only AWBs that still need an evidence
+   * link (the active Flight Tracking alert); with `withEvidence=true` returns the
+   * already-justified AWBs (the Excluded view).
+   */
+  async findOffloadedAwbs(
+    query: OffloadedAwbQueryDto,
+  ): Promise<{ data: Record<string, unknown>[]; meta: { total: number; page: number; limit: number } }> {
+    const tableName = AirShipmentsService.TRACKING_SMU_TABLE
+    const exists: { exists: boolean }[] = await this.dataSource.query(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.tables
+         WHERE table_schema = 'public' AND table_name = $1
+       ) AS exists`,
+      [tableName]
+    )
+    if (!exists[0]?.exists) {
+      return { data: [], meta: { total: 0, page: query.page ?? 1, limit: query.limit ?? 50 } }
+    }
+
+    const { search, withEvidence = false, page = 1, limit = 50 } = query
+    const offset = (page - 1) * limit
+
+    const whereClauses: string[] = [`offload_status = 'offload'`]
+    const params: any[] = []
+
+    whereClauses.push(
+      withEvidence
+        ? `(evidence IS NOT NULL AND BTRIM(evidence) <> '')`
+        : `(evidence IS NULL OR BTRIM(evidence) = '')`
+    )
+
+    if (search && search.trim()) {
+      whereClauses.push(`awb ILIKE $${params.length + 1}`)
+      params.push(`%${search.trim()}%`)
+    }
+
+    const whereSql = `WHERE ${whereClauses.join(' AND ')}`
+    const selectCols = `id, awb, airline, std_booking, std_flight_no, actual_flight_dep, dep_flight_no,
+      dep2, dep2_flight_no, dep3, dep3_flight_no, dep4, dep4_flight_no, dep5, dep5_flight_no,
+      remarks_offload, offload_status, evidence, updated_at`
+
+    const [data, countRes] = await Promise.all([
+      this.dataSource.query(
+        `SELECT ${selectCols} FROM "${tableName}" ${whereSql} ORDER BY awb ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      ),
+      this.dataSource.query(`SELECT count(*)::int FROM "${tableName}" ${whereSql}`, params),
+    ])
+
+    const total = countRes?.[0]?.count ?? 0
+    return { data, meta: { total, page, limit } }
+  }
+
+  /** Records the evidence link for an AWB, excluding it (and all its TOs) from the alert. */
+  async setEvidenceByAwb(awb: string, evidence: string): Promise<void> {
+    if (!awb || !awb.trim()) throw new BadRequestException('AWB is required')
+    await this.dataSource.query(
+      `UPDATE "${AirShipmentsService.TRACKING_SMU_TABLE}" SET evidence = $1, updated_at = NOW() WHERE awb = $2`,
+      [evidence, awb]
+    )
+    // Evidence is user-edited (not a sync), so evict the offload cache explicitly.
+    this.lookupCache.delete(AirShipmentsService.OFFLOAD_CACHE_KEY)
+  }
+
+  /** Clears the evidence link for an AWB, restoring it (and its TOs) to the alert. */
+  async clearEvidenceByAwb(awb: string): Promise<void> {
+    if (!awb || !awb.trim()) throw new BadRequestException('AWB is required')
+    await this.dataSource.query(
+      `UPDATE "${AirShipmentsService.TRACKING_SMU_TABLE}" SET evidence = NULL, updated_at = NOW() WHERE awb = $1`,
+      [awb]
+    )
+    this.lookupCache.delete(AirShipmentsService.OFFLOAD_CACHE_KEY)
   }
 
   async getLastSyncAt(): Promise<{ lastSyncAt: string | null; byTable: Record<string, string | null> }> {

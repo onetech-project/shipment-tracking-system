@@ -71,6 +71,10 @@ export enum Permission {
   CREATE_GOOGLE_SHEET_CONFIG = 'create.google_sheet_config',
   UPDATE_GOOGLE_SHEET_CONFIG = 'update.google_sheet_config',
   DELETE_GOOGLE_SHEET_CONFIG = 'delete.google_sheet_config',
+
+  // Tracking_SMU offload evidence (Flight Tracking alert). Reads reuse READ_SLA;
+  // this guards the evidence write that excludes an AWB + its TOs from the alert.
+  UPDATE_TRACKING_SMU = 'update.tracking_smu',
 }
 
 // ── Auth Response DTOs ────────────────────────────────────────────────────────
