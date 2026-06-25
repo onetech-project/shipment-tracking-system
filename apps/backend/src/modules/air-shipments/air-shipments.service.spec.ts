@@ -126,6 +126,44 @@ describe('AirShipmentsService — runSyncCycle()', () => {
     dynamicTableService = module.get(DynamicTableService) as any
   })
 
+  it('refreshes the offload cache after setEvidenceByAwb (exclude)', async () => {
+    // Simulates the running DB: an offloaded API-carrier AWB (sheet says onboard, API says
+    // offload) with no evidence yet. setEvidenceByAwb writes evidence; we assert the cached
+    // offload lookup reflects the new evidence on the next read (i.e. the cache was evicted).
+    const state: { evidence: string | null } = { evidence: null }
+    const mockQuery = jest.fn((sql: string, params?: any[]) => {
+      if (sql.includes('information_schema.tables')) return Promise.resolve([{ exists: true }])
+      if (sql.includes('FROM airline_tracking_source')) return Promise.resolve([{ carrier_code: '126' }])
+      if (sql.includes('SELECT awb, offload_status, evidence FROM'))
+        return Promise.resolve([{ awb: '126-X', offload_status: 'onboard', evidence: state.evidence }])
+      if (sql.includes('SELECT awb, offload FROM'))
+        return Promise.resolve([{ awb: '126-X', offload: true }])
+      if (sql.includes('INSERT INTO')) {
+        state.evidence = params?.[1] ?? null
+        return Promise.resolve([])
+      }
+      return Promise.resolve([])
+    })
+    ;(service as any).dataSource = { query: mockQuery }
+    const smuCalls = () =>
+      mockQuery.mock.calls.filter((c) => String(c[0]).includes('offload_status, evidence')).length
+
+    // Before exclude: offloaded + no evidence → would fire the alert.
+    const before = await (service as any).getCachedOffloadByAwb()
+    expect(before.get('126-X')).toEqual({ offload: true, hasEvidence: false })
+
+    // Second read is served from cache (no extra tracking_smu query).
+    const callsAfterFirst = smuCalls()
+    await (service as any).getCachedOffloadByAwb()
+    expect(smuCalls()).toBe(callsAfterFirst)
+
+    // Exclude (write evidence) must evict the cache so the next read is fresh.
+    await service.setEvidenceByAwb('126-X', 'https://test.com')
+    const after = await (service as any).getCachedOffloadByAwb()
+    expect(after.get('126-X')).toEqual({ offload: true, hasEvidence: true })
+    expect(smuCalls()).toBeGreaterThan(callsAfterFirst)
+  })
+
   it('createGoogleSheetConfig triggers ensureTable for provided sheetConfigs', async () => {
     const googleSheetConfigRepo = (service as any).googleSheetConfigRepo
     const saved = {
