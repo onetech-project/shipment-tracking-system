@@ -31,10 +31,15 @@ interface MovementRecord {
 
 const norm = (v: unknown): string => String(v ?? '').trim().toLowerCase()
 
-/** The endpoint sometimes returns a JSON string rather than a parsed object. */
+/**
+ * The endpoint returns the payload double-JSON-encoded — a JSON string whose value
+ * is itself JSON text (`"{\"Table0\":...}"`). Depending on the HTTP client's
+ * content-type handling that can arrive as 0, 1, or 2 levels of string, so we parse
+ * repeatedly until we reach an object (bounded to avoid pathological input).
+ */
 export function coerceTrackingPayload(data: unknown): Record<string, unknown> | null {
   let value = data
-  if (typeof value === 'string') {
+  for (let i = 0; i < 4 && typeof value === 'string'; i++) {
     try {
       value = JSON.parse(value)
     } catch {

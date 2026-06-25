@@ -58,8 +58,10 @@ export class AirlineTrackingService {
     for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
       if (attempt > 0) await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[attempt - 1]))
       try {
+        // Request as text — the endpoint returns double-encoded JSON; coerceTrackingPayload
+        // decodes it deterministically regardless of the response content-type.
         const res = await firstValueFrom(
-          this.http.get(url, { timeout: HTTP_TIMEOUT_MS, responseType: 'json' })
+          this.http.get(url, { timeout: HTTP_TIMEOUT_MS, responseType: 'text' })
         )
         return res.data
       } catch (err) {
@@ -151,14 +153,31 @@ export class AirlineTrackingService {
     const maxPerCycle = this.toInt(await this.generalParams.getValue('airline_tracking_max_per_cycle', '500'), 500)
     const concurrency = Math.max(1, this.toInt(await this.generalParams.getValue('airline_tracking_concurrency', '5'), 5))
 
+    // Targets = recent active shipments (catch new offloads) UNION the AWBs the sheet
+    // currently flags as offload-without-evidence (the alert-relevant ones, regardless of
+    // age — since the sheet's verdict is suppressed for API carriers, these must be
+    // API-verified or they'd silently vanish from the alert).
+    // Priority 0 = sheet-flagged offload-without-evidence (the live alert items — always
+    // fetched first so the cap never drops them); priority 1 = recent active shipments
+    // (to catch new offloads). Distinct AWB keeps the higher priority (min).
     let targets: { awb: string }[]
     try {
       targets = await this.dataSource.query(
-        `SELECT DISTINCT awb FROM air_shipments_compileaircgk
-         WHERE awb IS NOT NULL AND BTRIM(awb) <> ''
-           AND split_part(awb, '-', 1) = ANY($1::text[])
-           AND parse_flexible_timestamp(extra_fields->>'atd_origin') >= now() - ($2 || ' days')::interval
-         ORDER BY awb
+        `SELECT awb FROM (
+           SELECT awb, MIN(pri) AS pri FROM (
+             SELECT awb, 0 AS pri FROM air_shipments_tracking_smu
+               WHERE offload_status = 'offload'
+                 AND split_part(awb, '-', 1) = ANY($1::text[])
+                 AND (evidence IS NULL OR BTRIM(evidence) = '')
+             UNION ALL
+             SELECT awb, 1 AS pri FROM air_shipments_compileaircgk
+               WHERE parse_flexible_timestamp(extra_fields->>'atd_origin') >= now() - ($2 || ' days')::interval
+                 AND split_part(awb, '-', 1) = ANY($1::text[])
+           ) u
+           WHERE awb IS NOT NULL AND BTRIM(awb) <> ''
+           GROUP BY awb
+         ) t
+         ORDER BY pri, awb
          LIMIT $3`,
         [carrierCodes, String(lookbackDays), maxPerCycle + 1]
       )
