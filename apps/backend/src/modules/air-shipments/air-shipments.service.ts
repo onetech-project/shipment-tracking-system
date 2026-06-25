@@ -1737,6 +1737,19 @@ export class AirShipmentsService {
         ? `(${col} IS NOT NULL AND BTRIM(${col}) <> '')`
         : `(${col} IS NULL OR BTRIM(${col}) = '')`
 
+    // Scope to AWBs that have compileaircgk TOs in the selected SLA range, using the
+    // SAME date expression as the dashboard cards — so the list and the card tonnage
+    // agree (excluding an AWB shown here always lowers the card).
+    let dateSubSelect = ''
+    if (query.startDate && query.endDate) {
+      const compileCols = await this.getTableColumns('air_shipments_compileaircgk')
+      const dateClause = this.buildDateRangeClause(compileCols, params, query.startDate, query.endDate)
+      if (dateClause) {
+        dateSubSelect = `SELECT awb FROM air_shipments_compileaircgk WHERE ${dateClause}`
+      }
+    }
+    const dateFilter = (col: string) => (dateSubSelect ? `AND ${col} IN (${dateSubSelect})` : '')
+
     const branches: string[] = []
     if (sheetExists) {
       branches.push(`
@@ -1748,6 +1761,7 @@ export class AirShipmentsService {
           AND split_part(awb, '-', 1) <> ALL($1::text[])
           AND ${evid('evidence')}
           ${searchIdx ? `AND awb ILIKE $${searchIdx}` : ''}
+          ${dateFilter('awb')}
       `)
     }
     if (apiExists) {
@@ -1761,6 +1775,7 @@ export class AirShipmentsService {
         WHERE a.offload = true
           AND ${evid(evidenceCol)}
           ${searchIdx ? `AND a.awb ILIKE $${searchIdx}` : ''}
+          ${dateFilter('a.awb')}
       `)
     }
 
