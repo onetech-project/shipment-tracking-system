@@ -54,10 +54,12 @@ describe('airline-tracking parser', () => {
     expect(parsed.offload).toBe(false)
   })
 
-  it('coerces a JSON-string payload (endpoint sometimes returns a string)', () => {
-    const asString = JSON.stringify(sample)
-    const parsed = parseTracking(coerceTrackingPayload(asString))
-    expect(parsed.offload).toBe(true)
+  it('coerces single- and double-encoded JSON-string payloads', () => {
+    // Real endpoints return double-encoded JSON: "{\"Table0\":...}"
+    const single = JSON.stringify(sample)
+    const double = JSON.stringify(single)
+    expect(parseTracking(coerceTrackingPayload(single)).offload).toBe(true)
+    expect(parseTracking(coerceTrackingPayload(double)).offload).toBe(true)
     expect(coerceTrackingPayload('not json')).toBeNull()
   })
 
