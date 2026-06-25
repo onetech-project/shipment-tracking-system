@@ -185,6 +185,27 @@ export class AirShipmentsController {
     }
   }
 
+  @Get(':tableName/sla-overview')
+  @UseGuards(RbacGuard)
+  @Authorize(Permission.READ_SLA)
+  async getSlaOverview(
+    @Param('tableName') tableName: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('days') days?: string
+  ) {
+    const daysNum = days != null && !isNaN(Number(days)) ? Number(days) : undefined
+    try {
+      return await this.service.getSlaOverviewForTable(tableName, startDate, endDate, daysNum)
+    } catch (err: unknown) {
+      this.logger.error(
+        `[GET /air-shipments/${tableName}/sla-overview]`,
+        err instanceof Error ? err.stack : String(err)
+      )
+      throw new InternalServerErrorException()
+    }
+  }
+
   @Get('last-sync')
   getLastSyncAt() {
     return this.service.getLastSyncAt()
