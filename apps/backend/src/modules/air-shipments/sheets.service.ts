@@ -104,16 +104,7 @@ export class SheetsService implements OnApplicationBootstrap {
       return true
     })
 
-    this.sheetConfigs = this.gsheetConfigs.flatMap((cfg) =>
-      cfg.sheetConfigs.map((c) => ({
-        sheetName: c.sheetName,
-        tableName: c.tableName,
-        headerRow: c.headerRow,
-        uniqueKey: c.uniqueKey,
-        skipNullCols: c.skipNullCols,
-        sheetId: cfg.sheetId,
-      }))
-    )
+    this.rebuildSheetConfigs()
 
     if (this.gsheetConfigs.length > 0 && this.sheetConfigs.length > 0) {
       this.logger.log(
@@ -327,25 +318,56 @@ export class SheetsService implements OnApplicationBootstrap {
     return []
   }
 
+  /**
+   * A config is only kept in memory (and therefore synced) when it is enabled and
+   * has a usable sheetId plus at least one sheet config. Mirrors the boot-time filter
+   * so create/update events stay consistent with what was loaded at startup.
+   */
+  private isSyncable(cfg: GoogleSheetConfig | null | undefined): boolean {
+    return Boolean(
+      cfg?.enabled &&
+        cfg.sheetId &&
+        Array.isArray(cfg.sheetConfigs) &&
+        cfg.sheetConfigs.length > 0
+    )
+  }
+
+  /** Rebuild the flat per-sheet list from the current in-memory configs. */
+  private rebuildSheetConfigs(): void {
+    this.sheetConfigs = (this.gsheetConfigs ?? []).flatMap((cfg) =>
+      (cfg.sheetConfigs ?? []).map((c) => ({
+        sheetName: c.sheetName,
+        tableName: c.tableName,
+        headerRow: c.headerRow,
+        uniqueKey: c.uniqueKey,
+        skipNullCols: c.skipNullCols,
+        sheetId: cfg.sheetId,
+      }))
+    )
+  }
+
+  /** Upsert a config into the in-memory cache by id, or drop it if no longer syncable. */
+  private upsertConfig(newConfig: GoogleSheetConfig): void {
+    // Drop any cached entry for this id first so a changed sheetLink/sheetId — or a
+    // disable — can never leave a stale config (and its old sheetId) behind.
+    this.gsheetConfigs = (this.gsheetConfigs ?? []).filter((cfg) => cfg.id !== newConfig.id)
+    if (this.isSyncable(newConfig)) {
+      this.gsheetConfigs.push(newConfig)
+    }
+    this.rebuildSheetConfigs()
+  }
+
   @OnEvent('gsheetConfig.created') onConfigCreate(newConfig: GoogleSheetConfig) {
     this.logger.log('Google Sheet config created event received, adding to memory...')
     try {
-      if (newConfig) {
-        this.gsheetConfigs.push(newConfig)
-        this.sheetConfigs = this.gsheetConfigs.flatMap((cfg) =>
-          cfg.sheetConfigs.map((c) => ({
-            sheetName: c.sheetName,
-            tableName: c.tableName,
-            headerRow: c.headerRow,
-            uniqueKey: c.uniqueKey,
-            skipNullCols: c.skipNullCols,
-            sheetId: cfg.sheetId,
-          }))
+      if (!this.isSyncable(newConfig)) {
+        this.logger.warn(
+          `[SheetsService] Created config "${newConfig?.label}" is disabled or invalid — not cached`
         )
-        this.logger.log(`Sheet config added: ${this.sheetConfigs.length} sheets configured`)
-      } else {
-        this.logger.warn('No enabled Google Sheet config found during create event')
+        return
       }
+      this.upsertConfig(newConfig)
+      this.logger.log(`Sheet config added: ${this.sheetConfigs.length} sheets configured`)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
       this.logger.error(`[SheetsService] Failed to add new sheet config to memory: ${message}`)
@@ -355,28 +377,20 @@ export class SheetsService implements OnApplicationBootstrap {
   @OnEvent('gsheetConfig.updated') onConfigUpdate(newConfig: GoogleSheetConfig) {
     this.logger.log('Google Sheet config updated event received, reloading config...')
     try {
-      if (newConfig) {
-        if (this.gsheetConfigs.some((cfg) => cfg.id === newConfig.id)) {
-          this.logger.log(`Updating existing config "${newConfig.label}" in memory`)
-          this.gsheetConfigs = this.gsheetConfigs.map((cfg) =>
-            cfg.id === newConfig.id ? newConfig : cfg
-          )
-        }
-
-        this.sheetConfigs = this.gsheetConfigs.flatMap((cfg) =>
-          cfg.sheetConfigs.map((c) => ({
-            sheetName: c.sheetName,
-            tableName: c.tableName,
-            headerRow: c.headerRow,
-            uniqueKey: c.uniqueKey,
-            skipNullCols: c.skipNullCols,
-            sheetId: cfg.sheetId,
-          }))
-        )
-        this.logger.log(`Sheet config reloaded: ${this.sheetConfigs.length} sheets configured`)
-      } else {
-        this.logger.warn('No enabled Google Sheet config found during update event')
+      if (!newConfig) {
+        this.logger.warn('No Google Sheet config found during update event')
+        return
       }
+      // Upsert by id: this adds configs that were never loaded at boot (disabled at
+      // boot, filtered out, or created out-of-band) so a changed link starts syncing
+      // from the new spreadsheet without a backend restart — and removes the config
+      // when it becomes disabled/invalid, matching the scheduler's behaviour.
+      this.upsertConfig(newConfig)
+      this.logger.log(
+        this.isSyncable(newConfig)
+          ? `Config "${newConfig.label}" reloaded — ${this.sheetConfigs.length} sheets configured`
+          : `Config "${newConfig.label}" is disabled or invalid — removed from memory`
+      )
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
       this.logger.error(`[SheetsService] Failed to reload sheet config from DB: ${message}`)
