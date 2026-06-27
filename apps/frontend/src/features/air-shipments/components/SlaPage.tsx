@@ -20,15 +20,19 @@ import {
   batchCountAirShipments,
   excludeRow,
   restoreRow,
+  excludeByLt,
+  restoreByLt,
   fetchExcluded,
   fetchOffloadedAwbs,
   setAwbEvidence,
   clearAwbEvidence,
 } from '@/features/air-shipments/hooks/useAirShipments'
 import { ExcludeModal } from '@/features/air-shipments/components/ExcludeModal'
+import { ExcludeByLtModal } from '@/features/air-shipments/components/ExcludeByLtModal'
+import { MultiRouteFilter } from '@/features/air-shipments/components/MultiRouteFilter'
 import { EvidenceModal } from '@/features/air-shipments/components/EvidenceModal'
 import { OffloadedAwbTable } from '@/features/air-shipments/components/OffloadedAwbTable'
-import { SLA_FROZEN_KEYS, SLA_DEFAULT_VISIBLE, colLabel } from '@/features/air-shipments/columns.config'
+import { SLA_FROZEN_KEYS, SLA_DEFAULT_VISIBLE, colLabel, frozenColWidth } from '@/features/air-shipments/columns.config'
 import {
   AirShipmentRow,
   AirShipmentsResponse,
@@ -36,26 +40,48 @@ import {
   OffloadedAwbRow,
   SortOrder,
 } from '@/features/air-shipments/types'
-import { Lock, Trash2, RotateCcw } from 'lucide-react'
+import { Lock, Trash2, RotateCcw, Ban, GripVertical, Pin, PinOff } from 'lucide-react'
 import { AxiosError } from 'axios'
 
-const SLA_COLUMNS_STORAGE_KEY = 'sla-columns-v1'
+/** Sentinel alert key for a global exclude-by-LT (mirrors the backend GLOBAL_EXCLUDE_KEY). */
+const GLOBAL_EXCLUDE_KEY = '__all__'
 
-function loadStoredColumns(): Record<string, boolean> {
+const SLA_COLUMN_LAYOUT_KEY = 'sla-column-layout-v1'
+
+/** One column's persisted layout: position (array order), visibility, and frozen/pinned state. */
+type ColumnLayoutItem = { key: string; visible: boolean; frozen: boolean }
+
+function loadStoredLayout(): ColumnLayoutItem[] | null {
   try {
-    const raw = localStorage.getItem(SLA_COLUMNS_STORAGE_KEY)
-    return raw ? (JSON.parse(raw) as Record<string, boolean>) : {}
+    const raw = localStorage.getItem(SLA_COLUMN_LAYOUT_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return null
+    return parsed
+      .filter((i) => i && typeof i.key === 'string')
+      .map((i) => ({ key: i.key, visible: !!i.visible, frozen: !!i.frozen }))
   } catch {
-    return {}
+    return null
   }
 }
 
-function saveStoredColumns(cols: Record<string, boolean>): void {
+function saveStoredLayout(layout: ColumnLayoutItem[]): void {
   try {
-    localStorage.setItem(SLA_COLUMNS_STORAGE_KEY, JSON.stringify(cols))
+    localStorage.setItem(SLA_COLUMN_LAYOUT_KEY, JSON.stringify(layout))
   } catch {
     // localStorage unavailable (SSR, private mode) — silently skip
   }
+}
+
+/** Frozen columns must render contiguously at the left — keep them ahead of the rest. */
+function normalizeLayout(layout: ColumnLayoutItem[]): ColumnLayoutItem[] {
+  return [...layout.filter((i) => i.frozen), ...layout.filter((i) => !i.frozen)]
+}
+
+/** Parse the comma-joined `route` URL param into distinct route labels. */
+function parseRoutesParam(raw: string | null): string[] {
+  if (!raw) return []
+  return Array.from(new Set(raw.split(',').map((r) => r.trim()).filter(Boolean)))
 }
 
 function toDateStr(d: Date): string {
@@ -123,9 +149,12 @@ const ALERT_OPTIONS: Array<{ value: AlertFilterOption | null; label: string }> =
 ]
 
 /** Map from alert key → human-readable label (derived from ALERT_OPTIONS) */
-const ALERT_TYPE_LABELS: Record<string, string> = Object.fromEntries(
-  ALERT_OPTIONS.filter((o) => o.value !== null).map((o) => [o.value as string, o.label])
-)
+const ALERT_TYPE_LABELS: Record<string, string> = {
+  ...Object.fromEntries(
+    ALERT_OPTIONS.filter((o) => o.value !== null).map((o) => [o.value as string, o.label])
+  ),
+  [GLOBAL_EXCLUDE_KEY]: 'All Alerts',
+}
 
 /** Alert badge colours (matching DashboardAlertCards) */
 const ALERT_BADGE_COLORS: Record<string, string> = {
@@ -149,6 +178,7 @@ export function SlaPage() {
 
   const tableRef = useRef<HTMLDivElement | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const dragColRef = useRef<string | null>(null)
   const shouldScrollOnLoad = useRef(!!(searchParams.get('alert') || searchParams.get('route')))
   const pendingScrollRef = useRef(false)
 
@@ -164,8 +194,8 @@ export function SlaPage() {
   const [activeAlert, setActiveAlert] = useState<AlertFilterOption | null>(
     () => (searchParams.get('alert') as AlertFilterOption) || null
   )
-  const [activeRoute, setActiveRoute] = useState<string>(
-    () => searchParams.get('route') ?? ''
+  const [activeRoutes, setActiveRoutes] = useState<string[]>(
+    () => parseRoutesParam(searchParams.get('route'))
   )
   const [searchInput, setSearchInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
@@ -176,7 +206,7 @@ export function SlaPage() {
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<string | null>(null)
-  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>({})
+  const [columnLayout, setColumnLayout] = useState<ColumnLayoutItem[]>([])
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [lockState, setLockState] = useState<Record<string, boolean>>({})
   const [showConfigModal, setShowConfigModal] = useState(false)
@@ -198,6 +228,7 @@ export function SlaPage() {
   const [excludedMeta, setExcludedMeta] = useState<{ total: number; page: number; limit: number } | null>(null)
   const [excludedPage, setExcludedPage] = useState(1)
   const [excludedAlertTypeFilter, setExcludedAlertTypeFilter] = useState<string>('all')
+  const [ltModal, setLtModal] = useState<'exclude' | 'restore' | null>(null)
 
   // ── Flight Tracking (Tracking_SMU offload) state ──────────────────────────────
   // The Flight Tracking alert is driven by offloaded AWBs (one row per AWB), not TOs.
@@ -217,8 +248,10 @@ export function SlaPage() {
       setRouteAlertLoading(true)
     }
     try {
+      const overviewParams = new URLSearchParams({ startDate, endDate })
+      for (const r of activeRoutes) overviewParams.append('routeFilter', r)
       const response = await apiClient.get<SlaOverviewResponse>(
-        `${TABLE_ENDPOINT}/sla-overview?startDate=${startDate}&endDate=${endDate}`
+        `${TABLE_ENDPOINT}/sla-overview?${overviewParams.toString()}`
       )
       setSummary(response.data.summary)
       setRoutes(response.data.routes?.routes ?? [])
@@ -249,7 +282,7 @@ export function SlaPage() {
       })
       if (searchQuery.trim()) params.set('search', searchQuery.trim())
       params.set('alertFilter', activeAlert ?? 'any')
-      if (activeRoute) params.set('routeFilter', activeRoute)
+      for (const r of activeRoutes) params.append('routeFilter', r)
 
       const response = await apiClient.get<AirShipmentsResponse>(
         `${TABLE_ENDPOINT}?${params.toString()}`
@@ -301,7 +334,7 @@ export function SlaPage() {
   const refresh = useCallback(() => {
     void fetchTableData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, sortBy, sortOrder, activeAlert, activeRoute, searchQuery, startDate, endDate, paramsLoaded, dateError])
+  }, [page, sortBy, sortOrder, activeAlert, activeRoutes, searchQuery, startDate, endDate, paramsLoaded, dateError])
 
   // ── Effects ─────────────────────────────────────────────────────────────────
 
@@ -323,7 +356,7 @@ export function SlaPage() {
     void fetchSlaOverview()
     setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startDate, endDate, paramsLoaded])
+  }, [startDate, endDate, paramsLoaded, activeRoutes])
 
   useEffect(() => {
     if (!isLoading && data && shouldScrollOnLoad.current) {
@@ -349,7 +382,7 @@ export function SlaPage() {
     if (!paramsLoaded || dateError) return
     void fetchTableData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, sortBy, sortOrder, activeAlert, activeRoute, searchQuery, startDate, endDate, paramsLoaded, dateError])
+  }, [page, sortBy, sortOrder, activeAlert, activeRoutes, searchQuery, startDate, endDate, paramsLoaded, dateError])
 
   useEffect(() => {
     if (activeTab === 'excluded') {
@@ -387,7 +420,8 @@ export function SlaPage() {
 
   // ── Column management ───────────────────────────────────────────────────────
 
-  const allColumns = useMemo(() => {
+  // Set of every column key discovered in the current data (real columns + extra_fields).
+  const allDataColumns = useMemo(() => {
     const cols = new Set<string>()
     if (data?.data) {
       for (const row of data.data) {
@@ -395,63 +429,88 @@ export function SlaPage() {
           .filter((k) => k !== 'extra_fields')
           .forEach((k) => cols.add(k))
         if (row.extra_fields && typeof row.extra_fields === 'object') {
-          Object.keys(row.extra_fields).forEach((k) => cols.add(k))
+          Object.keys(row.extra_fields as Record<string, unknown>).forEach((k) => cols.add(k))
         }
       }
     }
-    return [
-      ...SLA_FROZEN_KEYS.filter((col) => cols.has(col.key)).map((c) => c.key),
-      ...Array.from(cols).filter((col) => !SLA_FROZEN_KEYS.some((c) => c.key === col)),
-    ]
+    return cols
   }, [data])
 
-  const frozenColumns = useMemo(
-    () => SLA_FROZEN_KEYS.filter((col) => allColumns.includes(col.key)).map((c) => c.key),
-    [allColumns]
-  )
-  const toggleableColumns = useMemo(
-    () => allColumns.filter((col) => !SLA_FROZEN_KEYS.some((c) => c.key === col)),
-    [allColumns]
-  )
-
+  // Reconcile the persisted layout with the columns present in the data: keep all stored
+  // entries (in their saved order — retained even if absent from the current page so config
+  // survives pagination), and append any newly-discovered columns at the end.
   useEffect(() => {
-    const stored = loadStoredColumns()
-    setVisibleColumns((prev) => {
-      const next = { ...prev }
-      for (const col of frozenColumns) next[col] = true
-      for (const col of toggleableColumns) {
-        if (col in stored) {
-          next[col] = stored[col]
-        } else if (!(col in next)) {
-          next[col] = SLA_DEFAULT_VISIBLE.has(col)
-        }
+    if (allDataColumns.size === 0) return
+    setColumnLayout((prev) => {
+      const kept = [...(prev.length > 0 ? prev : loadStoredLayout() ?? [])]
+      const seen = new Set(kept.map((i) => i.key))
+      const frozenDefaults = SLA_FROZEN_KEYS.map((c) => c.key).filter(
+        (k) => allDataColumns.has(k) && !seen.has(k)
+      )
+      const others = Array.from(allDataColumns).filter(
+        (k) => !seen.has(k) && !frozenDefaults.includes(k)
+      )
+      for (const key of [...frozenDefaults, ...others]) {
+        const isFrozenDefault = SLA_FROZEN_KEYS.some((c) => c.key === key)
+        kept.push({
+          key,
+          frozen: isFrozenDefault,
+          visible: isFrozenDefault || SLA_DEFAULT_VISIBLE.has(key),
+        })
       }
-      return next
+      return normalizeLayout(kept)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allColumns])
+  }, [allDataColumns])
+
+  // Persist layout whenever it changes.
+  useEffect(() => {
+    if (columnLayout.length > 0) saveStoredLayout(columnLayout)
+  }, [columnLayout])
+
+  // Derived views consumed by the table + dropdown.
+  const orderedVisibleColumns = useMemo(
+    () => columnLayout.filter((i) => i.visible).map((i) => i.key),
+    [columnLayout]
+  )
+  const frozenTableColumns = useMemo(
+    () =>
+      columnLayout
+        .filter((i) => i.frozen && i.visible)
+        .map((i) => ({ key: i.key, width: frozenColWidth(i.key) })),
+    [columnLayout]
+  )
 
   const handleColumnToggle = (col: string) => {
-    if (frozenColumns.includes(col)) return
-    setVisibleColumns((prev) => {
-      const next = { ...prev, [col]: !prev[col] }
-      const toStore = Object.fromEntries(
-        Object.entries(next).filter(([k]) => !frozenColumns.includes(k))
-      )
-      saveStoredColumns(toStore)
-      return next
-    })
+    setColumnLayout((prev) =>
+      prev.map((i) => (i.key === col ? { ...i, visible: !i.visible } : i))
+    )
+  }
+
+  const handleColumnToggleFrozen = (col: string) => {
+    setColumnLayout((prev) =>
+      normalizeLayout(prev.map((i) => (i.key === col ? { ...i, frozen: !i.frozen } : i)))
+    )
   }
 
   const handleToggleAllColumns = (show: boolean) => {
-    setVisibleColumns((prev) => {
-      const next = { ...prev }
-      for (const col of toggleableColumns) next[col] = show
-      const toStore = Object.fromEntries(
-        Object.entries(next).filter(([k]) => !frozenColumns.includes(k))
-      )
-      saveStoredColumns(toStore)
-      return next
+    setColumnLayout((prev) => prev.map((i) => ({ ...i, visible: show })))
+  }
+
+  // Native HTML5 drag-and-drop reorder within the columns dropdown.
+  const handleColumnDrop = (targetKey: string) => {
+    const dragKey = dragColRef.current
+    dragColRef.current = null
+    if (!dragKey || dragKey === targetKey) return
+    setColumnLayout((prev) => {
+      const arr = [...prev]
+      const from = arr.findIndex((i) => i.key === dragKey)
+      if (from < 0) return prev
+      const [moved] = arr.splice(from, 1)
+      const to = arr.findIndex((i) => i.key === targetKey)
+      if (to < 0) return prev
+      arr.splice(to, 0, moved)
+      return normalizeLayout(arr)
     })
   }
 
@@ -553,6 +612,30 @@ export function SlaPage() {
     }
   }
 
+  // ── Exclude / restore by LT number (global, above the table) ──────────────────
+
+  async function handleLtConfirm(ltNumbers: string[], reason: string) {
+    try {
+      if (ltModal === 'exclude') {
+        const affected = await excludeByLt(TABLE_NAME, ltNumbers, reason)
+        window.alert(`Excluded ${affected} row(s)`)
+      } else {
+        const affected = await restoreByLt(TABLE_NAME, ltNumbers)
+        window.alert(`Restored ${affected} row(s)`)
+      }
+      setLtModal(null)
+      refresh()
+      void fetchSlaOverview()
+      void fetchExcludedRows()
+    } catch (err) {
+      window.alert(
+        `Operation failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+      )
+      // re-throw so the modal's loading state is cleared by its own finally block
+      throw err
+    }
+  }
+
   // ── Flight Tracking evidence (per-AWB) ───────────────────────────────────────
 
   async function handleSaveEvidence(evidence: string) {
@@ -590,22 +673,36 @@ export function SlaPage() {
 
   // ── Alert filter helpers ────────────────────────────────────────────────────
 
-  const applyRouteAlertFilter = (alertKey: DashboardAlertKey, route: string) => {
-    pendingScrollRef.current = true
-    setActiveAlert(alertKey)
-    setActiveRoute(route)
-    setPage(1)
-    setOffloadedPage(1)
+  /** Rewrites the `/sla` URL to reflect the current alert + routes + date range. */
+  const syncUrl = (alertKey: AlertFilterOption | null, routesList: string[]) => {
     const params = new URLSearchParams()
-    params.set('alert', alertKey)
-    params.set('route', route)
+    if (alertKey) params.set('alert', alertKey)
+    if (routesList.length) params.set('route', routesList.join(','))
     params.set('startDate', startDate)
     params.set('endDate', endDate)
     router.replace(`/sla?${params.toString()}`, { scroll: false })
   }
 
+  // Drill-down from a card / route-alert table: focus a single route (replaces selection).
+  const applyRouteAlertFilter = (alertKey: DashboardAlertKey, route: string) => {
+    pendingScrollRef.current = true
+    setActiveAlert(alertKey)
+    setActiveRoutes([route])
+    setPage(1)
+    setOffloadedPage(1)
+    syncUrl(alertKey, [route])
+  }
+
   const handleRouteSelect = (alertKey: DashboardAlertKey, route: string) =>
     applyRouteAlertFilter(alertKey, route)
+
+  // Multi-select route filter (panel + table dropdowns share this).
+  const handleRoutesChange = (next: string[]) => {
+    setActiveRoutes(next)
+    setPage(1)
+    setOffloadedPage(1)
+    syncUrl(activeAlert, next)
+  }
 
   const handleAlertDropdownChange = (value: string) => {
     pendingScrollRef.current = true
@@ -613,13 +710,10 @@ export function SlaPage() {
     setActiveAlert(newAlert)
     setPage(1)
     setOffloadedPage(1)
-    const params = new URLSearchParams()
-    if (newAlert) params.set('alert', newAlert)
-    if (activeRoute) params.set('route', activeRoute)
-    params.set('startDate', startDate)
-    params.set('endDate', endDate)
-    router.replace(`/sla?${params.toString()}`, { scroll: false })
+    syncUrl(newAlert, activeRoutes)
   }
+
+  const routeLabels = useMemo(() => routes.map((r) => r.label), [routes])
 
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -644,6 +738,9 @@ export function SlaPage() {
           onConfigure={() => setShowConfigModal(true)}
           isConnected={isConnected}
           lastSyncAt={lastSyncAt}
+          routeOptions={routeLabels}
+          selectedRoutes={activeRoutes}
+          onRoutesChange={handleRoutesChange}
         />
 
         <GeneralParamsModal
@@ -735,29 +832,13 @@ export function SlaPage() {
 
               <label className="block">
                 <span className="text-sm font-medium text-slate-700">Route</span>
-                <select
-                  value={activeRoute}
-                  onChange={(e) => {
-                    pendingScrollRef.current = true
-                    const newRoute = e.target.value
-                    setActiveRoute(newRoute)
-                    setPage(1)
-                    const params = new URLSearchParams()
-                    if (activeAlert) params.set('alert', activeAlert)
-                    if (newRoute) params.set('route', newRoute)
-                    params.set('startDate', startDate)
-                    params.set('endDate', endDate)
-                    router.replace(`/sla?${params.toString()}`, { scroll: false })
-                  }}
-                  className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-                >
-                  <option value="">All Routes</option>
-                  {routes.map((route) => (
-                    <option key={route.label} value={route.label}>
-                      {route.label}
-                    </option>
-                  ))}
-                </select>
+                <div className="mt-1">
+                  <MultiRouteFilter
+                    routes={routeLabels}
+                    selected={activeRoutes}
+                    onChange={handleRoutesChange}
+                  />
+                </div>
               </label>
             </div>
 
@@ -787,7 +868,7 @@ export function SlaPage() {
                     style={{ boxShadow: '0 8px 32px 0 rgba(0,0,0,0.18)' }}
                   >
                     <div className="px-3 py-2 border-b border-border bg-muted rounded-t-lg sticky top-0 z-10 flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold text-muted-foreground">Toggle Columns</span>
+                      <span className="text-xs font-semibold text-muted-foreground">Columns · drag to reorder</span>
                       <div className="flex gap-1">
                         <button
                           type="button"
@@ -805,29 +886,61 @@ export function SlaPage() {
                         </button>
                       </div>
                     </div>
-                    <div className="flex flex-col gap-1 px-3 py-2">
-                      {allColumns.map((col) => (
-                        <label
-                          key={col}
-                          className="flex items-center gap-2 text-xs cursor-pointer hover:bg-accent/30 rounded px-1 py-1 transition-colors"
+                    <div className="flex flex-col gap-0.5 px-2 py-2">
+                      {columnLayout.map((item) => (
+                        <div
+                          key={item.key}
+                          draggable
+                          onDragStart={() => {
+                            dragColRef.current = item.key
+                          }}
+                          onDragOver={(e) => e.preventDefault()}
+                          onDrop={() => handleColumnDrop(item.key)}
+                          className="flex items-center gap-2 text-xs rounded px-1 py-1 hover:bg-accent/30 transition-colors"
                         >
+                          <span className="cursor-grab text-muted-foreground active:cursor-grabbing" title="Drag to reorder">
+                            <GripVertical size={13} />
+                          </span>
                           <input
                             type="checkbox"
-                            checked={visibleColumns[col] ?? false}
-                            onChange={() => handleColumnToggle(col)}
-                            disabled={frozenColumns.includes(col)}
+                            checked={item.visible}
+                            onChange={() => handleColumnToggle(item.key)}
                             className="accent-accent h-3 w-3 rounded border border-border focus:ring-1 focus:ring-accent"
                           />
-                          <span className="truncate" title={colLabel(col)}>
-                            {colLabel(col)}
+                          <span className="flex-1 truncate" title={colLabel(item.key)}>
+                            {colLabel(item.key)}
                           </span>
-                        </label>
+                          <button
+                            type="button"
+                            onClick={() => handleColumnToggleFrozen(item.key)}
+                            title={item.frozen ? 'Unpin column' : 'Pin column (freeze on scroll)'}
+                            className={`rounded p-0.5 transition-colors hover:bg-accent ${
+                              item.frozen ? 'text-primary' : 'text-muted-foreground'
+                            }`}
+                          >
+                            {item.frozen ? <Pin size={13} /> : <PinOff size={13} />}
+                          </button>
+                        </div>
                       ))}
                     </div>
                   </div>
                 )}
 
                 <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setLtModal('exclude')}
+                    className="border border-destructive rounded px-2 py-1 text-xs bg-background hover:bg-accent text-destructive flex items-center gap-1"
+                  >
+                    <Ban size={14} /> Exclude LT
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLtModal('restore')}
+                    className="border rounded px-2 py-1 text-xs bg-background hover:bg-accent flex items-center gap-1"
+                  >
+                    <RotateCcw size={14} /> Restore LT
+                  </button>
                   <button
                     type="button"
                     onClick={() => openBatch('lock')}
@@ -923,7 +1036,8 @@ export function SlaPage() {
                   sortOrder={sortOrder}
                   onSort={handleSort}
                   onPageChange={setPage}
-                  visibleColumns={visibleColumns}
+                  columns={orderedVisibleColumns}
+                  frozenColumns={frozenTableColumns}
                   onToggleLock={handleToggleLock}
                   alertFilter={activeAlert ?? undefined}
                   onExclude={
@@ -1112,6 +1226,14 @@ export function SlaPage() {
         initialEvidence={evidenceModal?.initial ?? ''}
         onConfirm={handleSaveEvidence}
         onClose={() => setEvidenceModal(null)}
+      />
+
+      {/* ── Exclude / Restore by LT number ── */}
+      <ExcludeByLtModal
+        open={ltModal !== null}
+        mode={ltModal ?? 'exclude'}
+        onConfirm={handleLtConfirm}
+        onClose={() => setLtModal(null)}
       />
 
     </div>

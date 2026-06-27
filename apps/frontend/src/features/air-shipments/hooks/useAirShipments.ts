@@ -182,6 +182,27 @@ export async function restoreRow(
   })
 }
 
+/** Globally excludes every row matching the given LT number(s) from all alert types. */
+export async function excludeByLt(
+  tableName: string,
+  ltNumbers: string[],
+  reason: string
+): Promise<number> {
+  const res = await apiClient.patch(`/air-shipments/${tableName}/exclude-by-lt`, {
+    ltNumbers,
+    reason,
+  })
+  return res.data?.affected ?? 0
+}
+
+/** Reverses a global exclude-by-LT for the given LT number(s). */
+export async function restoreByLt(tableName: string, ltNumbers: string[]): Promise<number> {
+  const res = await apiClient.patch(`/air-shipments/${tableName}/restore-by-lt`, {
+    ltNumbers,
+  })
+  return res.data?.affected ?? 0
+}
+
 interface ExcludedResponse {
   data: AirShipmentRow[]
   meta: {

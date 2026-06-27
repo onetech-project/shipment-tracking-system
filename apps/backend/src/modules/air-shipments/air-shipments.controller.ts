@@ -17,7 +17,7 @@ import { GoogleSheetConfigDto } from './dto/google-sheet-config.dto'
 import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
 import { Permission } from '@shared/auth'
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator'
-import { ExcludedQueryDto, ExcludeRowDto, RestoreRowDto } from './dto/excluded-query.dto'
+import { ExcludedQueryDto, ExcludeRowDto, RestoreRowDto, ExcludeByLtDto, RestoreByLtDto } from './dto/excluded-query.dto'
 import { OffloadedAwbQueryDto, SetEvidenceDto } from './dto/tracking-smu.dto'
 import { AirlineTrackingSourceService, AirlineSource } from './airline-tracking/airline-tracking-source.service'
 import { AirlineTrackingService } from './airline-tracking/airline-tracking.service'
@@ -200,11 +200,12 @@ export class AirShipmentsController {
     @Param('tableName') tableName: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
-    @Query('days') days?: string
+    @Query('days') days?: string,
+    @Query('routeFilter') routeFilter?: string | string[]
   ) {
     const daysNum = days != null && !isNaN(Number(days)) ? Number(days) : undefined
     try {
-      return await this.service.getSlaOverviewForTable(tableName, startDate, endDate, daysNum)
+      return await this.service.getSlaOverviewForTable(tableName, startDate, endDate, daysNum, routeFilter)
     } catch (err: unknown) {
       this.logger.error(
         `[GET /air-shipments/${tableName}/sla-overview]`,
@@ -246,6 +247,26 @@ export class AirShipmentsController {
     @Body() body: RestoreRowDto
   ): Promise<void> {
     return this.service.restoreRow(tableName, id, body.alertType)
+  }
+
+  // Exclude/restore by lt_number from above the table (global — hides from every alert type).
+  // 2-segment paths; declared before the catch-all GET `:tableName`.
+  @Patch(':tableName/exclude-by-lt')
+  async excludeByLt(
+    @Param('tableName') tableName: string,
+    @Body() body: ExcludeByLtDto
+  ): Promise<{ affected: number }> {
+    const affected = await this.service.excludeByLt(tableName, body.ltNumbers, body.reason)
+    return { affected }
+  }
+
+  @Patch(':tableName/restore-by-lt')
+  async restoreByLt(
+    @Param('tableName') tableName: string,
+    @Body() body: RestoreByLtDto
+  ): Promise<{ affected: number }> {
+    const affected = await this.service.restoreByLt(tableName, body.ltNumbers)
+    return { affected }
   }
 
   // ── Tracking_SMU offload alert (per-AWB) ──────────────────────────────────────

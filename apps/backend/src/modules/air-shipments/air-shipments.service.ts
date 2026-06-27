@@ -8,7 +8,7 @@ import { ChunkError, RowError, SheetResult } from './sheet-config.interface'
 import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
 import { GoogleSheetSheetConfig } from './entities/google-sheet-sheet-config.entity'
 import { GoogleSheetConfigDto } from './dto/google-sheet-config.dto'
-import { AlertType, AlertFilter, ALERT_TYPES, evaluateAlerts, parseDurationSafe } from './alert-evaluator'
+import { AlertType, AlertFilter, ALERT_TYPES, GLOBAL_EXCLUDE_KEY, evaluateAlerts, parseDurationSafe } from './alert-evaluator'
 import { ExcludedQueryDto } from './dto/excluded-query.dto'
 import { OffloadedAwbQueryDto } from './dto/tracking-smu.dto'
 import { EventEmitter2 } from '@nestjs/event-emitter'
@@ -70,7 +70,7 @@ export class AirShipmentsService {
       sortOrder: 'asc' | 'desc'
       search?: string
       alertFilter?: AlertFilter
-      routeFilter?: string
+      routeFilter?: string | string[]
       days?: number
       startDate?: string
       endDate?: string
@@ -101,21 +101,8 @@ export class AirShipmentsService {
       whereClauses.push(`(${orConds.join(' OR ')})`)
     }
 
-    if (routeFilter && routeFilter.trim()) {
-      const parts = routeFilter
-        .split(/\s*-\s*/)
-        .map((part) => part.trim())
-        .filter(Boolean)
-      if (parts.length === 2) {
-        const [origin, destination] = parts
-        const originExpr = this.buildFieldValueExpression('origin', columns)
-        const destinationExpr = this.buildFieldValueExpression('destination', columns)
-        whereClauses.push(`LOWER(${originExpr}) = LOWER($${params.length + 1})`)
-        params.push(origin)
-        whereClauses.push(`LOWER(${destinationExpr}) = LOWER($${params.length + 1})`)
-        params.push(destination)
-      }
-    }
+    const routeClause = this.buildRouteFilterClause(routeFilter, columns, params)
+    if (routeClause) whereClauses.push(routeClause)
 
     const dateClause = this.buildDateRangeClause(columns, params, startDate, endDate, days)
     if (dateClause) whereClauses.push(dateClause)
@@ -199,10 +186,19 @@ export class AirShipmentsService {
    * the alert summary (incl. OTP), the distinct route list, and the
    * per-route alert/OTP breakdown.
    */
-  async getSlaOverviewForTable(tableName: string, startDate?: string, endDate?: string, days?: number) {
+  async getSlaOverviewForTable(
+    tableName: string,
+    startDate?: string,
+    endDate?: string,
+    days?: number,
+    routeFilter?: string | string[],
+  ) {
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
       throw new BadRequestException('Invalid table name')
     }
+    // Filter applied in-memory to the alert/OTP/route-alert accumulators only — the
+    // distinct route list (dropdown options) is intentionally left unfiltered.
+    const routeFilterSet = AirShipmentsService.buildRouteFilterSet(routeFilter)
 
     const [{ nHours, mHours }, reservasiTableName, slaLookup, offloadByAwb] = await Promise.all([
       this.getAlertNMHours(),
@@ -281,12 +277,15 @@ export class AirShipmentsService {
       const origin = String(getFieldValue(row, 'origin') ?? '').trim()
       const destination = String(getFieldValue(row, 'destination') ?? '').trim()
       const route = origin && destination ? `${origin} - ${destination}` : ''
+      // Restrict cards / route-alert / OTP to the selected routes (route list above is unaffected).
+      if (routeFilterSet && !routeFilterSet.has(route.toLowerCase())) continue
       const grossWeight = parseFloat(String(getFieldValue(row, 'gross_weight') ?? '0')) || 0
 
       const excludedReasons = row.excluded_reasons as Record<string, string> | null
       for (const type of ALERT_TYPES) {
         if (!alerts[type]) continue
-        if (excludedReasons?.[type]) continue  // skip if excluded for this specific type
+        // skip if excluded for this specific type, or globally excluded by lt_number
+        if (excludedReasons?.[type] || excludedReasons?.[GLOBAL_EXCLUDE_KEY]) continue
         const item = acc[type]
         const prev = item.breakdown.get(route) ?? 0
         item.breakdown.set(route, prev + grossWeight)
@@ -467,6 +466,46 @@ export class AirShipmentsService {
     return routeAlerts
   }
 
+  /**
+   * Builds a WHERE clause matching any of the given "ORIGIN - DESTINATION" route
+   * labels (OR-combined). Accepts a single label or an array; returns null when no
+   * valid route is supplied. Appends bind params onto `params`.
+   */
+  private buildRouteFilterClause(
+    routeFilter: string | string[] | undefined,
+    columns: string[],
+    params: any[],
+  ): string | null {
+    if (!routeFilter) return null
+    const labels = (Array.isArray(routeFilter) ? routeFilter : [routeFilter])
+      .map((r) => String(r).trim())
+      .filter(Boolean)
+    if (labels.length === 0) return null
+
+    const originExpr = this.buildFieldValueExpression('origin', columns)
+    const destinationExpr = this.buildFieldValueExpression('destination', columns)
+    const orClauses: string[] = []
+    for (const label of labels) {
+      const parts = label.split(/\s*-\s*/).map((p) => p.trim()).filter(Boolean)
+      if (parts.length !== 2) continue
+      const [origin, destination] = parts
+      orClauses.push(
+        `(LOWER(${originExpr}) = LOWER($${params.length + 1}) AND LOWER(${destinationExpr}) = LOWER($${params.length + 2}))`,
+      )
+      params.push(origin, destination)
+    }
+    return orClauses.length > 0 ? `(${orClauses.join(' OR ')})` : null
+  }
+
+  /** Normalizes a single/array route filter to a lowercased label Set, or null when empty. */
+  private static buildRouteFilterSet(routeFilter?: string | string[]): Set<string> | null {
+    if (!routeFilter) return null
+    const labels = (Array.isArray(routeFilter) ? routeFilter : [routeFilter])
+      .map((r) => String(r).trim().toLowerCase())
+      .filter(Boolean)
+    return labels.length > 0 ? new Set(labels) : null
+  }
+
   private buildDateRangeClause(
     columns: string[],
     params: any[],
@@ -512,9 +551,12 @@ export class AirShipmentsService {
     row: Record<string, unknown>,
     alertFilter: AlertFilter,
   ): boolean {
-    if (alertFilter === 'normal' || alertFilter === 'any') return false
     const excluded = row.excluded_reasons as Record<string, string> | null
-    return Boolean(excluded?.[alertFilter])
+    if (!excluded) return false
+    // A global exclude (exclude-by-LT) hides the row from every alert view, including 'any'.
+    if (excluded[GLOBAL_EXCLUDE_KEY]) return true
+    if (alertFilter === 'normal' || alertFilter === 'any') return false
+    return Boolean(excluded[alertFilter])
   }
 
   /**
@@ -1630,7 +1672,7 @@ export class AirShipmentsService {
   async restoreRow(
     tableName: string,
     id: string,
-    alertType: AlertType,
+    alertType: AlertType | typeof GLOBAL_EXCLUDE_KEY,
   ): Promise<void> {
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
       throw new BadRequestException('Invalid table name')
@@ -1639,6 +1681,48 @@ export class AirShipmentsService {
       `UPDATE "${tableName}" SET excluded_reasons = NULLIF(excluded_reasons - $1, '{}') WHERE id = $2`,
       [alertType, id]
     )
+  }
+
+  /**
+   * Globally excludes every row matching any of the given `lt_number`s from ALL alert
+   * types at once (writes the GLOBAL_EXCLUDE_KEY sentinel into excluded_reasons). One LT
+   * may map to several TOs — all matches are updated. Returns the number of rows affected.
+   */
+  async excludeByLt(tableName: string, ltNumbers: string[], reason: string): Promise<number> {
+    if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
+      throw new BadRequestException('Invalid table name')
+    }
+    const lts = Array.from(new Set(ltNumbers.map((v) => String(v).trim()).filter(Boolean)))
+    if (lts.length === 0) return 0
+
+    const columns = await this.getTableColumns(tableName)
+    const ltExpr = this.buildFieldValueExpression('lt_number', columns)
+    const res = await this.dataSource.query(
+      `UPDATE "${tableName}"
+         SET excluded_reasons = COALESCE(excluded_reasons, '{}') || $1::jsonb
+       WHERE LOWER(${ltExpr}) = ANY($2::text[]) RETURNING id`,
+      [JSON.stringify({ [GLOBAL_EXCLUDE_KEY]: reason }), lts.map((v) => v.toLowerCase())]
+    )
+    return res?.[1] ?? 0
+  }
+
+  /** Reverses a global exclude-by-LT: removes the GLOBAL_EXCLUDE_KEY for matching rows. */
+  async restoreByLt(tableName: string, ltNumbers: string[]): Promise<number> {
+    if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
+      throw new BadRequestException('Invalid table name')
+    }
+    const lts = Array.from(new Set(ltNumbers.map((v) => String(v).trim()).filter(Boolean)))
+    if (lts.length === 0) return 0
+
+    const columns = await this.getTableColumns(tableName)
+    const ltExpr = this.buildFieldValueExpression('lt_number', columns)
+    const res = await this.dataSource.query(
+      `UPDATE "${tableName}"
+         SET excluded_reasons = NULLIF(excluded_reasons - $1, '{}')
+       WHERE LOWER(${ltExpr}) = ANY($2::text[]) RETURNING id`,
+      [GLOBAL_EXCLUDE_KEY, lts.map((v) => v.toLowerCase())]
+    )
+    return res?.[1] ?? 0
   }
 
   async findExcludedRows(

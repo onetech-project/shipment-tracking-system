@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { SyncStatusBadge } from '@/features/air-shipments/components/SyncStatusBadge'
+import { MultiRouteFilter } from '@/features/air-shipments/components/MultiRouteFilter'
 
 export type DashboardAlertKey =
   | 'reservasiPenerbangan'
@@ -66,6 +67,10 @@ interface DashboardAlertCardsProps {
   onConfigure?: () => void
   isConnected?: boolean
   lastSyncAt?: string | null
+  // Multi-route filter (optional — when provided, shows a route checkbox dropdown in the header)
+  routeOptions?: string[]
+  selectedRoutes?: string[]
+  onRoutesChange?: (routes: string[]) => void
 }
 
 const ALERT_CARDS: Array<{
@@ -100,6 +105,9 @@ export function DashboardAlertCards({
   onConfigure,
   isConnected,
   lastSyncAt,
+  routeOptions,
+  selectedRoutes,
+  onRoutesChange,
 }: DashboardAlertCardsProps) {
   const [expandedKey, setExpandedKey] = useState<DashboardAlertKey | null>(null)
   const [otpExpanded, setOtpExpanded] = useState(false)
@@ -161,6 +169,18 @@ export function DashboardAlertCards({
                   />
                 </label>
               </>
+            )}
+            {routeOptions && onRoutesChange && (
+              <label className="flex flex-col gap-0.5">
+                <span className="text-xs font-medium text-slate-700">Routes</span>
+                <MultiRouteFilter
+                  routes={routeOptions}
+                  selected={selectedRoutes ?? []}
+                  onChange={onRoutesChange}
+                  align="right"
+                  className="w-48"
+                />
+              </label>
             )}
             {summary && !isLoading && (
               <div className="flex items-center self-end pb-1.5">
