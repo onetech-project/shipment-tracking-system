@@ -152,13 +152,6 @@ export const ALERT_TYPES: AlertType[] = [
 
 export const ALERT_FILTERS: AlertFilter[] = [...ALERT_TYPES, 'normal', 'any']
 
-/**
- * Sentinel key stored in `excluded_reasons` to mark a row excluded from EVERY alert
- * type at once (an "exclude-by-LT" global exclusion). Distinct from the per-alert-type
- * keys so a global exclude can be restored independently.
- */
-export const GLOBAL_EXCLUDE_KEY = '__all__'
-
 export const ALERT_TYPE_LABELS: Record<AlertType, string> = {
   reservasiPenerbangan: 'Reservasi Penerbangan',
   flightTracking: 'Flight Tracking',

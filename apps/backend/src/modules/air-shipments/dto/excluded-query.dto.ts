@@ -1,12 +1,11 @@
 import { Type } from 'class-transformer'
 import { ArrayNotEmpty, IsArray, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min, Matches } from 'class-validator'
-import { AlertType, ALERT_TYPES, GLOBAL_EXCLUDE_KEY } from '../alert-evaluator'
+import { AlertType, ALERT_TYPES } from '../alert-evaluator'
 
 export class ExcludedQueryDto {
-  // Allow the global-exclude sentinel so the Excluded tab can filter the "All Alerts" group.
   @IsOptional()
-  @IsIn([...ALERT_TYPES, GLOBAL_EXCLUDE_KEY])
-  alertType?: AlertType | typeof GLOBAL_EXCLUDE_KEY
+  @IsIn(ALERT_TYPES)
+  alertType?: AlertType
 
   @IsOptional()
   @Type(() => Number)
@@ -40,9 +39,8 @@ export class ExcludeRowDto {
 }
 
 export class RestoreRowDto {
-  // Allow the global-exclude sentinel so the Excluded tab can restore an "All Alerts" row.
-  @IsIn([...ALERT_TYPES, GLOBAL_EXCLUDE_KEY])
-  alertType: AlertType | typeof GLOBAL_EXCLUDE_KEY
+  @IsIn(ALERT_TYPES)
+  alertType: AlertType
 }
 
 export class ExcludeByLtDto {
@@ -50,6 +48,9 @@ export class ExcludeByLtDto {
   @ArrayNotEmpty()
   @IsString({ each: true })
   ltNumbers: string[]
+
+  @IsIn(ALERT_TYPES)
+  alertType: AlertType
 
   @IsString()
   @IsNotEmpty()
@@ -61,4 +62,7 @@ export class RestoreByLtDto {
   @ArrayNotEmpty()
   @IsString({ each: true })
   ltNumbers: string[]
+
+  @IsIn(ALERT_TYPES)
+  alertType: AlertType
 }

@@ -8,7 +8,7 @@ import { ChunkError, RowError, SheetResult } from './sheet-config.interface'
 import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
 import { GoogleSheetSheetConfig } from './entities/google-sheet-sheet-config.entity'
 import { GoogleSheetConfigDto } from './dto/google-sheet-config.dto'
-import { AlertType, AlertFilter, ALERT_TYPES, GLOBAL_EXCLUDE_KEY, evaluateAlerts, parseDurationSafe } from './alert-evaluator'
+import { AlertType, AlertFilter, ALERT_TYPES, evaluateAlerts, parseDurationSafe } from './alert-evaluator'
 import { ExcludedQueryDto } from './dto/excluded-query.dto'
 import { OffloadedAwbQueryDto } from './dto/tracking-smu.dto'
 import { EventEmitter2 } from '@nestjs/event-emitter'
@@ -32,6 +32,8 @@ export class AirShipmentsService {
   /** Airline-API offload source (overrides the sheet for configured carriers). */
   private static readonly AIRLINE_TRACKING_TABLE = 'air_shipments_awb_flight_tracking'
   private static readonly API_CARRIERS_CACHE_KEY = 'airline:carriers'
+  /** general_params key holding the single app-wide SLA table column layout. */
+  private static readonly SLA_COLUMN_LAYOUT_KEY = 'sla_column_layout'
 
   constructor(
     private readonly sheetsService: SheetsService,
@@ -186,19 +188,10 @@ export class AirShipmentsService {
    * the alert summary (incl. OTP), the distinct route list, and the
    * per-route alert/OTP breakdown.
    */
-  async getSlaOverviewForTable(
-    tableName: string,
-    startDate?: string,
-    endDate?: string,
-    days?: number,
-    routeFilter?: string | string[],
-  ) {
+  async getSlaOverviewForTable(tableName: string, startDate?: string, endDate?: string, days?: number) {
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
       throw new BadRequestException('Invalid table name')
     }
-    // Filter applied in-memory to the alert/OTP/route-alert accumulators only — the
-    // distinct route list (dropdown options) is intentionally left unfiltered.
-    const routeFilterSet = AirShipmentsService.buildRouteFilterSet(routeFilter)
 
     const [{ nHours, mHours }, reservasiTableName, slaLookup, offloadByAwb] = await Promise.all([
       this.getAlertNMHours(),
@@ -277,15 +270,12 @@ export class AirShipmentsService {
       const origin = String(getFieldValue(row, 'origin') ?? '').trim()
       const destination = String(getFieldValue(row, 'destination') ?? '').trim()
       const route = origin && destination ? `${origin} - ${destination}` : ''
-      // Restrict cards / route-alert / OTP to the selected routes (route list above is unaffected).
-      if (routeFilterSet && !routeFilterSet.has(route.toLowerCase())) continue
       const grossWeight = parseFloat(String(getFieldValue(row, 'gross_weight') ?? '0')) || 0
 
       const excludedReasons = row.excluded_reasons as Record<string, string> | null
       for (const type of ALERT_TYPES) {
         if (!alerts[type]) continue
-        // skip if excluded for this specific type, or globally excluded by lt_number
-        if (excludedReasons?.[type] || excludedReasons?.[GLOBAL_EXCLUDE_KEY]) continue
+        if (excludedReasons?.[type]) continue  // skip if excluded for this specific type
         const item = acc[type]
         const prev = item.breakdown.get(route) ?? 0
         item.breakdown.set(route, prev + grossWeight)
@@ -497,15 +487,6 @@ export class AirShipmentsService {
     return orClauses.length > 0 ? `(${orClauses.join(' OR ')})` : null
   }
 
-  /** Normalizes a single/array route filter to a lowercased label Set, or null when empty. */
-  private static buildRouteFilterSet(routeFilter?: string | string[]): Set<string> | null {
-    if (!routeFilter) return null
-    const labels = (Array.isArray(routeFilter) ? routeFilter : [routeFilter])
-      .map((r) => String(r).trim().toLowerCase())
-      .filter(Boolean)
-    return labels.length > 0 ? new Set(labels) : null
-  }
-
   private buildDateRangeClause(
     columns: string[],
     params: any[],
@@ -551,12 +532,9 @@ export class AirShipmentsService {
     row: Record<string, unknown>,
     alertFilter: AlertFilter,
   ): boolean {
-    const excluded = row.excluded_reasons as Record<string, string> | null
-    if (!excluded) return false
-    // A global exclude (exclude-by-LT) hides the row from every alert view, including 'any'.
-    if (excluded[GLOBAL_EXCLUDE_KEY]) return true
     if (alertFilter === 'normal' || alertFilter === 'any') return false
-    return Boolean(excluded[alertFilter])
+    const excluded = row.excluded_reasons as Record<string, string> | null
+    return Boolean(excluded?.[alertFilter])
   }
 
   /**
@@ -1672,7 +1650,7 @@ export class AirShipmentsService {
   async restoreRow(
     tableName: string,
     id: string,
-    alertType: AlertType | typeof GLOBAL_EXCLUDE_KEY,
+    alertType: AlertType,
   ): Promise<void> {
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
       throw new BadRequestException('Invalid table name')
@@ -1684,11 +1662,16 @@ export class AirShipmentsService {
   }
 
   /**
-   * Globally excludes every row matching any of the given `lt_number`s from ALL alert
-   * types at once (writes the GLOBAL_EXCLUDE_KEY sentinel into excluded_reasons). One LT
-   * may map to several TOs — all matches are updated. Returns the number of rows affected.
+   * Excludes every row matching any of the given `lt_number`s from a specific alert type
+   * (recording the chosen alert + reason for audit). One LT may map to several TOs — all
+   * matches are updated. Returns the number of rows affected.
    */
-  async excludeByLt(tableName: string, ltNumbers: string[], reason: string): Promise<number> {
+  async excludeByLt(
+    tableName: string,
+    ltNumbers: string[],
+    alertType: AlertType,
+    reason: string,
+  ): Promise<number> {
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
       throw new BadRequestException('Invalid table name')
     }
@@ -1701,13 +1684,13 @@ export class AirShipmentsService {
       `UPDATE "${tableName}"
          SET excluded_reasons = COALESCE(excluded_reasons, '{}') || $1::jsonb
        WHERE LOWER(${ltExpr}) = ANY($2::text[]) RETURNING id`,
-      [JSON.stringify({ [GLOBAL_EXCLUDE_KEY]: reason }), lts.map((v) => v.toLowerCase())]
+      [JSON.stringify({ [alertType]: reason }), lts.map((v) => v.toLowerCase())]
     )
     return res?.[1] ?? 0
   }
 
-  /** Reverses a global exclude-by-LT: removes the GLOBAL_EXCLUDE_KEY for matching rows. */
-  async restoreByLt(tableName: string, ltNumbers: string[]): Promise<number> {
+  /** Reverses an exclude-by-LT for a specific alert type: removes that key for matching rows. */
+  async restoreByLt(tableName: string, ltNumbers: string[], alertType: AlertType): Promise<number> {
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
       throw new BadRequestException('Invalid table name')
     }
@@ -1720,9 +1703,41 @@ export class AirShipmentsService {
       `UPDATE "${tableName}"
          SET excluded_reasons = NULLIF(excluded_reasons - $1, '{}')
        WHERE LOWER(${ltExpr}) = ANY($2::text[]) RETURNING id`,
-      [GLOBAL_EXCLUDE_KEY, lts.map((v) => v.toLowerCase())]
+      [alertType, lts.map((v) => v.toLowerCase())]
     )
     return res?.[1] ?? 0
+  }
+
+  // ── SLA column layout (single app-wide config, stored in general_params) ────────
+
+  /** Reads the app-wide SLA table column layout. Returns [] (use defaults) when unset/invalid. */
+  async getSlaColumnLayout(): Promise<Array<{ key: string; visible: boolean; frozen: boolean }>> {
+    const raw = await this.generalParamsService.getValue(
+      AirShipmentsService.SLA_COLUMN_LAYOUT_KEY,
+      '[]',
+    )
+    try {
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }
+
+  /**
+   * Persists the app-wide SLA column layout. Delegates to GeneralParamsService.update,
+   * which emits general_params.updated → recorded in audit_logs (actor + timestamp + value).
+   */
+  async setSlaColumnLayout(
+    layout: Array<{ key: string; visible: boolean; frozen: boolean }>,
+    actorId?: string,
+  ): Promise<void> {
+    await this.generalParamsService.upsert(
+      AirShipmentsService.SLA_COLUMN_LAYOUT_KEY,
+      JSON.stringify(layout),
+      'SLA Column Layout',
+      actorId,
+    )
   }
 
   async findExcludedRows(

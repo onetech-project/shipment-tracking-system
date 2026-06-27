@@ -26,4 +26,19 @@ export class GeneralParamsService {
     this.eventEmitter.emit('general_params.updated', { key, value, actorId })
     return this.repo.findOneByOrFail({ key })
   }
+
+  /**
+   * Updates an existing param or creates it if missing — used for single app-wide configs
+   * that may not be pre-seeded. Emits the same audit event as `update`.
+   */
+  async upsert(key: string, value: string, label: string, actorId?: string): Promise<GeneralParam> {
+    const existing = await this.repo.findOneBy({ key })
+    if (existing) {
+      await this.repo.update({ key }, { value })
+    } else {
+      await this.repo.insert({ key, value, label })
+    }
+    this.eventEmitter.emit('general_params.updated', { key, value, actorId })
+    return this.repo.findOneByOrFail({ key })
+  }
 }

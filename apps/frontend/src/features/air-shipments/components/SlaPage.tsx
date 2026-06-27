@@ -26,6 +26,8 @@ import {
   fetchOffloadedAwbs,
   setAwbEvidence,
   clearAwbEvidence,
+  fetchSlaColumnLayout,
+  saveSlaColumnLayout,
 } from '@/features/air-shipments/hooks/useAirShipments'
 import { ExcludeModal } from '@/features/air-shipments/components/ExcludeModal'
 import { ExcludeByLtModal } from '@/features/air-shipments/components/ExcludeByLtModal'
@@ -43,35 +45,8 @@ import {
 import { Lock, Trash2, RotateCcw, Ban, GripVertical, Pin, PinOff } from 'lucide-react'
 import { AxiosError } from 'axios'
 
-/** Sentinel alert key for a global exclude-by-LT (mirrors the backend GLOBAL_EXCLUDE_KEY). */
-const GLOBAL_EXCLUDE_KEY = '__all__'
-
-const SLA_COLUMN_LAYOUT_KEY = 'sla-column-layout-v1'
-
 /** One column's persisted layout: position (array order), visibility, and frozen/pinned state. */
 type ColumnLayoutItem = { key: string; visible: boolean; frozen: boolean }
-
-function loadStoredLayout(): ColumnLayoutItem[] | null {
-  try {
-    const raw = localStorage.getItem(SLA_COLUMN_LAYOUT_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return null
-    return parsed
-      .filter((i) => i && typeof i.key === 'string')
-      .map((i) => ({ key: i.key, visible: !!i.visible, frozen: !!i.frozen }))
-  } catch {
-    return null
-  }
-}
-
-function saveStoredLayout(layout: ColumnLayoutItem[]): void {
-  try {
-    localStorage.setItem(SLA_COLUMN_LAYOUT_KEY, JSON.stringify(layout))
-  } catch {
-    // localStorage unavailable (SSR, private mode) — silently skip
-  }
-}
 
 /** Frozen columns must render contiguously at the left — keep them ahead of the rest. */
 function normalizeLayout(layout: ColumnLayoutItem[]): ColumnLayoutItem[] {
@@ -149,12 +124,14 @@ const ALERT_OPTIONS: Array<{ value: AlertFilterOption | null; label: string }> =
 ]
 
 /** Map from alert key → human-readable label (derived from ALERT_OPTIONS) */
-const ALERT_TYPE_LABELS: Record<string, string> = {
-  ...Object.fromEntries(
-    ALERT_OPTIONS.filter((o) => o.value !== null).map((o) => [o.value as string, o.label])
-  ),
-  [GLOBAL_EXCLUDE_KEY]: 'All Alerts',
-}
+const ALERT_TYPE_LABELS: Record<string, string> = Object.fromEntries(
+  ALERT_OPTIONS.filter((o) => o.value !== null).map((o) => [o.value as string, o.label])
+)
+
+/** Selectable alert types for the exclude/restore-by-LT modal (no "All Alerts" option). */
+const LT_ALERT_TYPE_OPTIONS = ALERT_OPTIONS.filter(
+  (o): o is { value: AlertFilterOption; label: string } => o.value !== null
+).map((o) => ({ value: o.value, label: o.label }))
 
 /** Alert badge colours (matching DashboardAlertCards) */
 const ALERT_BADGE_COLORS: Record<string, string> = {
@@ -179,6 +156,8 @@ export function SlaPage() {
   const tableRef = useRef<HTMLDivElement | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const dragColRef = useRef<string | null>(null)
+  /** Serialized snapshot of the last layout persisted to the DB — guards redundant saves. */
+  const lastSavedLayoutRef = useRef<string | null>(null)
   const shouldScrollOnLoad = useRef(!!(searchParams.get('alert') || searchParams.get('route')))
   const pendingScrollRef = useRef(false)
 
@@ -207,6 +186,7 @@ export function SlaPage() {
   const [error, setError] = useState<string | null>(null)
   const [lastUpdated, setLastUpdated] = useState<string | null>(null)
   const [columnLayout, setColumnLayout] = useState<ColumnLayoutItem[]>([])
+  const [layoutLoaded, setLayoutLoaded] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [lockState, setLockState] = useState<Record<string, boolean>>({})
   const [showConfigModal, setShowConfigModal] = useState(false)
@@ -248,10 +228,10 @@ export function SlaPage() {
       setRouteAlertLoading(true)
     }
     try {
-      const overviewParams = new URLSearchParams({ startDate, endDate })
-      for (const r of activeRoutes) overviewParams.append('routeFilter', r)
+      // The route filter scopes the table only — the panel (cards / route-alert / OTP)
+      // always reflects every route in the selected period.
       const response = await apiClient.get<SlaOverviewResponse>(
-        `${TABLE_ENDPOINT}/sla-overview?${overviewParams.toString()}`
+        `${TABLE_ENDPOINT}/sla-overview?startDate=${startDate}&endDate=${endDate}`
       )
       setSummary(response.data.summary)
       setRoutes(response.data.routes?.routes ?? [])
@@ -356,7 +336,7 @@ export function SlaPage() {
     void fetchSlaOverview()
     setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startDate, endDate, paramsLoaded, activeRoutes])
+  }, [startDate, endDate, paramsLoaded])
 
   useEffect(() => {
     if (!isLoading && data && shouldScrollOnLoad.current) {
@@ -436,13 +416,35 @@ export function SlaPage() {
     return cols
   }, [data])
 
-  // Reconcile the persisted layout with the columns present in the data: keep all stored
-  // entries (in their saved order — retained even if absent from the current page so config
+  // Load the app-wide column layout from the DB once (after auth/params are ready).
+  useEffect(() => {
+    if (!paramsLoaded) return
+    let cancelled = false
+    void fetchSlaColumnLayout()
+      .then((stored) => {
+        if (cancelled) return
+        const norm = normalizeLayout(stored ?? [])
+        setColumnLayout(norm)
+        lastSavedLayoutRef.current = JSON.stringify(norm)
+      })
+      .catch(() => {
+        // No saved config / load failed — fall back to defaults derived from the data.
+      })
+      .finally(() => {
+        if (!cancelled) setLayoutLoaded(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [paramsLoaded])
+
+  // Reconcile the saved layout with the columns present in the data: keep all saved
+  // entries (in their order — retained even if absent from the current page so config
   // survives pagination), and append any newly-discovered columns at the end.
   useEffect(() => {
-    if (allDataColumns.size === 0) return
+    if (!layoutLoaded || allDataColumns.size === 0) return
     setColumnLayout((prev) => {
-      const kept = [...(prev.length > 0 ? prev : loadStoredLayout() ?? [])]
+      const kept = [...prev]
       const seen = new Set(kept.map((i) => i.key))
       const frozenDefaults = SLA_FROZEN_KEYS.map((c) => c.key).filter(
         (k) => allDataColumns.has(k) && !seen.has(k)
@@ -461,12 +463,23 @@ export function SlaPage() {
       return normalizeLayout(kept)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allDataColumns])
+  }, [allDataColumns, layoutLoaded])
 
-  // Persist layout whenever it changes.
+  // Persist the layout to the DB (app-wide) shortly after a change — debounced, and
+  // skipped until the initial load completes or when nothing actually changed.
   useEffect(() => {
-    if (columnLayout.length > 0) saveStoredLayout(columnLayout)
-  }, [columnLayout])
+    if (!layoutLoaded || columnLayout.length === 0) return
+    const serialized = JSON.stringify(columnLayout)
+    if (serialized === lastSavedLayoutRef.current) return
+    const handle = window.setTimeout(() => {
+      lastSavedLayoutRef.current = serialized
+      void saveSlaColumnLayout(columnLayout).catch(() => {
+        // Save failed — clear the snapshot so the next change retries.
+        lastSavedLayoutRef.current = null
+      })
+    }, 800)
+    return () => window.clearTimeout(handle)
+  }, [columnLayout, layoutLoaded])
 
   // Derived views consumed by the table + dropdown.
   const orderedVisibleColumns = useMemo(
@@ -614,13 +627,13 @@ export function SlaPage() {
 
   // ── Exclude / restore by LT number (global, above the table) ──────────────────
 
-  async function handleLtConfirm(ltNumbers: string[], reason: string) {
+  async function handleLtConfirm(ltNumbers: string[], alertType: string, reason: string) {
     try {
       if (ltModal === 'exclude') {
-        const affected = await excludeByLt(TABLE_NAME, ltNumbers, reason)
+        const affected = await excludeByLt(TABLE_NAME, ltNumbers, alertType, reason)
         window.alert(`Excluded ${affected} row(s)`)
       } else {
-        const affected = await restoreByLt(TABLE_NAME, ltNumbers)
+        const affected = await restoreByLt(TABLE_NAME, ltNumbers, alertType)
         window.alert(`Restored ${affected} row(s)`)
       }
       setLtModal(null)
@@ -738,9 +751,6 @@ export function SlaPage() {
           onConfigure={() => setShowConfigModal(true)}
           isConnected={isConnected}
           lastSyncAt={lastSyncAt}
-          routeOptions={routeLabels}
-          selectedRoutes={activeRoutes}
-          onRoutesChange={handleRoutesChange}
         />
 
         <GeneralParamsModal
@@ -844,6 +854,9 @@ export function SlaPage() {
 
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="relative ml-auto flex items-center gap-2" ref={dropdownRef}>
+                {/* Column config doesn't apply to the AWB-based Flight Tracking table. */}
+                {!isFlightTracking && (
+                <>
                 <button
                   type="button"
                   className="border rounded px-2 py-1 text-xs bg-background hover:bg-accent flex items-center gap-1 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
@@ -925,6 +938,8 @@ export function SlaPage() {
                     </div>
                   </div>
                 )}
+                </>
+                )}
 
                 <div className="flex items-center gap-2">
                   <button
@@ -934,27 +949,25 @@ export function SlaPage() {
                   >
                     <Ban size={14} /> Exclude LT
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setLtModal('restore')}
-                    className="border rounded px-2 py-1 text-xs bg-background hover:bg-accent flex items-center gap-1"
-                  >
-                    <RotateCcw size={14} /> Restore LT
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openBatch('lock')}
-                    className="border rounded px-2 py-1 text-xs bg-background hover:bg-accent flex items-center gap-1"
-                  >
-                    <Lock size={14} /> Batch Lock
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openBatch('delete')}
-                    className="border border-destructive rounded px-2 py-1 text-xs bg-background hover:bg-accent text-destructive flex items-center gap-1"
-                  >
-                    <Trash2 size={14} /> Batch Delete
-                  </button>
+                  {/* Batch lock/delete operate on the per-TO table, not the AWB Flight Tracking view. */}
+                  {!isFlightTracking && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => openBatch('lock')}
+                        className="border rounded px-2 py-1 text-xs bg-background hover:bg-accent flex items-center gap-1"
+                      >
+                        <Lock size={14} /> Batch Lock
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openBatch('delete')}
+                        className="border border-destructive rounded px-2 py-1 text-xs bg-background hover:bg-accent text-destructive flex items-center gap-1"
+                      >
+                        <Trash2 size={14} /> Batch Delete
+                      </button>
+                    </>
+                  )}
                 </div>
 
                 {batchDialog.op && (
@@ -1093,34 +1106,43 @@ export function SlaPage() {
 
           return (
           <>
-            {/* Alert type filter chips */}
+            {/* Alert type filter chips + Restore LT */}
             {expandedExcludedRows.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => { setExcludedAlertTypeFilter('all'); setExcludedPage(1) }}
-                  className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
-                    excludedAlertTypeFilter === 'all'
-                      ? 'bg-primary text-primary-foreground border-primary'
-                      : 'bg-background text-foreground border-border hover:bg-muted'
-                  }`}
-                >
-                  All
-                </button>
-                {uniqueAlertTypes.map((at) => (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap gap-2">
                   <button
-                    key={at}
                     type="button"
-                    onClick={() => { setExcludedAlertTypeFilter(at); setExcludedPage(1) }}
+                    onClick={() => { setExcludedAlertTypeFilter('all'); setExcludedPage(1) }}
                     className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
-                      excludedAlertTypeFilter === at
+                      excludedAlertTypeFilter === 'all'
                         ? 'bg-primary text-primary-foreground border-primary'
                         : 'bg-background text-foreground border-border hover:bg-muted'
                     }`}
                   >
-                    {ALERT_TYPE_LABELS[at] ?? at}
+                    All
                   </button>
-                ))}
+                  {uniqueAlertTypes.map((at) => (
+                    <button
+                      key={at}
+                      type="button"
+                      onClick={() => { setExcludedAlertTypeFilter(at); setExcludedPage(1) }}
+                      className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+                        excludedAlertTypeFilter === at
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-background text-foreground border-border hover:bg-muted'
+                      }`}
+                    >
+                      {ALERT_TYPE_LABELS[at] ?? at}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLtModal('restore')}
+                  className="border rounded px-2 py-1 text-xs bg-background hover:bg-accent flex items-center gap-1"
+                >
+                  <RotateCcw size={14} /> Restore LT
+                </button>
               </div>
             )}
 
@@ -1232,6 +1254,8 @@ export function SlaPage() {
       <ExcludeByLtModal
         open={ltModal !== null}
         mode={ltModal ?? 'exclude'}
+        alertTypes={LT_ALERT_TYPE_OPTIONS}
+        defaultAlertType={activeAlert ?? ''}
         onConfirm={handleLtConfirm}
         onClose={() => setLtModal(null)}
       />

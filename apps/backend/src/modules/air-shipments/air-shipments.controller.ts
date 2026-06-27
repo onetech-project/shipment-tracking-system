@@ -18,6 +18,7 @@ import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
 import { Permission } from '@shared/auth'
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator'
 import { ExcludedQueryDto, ExcludeRowDto, RestoreRowDto, ExcludeByLtDto, RestoreByLtDto } from './dto/excluded-query.dto'
+import { SlaColumnLayoutDto } from './dto/sla-column-layout.dto'
 import { OffloadedAwbQueryDto, SetEvidenceDto } from './dto/tracking-smu.dto'
 import { AirlineTrackingSourceService, AirlineSource } from './airline-tracking/airline-tracking-source.service'
 import { AirlineTrackingService } from './airline-tracking/airline-tracking.service'
@@ -200,12 +201,11 @@ export class AirShipmentsController {
     @Param('tableName') tableName: string,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
-    @Query('days') days?: string,
-    @Query('routeFilter') routeFilter?: string | string[]
+    @Query('days') days?: string
   ) {
     const daysNum = days != null && !isNaN(Number(days)) ? Number(days) : undefined
     try {
-      return await this.service.getSlaOverviewForTable(tableName, startDate, endDate, daysNum, routeFilter)
+      return await this.service.getSlaOverviewForTable(tableName, startDate, endDate, daysNum)
     } catch (err: unknown) {
       this.logger.error(
         `[GET /air-shipments/${tableName}/sla-overview]`,
@@ -218,6 +218,25 @@ export class AirShipmentsController {
   @Get('last-sync')
   getLastSyncAt() {
     return this.service.getLastSyncAt()
+  }
+
+  // ── SLA column layout (single app-wide config) ────────────────────────────────
+  // Literal paths declared above the catch-all `:tableName`.
+
+  @Get('sla-column-layout')
+  @UseGuards(RbacGuard)
+  @Authorize(Permission.READ_SLA)
+  async getSlaColumnLayout(): Promise<{ layout: Array<{ key: string; visible: boolean; frozen: boolean }> }> {
+    return { layout: await this.service.getSlaColumnLayout() }
+  }
+
+  @Put('sla-column-layout')
+  async setSlaColumnLayout(
+    @Body() body: SlaColumnLayoutDto,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<{ layout: SlaColumnLayoutDto['layout'] }> {
+    await this.service.setSlaColumnLayout(body.layout, user?.id)
+    return { layout: body.layout }
   }
 
   @Get(':tableName/excluded')
@@ -256,7 +275,12 @@ export class AirShipmentsController {
     @Param('tableName') tableName: string,
     @Body() body: ExcludeByLtDto
   ): Promise<{ affected: number }> {
-    const affected = await this.service.excludeByLt(tableName, body.ltNumbers, body.reason)
+    const affected = await this.service.excludeByLt(
+      tableName,
+      body.ltNumbers,
+      body.alertType,
+      body.reason
+    )
     return { affected }
   }
 
@@ -265,7 +289,7 @@ export class AirShipmentsController {
     @Param('tableName') tableName: string,
     @Body() body: RestoreByLtDto
   ): Promise<{ affected: number }> {
-    const affected = await this.service.restoreByLt(tableName, body.ltNumbers)
+    const affected = await this.service.restoreByLt(tableName, body.ltNumbers, body.alertType)
     return { affected }
   }
 

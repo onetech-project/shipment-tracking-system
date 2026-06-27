@@ -1,7 +1,13 @@
 'use client'
 import { useCallback, useEffect, useState } from 'react'
 import { apiClient } from '@/shared/api/client'
-import { AirShipmentsResponse, AirShipmentRow, OffloadedAwbResponse, SortOrder } from '../types'
+import {
+  AirShipmentsResponse,
+  AirShipmentRow,
+  OffloadedAwbResponse,
+  SlaColumnLayoutItem,
+  SortOrder,
+} from '../types'
 
 // interface UseAirShipmentsOptions {
 //   endpoint: string;
@@ -182,23 +188,30 @@ export async function restoreRow(
   })
 }
 
-/** Globally excludes every row matching the given LT number(s) from all alert types. */
+/** Excludes every row matching the given LT number(s) from a specific alert type. */
 export async function excludeByLt(
   tableName: string,
   ltNumbers: string[],
+  alertType: string,
   reason: string
 ): Promise<number> {
   const res = await apiClient.patch(`/air-shipments/${tableName}/exclude-by-lt`, {
     ltNumbers,
+    alertType,
     reason,
   })
   return res.data?.affected ?? 0
 }
 
-/** Reverses a global exclude-by-LT for the given LT number(s). */
-export async function restoreByLt(tableName: string, ltNumbers: string[]): Promise<number> {
+/** Reverses an exclude-by-LT for the given LT number(s) on a specific alert type. */
+export async function restoreByLt(
+  tableName: string,
+  ltNumbers: string[],
+  alertType: string
+): Promise<number> {
   const res = await apiClient.patch(`/air-shipments/${tableName}/restore-by-lt`, {
     ltNumbers,
+    alertType,
   })
   return res.data?.affected ?? 0
 }
@@ -267,4 +280,17 @@ export async function setAwbEvidence(awb: string, evidence: string): Promise<voi
 
 export async function clearAwbEvidence(awb: string): Promise<void> {
   await apiClient.delete(`/air-shipments/tracking-smu/awb/${encodeURIComponent(awb)}/evidence`)
+}
+
+// ── SLA table column layout (single app-wide config, DB-backed + audited) ────────
+
+export async function fetchSlaColumnLayout(): Promise<SlaColumnLayoutItem[]> {
+  const res = await apiClient.get<{ layout: SlaColumnLayoutItem[] }>(
+    '/air-shipments/sla-column-layout'
+  )
+  return Array.isArray(res.data?.layout) ? res.data.layout : []
+}
+
+export async function saveSlaColumnLayout(layout: SlaColumnLayoutItem[]): Promise<void> {
+  await apiClient.put('/air-shipments/sla-column-layout', { layout })
 }

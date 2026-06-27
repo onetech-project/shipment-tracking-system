@@ -725,17 +725,6 @@ describe('AirShipmentsService — isVoidRow / VOID filtering', () => {
     it('returns false when excluded_reasons is absent', () => {
       expect(svc.isExcludedForAlert({}, 'melewatiSla')).toBe(false)
     })
-
-    it('returns true for a specific alert when the global __all__ sentinel is set', () => {
-      const row = { excluded_reasons: { __all__: 'excluded by LT' } }
-      expect(svc.isExcludedForAlert(row, 'melewatiSla')).toBe(true)
-      expect(svc.isExcludedForAlert(row, 'flightTracking')).toBe(true)
-    })
-
-    it('returns true for the "any" filter when the global __all__ sentinel is set', () => {
-      const row = { excluded_reasons: { __all__: 'excluded by LT' } }
-      expect(svc.isExcludedForAlert(row, 'any')).toBe(true)
-    })
   })
 
   it('VOID rows are excluded from getAlertSummaryForTable alert counts', async () => {
@@ -857,20 +846,6 @@ describe('AirShipmentsService — filterRowsByAlert()', () => {
     }
     const result = (service as any).filterRowsByAlert([row], 'melewatiSla', 5, 5)
     expect(result).toHaveLength(1)
-
-    jest.useRealTimers()
-  })
-
-  it('excludes rows with the global __all__ sentinel regardless of the alert filter', () => {
-    jest.useFakeTimers()
-    jest.setSystemTime(new Date('2025-06-01T00:00:00Z'))
-
-    const row = {
-      excluded_reasons: { __all__: 'excluded by LT' },
-      extra_fields: { atd_origin: '2020-01-01T00:00:00Z', sla: '1:00:00' },
-    }
-    expect((service as any).filterRowsByAlert([row], 'melewatiSla', 5, 5)).toHaveLength(0)
-    expect((service as any).filterRowsByAlert([row], 'any', 5, 5)).toHaveLength(0)
 
     jest.useRealTimers()
   })
