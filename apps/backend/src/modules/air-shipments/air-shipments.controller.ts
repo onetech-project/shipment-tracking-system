@@ -17,7 +17,8 @@ import { GoogleSheetConfigDto } from './dto/google-sheet-config.dto'
 import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
 import { Permission } from '@shared/auth'
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator'
-import { ExcludedQueryDto, ExcludeRowDto, RestoreRowDto } from './dto/excluded-query.dto'
+import { ExcludedQueryDto, ExcludeRowDto, RestoreRowDto, ExcludeByLtDto, RestoreByLtDto } from './dto/excluded-query.dto'
+import { SlaColumnLayoutDto } from './dto/sla-column-layout.dto'
 import { OffloadedAwbQueryDto, SetEvidenceDto } from './dto/tracking-smu.dto'
 import { AirlineTrackingSourceService, AirlineSource } from './airline-tracking/airline-tracking-source.service'
 import { AirlineTrackingService } from './airline-tracking/airline-tracking.service'
@@ -219,6 +220,25 @@ export class AirShipmentsController {
     return this.service.getLastSyncAt()
   }
 
+  // ── SLA column layout (single app-wide config) ────────────────────────────────
+  // Literal paths declared above the catch-all `:tableName`.
+
+  @Get('sla-column-layout')
+  @UseGuards(RbacGuard)
+  @Authorize(Permission.READ_SLA)
+  async getSlaColumnLayout(): Promise<{ layout: Array<{ key: string; visible: boolean; frozen: boolean }> }> {
+    return { layout: await this.service.getSlaColumnLayout() }
+  }
+
+  @Put('sla-column-layout')
+  async setSlaColumnLayout(
+    @Body() body: SlaColumnLayoutDto,
+    @CurrentUser() user: AuthenticatedUser
+  ): Promise<{ layout: SlaColumnLayoutDto['layout'] }> {
+    await this.service.setSlaColumnLayout(body.layout, user?.id)
+    return { layout: body.layout }
+  }
+
   @Get(':tableName/excluded')
   async getExcluded(
     @Param('tableName') tableName: string,
@@ -246,6 +266,31 @@ export class AirShipmentsController {
     @Body() body: RestoreRowDto
   ): Promise<void> {
     return this.service.restoreRow(tableName, id, body.alertType)
+  }
+
+  // Exclude/restore by lt_number from above the table (global — hides from every alert type).
+  // 2-segment paths; declared before the catch-all GET `:tableName`.
+  @Patch(':tableName/exclude-by-lt')
+  async excludeByLt(
+    @Param('tableName') tableName: string,
+    @Body() body: ExcludeByLtDto
+  ): Promise<{ affected: number }> {
+    const affected = await this.service.excludeByLt(
+      tableName,
+      body.ltNumbers,
+      body.alertType,
+      body.reason
+    )
+    return { affected }
+  }
+
+  @Patch(':tableName/restore-by-lt')
+  async restoreByLt(
+    @Param('tableName') tableName: string,
+    @Body() body: RestoreByLtDto
+  ): Promise<{ affected: number }> {
+    const affected = await this.service.restoreByLt(tableName, body.ltNumbers, body.alertType)
+    return { affected }
   }
 
   // ── Tracking_SMU offload alert (per-AWB) ──────────────────────────────────────

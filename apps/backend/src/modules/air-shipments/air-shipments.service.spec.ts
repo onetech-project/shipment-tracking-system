@@ -849,6 +849,41 @@ describe('AirShipmentsService — filterRowsByAlert()', () => {
 
     jest.useRealTimers()
   })
+
+  describe('buildRouteFilterClause()', () => {
+    const columns = ['origin', 'destination']
+
+    it('returns null for an empty/undefined filter', () => {
+      expect((service as any).buildRouteFilterClause(undefined, columns, [])).toBeNull()
+      expect((service as any).buildRouteFilterClause([], columns, [])).toBeNull()
+    })
+
+    it('builds a single route clause with origin/destination params', () => {
+      const params: any[] = []
+      const clause = (service as any).buildRouteFilterClause('CGK - SUB', columns, params)
+      expect(clause).toContain(' AND ')
+      expect(clause).not.toContain(' OR ')
+      expect(params).toEqual(['CGK', 'SUB'])
+    })
+
+    it('OR-combines multiple routes and appends all params in order', () => {
+      const params: any[] = []
+      const clause = (service as any).buildRouteFilterClause(
+        ['CGK - SUB', 'DPS - CGK'],
+        columns,
+        params
+      )
+      expect(clause).toContain(' OR ')
+      expect(params).toEqual(['CGK', 'SUB', 'DPS', 'CGK'])
+    })
+
+    it('skips malformed labels', () => {
+      const params: any[] = []
+      const clause = (service as any).buildRouteFilterClause(['CGK'], columns, params)
+      expect(clause).toBeNull()
+      expect(params).toEqual([])
+    })
+  })
 })
 
 describe('AirShipmentsService — loadCached() / invalidateLookupCaches()', () => {

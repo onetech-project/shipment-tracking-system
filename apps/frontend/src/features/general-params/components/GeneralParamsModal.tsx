@@ -19,6 +19,9 @@ interface SheetOption {
 
 const TABLE_SELECT_KEYS = new Set(['reservasi_table_name'])
 
+/** Config rows managed by their own dedicated UI (not raw text fields in this modal). */
+const HIDDEN_KEYS = new Set(['sla_column_layout'])
+
 interface GeneralParamsModalProps {
   open: boolean
   onClose: () => void
@@ -56,6 +59,7 @@ export function GeneralParamsModal({ open, onClose, onSaved }: GeneralParamsModa
 
   const handleSave = async () => {
     for (const p of params) {
+      if (HIDDEN_KEYS.has(p.key)) continue
       const newVal = draft[p.key]
       if (newVal !== undefined && newVal !== p.value) {
         await update(p.key, newVal)
@@ -78,7 +82,7 @@ export function GeneralParamsModal({ open, onClose, onSaved }: GeneralParamsModa
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {params.map((p) => (
+          {params.filter((p) => !HIDDEN_KEYS.has(p.key)).map((p) => (
             <div key={p.key} className="space-y-1.5">
               <label htmlFor={`param-${p.key}`} className="text-sm font-medium text-foreground">
                 {p.label}

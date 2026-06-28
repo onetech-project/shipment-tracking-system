@@ -32,6 +32,8 @@ export class AirShipmentsService {
   /** Airline-API offload source (overrides the sheet for configured carriers). */
   private static readonly AIRLINE_TRACKING_TABLE = 'air_shipments_awb_flight_tracking'
   private static readonly API_CARRIERS_CACHE_KEY = 'airline:carriers'
+  /** general_params key holding the single app-wide SLA table column layout. */
+  private static readonly SLA_COLUMN_LAYOUT_KEY = 'sla_column_layout'
 
   constructor(
     private readonly sheetsService: SheetsService,
@@ -70,7 +72,7 @@ export class AirShipmentsService {
       sortOrder: 'asc' | 'desc'
       search?: string
       alertFilter?: AlertFilter
-      routeFilter?: string
+      routeFilter?: string | string[]
       days?: number
       startDate?: string
       endDate?: string
@@ -101,21 +103,8 @@ export class AirShipmentsService {
       whereClauses.push(`(${orConds.join(' OR ')})`)
     }
 
-    if (routeFilter && routeFilter.trim()) {
-      const parts = routeFilter
-        .split(/\s*-\s*/)
-        .map((part) => part.trim())
-        .filter(Boolean)
-      if (parts.length === 2) {
-        const [origin, destination] = parts
-        const originExpr = this.buildFieldValueExpression('origin', columns)
-        const destinationExpr = this.buildFieldValueExpression('destination', columns)
-        whereClauses.push(`LOWER(${originExpr}) = LOWER($${params.length + 1})`)
-        params.push(origin)
-        whereClauses.push(`LOWER(${destinationExpr}) = LOWER($${params.length + 1})`)
-        params.push(destination)
-      }
-    }
+    const routeClause = this.buildRouteFilterClause(routeFilter, columns, params)
+    if (routeClause) whereClauses.push(routeClause)
 
     const dateClause = this.buildDateRangeClause(columns, params, startDate, endDate, days)
     if (dateClause) whereClauses.push(dateClause)
@@ -465,6 +454,37 @@ export class AirShipmentsService {
   async getRouteAlertSummary(tableName: string, startDate?: string, endDate?: string, days?: number) {
     const { routeAlerts } = await this.getSlaOverviewForTable(tableName, startDate, endDate, days)
     return routeAlerts
+  }
+
+  /**
+   * Builds a WHERE clause matching any of the given "ORIGIN - DESTINATION" route
+   * labels (OR-combined). Accepts a single label or an array; returns null when no
+   * valid route is supplied. Appends bind params onto `params`.
+   */
+  private buildRouteFilterClause(
+    routeFilter: string | string[] | undefined,
+    columns: string[],
+    params: any[],
+  ): string | null {
+    if (!routeFilter) return null
+    const labels = (Array.isArray(routeFilter) ? routeFilter : [routeFilter])
+      .map((r) => String(r).trim())
+      .filter(Boolean)
+    if (labels.length === 0) return null
+
+    const originExpr = this.buildFieldValueExpression('origin', columns)
+    const destinationExpr = this.buildFieldValueExpression('destination', columns)
+    const orClauses: string[] = []
+    for (const label of labels) {
+      const parts = label.split(/\s*-\s*/).map((p) => p.trim()).filter(Boolean)
+      if (parts.length !== 2) continue
+      const [origin, destination] = parts
+      orClauses.push(
+        `(LOWER(${originExpr}) = LOWER($${params.length + 1}) AND LOWER(${destinationExpr}) = LOWER($${params.length + 2}))`,
+      )
+      params.push(origin, destination)
+    }
+    return orClauses.length > 0 ? `(${orClauses.join(' OR ')})` : null
   }
 
   private buildDateRangeClause(
@@ -1638,6 +1658,85 @@ export class AirShipmentsService {
     await this.dataSource.query(
       `UPDATE "${tableName}" SET excluded_reasons = NULLIF(excluded_reasons - $1, '{}') WHERE id = $2`,
       [alertType, id]
+    )
+  }
+
+  /**
+   * Excludes every row matching any of the given `lt_number`s from a specific alert type
+   * (recording the chosen alert + reason for audit). One LT may map to several TOs — all
+   * matches are updated. Returns the number of rows affected.
+   */
+  async excludeByLt(
+    tableName: string,
+    ltNumbers: string[],
+    alertType: AlertType,
+    reason: string,
+  ): Promise<number> {
+    if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
+      throw new BadRequestException('Invalid table name')
+    }
+    const lts = Array.from(new Set(ltNumbers.map((v) => String(v).trim()).filter(Boolean)))
+    if (lts.length === 0) return 0
+
+    const columns = await this.getTableColumns(tableName)
+    const ltExpr = this.buildFieldValueExpression('lt_number', columns)
+    const res = await this.dataSource.query(
+      `UPDATE "${tableName}"
+         SET excluded_reasons = COALESCE(excluded_reasons, '{}') || $1::jsonb
+       WHERE LOWER(${ltExpr}) = ANY($2::text[]) RETURNING id`,
+      [JSON.stringify({ [alertType]: reason }), lts.map((v) => v.toLowerCase())]
+    )
+    return res?.[1] ?? 0
+  }
+
+  /** Reverses an exclude-by-LT for a specific alert type: removes that key for matching rows. */
+  async restoreByLt(tableName: string, ltNumbers: string[], alertType: AlertType): Promise<number> {
+    if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
+      throw new BadRequestException('Invalid table name')
+    }
+    const lts = Array.from(new Set(ltNumbers.map((v) => String(v).trim()).filter(Boolean)))
+    if (lts.length === 0) return 0
+
+    const columns = await this.getTableColumns(tableName)
+    const ltExpr = this.buildFieldValueExpression('lt_number', columns)
+    const res = await this.dataSource.query(
+      `UPDATE "${tableName}"
+         SET excluded_reasons = NULLIF(excluded_reasons - $1, '{}')
+       WHERE LOWER(${ltExpr}) = ANY($2::text[]) RETURNING id`,
+      [alertType, lts.map((v) => v.toLowerCase())]
+    )
+    return res?.[1] ?? 0
+  }
+
+  // ── SLA column layout (single app-wide config, stored in general_params) ────────
+
+  /** Reads the app-wide SLA table column layout. Returns [] (use defaults) when unset/invalid. */
+  async getSlaColumnLayout(): Promise<Array<{ key: string; visible: boolean; frozen: boolean }>> {
+    const raw = await this.generalParamsService.getValue(
+      AirShipmentsService.SLA_COLUMN_LAYOUT_KEY,
+      '[]',
+    )
+    try {
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }
+
+  /**
+   * Persists the app-wide SLA column layout. Delegates to GeneralParamsService.update,
+   * which emits general_params.updated → recorded in audit_logs (actor + timestamp + value).
+   */
+  async setSlaColumnLayout(
+    layout: Array<{ key: string; visible: boolean; frozen: boolean }>,
+    actorId?: string,
+  ): Promise<void> {
+    await this.generalParamsService.upsert(
+      AirShipmentsService.SLA_COLUMN_LAYOUT_KEY,
+      JSON.stringify(layout),
+      'SLA Column Layout',
+      actorId,
     )
   }
 

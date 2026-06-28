@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer'
-import { IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min, Matches } from 'class-validator'
+import { ArrayNotEmpty, IsArray, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Max, Min, Matches } from 'class-validator'
 import { AlertType, ALERT_TYPES } from '../alert-evaluator'
 
 export class ExcludedQueryDto {
@@ -39,6 +39,30 @@ export class ExcludeRowDto {
 }
 
 export class RestoreRowDto {
+  @IsIn(ALERT_TYPES)
+  alertType: AlertType
+}
+
+export class ExcludeByLtDto {
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsString({ each: true })
+  ltNumbers: string[]
+
+  @IsIn(ALERT_TYPES)
+  alertType: AlertType
+
+  @IsString()
+  @IsNotEmpty()
+  reason: string
+}
+
+export class RestoreByLtDto {
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsString({ each: true })
+  ltNumbers: string[]
+
   @IsIn(ALERT_TYPES)
   alertType: AlertType
 }

@@ -48,6 +48,12 @@ interface AirShipmentTableProps {
   onPageChange: (page: number) => void
   onToggleLock?: (id: string, locked: boolean) => void
   visibleColumns?: Record<string, boolean>
+  /** Ordered, already-visible column keys. When provided, overrides the order derived
+   *  from `visibleColumns` (used by the SLA page's configurable-column layout). */
+  columns?: string[]
+  /** Ordered, visible frozen (pinned) columns with widths. When provided, overrides the
+   *  static FROZEN_KEYS-based frozen set (used by the SLA page's configurable pinning). */
+  frozenColumns?: { key: string; width: number }[]
   /** When provided AND alertFilter is a specific alert type (not 'any', 'normal', or null/undefined),
    *  an Exclude button is rendered in each row's action area. */
   onExclude?: (row: AirShipmentRow) => void
@@ -64,6 +70,8 @@ export function AirShipmentTable({
   onPageChange,
   onToggleLock,
   visibleColumns,
+  columns: columnsProp,
+  frozenColumns: frozenColumnsProp,
   onExclude,
   alertFilter,
 }: AirShipmentTableProps) {
@@ -73,9 +81,9 @@ export function AirShipmentTable({
     !!alertFilter &&
     alertFilter !== 'any' &&
     alertFilter !== 'normal'
-  const columns = visibleColumns
-    ? Object.keys(visibleColumns).filter((col) => visibleColumns[col])
-    : []
+  const columns =
+    columnsProp ??
+    (visibleColumns ? Object.keys(visibleColumns).filter((col) => visibleColumns[col]) : [])
 
   const handleHeaderClick = (col: string) => {
     if (col === sortBy) {
@@ -95,10 +103,12 @@ export function AirShipmentTable({
    */
   const FROZEN_COLS: { key: string; width: number | undefined }[] = [
     { key: '#', width: 50 },
-    ...FROZEN_KEYS.filter((col) => visibleColumns?.[col.key]).map((col) => ({
-      key: col.key,
-      width: col.width,
-    })),
+    ...(frozenColumnsProp
+      ? frozenColumnsProp.map((col) => ({ key: col.key, width: col.width }))
+      : FROZEN_KEYS.filter((col) => visibleColumns?.[col.key]).map((col) => ({
+          key: col.key,
+          width: col.width,
+        }))),
   ]
 
   const FROZEN_LEFT: Record<string, number> = FROZEN_COLS.reduce(
