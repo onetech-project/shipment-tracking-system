@@ -129,7 +129,7 @@ export function ExcludeByLtModal({
               onChange={(e) => setLtText(e.target.value)}
               disabled={loading}
               rows={4}
-              placeholder={'LT-0001\nLT-0002'}
+              placeholder={'LT0001\nLT0002'}
               className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
             />
             {ltNumbers.length > 0 && (

@@ -1867,10 +1867,12 @@ export class AirShipmentsService {
       const join = sheetExists ? `LEFT JOIN "${sheetTable}" t ON t.awb = a.awb` : ''
       const evidenceCol = sheetExists ? 't.evidence' : 'NULL::text'
       branches.push(`
-        SELECT a.awb AS id, a.awb, NULL::text AS airline, a.std_booking, a.std_flight_no, a.actual_flight_dep, a.dep_flight_no,
+        SELECT a.awb AS id, a.awb, COALESCE(src.name, a.carrier_code) AS airline, a.std_booking, a.std_flight_no, a.actual_flight_dep, a.dep_flight_no,
           a.dep2, a.dep2_flight_no, a.dep3, a.dep3_flight_no, a.dep4, a.dep4_flight_no, a.dep5, a.dep5_flight_no,
           NULL::text AS remarks_offload, ${evidenceCol} AS evidence, 'api'::text AS source, a.fetched_at, a.error
-        FROM "${apiTable}" a ${join}
+        FROM "${apiTable}" a
+        LEFT JOIN airline_tracking_source src ON src.carrier_code = a.carrier_code
+        ${join}
         WHERE a.offload = true
           AND ${evid(evidenceCol)}
           ${searchIdx ? `AND a.awb ILIKE $${searchIdx}` : ''}
