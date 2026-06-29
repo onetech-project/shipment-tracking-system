@@ -272,6 +272,43 @@ export async function fetchOffloadedAwbs(params: {
   return res.data
 }
 
+// ── SLA Monitoring Excel export ──────────────────────────────────────────────
+
+/**
+ * Downloads the SLA Monitoring export (Active Alert + Exclude sheets) as an .xlsx
+ * Blob, scoped to the current filters. Returns the Blob for the caller to save.
+ */
+export async function exportSlaExcel(
+  tableName: string,
+  params: {
+    startDate: string
+    endDate: string
+    alertFilter?: string
+    routeFilter?: string[]
+    search?: string
+    excludedAlertType?: string
+    columns?: string[]
+    sortBy?: string
+    sortOrder?: SortOrder
+  }
+): Promise<Blob> {
+  const qp = new URLSearchParams()
+  qp.set('startDate', params.startDate)
+  qp.set('endDate', params.endDate)
+  if (params.alertFilter) qp.set('alertFilter', params.alertFilter)
+  for (const r of params.routeFilter ?? []) qp.append('routeFilter', r)
+  if (params.search && params.search.trim()) qp.set('search', params.search.trim())
+  if (params.excludedAlertType) qp.set('excludedAlertType', params.excludedAlertType)
+  for (const c of params.columns ?? []) qp.append('columns', c)
+  if (params.sortBy) qp.set('sortBy', params.sortBy)
+  if (params.sortOrder) qp.set('sortOrder', params.sortOrder)
+
+  const res = await apiClient.get(`/air-shipments/${tableName}/sla-export?${qp.toString()}`, {
+    responseType: 'blob',
+  })
+  return res.data as Blob
+}
+
 export async function setAwbEvidence(awb: string, evidence: string): Promise<void> {
   await apiClient.patch(`/air-shipments/tracking-smu/awb/${encodeURIComponent(awb)}/evidence`, {
     evidence,

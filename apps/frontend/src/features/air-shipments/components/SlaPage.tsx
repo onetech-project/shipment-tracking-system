@@ -28,7 +28,9 @@ import {
   clearAwbEvidence,
   fetchSlaColumnLayout,
   saveSlaColumnLayout,
+  exportSlaExcel,
 } from '@/features/air-shipments/hooks/useAirShipments'
+import { triggerBlobDownload } from '@/shared/utils/file-download.util'
 import { ExcludeModal } from '@/features/air-shipments/components/ExcludeModal'
 import { ExcludeByLtModal } from '@/features/air-shipments/components/ExcludeByLtModal'
 import { MultiRouteFilter } from '@/features/air-shipments/components/MultiRouteFilter'
@@ -42,7 +44,7 @@ import {
   OffloadedAwbRow,
   SortOrder,
 } from '@/features/air-shipments/types'
-import { Lock, Trash2, RotateCcw, Ban, GripVertical, Pin, PinOff } from 'lucide-react'
+import { Lock, Trash2, RotateCcw, Ban, GripVertical, Pin, PinOff, Download } from 'lucide-react'
 import { AxiosError } from 'axios'
 
 /** One column's persisted layout: position (array order), visibility, and frozen/pinned state. */
@@ -196,6 +198,8 @@ export function SlaPage() {
     end: string
     loading: boolean
   }>({ op: null, start: '', end: '', loading: false })
+
+  const [isExporting, setIsExporting] = useState(false)
 
   // ── Excluded tab state ───────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<'active' | 'excluded'>('active')
@@ -728,6 +732,33 @@ export function SlaPage() {
 
   const routeLabels = useMemo(() => routes.map((r) => r.label), [routes])
 
+  // ── Excel export (Active Alert + Exclude sheets, current filters) ─────────────
+
+  const handleExport = async () => {
+    if (dateError || isExporting) return
+    setIsExporting(true)
+    try {
+      const blob = await exportSlaExcel(TABLE_NAME, {
+        startDate,
+        endDate,
+        alertFilter: activeAlert ?? 'any',
+        routeFilter: activeRoutes,
+        search: searchQuery,
+        excludedAlertType: excludedAlertTypeFilter !== 'all' ? excludedAlertTypeFilter : undefined,
+        columns: orderedVisibleColumns,
+        sortBy,
+        sortOrder,
+      })
+      triggerBlobDownload(blob, `sla-monitoring-${startDate}_${endDate}.xlsx`)
+    } catch (err) {
+      window.alert(
+        `Failed to export: ${err instanceof Error ? err.message : 'Unknown error'}`
+      )
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -778,36 +809,49 @@ export function SlaPage() {
 
       <section ref={tableRef} className="space-y-4">
         {/* ── Tab Bar ── */}
-        <div className="flex gap-1 border-b border-border mb-4">
+        <div className="flex items-center justify-between border-b border-border mb-4">
+          <div className="flex gap-1">
+            <button
+              onClick={() => setActiveTab('active')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                activeTab === 'active'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Active Alerts
+            </button>
+            <button
+              onClick={() => setActiveTab('excluded')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                activeTab === 'excluded'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              Excluded
+              {(() => {
+                const excludedCount = isFlightTracking
+                  ? excludedOffloaded?.meta.total ?? 0
+                  : excludedMeta?.total ?? 0
+                return excludedCount > 0 ? (
+                  <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                    {excludedCount}
+                  </span>
+                ) : null
+              })()}
+            </button>
+          </div>
+
+          {/* Exports BOTH tables (Active Alert + Exclude) to one .xlsx, honoring current filters. */}
           <button
-            onClick={() => setActiveTab('active')}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              activeTab === 'active'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
+            type="button"
+            onClick={() => void handleExport()}
+            disabled={isExporting || !!dateError}
+            title="Export Active Alert & Exclude tables to Excel"
+            className="mb-1 inline-flex items-center gap-1 rounded border border-border bg-background px-3 py-1.5 text-xs shadow-sm hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Active Alerts
-          </button>
-          <button
-            onClick={() => setActiveTab('excluded')}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              activeTab === 'excluded'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            Excluded
-            {(() => {
-              const excludedCount = isFlightTracking
-                ? excludedOffloaded?.meta.total ?? 0
-                : excludedMeta?.total ?? 0
-              return excludedCount > 0 ? (
-                <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-                  {excludedCount}
-                </span>
-              ) : null
-            })()}
+            <Download size={14} /> {isExporting ? 'Exporting…' : 'Export Excel'}
           </button>
         </div>
 

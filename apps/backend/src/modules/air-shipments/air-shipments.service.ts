@@ -11,6 +11,17 @@ import { GoogleSheetConfigDto } from './dto/google-sheet-config.dto'
 import { AlertType, AlertFilter, ALERT_TYPES, evaluateAlerts, parseDurationSafe } from './alert-evaluator'
 import { ExcludedQueryDto } from './dto/excluded-query.dto'
 import { OffloadedAwbQueryDto } from './dto/tracking-smu.dto'
+import {
+  buildSlaWorkbook,
+  mapActiveRows,
+  mapAwbRows,
+  expandExcludedRows,
+  alertLabel,
+  colLabel,
+  AWB_HEADERS,
+  EXCLUDE_HEADERS,
+  SlaSheetSpec,
+} from './sla-export.builder'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 import { GeneralParamsService } from '../general-params/general-params.service'
 
@@ -65,6 +76,7 @@ export class AirShipmentsService {
       days,
       startDate,
       endDate,
+      unbounded = false,
     }: {
       page: number
       limit: number
@@ -76,6 +88,8 @@ export class AirShipmentsService {
       days?: number
       startDate?: string
       endDate?: string
+      /** Export mode: return every matching row (no LIMIT/OFFSET). */
+      unbounded?: boolean
     }
   ) {
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
@@ -142,7 +156,10 @@ export class AirShipmentsService {
       )
       const filteredRows = this.filterRowsByAlert(enriched, alertFilter, nHours, mHours)
       const total = filteredRows.length
-      const pageIds = filteredRows.slice(offset, offset + limit).map((row) => row.id)
+      // Export mode takes every matched row; the paginated UI takes a page slice.
+      const pageIds = (unbounded ? filteredRows : filteredRows.slice(offset, offset + limit)).map(
+        (row) => row.id
+      )
       // Phase 2: fetch full rows (incl. extra_fields) for the current page only
       let data: Record<string, unknown>[] = []
       if (pageIds.length > 0) {
@@ -164,8 +181,9 @@ export class AirShipmentsService {
     }
 
     const rows = await this.dataSource.query(
-      `SELECT * FROM "${tableName}" ${whereSql} ${orderBySql} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-      [...params, limit, offset]
+      `SELECT * FROM "${tableName}" ${whereSql} ${orderBySql}` +
+        (unbounded ? '' : ` LIMIT $${params.length + 1} OFFSET $${params.length + 2}`),
+      unbounded ? params : [...params, limit, offset]
     )
 
     const countRes = await this.dataSource.query(
@@ -1743,12 +1761,14 @@ export class AirShipmentsService {
   async findExcludedRows(
     tableName: string,
     query: ExcludedQueryDto,
+    opts: { unbounded?: boolean } = {},
   ): Promise<{ data: Record<string, unknown>[]; meta: { total: number; page: number; limit: number } }> {
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
       throw new BadRequestException('Invalid table name')
     }
 
     const { alertType, page = 1, limit = 50, startDate, endDate } = query
+    const { unbounded = false } = opts
     const offset = (page - 1) * limit
 
     const whereClauses: string[] = [
@@ -1769,8 +1789,9 @@ export class AirShipmentsService {
 
     const [data, countRes] = await Promise.all([
       this.dataSource.query(
-        `SELECT * FROM "${tableName}" ${whereSql} ORDER BY id ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-        [...params, limit, offset]
+        `SELECT * FROM "${tableName}" ${whereSql} ORDER BY id ASC` +
+          (unbounded ? '' : ` LIMIT $${params.length + 1} OFFSET $${params.length + 2}`),
+        unbounded ? params : [...params, limit, offset]
       ),
       this.dataSource.query(
         `SELECT count(*)::int FROM "${tableName}" ${whereSql}`,
@@ -1810,8 +1831,10 @@ export class AirShipmentsService {
    */
   async findOffloadedAwbs(
     query: OffloadedAwbQueryDto,
+    opts: { unbounded?: boolean } = {},
   ): Promise<{ data: Record<string, unknown>[]; meta: { total: number; page: number; limit: number } }> {
     const { search, withEvidence = false, page = 1, limit = 50 } = query
+    const { unbounded = false } = opts
     const offset = (page - 1) * limit
 
     const sheetTable = AirShipmentsService.TRACKING_SMU_TABLE
@@ -1883,13 +1906,155 @@ export class AirShipmentsService {
     const union = branches.map((b) => `(${b})`).join(' UNION ALL ')
     const [data, countRes] = await Promise.all([
       this.dataSource.query(
-        `SELECT * FROM (${union}) u ORDER BY awb ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-        [...params, limit, offset]
+        `SELECT * FROM (${union}) u ORDER BY awb ASC` +
+          (unbounded ? '' : ` LIMIT $${params.length + 1} OFFSET $${params.length + 2}`),
+        unbounded ? params : [...params, limit, offset]
       ),
       this.dataSource.query(`SELECT count(*)::int AS count FROM (${union}) u`, params),
     ])
 
     return { data, meta: { total: countRes?.[0]?.count ?? 0, page, limit } }
+  }
+
+  // ── SLA Monitoring Excel export ──────────────────────────────────────────────
+
+  /**
+   * Builds the SLA Monitoring Excel export: one workbook with an "Active Alert" sheet
+   * and an "Exclude" sheet. Each sheet mirrors the filters currently applied to its tab
+   * and includes EVERY matching row (unbounded — the 50-row UI pagination does not apply).
+   */
+  async buildSlaExportWorkbook(
+    tableName: string,
+    opts: {
+      startDate?: string
+      endDate?: string
+      alertFilter?: AlertFilter
+      routeFilter?: string[]
+      search?: string
+      excludedAlertType?: AlertType
+      columns?: string[]
+      sortBy?: string
+      sortOrder?: 'asc' | 'desc'
+    },
+  ): Promise<Buffer> {
+    const {
+      startDate,
+      endDate,
+      alertFilter,
+      routeFilter,
+      search,
+      excludedAlertType,
+      columns,
+      sortBy = 'date',
+      sortOrder = 'asc',
+    } = opts
+
+    const isFlightTracking = alertFilter === 'flightTracking'
+    const dateRange = startDate && endDate ? `${startDate} → ${endDate}` : '—'
+    const exportedAt = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const searchLine = search && search.trim() ? search.trim() : '—'
+
+    // Flight Tracking drives both tabs off the AWB (offloaded) lists.
+    if (isFlightTracking) {
+      const [active, excluded] = await Promise.all([
+        this.findOffloadedAwbs(
+          { search, startDate, endDate, withEvidence: false } as OffloadedAwbQueryDto,
+          { unbounded: true },
+        ),
+        this.findOffloadedAwbs(
+          { search, startDate, endDate, withEvidence: true } as OffloadedAwbQueryDto,
+          { unbounded: true },
+        ),
+      ])
+      const ftFilters: Array<[string, string]> = [
+        ['Date Range:', dateRange],
+        ['Alert Type:', 'Flight Tracking'],
+        ['Search:', searchLine],
+        ['Exported:', exportedAt],
+      ]
+      return buildSlaWorkbook(
+        {
+          name: 'Active Alert',
+          title: 'SLA Monitoring — Active Alerts (Flight Tracking)',
+          filterLines: ftFilters,
+          headers: AWB_HEADERS,
+          rows: mapAwbRows(active.data),
+        },
+        {
+          name: 'Exclude',
+          title: 'SLA Monitoring — Excluded (Flight Tracking)',
+          filterLines: ftFilters,
+          headers: AWB_HEADERS,
+          rows: mapAwbRows(excluded.data),
+        },
+      )
+    }
+
+    // Standard per-TO tables: active rows mapped to the visible columns; excluded rows
+    // expanded one line per alert type (mirrors the Excluded tab).
+    const cols = columns && columns.length ? columns : await this.defaultExportColumns(tableName)
+
+    const active = await this.findAllForTable(tableName, {
+      page: 1,
+      limit: 50,
+      sortBy,
+      sortOrder,
+      search,
+      alertFilter,
+      routeFilter,
+      startDate,
+      endDate,
+      unbounded: true,
+    })
+    const excluded = await this.findExcludedRows(
+      tableName,
+      { alertType: excludedAlertType, startDate, endDate } as ExcludedQueryDto,
+      { unbounded: true },
+    )
+
+    const activeSheet: SlaSheetSpec = {
+      name: 'Active Alert',
+      title: 'SLA Monitoring — Active Alerts',
+      filterLines: [
+        ['Date Range:', dateRange],
+        ['Alert Type:', alertFilter && alertFilter !== 'any' ? alertLabel(alertFilter) : 'All Alerts'],
+        ['Routes:', routeFilter && routeFilter.length ? routeFilter.join(', ') : 'All Routes'],
+        ['Search:', searchLine],
+        ['Exported:', exportedAt],
+      ],
+      headers: cols.map(colLabel),
+      rows: mapActiveRows(active.data, cols),
+    }
+    const excludeSheet: SlaSheetSpec = {
+      name: 'Exclude',
+      title: 'SLA Monitoring — Excluded',
+      filterLines: [
+        ['Date Range:', dateRange],
+        ['Alert Type:', excludedAlertType ? alertLabel(excludedAlertType) : 'All'],
+        ['Exported:', exportedAt],
+      ],
+      headers: EXCLUDE_HEADERS,
+      rows: expandExcludedRows(excluded.data, excludedAlertType),
+    }
+
+    return buildSlaWorkbook(activeSheet, excludeSheet)
+  }
+
+  /** Fallback Active-sheet columns when the client doesn't pass a visible-column list. */
+  private async defaultExportColumns(tableName: string): Promise<string[]> {
+    const layout = await this.getSlaColumnLayout().catch(() => [])
+    const visible = layout.filter((i) => i.visible).map((i) => i.key)
+    if (visible.length) return visible
+    const hidden = new Set([
+      'id',
+      'is_locked',
+      'last_synced_at',
+      'created_at',
+      'updated_at',
+      'extra_fields',
+      'excluded_reasons',
+    ])
+    return (await this.getTableColumns(tableName)).filter((c) => !hidden.has(c))
   }
 
   /**
