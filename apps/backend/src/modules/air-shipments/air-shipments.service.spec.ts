@@ -966,3 +966,75 @@ describe('AirShipmentsService — loadCached() / invalidateLookupCaches()', () =
     expect(loader).toHaveBeenCalledTimes(5)
   })
 })
+
+describe('AirShipmentsService — unbounded export read mode', () => {
+  let service: AirShipmentsService
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AirShipmentsService,
+        { provide: SheetsService, useValue: { getConfigs: jest.fn().mockReturnValue([]) } },
+        {
+          provide: DynamicTableService,
+          useValue: { ensureTable: jest.fn().mockResolvedValue({ success: true }) },
+        },
+        { provide: getRepositoryToken(AirShipmentCgk), useValue: makeRepo() },
+        { provide: getRepositoryToken(AirShipmentSub), useValue: makeRepo() },
+        { provide: getRepositoryToken(AirShipmentSda), useValue: makeRepo() },
+        { provide: getRepositoryToken(RatePerStation), useValue: makeRepo() },
+        { provide: getRepositoryToken(RouteMaster), useValue: makeRepo() },
+        { provide: getRepositoryToken(GoogleSheetConfig), useValue: makeRepo() },
+        { provide: getRepositoryToken(GoogleSheetSheetConfig), useValue: makeRepo() },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+        { provide: DataSource, useValue: { query: jest.fn().mockResolvedValue([]) } },
+        {
+          provide: GeneralParamsService,
+          useValue: { getValue: jest.fn().mockResolvedValue('5') },
+        },
+      ],
+    }).compile()
+
+    service = module.get<AirShipmentsService>(AirShipmentsService)
+  })
+
+  /** 60 excluded rows — more than one 50-row page. */
+  const manyRows = Array.from({ length: 60 }, (_, i) => ({
+    id: i + 1,
+    to_number: `TO${i + 1}`,
+    lt_number: `LT${i + 1}`,
+    excluded_reasons: { melewatiSla: 'reason' },
+  }))
+
+  function wireMock() {
+    const dataSql: string[] = []
+    const dataSource = service['dataSource'] as jest.Mocked<DataSource>
+    dataSource.query.mockImplementation((sql: string) => {
+      if (sql.includes('information_schema')) {
+        return Promise.resolve([{ column_name: 'id' }, { column_name: 'excluded_reasons' }])
+      }
+      if (sql.includes('count(*)')) return Promise.resolve([{ count: manyRows.length }])
+      dataSql.push(sql) // the data query
+      return Promise.resolve(manyRows)
+    })
+    return dataSql
+  }
+
+  it('paginated read keeps LIMIT/OFFSET (one page only)', async () => {
+    const dataSql = wireMock()
+    await service.findExcludedRows('air_shipments_test', { page: 1, limit: 50 } as any)
+    expect(dataSql[0]).toContain('LIMIT')
+  })
+
+  it('unbounded read drops LIMIT/OFFSET and returns every matching row', async () => {
+    const dataSql = wireMock()
+    const res = await service.findExcludedRows(
+      'air_shipments_test',
+      { page: 1, limit: 50 } as any,
+      { unbounded: true },
+    )
+    expect(dataSql[0]).not.toContain('LIMIT')
+    expect(dataSql[0]).not.toContain('OFFSET')
+    expect(res.data).toHaveLength(60) // all rows, not just the 50-row page
+  })
+})
