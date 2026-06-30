@@ -1,12 +1,17 @@
-import * as XLSX from 'xlsx'
+import * as XLSX from 'xlsx-js-style'
 import {
   buildSlaWorkbook,
+  makeSheet,
+  headerRowIndex,
+  HEADER_FILL_RGB,
   mapActiveRows,
   mapAwbRows,
   expandExcludedRows,
   cellValue,
   colLabel,
   alertLabel,
+  formatMaybeDate,
+  nowWibTimestamp,
   AWB_HEADERS,
   EXCLUDE_HEADERS,
   SlaSheetSpec,
@@ -47,19 +52,64 @@ describe('sla-export.builder', () => {
   })
 
   describe('mapActiveRows', () => {
-    it('selects only the requested columns, in order, resolving extra_fields', () => {
+    it('selects only the requested columns, in order, resolving extra_fields + formatting dates', () => {
       const rows = [
         { date: '2026-06-01', lt_number: 'LT1', extra_fields: { issue: 'A' } },
         { date: '2026-06-02', lt_number: 'LT2', extra_fields: { issue: 'B' } },
       ]
       expect(mapActiveRows(rows, ['lt_number', 'issue', 'date'])).toEqual([
-        ['LT1', 'A', '2026-06-01'],
-        ['LT2', 'B', '2026-06-02'],
+        ['LT1', 'A', '01-Jun-2026'],
+        ['LT2', 'B', '02-Jun-2026'],
       ])
+    })
+
+    it('formats a datetime column value to DD-MMM-YYYY HH:mm:ss', () => {
+      const rows = [{ atd_origin: '2026-06-16T13:20:30Z' }]
+      expect(mapActiveRows(rows, ['atd_origin'])).toEqual([['16-Jun-2026 13:20:30']])
     })
 
     it('renders missing/null values as empty strings', () => {
       expect(mapActiveRows([{ lt_number: null }], ['lt_number', 'absent'])).toEqual([['', '']])
+    })
+  })
+
+  describe('formatMaybeDate', () => {
+    it('formats date-only values to DD-MMM-YYYY', () => {
+      expect(formatMaybeDate('2026-06-16')).toBe('16-Jun-2026')
+      expect(formatMaybeDate('16/06/2026')).toBe('16-Jun-2026') // DD/MM/YYYY
+      expect(formatMaybeDate('16-Jun-2026')).toBe('16-Jun-2026') // idempotent
+    })
+
+    it('formats datetime values to DD-MMM-YYYY HH:mm:ss, padding seconds', () => {
+      expect(formatMaybeDate('2026-06-16 13:20:30')).toBe('16-Jun-2026 13:20:30')
+      expect(formatMaybeDate('2026-06-16 13:20')).toBe('16-Jun-2026 13:20:00')
+      expect(formatMaybeDate('11-May-2026 10:30')).toBe('11-May-2026 10:30:00')
+    })
+
+    it('drops a midnight (00:00:00) time so date-only values show no time', () => {
+      expect(formatMaybeDate('2026-06-16 00:00:00')).toBe('16-Jun-2026')
+      expect(formatMaybeDate('2026-06-16T00:00:00')).toBe('16-Jun-2026')
+      expect(formatMaybeDate('2026-06-16T00:00:00Z')).toBe('16-Jun-2026')
+    })
+
+    it('keeps the source wall-clock for ISO values (no timezone shift)', () => {
+      expect(formatMaybeDate('2026-06-16T13:20:30Z')).toBe('16-Jun-2026 13:20:30')
+      expect(formatMaybeDate('2026-06-16T13:20:30+07:00')).toBe('16-Jun-2026 13:20:30')
+    })
+
+    it('nowWibTimestamp renders the instant in WIB (UTC+7)', () => {
+      // 02:51:20 UTC → 09:51:20 WIB
+      expect(nowWibTimestamp(new Date('2026-06-30T02:51:20Z'))).toBe('30-Jun-2026 09:51:20')
+      // crosses the date boundary: 18:30 UTC → 01:30 next-day WIB
+      expect(nowWibTimestamp(new Date('2026-06-30T18:30:00Z'))).toBe('01-Jul-2026 01:30:00')
+    })
+
+    it('leaves non-date / ambiguous strings untouched', () => {
+      expect(formatMaybeDate('24:00:00')).toBe('24:00:00') // SLA/TJPH duration
+      expect(formatMaybeDate('10:00')).toBe('10:00') // time-only flight leg
+      expect(formatMaybeDate('LT12345')).toBe('LT12345')
+      expect(formatMaybeDate('2026-13-40')).toBe('2026-13-40') // invalid → unchanged
+      expect(formatMaybeDate('')).toBe('')
     })
   })
 
@@ -148,6 +198,20 @@ describe('sla-export.builder', () => {
       expect(aoa[4]).toEqual(['DATE', 'LT NUMBER'])
       expect(aoa[5]).toEqual(['2026-06-01', 'LT1'])
       expect(aoa[6]).toEqual(['2026-06-02', 'LT2'])
+    })
+
+    it('paints every header cell light green (bold), on both sheets', () => {
+      for (const spec of [active, exclude]) {
+        const ws = makeSheet(spec)
+        const r = headerRowIndex(spec)
+        for (let c = 0; c < spec.headers.length; c++) {
+          const cell = ws[XLSX.utils.encode_cell({ r, c })]
+          expect(cell.s.fill.fgColor.rgb).toBe(HEADER_FILL_RGB)
+          expect(cell.s.font.bold).toBe(true)
+        }
+        // the non-header title/data cells stay unstyled
+        expect(ws[XLSX.utils.encode_cell({ r: 0, c: 0 })].s).toBeUndefined()
+      }
     })
   })
 })

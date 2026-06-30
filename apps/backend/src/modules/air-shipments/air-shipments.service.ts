@@ -18,6 +18,8 @@ import {
   expandExcludedRows,
   alertLabel,
   colLabel,
+  formatMaybeDate,
+  nowWibTimestamp,
   AWB_HEADERS,
   EXCLUDE_HEADERS,
   SlaSheetSpec,
@@ -1950,8 +1952,9 @@ export class AirShipmentsService {
     } = opts
 
     const isFlightTracking = alertFilter === 'flightTracking'
-    const dateRange = startDate && endDate ? `${startDate} → ${endDate}` : '—'
-    const exportedAt = new Date().toISOString().slice(0, 19).replace('T', ' ')
+    const dateRange =
+      startDate && endDate ? `${formatMaybeDate(startDate)} → ${formatMaybeDate(endDate)}` : '—'
+    const exportedAt = nowWibTimestamp()
     const searchLine = search && search.trim() ? search.trim() : '—'
 
     // Flight Tracking drives both tabs off the AWB (offloaded) lists.
