@@ -299,21 +299,21 @@ export function SlaPage() {
 
   const fetchOffloadedActive = useCallback(async () => {
     try {
-      const res = await fetchOffloadedAwbs({ page: offloadedPage, limit: 50, search: searchQuery, withEvidence: false, startDate, endDate })
+      const res = await fetchOffloadedAwbs({ page: offloadedPage, limit: 50, search: searchQuery, withEvidence: false, startDate, endDate, routeFilter: activeRoutes })
       setOffloadedData(res)
     } catch {
       setOffloadedData(null)
     }
-  }, [offloadedPage, searchQuery, startDate, endDate])
+  }, [offloadedPage, searchQuery, startDate, endDate, activeRoutes])
 
   const fetchOffloadedExcluded = useCallback(async () => {
     try {
-      const res = await fetchOffloadedAwbs({ page: excludedPage, limit: 50, search: searchQuery, withEvidence: true, startDate, endDate })
+      const res = await fetchOffloadedAwbs({ page: excludedPage, limit: 50, search: searchQuery, withEvidence: true, startDate, endDate, routeFilter: activeRoutes })
       setExcludedOffloaded(res)
     } catch {
       setExcludedOffloaded(null)
     }
-  }, [excludedPage, searchQuery, startDate, endDate])
+  }, [excludedPage, searchQuery, startDate, endDate, activeRoutes])
 
   const refresh = useCallback(() => {
     void fetchTableData()
