@@ -257,6 +257,7 @@ export async function fetchOffloadedAwbs(params: {
   withEvidence?: boolean
   startDate?: string
   endDate?: string
+  routeFilter?: string[]
 }): Promise<OffloadedAwbResponse> {
   const queryParams = new URLSearchParams()
   if (params.page !== undefined) queryParams.set('page', String(params.page))
@@ -265,6 +266,7 @@ export async function fetchOffloadedAwbs(params: {
   if (params.withEvidence) queryParams.set('withEvidence', 'true')
   if (params.startDate) queryParams.set('startDate', params.startDate)
   if (params.endDate) queryParams.set('endDate', params.endDate)
+  for (const r of params.routeFilter ?? []) queryParams.append('routeFilter', r)
 
   const res = await apiClient.get<OffloadedAwbResponse>(
     `/air-shipments/tracking-smu/offloaded?${queryParams}`

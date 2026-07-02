@@ -1835,7 +1835,7 @@ export class AirShipmentsService {
     query: OffloadedAwbQueryDto,
     opts: { unbounded?: boolean } = {},
   ): Promise<{ data: Record<string, unknown>[]; meta: { total: number; page: number; limit: number } }> {
-    const { search, withEvidence = false, page = 1, limit = 50 } = query
+    const { search, withEvidence = false, page = 1, limit = 50, routeFilter } = query
     const { unbounded = false } = opts
     const offset = (page - 1) * limit
 
@@ -1861,18 +1861,23 @@ export class AirShipmentsService {
         ? `(${col} IS NOT NULL AND BTRIM(${col}) <> '')`
         : `(${col} IS NULL OR BTRIM(${col}) = '')`
 
-    // Scope to AWBs that have compileaircgk TOs in the selected SLA range, using the
-    // SAME date expression as the dashboard cards — so the list and the card tonnage
-    // agree (excluding an AWB shown here always lowers the card).
-    let dateSubSelect = ''
-    if (query.startDate && query.endDate) {
+    // Scope to AWBs whose compileaircgk TOs match the selected SLA date range AND the
+    // active route filter, using the SAME table the dashboard cards read — so the list
+    // and the card tonnage agree (excluding an AWB shown here always lowers the card).
+    const compileClauses: string[] = []
+    if ((query.startDate && query.endDate) || (routeFilter && routeFilter.length)) {
       const compileCols = await this.getTableColumns('air_shipments_compileaircgk')
-      const dateClause = this.buildDateRangeClause(compileCols, params, query.startDate, query.endDate)
-      if (dateClause) {
-        dateSubSelect = `SELECT awb FROM air_shipments_compileaircgk WHERE ${dateClause}`
+      if (query.startDate && query.endDate) {
+        const dateClause = this.buildDateRangeClause(compileCols, params, query.startDate, query.endDate)
+        if (dateClause) compileClauses.push(dateClause)
       }
+      const routeClause = this.buildRouteFilterClause(routeFilter, compileCols, params)
+      if (routeClause) compileClauses.push(routeClause)
     }
-    const dateFilter = (col: string) => (dateSubSelect ? `AND ${col} IN (${dateSubSelect})` : '')
+    const compileSubSelect = compileClauses.length
+      ? `SELECT awb FROM air_shipments_compileaircgk WHERE ${compileClauses.join(' AND ')}`
+      : ''
+    const awbScope = (col: string) => (compileSubSelect ? `AND ${col} IN (${compileSubSelect})` : '')
 
     const branches: string[] = []
     if (sheetExists) {
@@ -1885,7 +1890,7 @@ export class AirShipmentsService {
           AND split_part(awb, '-', 1) <> ALL($1::text[])
           AND ${evid('evidence')}
           ${searchIdx ? `AND awb ILIKE $${searchIdx}` : ''}
-          ${dateFilter('awb')}
+          ${awbScope('awb')}
       `)
     }
     if (apiExists) {
@@ -1901,7 +1906,7 @@ export class AirShipmentsService {
         WHERE a.offload = true
           AND ${evid(evidenceCol)}
           ${searchIdx ? `AND a.awb ILIKE $${searchIdx}` : ''}
-          ${dateFilter('a.awb')}
+          ${awbScope('a.awb')}
       `)
     }
 
@@ -1961,17 +1966,18 @@ export class AirShipmentsService {
     if (isFlightTracking) {
       const [active, excluded] = await Promise.all([
         this.findOffloadedAwbs(
-          { search, startDate, endDate, withEvidence: false } as OffloadedAwbQueryDto,
+          { search, startDate, endDate, routeFilter, withEvidence: false } as OffloadedAwbQueryDto,
           { unbounded: true },
         ),
         this.findOffloadedAwbs(
-          { search, startDate, endDate, withEvidence: true } as OffloadedAwbQueryDto,
+          { search, startDate, endDate, routeFilter, withEvidence: true } as OffloadedAwbQueryDto,
           { unbounded: true },
         ),
       ])
       const ftFilters: Array<[string, string]> = [
         ['Date Range:', dateRange],
         ['Alert Type:', 'Flight Tracking'],
+        ['Routes:', routeFilter && routeFilter.length ? routeFilter.join(', ') : 'All Routes'],
         ['Search:', searchLine],
         ['Exported:', exportedAt],
       ]
