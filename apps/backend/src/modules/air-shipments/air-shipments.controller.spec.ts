@@ -19,7 +19,9 @@ describe('AirShipmentsController', () => {
       findAllForTable: jest.fn().mockResolvedValue({ data: [], meta: {} }),
     } as any
 
-    controller = new AirShipmentsController(service as any)
+    const airlineSources = {} as any
+    const airlineTracking = {} as any
+    controller = new AirShipmentsController(service as any, airlineSources, airlineTracking)
   })
 
   it('getAlertSummary delegates to service.getAlertSummaryForTable', async () => {

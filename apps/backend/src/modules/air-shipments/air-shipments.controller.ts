@@ -18,13 +18,21 @@ import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
 import { Permission } from '@shared/auth'
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator'
 import { ExcludedQueryDto, ExcludeRowDto, RestoreRowDto } from './dto/excluded-query.dto'
+import { OffloadedAwbQueryDto, SetEvidenceDto } from './dto/tracking-smu.dto'
+import { AirlineTrackingSourceService, AirlineSource } from './airline-tracking/airline-tracking-source.service'
+import { AirlineTrackingService } from './airline-tracking/airline-tracking.service'
+import { CreateAirlineSourceDto, UpdateAirlineSourceDto } from './airline-tracking/dto/airline-source.dto'
 
 @Controller('air-shipments')
 @UseGuards(JwtAuthGuard)
 export class AirShipmentsController {
   private readonly logger = new Logger(AirShipmentsController.name)
 
-  constructor(private readonly service: AirShipmentsService) {}
+  constructor(
+    private readonly service: AirShipmentsService,
+    private readonly airlineSources: AirlineTrackingSourceService,
+    private readonly airlineTracking: AirlineTrackingService,
+  ) {}
 
   @Get('google-sheet-config')
   @UseGuards(RbacGuard)
@@ -238,6 +246,77 @@ export class AirShipmentsController {
     @Body() body: RestoreRowDto
   ): Promise<void> {
     return this.service.restoreRow(tableName, id, body.alertType)
+  }
+
+  // ── Tracking_SMU offload alert (per-AWB) ──────────────────────────────────────
+  // Literal `tracking-smu/...` paths, declared above the catch-all `:tableName`.
+
+  @Get('tracking-smu/offloaded')
+  @UseGuards(RbacGuard)
+  @Authorize(Permission.READ_SLA)
+  async getOffloadedAwbs(@Query() query: OffloadedAwbQueryDto): Promise<{
+    data: Record<string, unknown>[]
+    meta: { total: number; page: number; limit: number }
+  }> {
+    return this.service.findOffloadedAwbs(query)
+  }
+
+  @Patch('tracking-smu/awb/:awb/evidence')
+  @UseGuards(RbacGuard)
+  @Authorize(Permission.UPDATE_TRACKING_SMU)
+  async setAwbEvidence(
+    @Param('awb') awb: string,
+    @Body() body: SetEvidenceDto
+  ): Promise<void> {
+    return this.service.setEvidenceByAwb(awb, body.evidence)
+  }
+
+  @Delete('tracking-smu/awb/:awb/evidence')
+  @UseGuards(RbacGuard)
+  @Authorize(Permission.UPDATE_TRACKING_SMU)
+  async clearAwbEvidence(@Param('awb') awb: string): Promise<void> {
+    return this.service.clearEvidenceByAwb(awb)
+  }
+
+  // ── Airline tracking source registry (carrier_code → endpoint config) ─────────
+
+  @Get('airline-sources')
+  @UseGuards(RbacGuard)
+  @Authorize(Permission.READ_SLA)
+  async listAirlineSources(): Promise<AirlineSource[]> {
+    return this.airlineSources.list()
+  }
+
+  @Post('airline-sources')
+  @UseGuards(RbacGuard)
+  @Authorize(Permission.UPDATE_AIRLINE_TRACKING_SOURCE)
+  async createAirlineSource(@Body() dto: CreateAirlineSourceDto): Promise<AirlineSource> {
+    return this.airlineSources.create(dto)
+  }
+
+  @Put('airline-sources/:carrierCode')
+  @UseGuards(RbacGuard)
+  @Authorize(Permission.UPDATE_AIRLINE_TRACKING_SOURCE)
+  async updateAirlineSource(
+    @Param('carrierCode') carrierCode: string,
+    @Body() dto: UpdateAirlineSourceDto
+  ): Promise<AirlineSource> {
+    return this.airlineSources.update(carrierCode, dto)
+  }
+
+  @Delete('airline-sources/:carrierCode')
+  @UseGuards(RbacGuard)
+  @Authorize(Permission.UPDATE_AIRLINE_TRACKING_SOURCE)
+  async deleteAirlineSource(@Param('carrierCode') carrierCode: string): Promise<void> {
+    return this.airlineSources.remove(carrierCode)
+  }
+
+  /** Manually trigger an airline-API DEP refresh cycle (useful for testing). */
+  @Post('airline-tracking/refresh')
+  @UseGuards(RbacGuard)
+  @Authorize(Permission.UPDATE_AIRLINE_TRACKING_SOURCE)
+  async refreshAirlineTracking() {
+    return this.airlineTracking.refreshRecentActive()
   }
 
   @Get(':tableName')
