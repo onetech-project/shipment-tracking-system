@@ -7,6 +7,13 @@ export interface AirShipmentRow {
   [key: string]: unknown
 }
 
+/** One column's persisted layout in the app-wide SLA table config. */
+export interface SlaColumnLayoutItem {
+  key: string
+  visible: boolean
+  frozen: boolean
+}
+
 export interface PaginationMeta {
   page: number
   limit: number

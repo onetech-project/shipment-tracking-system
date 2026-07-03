@@ -1,7 +1,13 @@
 'use client'
 import { useCallback, useEffect, useState } from 'react'
 import { apiClient } from '@/shared/api/client'
-import { AirShipmentsResponse, AirShipmentRow, OffloadedAwbResponse, SortOrder } from '../types'
+import {
+  AirShipmentsResponse,
+  AirShipmentRow,
+  OffloadedAwbResponse,
+  SlaColumnLayoutItem,
+  SortOrder,
+} from '../types'
 
 // interface UseAirShipmentsOptions {
 //   endpoint: string;
@@ -182,6 +188,34 @@ export async function restoreRow(
   })
 }
 
+/** Excludes every row matching the given LT number(s) from a specific alert type. */
+export async function excludeByLt(
+  tableName: string,
+  ltNumbers: string[],
+  alertType: string,
+  reason: string
+): Promise<number> {
+  const res = await apiClient.patch(`/air-shipments/${tableName}/exclude-by-lt`, {
+    ltNumbers,
+    alertType,
+    reason,
+  })
+  return res.data?.affected ?? 0
+}
+
+/** Reverses an exclude-by-LT for the given LT number(s) on a specific alert type. */
+export async function restoreByLt(
+  tableName: string,
+  ltNumbers: string[],
+  alertType: string
+): Promise<number> {
+  const res = await apiClient.patch(`/air-shipments/${tableName}/restore-by-lt`, {
+    ltNumbers,
+    alertType,
+  })
+  return res.data?.affected ?? 0
+}
+
 interface ExcludedResponse {
   data: AirShipmentRow[]
   meta: {
@@ -223,6 +257,7 @@ export async function fetchOffloadedAwbs(params: {
   withEvidence?: boolean
   startDate?: string
   endDate?: string
+  routeFilter?: string[]
 }): Promise<OffloadedAwbResponse> {
   const queryParams = new URLSearchParams()
   if (params.page !== undefined) queryParams.set('page', String(params.page))
@@ -231,11 +266,49 @@ export async function fetchOffloadedAwbs(params: {
   if (params.withEvidence) queryParams.set('withEvidence', 'true')
   if (params.startDate) queryParams.set('startDate', params.startDate)
   if (params.endDate) queryParams.set('endDate', params.endDate)
+  for (const r of params.routeFilter ?? []) queryParams.append('routeFilter', r)
 
   const res = await apiClient.get<OffloadedAwbResponse>(
     `/air-shipments/tracking-smu/offloaded?${queryParams}`
   )
   return res.data
+}
+
+// ── SLA Monitoring Excel export ──────────────────────────────────────────────
+
+/**
+ * Downloads the SLA Monitoring export (Active Alert + Exclude sheets) as an .xlsx
+ * Blob, scoped to the current filters. Returns the Blob for the caller to save.
+ */
+export async function exportSlaExcel(
+  tableName: string,
+  params: {
+    startDate: string
+    endDate: string
+    alertFilter?: string
+    routeFilter?: string[]
+    search?: string
+    excludedAlertType?: string
+    columns?: string[]
+    sortBy?: string
+    sortOrder?: SortOrder
+  }
+): Promise<Blob> {
+  const qp = new URLSearchParams()
+  qp.set('startDate', params.startDate)
+  qp.set('endDate', params.endDate)
+  if (params.alertFilter) qp.set('alertFilter', params.alertFilter)
+  for (const r of params.routeFilter ?? []) qp.append('routeFilter', r)
+  if (params.search && params.search.trim()) qp.set('search', params.search.trim())
+  if (params.excludedAlertType) qp.set('excludedAlertType', params.excludedAlertType)
+  for (const c of params.columns ?? []) qp.append('columns', c)
+  if (params.sortBy) qp.set('sortBy', params.sortBy)
+  if (params.sortOrder) qp.set('sortOrder', params.sortOrder)
+
+  const res = await apiClient.get(`/air-shipments/${tableName}/sla-export?${qp.toString()}`, {
+    responseType: 'blob',
+  })
+  return res.data as Blob
 }
 
 export async function setAwbEvidence(awb: string, evidence: string): Promise<void> {
@@ -246,4 +319,17 @@ export async function setAwbEvidence(awb: string, evidence: string): Promise<voi
 
 export async function clearAwbEvidence(awb: string): Promise<void> {
   await apiClient.delete(`/air-shipments/tracking-smu/awb/${encodeURIComponent(awb)}/evidence`)
+}
+
+// ── SLA table column layout (single app-wide config, DB-backed + audited) ────────
+
+export async function fetchSlaColumnLayout(): Promise<SlaColumnLayoutItem[]> {
+  const res = await apiClient.get<{ layout: SlaColumnLayoutItem[] }>(
+    '/air-shipments/sla-column-layout'
+  )
+  return Array.isArray(res.data?.layout) ? res.data.layout : []
+}
+
+export async function saveSlaColumnLayout(layout: SlaColumnLayoutItem[]): Promise<void> {
+  await apiClient.put('/air-shipments/sla-column-layout', { layout })
 }

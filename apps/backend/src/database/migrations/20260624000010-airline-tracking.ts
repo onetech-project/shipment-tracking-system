@@ -41,9 +41,9 @@ export class AirlineTracking20260624000010 implements MigrationInterface {
 
     await queryRunner.query(
       `INSERT INTO airline_tracking_source (carrier_code, name, url, payload, enabled) VALUES
-         ('126', 'Citilink/Garuda', $1, $3::jsonb, true),
-         ('888', 'Garuda/Citilink', $1, $3::jsonb, true),
-         ('778', 'Pelita',          $2, $3::jsonb, true)
+         ('126', 'Garuda',   $1, $3::jsonb, true),
+         ('888', 'Citilink', $1, $3::jsonb, true),
+         ('778', 'Pelita',   $2, $3::jsonb, true)
        ON CONFLICT (carrier_code) DO NOTHING`,
       [garudaUrl, pelitaUrl, payload]
     )

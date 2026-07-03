@@ -25,6 +25,15 @@ export const SLA_FROZEN_KEYS = [
   { key: 'to_number', width: 170 },
 ]
 
+/** Fallback width (px) for a user-pinned column that has no configured width. */
+export const DEFAULT_FROZEN_WIDTH = 160
+
+/** Configured sticky width (px) for a column, falling back to DEFAULT_FROZEN_WIDTH. */
+export function frozenColWidth(key: string): number {
+  const known = [...FROZEN_KEYS, ...SLA_FROZEN_KEYS].find((c) => c.key === key)
+  return known?.width ?? DEFAULT_FROZEN_WIDTH
+}
+
 /** Default-visible columns for the SLA Monitoring page. All others start hidden. */
 export const SLA_DEFAULT_VISIBLE = new Set([
   'date',

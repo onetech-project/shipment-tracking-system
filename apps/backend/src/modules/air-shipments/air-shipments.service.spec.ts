@@ -849,6 +849,41 @@ describe('AirShipmentsService — filterRowsByAlert()', () => {
 
     jest.useRealTimers()
   })
+
+  describe('buildRouteFilterClause()', () => {
+    const columns = ['origin', 'destination']
+
+    it('returns null for an empty/undefined filter', () => {
+      expect((service as any).buildRouteFilterClause(undefined, columns, [])).toBeNull()
+      expect((service as any).buildRouteFilterClause([], columns, [])).toBeNull()
+    })
+
+    it('builds a single route clause with origin/destination params', () => {
+      const params: any[] = []
+      const clause = (service as any).buildRouteFilterClause('CGK - SUB', columns, params)
+      expect(clause).toContain(' AND ')
+      expect(clause).not.toContain(' OR ')
+      expect(params).toEqual(['CGK', 'SUB'])
+    })
+
+    it('OR-combines multiple routes and appends all params in order', () => {
+      const params: any[] = []
+      const clause = (service as any).buildRouteFilterClause(
+        ['CGK - SUB', 'DPS - CGK'],
+        columns,
+        params
+      )
+      expect(clause).toContain(' OR ')
+      expect(params).toEqual(['CGK', 'SUB', 'DPS', 'CGK'])
+    })
+
+    it('skips malformed labels', () => {
+      const params: any[] = []
+      const clause = (service as any).buildRouteFilterClause(['CGK'], columns, params)
+      expect(clause).toBeNull()
+      expect(params).toEqual([])
+    })
+  })
 })
 
 describe('AirShipmentsService — loadCached() / invalidateLookupCaches()', () => {
@@ -929,5 +964,155 @@ describe('AirShipmentsService — loadCached() / invalidateLookupCaches()', () =
     await (service as any).loadCached('reservasi:air_shipments_other', loader)
     // sla + reservasi entries reloaded; the untouched table stays cached
     expect(loader).toHaveBeenCalledTimes(5)
+  })
+})
+
+describe('AirShipmentsService — unbounded export read mode', () => {
+  let service: AirShipmentsService
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AirShipmentsService,
+        { provide: SheetsService, useValue: { getConfigs: jest.fn().mockReturnValue([]) } },
+        {
+          provide: DynamicTableService,
+          useValue: { ensureTable: jest.fn().mockResolvedValue({ success: true }) },
+        },
+        { provide: getRepositoryToken(AirShipmentCgk), useValue: makeRepo() },
+        { provide: getRepositoryToken(AirShipmentSub), useValue: makeRepo() },
+        { provide: getRepositoryToken(AirShipmentSda), useValue: makeRepo() },
+        { provide: getRepositoryToken(RatePerStation), useValue: makeRepo() },
+        { provide: getRepositoryToken(RouteMaster), useValue: makeRepo() },
+        { provide: getRepositoryToken(GoogleSheetConfig), useValue: makeRepo() },
+        { provide: getRepositoryToken(GoogleSheetSheetConfig), useValue: makeRepo() },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+        { provide: DataSource, useValue: { query: jest.fn().mockResolvedValue([]) } },
+        {
+          provide: GeneralParamsService,
+          useValue: { getValue: jest.fn().mockResolvedValue('5') },
+        },
+      ],
+    }).compile()
+
+    service = module.get<AirShipmentsService>(AirShipmentsService)
+  })
+
+  /** 60 excluded rows — more than one 50-row page. */
+  const manyRows = Array.from({ length: 60 }, (_, i) => ({
+    id: i + 1,
+    to_number: `TO${i + 1}`,
+    lt_number: `LT${i + 1}`,
+    excluded_reasons: { melewatiSla: 'reason' },
+  }))
+
+  function wireMock() {
+    const dataSql: string[] = []
+    const dataSource = service['dataSource'] as jest.Mocked<DataSource>
+    dataSource.query.mockImplementation((sql: string) => {
+      if (sql.includes('information_schema')) {
+        return Promise.resolve([{ column_name: 'id' }, { column_name: 'excluded_reasons' }])
+      }
+      if (sql.includes('count(*)')) return Promise.resolve([{ count: manyRows.length }])
+      dataSql.push(sql) // the data query
+      return Promise.resolve(manyRows)
+    })
+    return dataSql
+  }
+
+  it('paginated read keeps LIMIT/OFFSET (one page only)', async () => {
+    const dataSql = wireMock()
+    await service.findExcludedRows('air_shipments_test', { page: 1, limit: 50 } as any)
+    expect(dataSql[0]).toContain('LIMIT')
+  })
+
+  it('unbounded read drops LIMIT/OFFSET and returns every matching row', async () => {
+    const dataSql = wireMock()
+    const res = await service.findExcludedRows(
+      'air_shipments_test',
+      { page: 1, limit: 50 } as any,
+      { unbounded: true },
+    )
+    expect(dataSql[0]).not.toContain('LIMIT')
+    expect(dataSql[0]).not.toContain('OFFSET')
+    expect(res.data).toHaveLength(60) // all rows, not just the 50-row page
+  })
+})
+
+describe('AirShipmentsService — findOffloadedAwbs() route filter', () => {
+  let service: AirShipmentsService
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AirShipmentsService,
+        { provide: SheetsService, useValue: { getConfigs: jest.fn().mockReturnValue([]) } },
+        {
+          provide: DynamicTableService,
+          useValue: { ensureTable: jest.fn().mockResolvedValue({ success: true }) },
+        },
+        { provide: getRepositoryToken(AirShipmentCgk), useValue: makeRepo() },
+        { provide: getRepositoryToken(AirShipmentSub), useValue: makeRepo() },
+        { provide: getRepositoryToken(AirShipmentSda), useValue: makeRepo() },
+        { provide: getRepositoryToken(RatePerStation), useValue: makeRepo() },
+        { provide: getRepositoryToken(RouteMaster), useValue: makeRepo() },
+        { provide: getRepositoryToken(GoogleSheetConfig), useValue: makeRepo() },
+        { provide: getRepositoryToken(GoogleSheetSheetConfig), useValue: makeRepo() },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+        { provide: DataSource, useValue: { query: jest.fn().mockResolvedValue([]) } },
+        {
+          provide: GeneralParamsService,
+          useValue: { getValue: jest.fn().mockResolvedValue('5') },
+        },
+      ],
+    }).compile()
+
+    service = module.get<AirShipmentsService>(AirShipmentsService)
+  })
+
+  /** Captures every non-metadata query so the test can inspect the offloaded UNION. */
+  function wireMock() {
+    const captured: { sql: string; params: any[] }[] = []
+    const dataSource = service['dataSource'] as jest.Mocked<DataSource>
+    dataSource.query.mockImplementation((sql: string, params?: any[]) => {
+      if (sql.includes('information_schema.tables')) return Promise.resolve([{ exists: true }])
+      if (sql.includes('information_schema.columns')) {
+        return Promise.resolve([
+          { column_name: 'awb' },
+          { column_name: 'origin' },
+          { column_name: 'destination' },
+          { column_name: 'atd_origin' },
+        ])
+      }
+      if (sql.includes('SELECT carrier_code FROM airline_tracking_source')) {
+        return Promise.resolve([])
+      }
+      captured.push({ sql, params: params ?? [] })
+      if (sql.includes('count(*)')) return Promise.resolve([{ count: 0 }])
+      return Promise.resolve([])
+    })
+    return captured
+  }
+
+  it('scopes offloaded AWBs to the active route via a compileaircgk subselect', async () => {
+    const captured = wireMock()
+    await service.findOffloadedAwbs({ routeFilter: ['CGK - SUB'] } as any)
+
+    const dataSql = captured.find((c) => c.sql.includes('ORDER BY awb'))
+    expect(dataSql).toBeDefined()
+    // The AWB list is narrowed to shipments on the selected route, sourced from the
+    // same compile table the date scope and dashboard cards read.
+    expect(dataSql!.sql).toContain('air_shipments_compileaircgk')
+    expect(dataSql!.params).toContain('CGK')
+    expect(dataSql!.params).toContain('SUB')
+  })
+
+  it('applies no route subselect when routeFilter is absent', async () => {
+    const captured = wireMock()
+    await service.findOffloadedAwbs({} as any)
+
+    const dataSql = captured.find((c) => c.sql.includes('ORDER BY awb'))
+    expect(dataSql).toBeDefined()
+    expect(dataSql!.sql).not.toContain('air_shipments_compileaircgk')
   })
 })

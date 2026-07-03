@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer'
+import { Type, Transform } from 'class-transformer'
 import { IsIn, IsInt, IsOptional, IsString, Max, Min, Matches } from 'class-validator'
 import { ALERT_FILTERS, AlertFilter } from '../alert-evaluator'
 
@@ -33,9 +33,14 @@ export class AirShipmentQueryDto {
   @IsIn(ALERT_FILTERS)
   alertFilter?: AlertFilter
 
+  // One or more "ORIGIN - DESTINATION" route labels. A single repeated query param
+  // arrives as a string, multiple as an array — normalize to an array either way.
   @IsOptional()
-  @IsString()
-  routeFilter?: string
+  @Transform(({ value }) =>
+    value === undefined || value === null ? undefined : Array.isArray(value) ? value : [value]
+  )
+  @IsString({ each: true })
+  routeFilter?: string[]
 
   @IsOptional()
   @Type(() => Number)
