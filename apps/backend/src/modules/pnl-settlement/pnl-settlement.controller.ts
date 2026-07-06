@@ -10,6 +10,7 @@ import {
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common'
+import { ApiTags } from '@nestjs/swagger'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
 import { Authorize } from '../../common/decorators/authorize.decorator'
@@ -29,6 +30,7 @@ interface UploadedInvoiceFile {
 // FileInterceptor uses in-memory storage by default, so file.buffer is available for parsing.
 const uploadInterceptor = FileInterceptor('file', { limits: { fileSize: MAX_UPLOAD_BYTES } })
 
+@ApiTags('PnL Settlement')
 @Controller('pnl-settlement')
 @UseGuards(JwtAuthGuard)
 export class PnlSettlementController {

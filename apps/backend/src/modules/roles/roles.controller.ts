@@ -11,12 +11,14 @@ import {
   HttpStatus,
   Put,
 } from '@nestjs/common'
+import { ApiTags } from '@nestjs/swagger'
 import { RolesService } from './roles.service'
 import { CreateRoleDto, UpdateRoleDto, AssignPermissionsDto, AssignRoleDto } from './dto/role.dto'
 import { Authorize } from '../../common/decorators/authorize.decorator'
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator'
 import { Permission } from '@shared/auth'
 
+@ApiTags('Roles')
 @Controller('roles')
 export class RolesController {
   constructor(private readonly service: RolesService) {}

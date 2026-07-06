@@ -5,6 +5,7 @@ import * as cookieParser from 'cookie-parser'
 import { IoAdapter } from '@nestjs/platform-socket.io'
 import { AppModule } from './app.module'
 import { AppLogger } from './common/logging/app-logger.service'
+import { setupSwagger } from './common/swagger/setup-swagger'
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule)
@@ -30,6 +31,8 @@ async function bootstrap() {
       transform: true,
     })
   )
+
+  setupSwagger(app)
 
   const port = process.env.BACKEND_PORT ?? 4000
   await app.listen(port)

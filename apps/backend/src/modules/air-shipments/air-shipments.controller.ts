@@ -9,6 +9,7 @@ import {
   Res,
   StreamableFile,
 } from '@nestjs/common'
+import { ApiTags } from '@nestjs/swagger'
 import type { Response } from 'express'
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
 import { AirShipmentsService } from './air-shipments.service'
@@ -28,6 +29,7 @@ import { AirlineTrackingSourceService, AirlineSource } from './airline-tracking/
 import { AirlineTrackingService } from './airline-tracking/airline-tracking.service'
 import { CreateAirlineSourceDto, UpdateAirlineSourceDto } from './airline-tracking/dto/airline-source.dto'
 
+@ApiTags('Air Shipments')
 @Controller('air-shipments')
 @UseGuards(JwtAuthGuard)
 export class AirShipmentsController {

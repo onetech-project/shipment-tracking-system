@@ -1,4 +1,5 @@
 import { Controller, Get, Query, ParseIntPipe, DefaultValuePipe } from '@nestjs/common'
+import { ApiTags } from '@nestjs/swagger'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { AuditLog } from './entities/audit-log.entity'
@@ -6,6 +7,7 @@ import { Authorize } from '../../common/decorators/authorize.decorator'
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator'
 import { Permission } from '@shared/auth'
 
+@ApiTags('Audit')
 @Controller('audit')
 export class AuditController {
   constructor(@InjectRepository(AuditLog) private readonly auditRepo: Repository<AuditLog>) {}
