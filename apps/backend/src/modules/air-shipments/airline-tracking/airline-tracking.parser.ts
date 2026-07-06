@@ -18,7 +18,7 @@ export interface ParsedTracking {
   bookedDate: string | null
   bookedFlightNo: string | null
   depLegs: DepLeg[]
-  /** Offload when any departure from DEP2 onward has a flight date != the booked date. */
+  /** Offload when the actual departure (DEP1) has a flight date != the booked date. */
   offload: boolean
 }
 
@@ -51,9 +51,9 @@ export function coerceTrackingPayload(data: unknown): Record<string, unknown> | 
 
 /**
  * Parses a tracking payload into booked + departure legs and computes offload.
- * Rule (confirmed): compare the booked flight date to every departure from DEP2
- * onward; any mismatch → offload. DEP1 (the booked departure) is excluded, so a
- * same-flight delay is not an offload. No departures (or no booked date) → onboard.
+ * Rule (confirmed): compare the actual departure (DEP1) flight date to the booked
+ * date (STD Booking); a mismatch → offload. Later legs (DEP2 onward) are ignored.
+ * No departures (or no booked date) → onboard.
  */
 export function parseTracking(payload: Record<string, unknown> | null): ParsedTracking {
   const empty: ParsedTracking = {
@@ -84,10 +84,10 @@ export function parseTracking(payload: Record<string, unknown> | null): ParsedTr
       flightDate: r.FlightDate ? String(r.FlightDate).trim() : '',
     }))
 
-  // DEP2 onward vs booked date. No booked date or <2 departures → onboard.
+  // Actual departure (DEP1) vs booked date. No booked date or no departure → onboard.
+  const dep1 = depLegs[0]
   const offload =
-    !!bookedDate &&
-    depLegs.slice(1).some((leg) => leg.flightDate !== '' && norm(leg.flightDate) !== norm(bookedDate))
+    !!bookedDate && !!dep1 && dep1.flightDate !== '' && norm(dep1.flightDate) !== norm(bookedDate)
 
   return { bookedDate, bookedFlightNo, depLegs, offload }
 }
