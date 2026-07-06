@@ -6,7 +6,7 @@ import { ScheduleModule } from '@nestjs/schedule'
 import { ClsModule } from 'nestjs-cls'
 import { BullModule } from '@nestjs/bullmq'
 import { ThrottlerModule } from '@nestjs/throttler'
-import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core'
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, DiscoveryModule } from '@nestjs/core'
 import * as Joi from 'joi'
 import { HttpExceptionFilter } from './common/filters/http-exception.filter'
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard'
@@ -29,6 +29,7 @@ import { PnlSettlementModule } from './modules/pnl-settlement/pnl-settlement.mod
 
 @Module({
   imports: [
+    DiscoveryModule,
     ConfigModule.forRoot({
       isGlobal: true,
       validationSchema: Joi.object({
