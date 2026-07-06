@@ -1,8 +1,10 @@
 import { Controller, Get, Param, Put, Body } from '@nestjs/common'
+import { ApiTags } from '@nestjs/swagger'
 import { GeneralParamsService } from './general-params.service'
 import { UpdateGeneralParamDto } from './dto/update-general-param.dto'
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator'
 
+@ApiTags('General Params')
 @Controller('general-params')
 export class GeneralParamsController {
   constructor(private readonly service: GeneralParamsService) {}

@@ -1,9 +1,11 @@
 import { Controller, Get, Query, UseGuards, DefaultValuePipe, ParseIntPipe } from '@nestjs/common'
+import { ApiTags } from '@nestjs/swagger'
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
 import { Authorize } from '../../common/decorators/authorize.decorator'
 import { Permission } from '@shared/auth'
 import { PnlService } from './pnl.service'
 
+@ApiTags('PnL')
 @Controller('pnl')
 @UseGuards(JwtAuthGuard)
 @Authorize(Permission.READ_PNL)

@@ -10,12 +10,14 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { CreateUserDto, UpdateUserDto, ChangePasswordDto, AdminResetPasswordDto } from './dto/user.dto';
 import { Authorize } from '../../common/decorators/authorize.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { Permission } from '@shared/auth';
 
+@ApiTags('Users')
 @Controller('users')
 export class UsersController {
   constructor(private readonly service: UsersService) {}

@@ -1,8 +1,10 @@
 import { Controller, Get, Param, ParseUUIDPipe, NotFoundException } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { PermissionsService } from './permissions.service';
 import { Authorize } from '../../common/decorators/authorize.decorator';
 import { Permission } from '@shared/auth';
 
+@ApiTags('Permissions')
 @Controller('permissions')
 export class PermissionsController {
   constructor(private readonly service: PermissionsService) {}

@@ -9,6 +9,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common'
+import { ApiTags } from '@nestjs/swagger'
 import { AuthGuard } from '@nestjs/passport'
 import { Request, Response } from 'express'
 import { ConfigService } from '@nestjs/config'
@@ -17,10 +18,12 @@ import { AuthService } from './auth.service'
 import { Public } from '../../common/decorators/public.decorator'
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator'
 import { LoginDto } from './dto/login.dto'
+import { LoginResponseDto } from './dto/login-response.dto'
 import { RefreshToken } from './entities/refresh-token.entity'
 
 const REFRESH_COOKIE = 'refresh_token'
 
+@ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -36,7 +39,7 @@ export class AuthController {
     @Body() dto: LoginDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response
-  ) {
+  ): Promise<LoginResponseDto> {
     const { accessToken, refreshToken, user } = await this.authService.login(
       dto.username,
       dto.password,

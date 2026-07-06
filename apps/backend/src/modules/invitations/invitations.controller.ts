@@ -9,6 +9,7 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common'
+import { ApiTags } from '@nestjs/swagger'
 import { InvitationsService } from './invitations.service'
 import { CreateInvitationDto, AcceptInvitationDto } from './dto/invitation.dto'
 import { Public } from '../../common/decorators/public.decorator'
@@ -16,6 +17,7 @@ import { Authorize } from '../../common/decorators/authorize.decorator'
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator'
 import { Permission } from '@shared/auth'
 
+@ApiTags('Invitations')
 @Controller('invitations')
 export class InvitationsController {
   constructor(private readonly service: InvitationsService) {}
