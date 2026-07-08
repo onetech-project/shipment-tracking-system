@@ -30,6 +30,7 @@ export interface SlaSheetSpec {
  */
 export const SLA_ALERT_LABELS: Record<AlertType, string> = {
   reservasiPenerbangan: 'Flight Reservations',
+  reservasiKapal: 'Sea Reservation',
   flightTracking: 'Flight Tracking',
   potensiMelebihiSla: 'Potential SLA Breach',
   melewatiSla: 'SLA Breach',
