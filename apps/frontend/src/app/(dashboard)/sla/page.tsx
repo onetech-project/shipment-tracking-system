@@ -1,28 +1,16 @@
 'use client'
-import { Suspense, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { useAuth } from '@/features/auth/auth.context'
-import { usePermissions } from '@/shared/hooks/use-permissions'
-import { SlaPage } from '@/features/air-shipments/components/SlaPage'
-import { AIR_SLA_MODE } from '@/features/air-shipments/sla-mode.config'
+import { useEffect } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 
-export default function SlaRoute() {
-  const { user, loading } = useAuth()
-  const { hasPermission } = usePermissions()
+/** Old bookmarks land here; forward filters (?alert=…&route=…) to the Air tab. */
+export default function SlaIndexRedirect() {
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   useEffect(() => {
-    if (!loading && user && !hasPermission('read.sla')) {
-      router.replace('/dashboard')
-    }
-  }, [loading, user, hasPermission, router])
+    const qs = searchParams.toString()
+    router.replace(qs ? `/sla/air?${qs}` : '/sla/air')
+  }, [router, searchParams])
 
-  if (loading || !user) return null
-  if (!hasPermission('read.sla')) return null
-
-  return (
-    <Suspense fallback={<div className="p-8 text-sm text-muted-foreground">Loading...</div>}>
-      <SlaPage mode={AIR_SLA_MODE} />
-    </Suspense>
-  )
+  return null
 }
