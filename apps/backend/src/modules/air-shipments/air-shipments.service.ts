@@ -8,7 +8,15 @@ import { ChunkError, RowError, SheetResult } from './sheet-config.interface'
 import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
 import { GoogleSheetSheetConfig } from './entities/google-sheet-sheet-config.entity'
 import { GoogleSheetConfigDto } from './dto/google-sheet-config.dto'
-import { AlertType, AlertFilter, ALERT_TYPES, evaluateAlerts, parseDurationSafe } from './alert-evaluator'
+import {
+  AlertType,
+  AlertFilter,
+  ALERT_TYPES,
+  evaluateAlerts,
+  parseDurationSafe,
+  AlertProfile,
+  resolveAlertProfile,
+} from './alert-evaluator'
 import { ExcludedQueryDto } from './dto/excluded-query.dto'
 import { OffloadedAwbQueryDto } from './dto/tracking-smu.dto'
 import {
@@ -535,6 +543,19 @@ export class AirShipmentsService {
       this.generalParamsService.getValue('m_hours', '5'),
     ])
     return { nHours: parseFloat(n), mHours: parseFloat(m) }
+  }
+
+  /**
+   * Resolves the alert profile (AIR vs SEA field mapping) for a dynamic table.
+   * The sea table is configured via the sea_sla_table_name general param so a
+   * sheet rename doesn't require a deploy.
+   */
+  private async getAlertProfileForTable(tableName: string): Promise<AlertProfile> {
+    const seaTableName = await this.generalParamsService.getValue(
+      'sea_sla_table_name',
+      'air_shipments_compileseanonjava',
+    )
+    return resolveAlertProfile(tableName, seaTableName)
   }
 
   private static getFieldValueFromRow(row: Record<string, unknown>, key: string): unknown {
