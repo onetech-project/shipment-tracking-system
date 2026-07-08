@@ -8,6 +8,7 @@ import {
   DashboardAlertKey,
   DashboardAlertSummary,
 } from '@/features/air-shipments/components/DashboardAlertCards'
+import { AIR_SLA_MODE } from '@/features/air-shipments/sla-mode.config'
 import { GeneralParamsModal } from '@/features/general-params/components/GeneralParamsModal'
 import { useGeneralParams } from '@/features/general-params/hooks/useGeneralParams'
 import { useSyncNotification } from '@/features/air-shipments/hooks/useSyncNotification'
@@ -118,6 +119,7 @@ export default function DashboardPage() {
               summary={summary}
               activeAlert={null}
               onRouteSelect={handleRouteSelect}
+              alertCards={AIR_SLA_MODE.alerts}
               isLoading={summaryLoading}
               startDate={startDate}
               endDate={endDate}

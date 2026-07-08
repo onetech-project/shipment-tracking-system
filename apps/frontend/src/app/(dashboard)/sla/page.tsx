@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
 import { SlaPage } from '@/features/air-shipments/components/SlaPage'
+import { AIR_SLA_MODE } from '@/features/air-shipments/sla-mode.config'
 
 export default function SlaRoute() {
   const { user, loading } = useAuth()
@@ -21,7 +22,7 @@ export default function SlaRoute() {
 
   return (
     <Suspense fallback={<div className="p-8 text-sm text-muted-foreground">Loading...</div>}>
-      <SlaPage />
+      <SlaPage mode={AIR_SLA_MODE} />
     </Suspense>
   )
 }
