@@ -1738,6 +1738,10 @@ export class AirShipmentsService {
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
       throw new BadRequestException('Invalid table name')
     }
+    const profile = await this.getAlertProfileForTable(tableName)
+    if (!profile.alertTypes.includes(alertType)) {
+      throw new BadRequestException(`Alert type ${alertType} is not available for this table`)
+    }
     await this.dataSource.query(
       `UPDATE "${tableName}" SET excluded_reasons = COALESCE(excluded_reasons, '{}') || $1::jsonb WHERE id = $2`,
       [JSON.stringify({ [alertType]: reason }), id]
@@ -1751,6 +1755,10 @@ export class AirShipmentsService {
   ): Promise<void> {
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
       throw new BadRequestException('Invalid table name')
+    }
+    const profile = await this.getAlertProfileForTable(tableName)
+    if (!profile.alertTypes.includes(alertType)) {
+      throw new BadRequestException(`Alert type ${alertType} is not available for this table`)
     }
     await this.dataSource.query(
       `UPDATE "${tableName}" SET excluded_reasons = NULLIF(excluded_reasons - $1, '{}') WHERE id = $2`,
@@ -1772,6 +1780,10 @@ export class AirShipmentsService {
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
       throw new BadRequestException('Invalid table name')
     }
+    const profile = await this.getAlertProfileForTable(tableName)
+    if (!profile.alertTypes.includes(alertType)) {
+      throw new BadRequestException(`Alert type ${alertType} is not available for this table`)
+    }
     const lts = Array.from(new Set(ltNumbers.map((v) => String(v).trim()).filter(Boolean)))
     if (lts.length === 0) return 0
 
@@ -1791,6 +1803,10 @@ export class AirShipmentsService {
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
       throw new BadRequestException('Invalid table name')
     }
+    const profile = await this.getAlertProfileForTable(tableName)
+    if (!profile.alertTypes.includes(alertType)) {
+      throw new BadRequestException(`Alert type ${alertType} is not available for this table`)
+    }
     const lts = Array.from(new Set(ltNumbers.map((v) => String(v).trim()).filter(Boolean)))
     if (lts.length === 0) return 0
 
@@ -1805,12 +1821,16 @@ export class AirShipmentsService {
     return res?.[1] ?? 0
   }
 
-  // ── SLA column layout (single app-wide config, stored in general_params) ────────
+  // ── SLA column layout (app-wide config per mode, stored in general_params) ────────
+
+  private static slaColumnLayoutKey(mode?: string): string {
+    return mode === 'sea' ? 'sea_sla_column_layout' : AirShipmentsService.SLA_COLUMN_LAYOUT_KEY
+  }
 
   /** Reads the app-wide SLA table column layout. Returns [] (use defaults) when unset/invalid. */
-  async getSlaColumnLayout(): Promise<Array<{ key: string; visible: boolean; frozen: boolean }>> {
+  async getSlaColumnLayout(mode?: string): Promise<Array<{ key: string; visible: boolean; frozen: boolean }>> {
     const raw = await this.generalParamsService.getValue(
-      AirShipmentsService.SLA_COLUMN_LAYOUT_KEY,
+      AirShipmentsService.slaColumnLayoutKey(mode),
       '[]',
     )
     try {
@@ -1828,11 +1848,12 @@ export class AirShipmentsService {
   async setSlaColumnLayout(
     layout: Array<{ key: string; visible: boolean; frozen: boolean }>,
     actorId?: string,
+    mode?: string,
   ): Promise<void> {
     await this.generalParamsService.upsert(
-      AirShipmentsService.SLA_COLUMN_LAYOUT_KEY,
+      AirShipmentsService.slaColumnLayoutKey(mode),
       JSON.stringify(layout),
-      'SLA Column Layout',
+      mode === 'sea' ? 'SLA Column Layout (Sea)' : 'SLA Column Layout',
       actorId,
     )
   }
@@ -2041,7 +2062,8 @@ export class AirShipmentsService {
       sortOrder = 'asc',
     } = opts
 
-    const isFlightTracking = alertFilter === 'flightTracking'
+    const profile = await this.getAlertProfileForTable(tableName)
+    const isFlightTracking = alertFilter === 'flightTracking' && profile.useSmuTracking
     const dateRange =
       startDate && endDate ? `${formatMaybeDate(startDate)} → ${formatMaybeDate(endDate)}` : '—'
     const exportedAt = nowWibTimestamp()
@@ -2086,7 +2108,8 @@ export class AirShipmentsService {
 
     // Standard per-TO tables: active rows mapped to the visible columns; excluded rows
     // expanded one line per alert type (mirrors the Excluded tab).
-    const cols = columns && columns.length ? columns : await this.defaultExportColumns(tableName)
+    const cols =
+      columns && columns.length ? columns : await this.defaultExportColumns(tableName, profile.key)
 
     const active = await this.findAllForTable(tableName, {
       page: 1,
@@ -2135,8 +2158,8 @@ export class AirShipmentsService {
   }
 
   /** Fallback Active-sheet columns when the client doesn't pass a visible-column list. */
-  private async defaultExportColumns(tableName: string): Promise<string[]> {
-    const layout = await this.getSlaColumnLayout().catch(() => [])
+  private async defaultExportColumns(tableName: string, mode?: string): Promise<string[]> {
+    const layout = await this.getSlaColumnLayout(mode).catch(() => [])
     const visible = layout.filter((i) => i.visible).map((i) => i.key)
     if (visible.length) return visible
     const hidden = new Set([

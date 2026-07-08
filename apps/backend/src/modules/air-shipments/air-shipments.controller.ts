@@ -232,16 +232,19 @@ export class AirShipmentsController {
   @Get('sla-column-layout')
   @UseGuards(RbacGuard)
   @Authorize(Permission.READ_SLA)
-  async getSlaColumnLayout(): Promise<{ layout: Array<{ key: string; visible: boolean; frozen: boolean }> }> {
-    return { layout: await this.service.getSlaColumnLayout() }
+  async getSlaColumnLayout(
+    @Query('mode') mode?: string
+  ): Promise<{ layout: Array<{ key: string; visible: boolean; frozen: boolean }> }> {
+    return { layout: await this.service.getSlaColumnLayout(mode) }
   }
 
   @Put('sla-column-layout')
   async setSlaColumnLayout(
     @Body() body: SlaColumnLayoutDto,
-    @CurrentUser() user: AuthenticatedUser
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('mode') mode?: string
   ): Promise<{ layout: SlaColumnLayoutDto['layout'] }> {
-    await this.service.setSlaColumnLayout(body.layout, user?.id)
+    await this.service.setSlaColumnLayout(body.layout, user?.id, mode)
     return { layout: body.layout }
   }
 
