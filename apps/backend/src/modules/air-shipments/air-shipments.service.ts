@@ -11,7 +11,6 @@ import { GoogleSheetConfigDto } from './dto/google-sheet-config.dto'
 import {
   AlertType,
   AlertFilter,
-  ALERT_TYPES,
   evaluateAlerts,
   parseDurationSafe,
   AlertProfile,
@@ -109,6 +108,17 @@ export class AirShipmentsService {
       throw new BadRequestException('Invalid table name')
     }
 
+    const profile = await this.getAlertProfileForTable(tableName)
+    if (
+      alertFilter &&
+      alertFilter !== 'normal' &&
+      alertFilter !== 'any' &&
+      !profile.alertTypes.includes(alertFilter as AlertType)
+    ) {
+      throw new BadRequestException(`Alert type ${alertFilter} is not available for this table`)
+    }
+    const useFlexibleTs = profile.key === 'sea'
+
     const columns = await this.getTableColumns(tableName)
     const safeSortBy = columns.includes(sortBy) ? sortBy : 'id'
     const offset = (page - 1) * limit
@@ -133,7 +143,14 @@ export class AirShipmentsService {
     const routeClause = this.buildRouteFilterClause(routeFilter, columns, params)
     if (routeClause) whereClauses.push(routeClause)
 
-    const dateClause = this.buildDateRangeClause(columns, params, startDate, endDate, days)
+    const dateClause = this.buildDateRangeClause(
+      columns,
+      params,
+      startDate,
+      endDate,
+      days,
+      useFlexibleTs
+    )
     if (dateClause) whereClauses.push(dateClause)
 
     const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
@@ -148,15 +165,18 @@ export class AirShipmentsService {
     }
 
     if (alertFilter) {
-      const [{ nHours, mHours }, slaLookup, offloadByAwb] = await Promise.all([
+      const emptyOffload = new Map<string, { offload: boolean; hasEvidence: boolean }>()
+      const [{ nHours, mHours }, slaLookup] = await Promise.all([
         this.getAlertNMHours(),
         this.getSlaLookupByOriginDest(),
-        this.getCachedOffloadByAwb(),
       ])
-      const reservasiByAwb = await this.getCachedReservasiTrackinganByAwb(RESERVASI_TABLE_NAME)
+      const reservasiByAwb = profile.useSmuTracking
+        ? await this.getCachedReservasiTrackinganByAwb(RESERVASI_TABLE_NAME)
+        : new Map<string, string>()
+      const offloadByAwb = profile.useSmuTracking ? await this.getCachedOffloadByAwb() : emptyOffload
       // Phase 1: narrow scan (no extra_fields) to decide which rows match the alert filter
       const projectedRows: Record<string, unknown>[] = await this.dataSource.query(
-        `SELECT ${this.buildAlertProjection(columns)} FROM "${tableName}" ${whereSql} ${orderBySql}`,
+        `SELECT ${this.buildAlertProjection(columns, profile)} FROM "${tableName}" ${whereSql} ${orderBySql}`,
         params
       )
       const enriched = this.enrichRowsWithOffload(
@@ -166,7 +186,7 @@ export class AirShipmentsService {
         ),
         offloadByAwb,
       )
-      const filteredRows = this.filterRowsByAlert(enriched, alertFilter, nHours, mHours)
+      const filteredRows = this.filterRowsByAlert(enriched, alertFilter, nHours, mHours, profile)
       const total = filteredRows.length
       // Export mode takes every matched row; the paginated UI takes a page slice.
       const pageIds = (unbounded ? filteredRows : filteredRows.slice(offset, offset + limit)).map(
@@ -223,22 +243,34 @@ export class AirShipmentsService {
       throw new BadRequestException('Invalid table name')
     }
 
-    const [{ nHours, mHours }, slaLookup, offloadByAwb] = await Promise.all([
+    const profile = await this.getAlertProfileForTable(tableName)
+    const useFlexibleTs = profile.key === 'sea'
+    const emptyOffload = new Map<string, { offload: boolean; hasEvidence: boolean }>()
+    const [{ nHours, mHours }, slaLookup] = await Promise.all([
       this.getAlertNMHours(),
       this.getCachedSlaLookup(),
-      this.getCachedOffloadByAwb(),
     ])
-    const reservasiByAwb = await this.getCachedReservasiTrackinganByAwb(RESERVASI_TABLE_NAME)
+    const reservasiByAwb = profile.useSmuTracking
+      ? await this.getCachedReservasiTrackinganByAwb(RESERVASI_TABLE_NAME)
+      : new Map<string, string>()
+    const offloadByAwb = profile.useSmuTracking ? await this.getCachedOffloadByAwb() : emptyOffload
     const columns = await this.getTableColumns(tableName)
     const whereClauses: string[] = []
     const params: any[] = []
 
-    const dateClause = this.buildDateRangeClause(columns, params, startDate, endDate, days)
+    const dateClause = this.buildDateRangeClause(
+      columns,
+      params,
+      startDate,
+      endDate,
+      days,
+      useFlexibleTs
+    )
     if (dateClause) whereClauses.push(dateClause)
 
     const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
     const rawRows: Record<string, unknown>[] = await this.dataSource.query(
-      `SELECT ${this.buildAlertProjection(columns)} FROM "${tableName}" ${whereSql}`,
+      `SELECT ${this.buildAlertProjection(columns, profile)} FROM "${tableName}" ${whereSql}`,
       params
     )
     const rows = this.enrichRowsWithOffload(
@@ -256,7 +288,7 @@ export class AirShipmentsService {
     }
 
     const acc: Record<AlertType, AlertSummaryItem> = {} as any
-    for (const type of ALERT_TYPES) {
+    for (const type of profile.alertTypes) {
       acc[type] = { routes: 0, tonnage: 0, breakdown: new Map() }
     }
 
@@ -293,16 +325,16 @@ export class AirShipmentsService {
       if (!routesByLabel.has(label)) routesByLabel.set(label, { label, origin, destination })
     }
 
-    const alertRows = rows.filter((row) => !AirShipmentsService.isVoidRow(row))
+    const alertRows = rows.filter((row) => !AirShipmentsService.isVoidRow(row, profile))
     for (const row of alertRows) {
-      const alerts = evaluateAlerts(row, nHours, mHours, now)
+      const alerts = evaluateAlerts(row, nHours, mHours, now, profile)
       const origin = String(getFieldValue(row, 'origin') ?? '').trim()
       const destination = String(getFieldValue(row, 'destination') ?? '').trim()
       const route = origin && destination ? `${origin} - ${destination}` : ''
       const grossWeight = parseFloat(String(getFieldValue(row, 'gross_weight') ?? '0')) || 0
 
       const excludedReasons = row.excluded_reasons as Record<string, string> | null
-      for (const type of ALERT_TYPES) {
+      for (const type of profile.alertTypes) {
         if (!alerts[type]) continue
         if (excludedReasons?.[type]) continue  // skip if excluded for this specific type
         const item = acc[type]
@@ -318,14 +350,14 @@ export class AirShipmentsService {
         if (!existing) {
           const emptyAlerts = {} as Record<AlertType, number>
           const emptyCounts = {} as Record<AlertType, number>
-          for (const t of ALERT_TYPES) { emptyAlerts[t] = 0; emptyCounts[t] = 0 }
+          for (const t of profile.alertTypes) { emptyAlerts[t] = 0; emptyCounts[t] = 0 }
           existing = { totalTonnage: 0, totalCount: 0, alerts: emptyAlerts, alertCounts: emptyCounts, otpOnTime: 0, otpOnTimeCount: 0, otpLate: 0, otpLateCount: 0 }
           byRoute.set(route, existing)
         }
         routeItem = existing
         routeItem.totalTonnage += grossWeight
         routeItem.totalCount += 1
-        for (const type of ALERT_TYPES) {
+        for (const type of profile.alertTypes) {
           if (alerts[type]) {
             routeItem.alerts[type] += grossWeight
             routeItem.alertCounts[type] += 1
@@ -341,7 +373,7 @@ export class AirShipmentsService {
         const atdOrigin = new Date(String(atdOriginRaw))
         const maxSla = new Date(atdOrigin.getTime() + slaDuration)
         if (!isNaN(atdOrigin.getTime()) && !isNaN(maxSla.getTime())) {
-          const completedTimeRaw = getFieldValue(row, 'ata_vendor_wh_destination')
+          const completedTimeRaw = getFieldValue(row, profile.completionField)
           const completedTimeStr = completedTimeRaw != null ? String(completedTimeRaw).trim() : ''
           let isOnTime: boolean | null = null
           if (completedTimeStr !== '') {
@@ -378,7 +410,7 @@ export class AirShipmentsService {
     }
 
     const alerts: Record<AlertType, { routes: number; tonnage: number; breakdown: Array<{ route: string; tonnage: number }> }> = {} as any
-    for (const type of ALERT_TYPES) {
+    for (const type of profile.alertTypes) {
       const item = acc[type]
       const breakdown = Array.from(item.breakdown.entries())
         .map(([route, tonnage]) => ({ route, tonnage: Math.round(tonnage * 100) / 100 }))
@@ -425,10 +457,10 @@ export class AirShipmentsService {
           totalTonnage: Math.round(item.totalTonnage * 100) / 100,
           totalCount: item.totalCount,
           alerts: Object.fromEntries(
-            ALERT_TYPES.map((t) => [t, Math.round(item.alerts[t] * 100) / 100])
+            profile.alertTypes.map((t) => [t, Math.round(item.alerts[t] * 100) / 100])
           ) as Record<AlertType, number>,
           alertCounts: Object.fromEntries(
-            ALERT_TYPES.map((t) => [t, item.alertCounts[t]])
+            profile.alertTypes.map((t) => [t, item.alertCounts[t]])
           ) as Record<AlertType, number>,
           otp: {
             percentage: otpTotal > 0 ? Math.round((item.otpOnTime / otpTotal) * 10000) / 100 : null,
@@ -453,13 +485,21 @@ export class AirShipmentsService {
       throw new BadRequestException('Invalid table name')
     }
 
+    const profile = await this.getAlertProfileForTable(tableName)
     const columns = await this.getTableColumns(tableName)
     const originExpr = this.buildFieldValueExpression('origin', columns)
     const destinationExpr = this.buildFieldValueExpression('destination', columns)
 
     const whereClauses: string[] = []
     const params: any[] = []
-    const dateClause = this.buildDateRangeClause(columns, params, startDate, endDate, days)
+    const dateClause = this.buildDateRangeClause(
+      columns,
+      params,
+      startDate,
+      endDate,
+      days,
+      profile.key === 'sea'
+    )
     if (dateClause) whereClauses.push(dateClause)
 
     const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : ''
@@ -522,8 +562,9 @@ export class AirShipmentsService {
     startDate?: string,
     endDate?: string,
     days?: number,
+    useFlexibleTimestamps = false,
   ): string | null {
-    const atdOriginExpr = this.buildTimestampExpression('atd_origin', columns)
+    const atdOriginExpr = this.buildTimestampExpression('atd_origin', columns, useFlexibleTimestamps)
     if (startDate && endDate) {
       const clause = `(${atdOriginExpr} >= $${params.length + 1}::timestamptz AND ${atdOriginExpr} <= $${params.length + 2}::timestamptz)`
       params.push(`${startDate}T00:00:00.000Z`, `${endDate}T23:59:59.999Z`)
@@ -565,8 +606,8 @@ export class AirShipmentsService {
     return undefined
   }
 
-  private static isVoidRow(row: Record<string, unknown>): boolean {
-    const val = AirShipmentsService.getFieldValueFromRow(row, 'ata_vendor_wh_destination')
+  private static isVoidRow(row: Record<string, unknown>, profile: AlertProfile): boolean {
+    const val = AirShipmentsService.getFieldValueFromRow(row, profile.completionField)
     return typeof val === 'string' && val.trim().toUpperCase() === 'VOID'
   }
 
@@ -831,13 +872,14 @@ export class AirShipmentsService {
     alertFilter: AlertFilter,
     nHours: number,
     mHours: number,
+    profile: AlertProfile,
   ) {
     const now = new Date()
     return rows
-      .filter((row) => !AirShipmentsService.isVoidRow(row))
+      .filter((row) => !AirShipmentsService.isVoidRow(row, profile))
       .filter((row) => !AirShipmentsService.isExcludedForAlert(row, alertFilter))
       .filter((row) => {
-        const alerts = evaluateAlerts(row, nHours, mHours, now)
+        const alerts = evaluateAlerts(row, nHours, mHours, now, profile)
         if (alertFilter === 'normal') {
           return !Object.values(alerts).some(Boolean)
         }
@@ -863,21 +905,29 @@ export class AirShipmentsService {
     return cols.map((c) => c.column_name)
   }
 
-  /** Every field read by evaluateAlerts / the summary aggregation loops. */
-  private static readonly ALERT_PROJECTION_FIELDS = [
-    'awb',
+  /** Fields read by evaluateAlerts / the summary loops regardless of profile. */
+  private static readonly ALERT_PROJECTION_BASE_FIELDS = [
     'atd_origin',
     'sla',
     'tjph',
-    'ata_flight',
-    'atd_flight',
-    'trackingan_smu',
-    'completed_time',
-    'ata_vendor_wh_destination',
     'origin',
     'destination',
     'gross_weight',
   ] as const
+
+  /** Every field the alert loops read for this profile. */
+  private static alertProjectionFields(profile: AlertProfile): string[] {
+    const fields = new Set<string>([
+      ...AirShipmentsService.ALERT_PROJECTION_BASE_FIELDS,
+      profile.arrivalField,
+      profile.departureField,
+      profile.reservationField,
+      profile.completionField,
+      profile.spxCompletionField,
+    ])
+    if (profile.useSmuTracking) fields.add('trackingan_smu')
+    return [...fields]
+  }
 
   /**
    * Narrow SELECT list for alert evaluation: only the fields the alert loops read,
@@ -886,10 +936,10 @@ export class AirShipmentsService {
    * exist as top-level keys (null when empty), so field lookups never fall through
    * to extra_fields — which is correct, since the alias already COALESCEs both sources.
    */
-  private buildAlertProjection(columns: string[]): string {
+  private buildAlertProjection(columns: string[], profile: AlertProfile): string {
     const parts = ['id']
     if (columns.includes('excluded_reasons')) parts.push('excluded_reasons')
-    for (const field of AirShipmentsService.ALERT_PROJECTION_FIELDS) {
+    for (const field of AirShipmentsService.alertProjectionFields(profile)) {
       parts.push(`${this.buildFieldValueExpression(field, columns)} AS "${field}"`)
     }
     return parts.join(', ')
@@ -904,8 +954,13 @@ export class AirShipmentsService {
     return expressions.length > 1 ? `COALESCE(${expressions.join(', ')})` : expressions[0]
   }
 
-  private buildTimestampExpression(field: string, columns: string[]) {
+  private buildTimestampExpression(field: string, columns: string[], useFlexible = false) {
     const fieldExpr = this.buildFieldValueExpression(field, columns)
+    if (useFlexible) {
+      // Sea sheets store non-ISO date strings ('1-Jun-2026 22:15'); the tolerant
+      // SQL parser (EXCEPTION → NULL) covers them where the ISO regex would drop rows.
+      return `parse_flexible_timestamp(${fieldExpr})`
+    }
     const v = `NULLIF(${fieldExpr}, '')`
     return `(CASE WHEN ${v} ~ '^\\d{4}-\\d{2}-\\d{2}([ T]\\d{1,2}:\\d{2}|$)' THEN ${v}::timestamptz END)`
   }
@@ -1791,6 +1846,7 @@ export class AirShipmentsService {
       throw new BadRequestException('Invalid table name')
     }
 
+    const profile = await this.getAlertProfileForTable(tableName)
     const { alertType, page = 1, limit = 50, startDate, endDate } = query
     const { unbounded = false } = opts
     const offset = (page - 1) * limit
@@ -1806,7 +1862,14 @@ export class AirShipmentsService {
     }
 
     const columns = await this.getTableColumns(tableName)
-    const dateClause = this.buildDateRangeClause(columns, params, startDate, endDate)
+    const dateClause = this.buildDateRangeClause(
+      columns,
+      params,
+      startDate,
+      endDate,
+      undefined,
+      profile.key === 'sea'
+    )
     if (dateClause) whereClauses.push(dateClause)
 
     const whereSql = `WHERE ${whereClauses.join(' AND ')}`
