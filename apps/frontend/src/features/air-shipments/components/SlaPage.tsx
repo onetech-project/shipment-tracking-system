@@ -676,14 +676,14 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
 
   // ── Alert filter helpers ────────────────────────────────────────────────────
 
-  /** Rewrites the `/sla` URL to reflect the current alert + routes + date range. */
+  /** Rewrites the current tab's URL (/sla/air or /sla/sea) to reflect the alert + routes + dates. */
   const syncUrl = (alertKey: AlertFilterOption | null, routesList: string[]) => {
     const params = new URLSearchParams()
     if (alertKey) params.set('alert', alertKey)
     if (routesList.length) params.set('route', routesList.join(','))
     params.set('startDate', startDate)
     params.set('endDate', endDate)
-    router.replace(`/sla?${params.toString()}`, { scroll: false })
+    router.replace(`/sla/${mode.key}?${params.toString()}`, { scroll: false })
   }
 
   // Drill-down from a card / route-alert table: focus a single route (replaces selection).
