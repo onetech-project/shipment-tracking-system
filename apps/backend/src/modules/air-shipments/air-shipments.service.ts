@@ -108,7 +108,7 @@ export class AirShipmentsService {
       throw new BadRequestException('Invalid table name')
     }
 
-    const profile = await this.getAlertProfileForTable(tableName)
+    const profile = this.getAlertProfileForTable(tableName)
     if (
       alertFilter &&
       alertFilter !== 'normal' &&
@@ -243,7 +243,7 @@ export class AirShipmentsService {
       throw new BadRequestException('Invalid table name')
     }
 
-    const profile = await this.getAlertProfileForTable(tableName)
+    const profile = this.getAlertProfileForTable(tableName)
     const useFlexibleTs = profile.key === 'sea'
     const emptyOffload = new Map<string, { offload: boolean; hasEvidence: boolean }>()
     const [{ nHours, mHours }, slaLookup] = await Promise.all([
@@ -485,7 +485,7 @@ export class AirShipmentsService {
       throw new BadRequestException('Invalid table name')
     }
 
-    const profile = await this.getAlertProfileForTable(tableName)
+    const profile = this.getAlertProfileForTable(tableName)
     const columns = await this.getTableColumns(tableName)
     const originExpr = this.buildFieldValueExpression('origin', columns)
     const destinationExpr = this.buildFieldValueExpression('destination', columns)
@@ -586,17 +586,9 @@ export class AirShipmentsService {
     return { nHours: parseFloat(n), mHours: parseFloat(m) }
   }
 
-  /**
-   * Resolves the alert profile (AIR vs SEA field mapping) for a dynamic table.
-   * The sea table is configured via the sea_sla_table_name general param so a
-   * sheet rename doesn't require a deploy.
-   */
-  private async getAlertProfileForTable(tableName: string): Promise<AlertProfile> {
-    const seaTableName = await this.generalParamsService.getValue(
-      'sea_sla_table_name',
-      'air_shipments_compileseanonjava',
-    )
-    return resolveAlertProfile(tableName, seaTableName)
+  /** Resolves the alert profile (AIR vs SEA field mapping) for a dynamic table. */
+  private getAlertProfileForTable(tableName: string): AlertProfile {
+    return resolveAlertProfile(tableName)
   }
 
   private static getFieldValueFromRow(row: Record<string, unknown>, key: string): unknown {
@@ -1738,7 +1730,7 @@ export class AirShipmentsService {
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
       throw new BadRequestException('Invalid table name')
     }
-    const profile = await this.getAlertProfileForTable(tableName)
+    const profile = this.getAlertProfileForTable(tableName)
     if (!profile.alertTypes.includes(alertType)) {
       throw new BadRequestException(`Alert type ${alertType} is not available for this table`)
     }
@@ -1756,7 +1748,7 @@ export class AirShipmentsService {
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
       throw new BadRequestException('Invalid table name')
     }
-    const profile = await this.getAlertProfileForTable(tableName)
+    const profile = this.getAlertProfileForTable(tableName)
     if (!profile.alertTypes.includes(alertType)) {
       throw new BadRequestException(`Alert type ${alertType} is not available for this table`)
     }
@@ -1780,7 +1772,7 @@ export class AirShipmentsService {
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
       throw new BadRequestException('Invalid table name')
     }
-    const profile = await this.getAlertProfileForTable(tableName)
+    const profile = this.getAlertProfileForTable(tableName)
     if (!profile.alertTypes.includes(alertType)) {
       throw new BadRequestException(`Alert type ${alertType} is not available for this table`)
     }
@@ -1803,7 +1795,7 @@ export class AirShipmentsService {
     if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
       throw new BadRequestException('Invalid table name')
     }
-    const profile = await this.getAlertProfileForTable(tableName)
+    const profile = this.getAlertProfileForTable(tableName)
     if (!profile.alertTypes.includes(alertType)) {
       throw new BadRequestException(`Alert type ${alertType} is not available for this table`)
     }
@@ -1867,7 +1859,7 @@ export class AirShipmentsService {
       throw new BadRequestException('Invalid table name')
     }
 
-    const profile = await this.getAlertProfileForTable(tableName)
+    const profile = this.getAlertProfileForTable(tableName)
     const { alertType, page = 1, limit = 50, startDate, endDate } = query
     const { unbounded = false } = opts
     const offset = (page - 1) * limit
@@ -2062,7 +2054,7 @@ export class AirShipmentsService {
       sortOrder = 'asc',
     } = opts
 
-    const profile = await this.getAlertProfileForTable(tableName)
+    const profile = this.getAlertProfileForTable(tableName)
     const isFlightTracking = alertFilter === 'flightTracking' && profile.useSmuTracking
     const dateRange =
       startDate && endDate ? `${formatMaybeDate(startDate)} → ${formatMaybeDate(endDate)}` : '—'

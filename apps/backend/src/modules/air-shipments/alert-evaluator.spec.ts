@@ -825,4 +825,8 @@ describe('AIR profile default & profile resolution', () => {
     expect(resolveAlertProfile('air_shipments_compileaircgk', 'air_shipments_compileseanonjava')).toBe(AIR_ALERT_PROFILE)
     expect(resolveAlertProfile('air_shipments_compileseanonjava', ' air_shipments_compileseanonjava ')).toBe(SEA_ALERT_PROFILE)
   })
+  it('resolveAlertProfile defaults the sea table to SEA_SLA_TABLE_NAME (no param)', () => {
+    expect(resolveAlertProfile('air_shipments_compileseanonjava')).toBe(SEA_ALERT_PROFILE)
+    expect(resolveAlertProfile('air_shipments_compileaircgk')).toBe(AIR_ALERT_PROFILE)
+  })
 })

@@ -79,8 +79,17 @@ export const SEA_ALERT_PROFILE: AlertProfile = {
   useSmuTracking: false,
 }
 
-/** Maps a dynamic table name to its alert profile (seaTableName from general_params). */
-export function resolveAlertProfile(tableName: string, seaTableName: string): AlertProfile {
+/** Dynamic table backing the sea SLA profile (the CompileSeaNonJava sheet sync). */
+export const SEA_SLA_TABLE_NAME = 'air_shipments_compileseanonjava'
+
+/**
+ * Maps a dynamic table name to its alert profile. Any table other than the sea
+ * table uses the AIR profile.
+ */
+export function resolveAlertProfile(
+  tableName: string,
+  seaTableName: string = SEA_SLA_TABLE_NAME,
+): AlertProfile {
   return seaTableName.trim() !== '' && tableName.trim() === seaTableName.trim()
     ? SEA_ALERT_PROFILE
     : AIR_ALERT_PROFILE
