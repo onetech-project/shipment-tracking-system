@@ -550,7 +550,16 @@ export class PnlService {
           MAX(v.cost_ra_awb)   AS cost_ra,
           MAX(v.sum_gw_per_awb) AS sum_gw
         FROM v_pnl_to v
-        LEFT JOIN air_shipments_smu_rate_cgk_spx srx ON srx.awb = v.awb
+        LEFT JOIN (
+          -- one clean booking per awb (mirrors v_pnl_to's booking CTE) to avoid fan-out
+          SELECT DISTINCT ON (awb) awb, ra_name
+          FROM air_shipments_smu_rate_cgk_spx
+          ORDER BY awb,
+            (NULLIF(BTRIM(account), '') IS NOT NULL
+             AND NULLIF(BTRIM(via),  '') IS NOT NULL
+             AND NULLIF(BTRIM(dest), '') IS NOT NULL) DESC,
+            updated_at DESC NULLS LAST
+        ) srx ON srx.awb = v.awb
         WHERE ${where}
         GROUP BY v.awb, srx.ra_name
       )
@@ -588,7 +597,16 @@ export class PnlService {
           MAX(v.cost_sg_out_awb) AS cost_sg_out,
           MAX(v.sum_gw_per_awb)  AS sum_gw
         FROM v_pnl_to v
-        LEFT JOIN air_shipments_smu_rate_cgk_spx srx ON srx.awb = v.awb
+        LEFT JOIN (
+          -- one clean booking per awb (mirrors v_pnl_to's booking CTE) to avoid fan-out
+          SELECT DISTINCT ON (awb) awb, account, airlines, via, dest
+          FROM air_shipments_smu_rate_cgk_spx
+          ORDER BY awb,
+            (NULLIF(BTRIM(account), '') IS NOT NULL
+             AND NULLIF(BTRIM(via),  '') IS NOT NULL
+             AND NULLIF(BTRIM(dest), '') IS NOT NULL) DESC,
+            updated_at DESC NULLS LAST
+        ) srx ON srx.awb = v.awb
         LEFT JOIN air_shipments_smu s
           ON  s.vendor      = srx.account
           AND s.airlines    = srx.airlines
