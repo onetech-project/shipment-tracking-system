@@ -127,48 +127,39 @@ export class SheetsService implements OnApplicationBootstrap {
     const ranges = cfg.sheetConfigs.map((c) => `${c.sheetName}!A:ZZ`)
 
     let valueRanges: sheets_v4.Schema$ValueRange[]
+    // Indices whose individual fallback fetch already failed (missing sheet, or a wholesale
+    // auth/quota failure). These must NOT trigger the empty-response retry below — we already
+    // fetched them one-by-one, so retrying just repeats the failure and burns RETRY_DELAYS_MS.
+    const fallbackFailed = new Set<number>()
 
     try {
-      // Fetch FORMATTED (keeps "%"/date renderings the pipeline relies on) and UNFORMATTED
-      // (keeps full numeric precision the display format would truncate) and merge per cell.
-      const [formattedRes, unformattedRes] = await Promise.all([
-        this.sheetsApi.spreadsheets.values.batchGet({
-          spreadsheetId: cfg.sheetId,
-          ranges,
-          valueRenderOption: 'FORMATTED_VALUE',
-          dateTimeRenderOption: 'FORMATTED_STRING',
-        }),
-        this.sheetsApi.spreadsheets.values.batchGet({
-          spreadsheetId: cfg.sheetId,
-          ranges,
-          valueRenderOption: 'UNFORMATTED_VALUE',
-          dateTimeRenderOption: 'FORMATTED_STRING',
-        }),
-      ])
-      const formattedRanges = formattedRes.data.valueRanges ?? []
-      const unformattedRanges = unformattedRes.data.valueRanges ?? []
-      valueRanges = formattedRanges.map((vr, i) => ({
-        ...vr,
-        values: mergeRangeValues(
-          (vr.values ?? []) as unknown[][],
-          (unformattedRanges[i]?.values ?? []) as unknown[][]
-        ),
-      }))
+      valueRanges = await this.fetchRangesMerged(cfg.sheetId, ranges)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err)
       this.logger.error(
-        `[SheetsService] Google Sheets API error: ${message}`,
+        `[SheetsService] Batch fetch failed: ${message} — falling back to per-sheet fetch`,
         err instanceof Error ? err.stack : undefined
       )
-      return cfg.sheetConfigs.map((c) => ({
-        sheetName: c.sheetName,
-        tableName: c.tableName,
-        uniqueKey: c.uniqueKey,
-        headers: [],
-        rows: [],
-        skippedEmpty: 0,
-        skippedMissingKey: 0,
-      }))
+      // batchGet is all-or-nothing: a single missing/renamed sheet fails the whole batch and would
+      // otherwise blank out every other sheet. Fall back to fetching each sheet individually so only
+      // the missing sheet is skipped; existing sheets still sync. Index-aligned to cfg.sheetConfigs
+      // so the processing loop below runs unchanged.
+      valueRanges = await Promise.all(
+        cfg.sheetConfigs.map(async (c, i): Promise<sheets_v4.Schema$ValueRange> => {
+          try {
+            const [vr] = await this.fetchRangesMerged(cfg.sheetId, [`${c.sheetName}!A:ZZ`])
+            return vr ?? { values: [] }
+          } catch (perSheetErr: unknown) {
+            const perMsg =
+              perSheetErr instanceof Error ? perSheetErr.message : String(perSheetErr)
+            this.logger.warn(
+              `[SheetsService] Sheet "${c.sheetName}" fetch failed individually (${perMsg}) — skipping`
+            )
+            fallbackFailed.add(i)
+            return { values: [] }
+          }
+        })
+      )
     }
 
     const results: SheetResult[] = []
@@ -177,8 +168,9 @@ export class SheetsService implements OnApplicationBootstrap {
       const sheetCfg = cfg.sheetConfigs[i]
       let data = (valueRanges[i]?.values ?? []) as unknown[][]
 
-      // Per-sheet empty-response retry with backoff (FR-008)
-      if (data.length === 0) {
+      // Per-sheet empty-response retry with backoff (FR-008). Skip for sheets whose individual
+      // fallback fetch already failed — retrying would only repeat the failure with more delay.
+      if (data.length === 0 && !fallbackFailed.has(i)) {
         data = await this.retryFetchSheet(sheetCfg.sheetName, cfg.sheetId)
       }
 
@@ -282,6 +274,41 @@ export class SheetsService implements OnApplicationBootstrap {
     }
 
     return results
+  }
+
+  /**
+   * Fetch the given ranges as FORMATTED (keeps "%"/date renderings the pipeline relies on) and
+   * UNFORMATTED (keeps full numeric precision the display format would truncate), merged per cell.
+   * Returns one Schema$ValueRange per input range, index-aligned. Throws on API errors so callers
+   * can decide between blanket-empty and per-sheet fallback.
+   */
+  private async fetchRangesMerged(
+    sheetId: string,
+    ranges: string[]
+  ): Promise<sheets_v4.Schema$ValueRange[]> {
+    const [formattedRes, unformattedRes] = await Promise.all([
+      this.sheetsApi.spreadsheets.values.batchGet({
+        spreadsheetId: sheetId,
+        ranges,
+        valueRenderOption: 'FORMATTED_VALUE',
+        dateTimeRenderOption: 'FORMATTED_STRING',
+      }),
+      this.sheetsApi.spreadsheets.values.batchGet({
+        spreadsheetId: sheetId,
+        ranges,
+        valueRenderOption: 'UNFORMATTED_VALUE',
+        dateTimeRenderOption: 'FORMATTED_STRING',
+      }),
+    ])
+    const formattedRanges = formattedRes.data.valueRanges ?? []
+    const unformattedRanges = unformattedRes.data.valueRanges ?? []
+    return formattedRanges.map((vr, i) => ({
+      ...vr,
+      values: mergeRangeValues(
+        (vr.values ?? []) as unknown[][],
+        (unformattedRanges[i]?.values ?? []) as unknown[][]
+      ),
+    }))
   }
 
   private async retryFetchSheet(sheetName: string, sheetId: string): Promise<unknown[][]> {
