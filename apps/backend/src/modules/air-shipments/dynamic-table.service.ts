@@ -62,12 +62,51 @@ export class DynamicTableService {
         await this.dataSource.query(addColSql)
       }
 
-      // 3) Reconcile UNIQUE constraint: drop obsolete generated ones, then add current.
-      // ensureTable was previously additive-only, so changing uniqueKey (e.g. ['awb'] ->
-      // ['awb','account','via','dest']) left the old UNIQUE(awb) constraint in place and it
-      // kept firing unique violations. Drop any UNIQUE constraint we generated (prefix
-      // uq_<tableName>_) that no longer matches the current key set before adding the new one.
+      // 3) Reconcile the UNIQUE constraint. Changing uniqueKey (e.g. ['awb'] ->
+      // ['awb','account','via','dest'] or back) means the previously generated constraint no
+      // longer matches. We must both add the new one and drop the obsolete one(s).
+      //
+      // ORDER MATTERS: add the current constraint FIRST, then drop obsolete ones. If we dropped
+      // first and the ADD then failed (e.g. the new key set is violated by existing duplicate
+      // rows), the table would be left with NO unique constraint at all — which silently breaks
+      // upsert's `ON CONFLICT (<keys>)` ("no unique or exclusion constraint matching the ON
+      // CONFLICT specification"). Adding first means a failure here throws before we drop
+      // anything, so the previous constraint stays intact and the error is surfaced clearly.
       const currentConstraintName = keys.length > 0 ? `uq_${tableName}_${keys.join('_')}` : null
+
+      // 3a) Add the current UNIQUE constraint if not present.
+      if (currentConstraintName) {
+        const qConstraint = quoteIdentifier(currentConstraintName)
+        const colsList = keys
+          .filter((c) => typeof c === 'string' && c.trim().length > 0)
+          .map((c) => quoteIdentifier(c.trim()))
+          .join(', ')
+
+        if (colsList.length > 0) {
+          const addConstraintSql = `DO $$ BEGIN
+            IF NOT EXISTS (
+              SELECT 1 FROM pg_constraint WHERE conname = '${currentConstraintName}'
+            ) THEN
+              EXECUTE 'ALTER TABLE ${qTable} ADD CONSTRAINT ${qConstraint} UNIQUE (${colsList})';
+            END IF;
+          END$$;`
+          try {
+            await this.dataSource.query(addConstraintSql)
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err)
+            // Almost always: existing rows already violate the new key set. Surface a clear,
+            // actionable error and DO NOT drop the existing constraint(s) below.
+            this.logger.error(
+              `[DynamicTableService] Failed to add unique constraint ${currentConstraintName} ` +
+                `on ${tableName} (existing rows likely violate keys [${keys.join(', ')}]): ${msg}`
+            )
+            throw err
+          }
+        }
+      }
+
+      // 3b) Drop any UNIQUE constraint we previously generated (prefix uq_<tableName>_) that is
+      // no longer the current one. Only runs after the current constraint is safely in place.
       const obsoleteConstraints: Array<{ conname: string }> = await this.dataSource.query(
         `SELECT conname FROM pg_constraint
          WHERE conrelid = $1::regclass
@@ -84,27 +123,6 @@ export class DynamicTableService {
         this.logger.log(
           `[DynamicTableService] Dropped obsolete unique constraint ${conname} on ${tableName}`
         )
-      }
-
-      // Add UNIQUE constraint if not exists (guard via catalog)
-      if (keys.length > 0) {
-        const constraintName = `uq_${tableName}_${keys.join('_')}`
-        const qConstraint = quoteIdentifier(constraintName)
-        const colsList = keys
-          .filter((c) => typeof c === 'string' && c.trim().length > 0)
-          .map((c) => quoteIdentifier(c.trim()))
-          .join(', ')
-
-        if (colsList.length > 0) {
-          const addConstraintSql = `DO $$ BEGIN
-            IF NOT EXISTS (
-              SELECT 1 FROM pg_constraint WHERE conname = '${constraintName}'
-            ) THEN
-              EXECUTE 'ALTER TABLE ${qTable} ADD CONSTRAINT ${qConstraint} UNIQUE (${colsList})';
-            END IF;
-          END$$;`
-          await this.dataSource.query(addConstraintSql)
-        }
       }
 
       // 4) Create GIN index on extra_fields
