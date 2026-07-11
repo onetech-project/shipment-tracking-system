@@ -62,7 +62,31 @@ export class DynamicTableService {
         await this.dataSource.query(addColSql)
       }
 
-      // 3) Add UNIQUE constraint if not exists (guard via catalog)
+      // 3) Reconcile UNIQUE constraint: drop obsolete generated ones, then add current.
+      // ensureTable was previously additive-only, so changing uniqueKey (e.g. ['awb'] ->
+      // ['awb','account','via','dest']) left the old UNIQUE(awb) constraint in place and it
+      // kept firing unique violations. Drop any UNIQUE constraint we generated (prefix
+      // uq_<tableName>_) that no longer matches the current key set before adding the new one.
+      const currentConstraintName = keys.length > 0 ? `uq_${tableName}_${keys.join('_')}` : null
+      const obsoleteConstraints: Array<{ conname: string }> = await this.dataSource.query(
+        `SELECT conname FROM pg_constraint
+         WHERE conrelid = $1::regclass
+           AND contype = 'u'
+           AND conname LIKE $2
+           AND ($3::text IS NULL OR conname <> $3)`,
+        [tableName, `uq_${tableName}_%`, currentConstraintName]
+      )
+      for (const { conname } of obsoleteConstraints) {
+        // conname is derived from validated identifiers; still quote it to be safe
+        await this.dataSource.query(
+          `ALTER TABLE ${qTable} DROP CONSTRAINT IF EXISTS ${quoteIdentifier(conname)}`
+        )
+        this.logger.log(
+          `[DynamicTableService] Dropped obsolete unique constraint ${conname} on ${tableName}`
+        )
+      }
+
+      // Add UNIQUE constraint if not exists (guard via catalog)
       if (keys.length > 0) {
         const constraintName = `uq_${tableName}_${keys.join('_')}`
         const qConstraint = quoteIdentifier(constraintName)
