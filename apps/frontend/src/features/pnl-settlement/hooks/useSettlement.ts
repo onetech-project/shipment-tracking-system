@@ -24,6 +24,7 @@ export interface SettlementToRow {
   toNumber: string
   ltNumber: string | null
   awb: string | null
+  invoicePeriod: string | null
   originStation: string | null
   destStation: string | null
   estRevenue: number | null

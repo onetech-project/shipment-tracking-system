@@ -46,6 +46,7 @@ export interface SettlementToRow {
   toNumber: string
   ltNumber: string | null
   awb: string | null
+  invoicePeriod: string | null
   originStation: string | null
   destStation: string | null
   estRevenue: number | null
@@ -204,7 +205,7 @@ export class PnlSettlementService {
     const offset = (page - 1) * limit
     const dataRows = await this.dataSource.query(
       `
-      SELECT to_number, lt_number, awb, origin_station, dest_station,
+      SELECT to_number, lt_number, awb, invoice_period, origin_station, dest_station,
              revenue_total AS est_revenue, actual_revenue AS act_revenue,
              var_revenue, is_settled
       FROM v_pnl_to
@@ -227,6 +228,7 @@ export class PnlSettlementService {
           toNumber: r.to_number as string,
           ltNumber: (r.lt_number as string) ?? null,
           awb: (r.awb as string) ?? null,
+          invoicePeriod: (r.invoice_period as string) ?? null,
           originStation: (r.origin_station as string) ?? null,
           destStation: (r.dest_station as string) ?? null,
           estRevenue: est,

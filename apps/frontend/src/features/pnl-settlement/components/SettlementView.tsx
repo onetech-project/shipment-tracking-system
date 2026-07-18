@@ -127,6 +127,7 @@ export function SettlementView({ filter }: { filter: PnlFilter | undefined }) {
                 <th className="p-2 font-medium">TO Number</th>
                 <th className="p-2 font-medium">LT Number</th>
                 <th className="p-2 font-medium">Route</th>
+                <th className="p-2 font-medium">Invoice Periode</th>
                 <th className="p-2 text-right font-medium">Est. Revenue</th>
                 <th className="p-2 text-right font-medium">Actual</th>
                 <th className="p-2 text-right font-medium">Variance</th>
@@ -136,9 +137,9 @@ export function SettlementView({ filter }: { filter: PnlFilter | undefined }) {
             </thead>
             <tbody>
               {rowsLoading ? (
-                <tr><td colSpan={8} className="p-6 text-center text-muted-foreground">Memuat…</td></tr>
+                <tr><td colSpan={9} className="p-6 text-center text-muted-foreground">Memuat…</td></tr>
               ) : !rows || rows.data.length === 0 ? (
-                <tr><td colSpan={8} className="p-6 text-center text-muted-foreground">Tidak ada data.</td></tr>
+                <tr><td colSpan={9} className="p-6 text-center text-muted-foreground">Tidak ada data.</td></tr>
               ) : (
                 rows.data.map((r) => (
                   <tr key={r.toNumber} className="border-b last:border-0 hover:bg-muted/40">
@@ -147,6 +148,7 @@ export function SettlementView({ filter }: { filter: PnlFilter | undefined }) {
                     <td className="p-2 text-xs text-muted-foreground">
                       {r.originStation && r.destStation ? `${r.originStation} → ${r.destStation}` : '—'}
                     </td>
+                    <td className="p-2 font-mono text-xs text-muted-foreground">{r.invoicePeriod ?? '—'}</td>
                     <td className="p-2 text-right">{r.estRevenue == null ? '—' : fmt.format(r.estRevenue)}</td>
                     <td className="p-2 text-right">{r.actRevenue == null ? '—' : fmt.format(r.actRevenue)}</td>
                     <td className={`p-2 text-right ${r.varRevenue == null ? '' : r.varRevenue >= 0 ? 'text-green-600' : 'text-destructive'}`}>
