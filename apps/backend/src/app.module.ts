@@ -26,6 +26,7 @@ import { AirShipmentsModule } from './modules/air-shipments/air-shipments.module
 import { GeneralParamsModule } from './modules/general-params/general-params.module'
 import { PnlModule } from './modules/pnl/pnl.module'
 import { PnlSettlementModule } from './modules/pnl-settlement/pnl-settlement.module'
+import { BarhalModule } from './modules/barhal/barhal.module'
 
 @Module({
   imports: [
@@ -93,6 +94,7 @@ import { PnlSettlementModule } from './modules/pnl-settlement/pnl-settlement.mod
     AirShipmentsModule,
     GeneralParamsModule,
     PnlModule,
+    BarhalModule,
     PnlSettlementModule,
   ],
   controllers: [AppController],

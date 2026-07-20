@@ -1,0 +1,161 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { useAuth } from '@/features/auth/auth.context'
+import { usePermissions } from '@/shared/hooks/use-permissions'
+import { useBarhalDashboardStats, exportBarhalCsv } from '@/features/barhal/hooks/useBarhalDashboard'
+import { useBarhalRoutes } from '@/features/barhal/hooks/useBarhal'
+import { BarhalStatCards } from '@/features/barhal/components/BarhalStatCards'
+import { BarhalRouteChart } from '@/features/barhal/components/BarhalRouteChart'
+import { triggerBlobDownload } from '@/shared/utils/file-download.util'
+
+const fmt = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 })
+
+function BarhalDashboardContent() {
+  const [startDate, setStartDate] = useState('')
+  const [endDate, setEndDate] = useState('')
+  const [route, setRoute] = useState('')
+  const [isExporting, setIsExporting] = useState(false)
+
+  const { data: routes } = useBarhalRoutes()
+  const { data, isLoading, isError, refetch } = useBarhalDashboardStats({
+    startDate: startDate || undefined,
+    endDate: endDate || undefined,
+    route: route || undefined,
+  })
+
+  const handleExport = async () => {
+    setIsExporting(true)
+    try {
+      const blob = await exportBarhalCsv({
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+        route: route || undefined,
+      })
+      triggerBlobDownload(blob, `barhal-${startDate || 'all'}_${endDate || 'all'}.csv`)
+    } catch (err) {
+      window.alert(`Failed to export: ${err instanceof Error ? err.message : 'Unknown error'}`)
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Barhal Dashboard</h1>
+          <p className="text-sm text-muted-foreground">Statistik packing kayu &amp; Koli</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <a href="/barhal" className="text-sm text-primary underline">
+            List Koli
+          </a>
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={isExporting}
+            className="rounded-lg border border-border px-4 py-2 text-sm font-medium transition hover:bg-muted disabled:opacity-50"
+          >
+            {isExporting ? 'Exporting…' : 'Export CSV'}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="date"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+        />
+        <span className="text-xs text-muted-foreground">to</span>
+        <input
+          type="date"
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+          className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+        />
+        <select
+          value={route}
+          onChange={(e) => setRoute(e.target.value)}
+          className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+        >
+          <option value="">Semua Rute</option>
+          {(routes ?? []).map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {isError ? (
+        <div className="rounded-lg border bg-card p-8 text-center">
+          <p className="text-sm text-muted-foreground">Failed to load dashboard data.</p>
+          <button onClick={() => refetch()} className="mt-2 text-sm text-primary underline">
+            Retry
+          </button>
+        </div>
+      ) : isLoading || !data ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : (
+        <>
+          <BarhalStatCards totals={data.totals} />
+          <BarhalRouteChart data={data.perRoute} />
+
+          <div className="overflow-x-auto rounded-lg border bg-card">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Tanggal</th>
+                  <th className="px-3 py-2 font-medium">Rute</th>
+                  <th className="px-3 py-2 font-medium">Total Koli</th>
+                  <th className="px-3 py-2 font-medium">Weight Before</th>
+                  <th className="px-3 py-2 font-medium">Weight After</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {data.drillDown.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
+                      No data for this range.
+                    </td>
+                  </tr>
+                ) : (
+                  data.drillDown.map((row) => (
+                    <tr key={`${row.koli_date}-${row.route}`} className="hover:bg-accent/30">
+                      <td className="px-3 py-2">{row.koli_date}</td>
+                      <td className="px-3 py-2">{row.route}</td>
+                      <td className="px-3 py-2">{row.koli_count}</td>
+                      <td className="px-3 py-2">{fmt.format(row.weight_before)} kg</td>
+                      <td className="px-3 py-2">{fmt.format(row.weight_after)} kg</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+export default function BarhalDashboardPage() {
+  const { user, loading } = useAuth()
+  const { hasPermission } = usePermissions()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!loading && user && !hasPermission('read.barhal')) {
+      router.replace('/dashboard')
+    }
+  }, [loading, user, hasPermission, router])
+
+  if (loading || !user) return null
+  if (!hasPermission('read.barhal')) return null
+
+  return <BarhalDashboardContent />
+}
