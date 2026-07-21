@@ -8,7 +8,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm'
 // invoice_period_label NULL and show up as NULL in v_pnl_to.invoice_period until re-settled.
 //
 // Body mirrors 20260718000001-pnl-invoice-period (deduped booking CTE); only the invoice_period
-// source changes. down() re-emits the DATE-derived version from that migration verbatim.
+// source changes. down() re-emits the DATE-derived logic (invoice_period computed inside `base`,
+// same as up()'s branch) so both directions leave v_pnl_to with a working invoice_period column.
 export class PnlInvoicePeriodManual20260721000001 implements MigrationInterface {
   name = 'PnlInvoicePeriodManual20260721000001'
 
@@ -50,14 +51,14 @@ export class PnlInvoicePeriodManual20260721000001 implements MigrationInterface 
   }
 
   private viewSql(withManualPeriod: boolean): string {
+    // invoice_period is computed entirely inside `base` for both branches so the outer SELECT can
+    // always reference a bare `invoice_period` column — no per-branch outer-select variant needed.
     const invoiceBase = withManualPeriod
       ? `c.invoice_period_label                             AS invoice_period,`
-      : `parse_flexible_timestamp(c.extra_fields->>'date')     AS invoice_date,`
-    const invoiceOut = withManualPeriod
-      ? ``
-      : `CASE WHEN invoice_date IS NULL THEN NULL
-             ELSE to_char(invoice_date, 'YYYY-MM')
-                  || CASE WHEN EXTRACT(DAY FROM invoice_date) <= 15 THEN '-1H' ELSE '-2H' END
+      : `CASE WHEN parse_flexible_timestamp(c.extra_fields->>'date') IS NULL THEN NULL
+             ELSE to_char(parse_flexible_timestamp(c.extra_fields->>'date'), 'YYYY-MM')
+                  || CASE WHEN EXTRACT(DAY FROM parse_flexible_timestamp(c.extra_fields->>'date')) <= 15
+                          THEN '-1H' ELSE '-2H' END
         END                                                                 AS invoice_period,`
 
     return `
@@ -174,7 +175,6 @@ export class PnlInvoicePeriodManual20260721000001 implements MigrationInterface 
         id, to_number, awb, completed_time, cycle_period,
         cycle_completed, cycle_ata, cycle_atd, date_completed, date_ata, date_atd,
         invoice_period,
-        ${invoiceOut}
         lt_number, actual_revenue, actual_cost,
         (settled_at IS NOT NULL)                          AS is_settled,
         (actual_revenue - revenue_total)                  AS var_revenue,
