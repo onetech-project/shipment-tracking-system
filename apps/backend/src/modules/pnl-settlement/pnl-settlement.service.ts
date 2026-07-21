@@ -30,6 +30,12 @@ export interface SettlementCommitResult {
   errorRows: number
 }
 
+export interface InvoicePeriodInput {
+  label: string
+  start: string
+  end: string
+}
+
 export interface SettlementSummary {
   label: string
   totalTos: number
@@ -81,7 +87,7 @@ export class PnlSettlementService {
     }
   }
 
-  async commit(buffer: Buffer): Promise<SettlementCommitResult> {
+  async commit(buffer: Buffer, period: InvoicePeriodInput): Promise<SettlementCommitResult> {
     const parsed = parseSettlementWorkbook(buffer)
     let updated = 0
 
@@ -91,17 +97,21 @@ export class PnlSettlementService {
         const params: unknown[] = []
         const values = chunk
           .map((r, j) => {
-            const b = j * 3
-            params.push(r.ltNumber, r.toNumber, r.actualRevenue)
-            return `($${b + 1}, $${b + 2}, $${b + 3}::numeric)`
+            const b = j * 6
+            params.push(r.ltNumber, r.toNumber, r.actualRevenue, period.label, period.start, period.end)
+            return `($${b + 1}, $${b + 2}, $${b + 3}::numeric, $${b + 4}, $${b + 5}::date, $${b + 6}::date)`
           })
           .join(', ')
         // Settle only revenue for now (actual_cost stays NULL until vendor invoices land).
+        // The chosen invoice period applies to every row in this upload batch.
         const res = await manager.query(
           `
           UPDATE air_shipments_compileaircgk c
-          SET actual_revenue = v.rev, settled_at = NOW()
-          FROM (VALUES ${values}) AS v(lt, to_num, rev)
+          SET actual_revenue = v.rev, settled_at = NOW(),
+              invoice_period_label = v.period_label,
+              invoice_period_start = v.period_start,
+              invoice_period_end = v.period_end
+          FROM (VALUES ${values}) AS v(lt, to_num, rev, period_label, period_start, period_end)
           WHERE c.lt_number = v.lt AND c.to_number = v.to_num
           `,
           params,

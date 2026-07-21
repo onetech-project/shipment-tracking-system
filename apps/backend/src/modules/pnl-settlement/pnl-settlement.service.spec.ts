@@ -99,18 +99,43 @@ describe('PnlSettlementService', () => {
         { lt: 'LT1', to: 'TO1', amount: 100 },
         { lt: 'LT2', to: 'TO2', amount: 200 },
       ])
-      const res = await service.commit(buf)
+      const period = { label: '2026-07-2H', start: '2026-07-16', end: '2026-07-31' }
+      const res = await service.commit(buf, period)
 
       expect(res.updated).toBe(2)
       expect(res.totalParsed).toBe(2)
       // UPDATE targets the fact table by the (lt,to) unique key.
       expect(manager.query).toHaveBeenCalledWith(
         expect.stringContaining('UPDATE air_shipments_compileaircgk'),
-        expect.arrayContaining(['LT1', 'TO1', 100, 'LT2', 'TO2', 200]),
+        expect.arrayContaining([
+          'LT1', 'TO1', 100, '2026-07-2H', '2026-07-16', '2026-07-31',
+          'LT2', 'TO2', 200, '2026-07-2H', '2026-07-16', '2026-07-31',
+        ]),
       )
       // View refresh runs once after the transaction.
       expect(dataSource.query).toHaveBeenCalledWith(
         'REFRESH MATERIALIZED VIEW CONCURRENTLY v_pnl_to',
+      )
+    })
+
+    it('stamps the chosen invoice period on every row in the batch', async () => {
+      const manager = { query: jest.fn().mockResolvedValue([[], 2]) }
+      dataSource.transaction.mockImplementation(async (cb: (m: unknown) => Promise<void>) => cb(manager))
+      dataSource.query.mockResolvedValue(undefined)
+
+      const buf = detailWorkbook([
+        { lt: 'LT1', to: 'TO1', amount: 100 },
+        { lt: 'LT2', to: 'TO2', amount: 200 },
+      ])
+      const period = { label: '2026-07-2H', start: '2026-07-16', end: '2026-07-31' }
+      await service.commit(buf, period)
+
+      expect(manager.query).toHaveBeenCalledWith(
+        expect.stringContaining('invoice_period_label = v.period_label'),
+        expect.arrayContaining([
+          'LT1', 'TO1', 100, '2026-07-2H', '2026-07-16', '2026-07-31',
+          'LT2', 'TO2', 200, '2026-07-2H', '2026-07-16', '2026-07-31',
+        ]),
       )
     })
   })
