@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   DefaultValuePipe,
   Get,
@@ -46,8 +47,13 @@ export class PnlSettlementController {
   @Post('commit')
   @Authorize(Permission.CREATE_PNL_SETTLEMENT)
   @UseInterceptors(uploadInterceptor)
-  commit(@UploadedFile() file?: UploadedInvoiceFile) {
-    return this.service.commit(validateFile(file))
+  commit(
+    @UploadedFile() file: UploadedInvoiceFile | undefined,
+    @Body('periodLabel') periodLabel?: string,
+    @Body('periodStart') periodStart?: string,
+    @Body('periodEnd') periodEnd?: string,
+  ) {
+    return this.service.commit(validateFile(file), validatePeriod(periodLabel, periodStart, periodEnd))
   }
 
   @Get('summary')
@@ -95,4 +101,14 @@ function validateFile(file?: UploadedInvoiceFile): Buffer {
     throw new BadRequestException('Format tidak didukung — gunakan .xlsx, .xls, atau .csv.')
   }
   return file.buffer
+}
+
+function validatePeriod(label?: string, start?: string, end?: string) {
+  if (!label || !start || !end) {
+    throw new BadRequestException('Periode invoice wajib dipilih sebelum commit.')
+  }
+  if (start > end) {
+    throw new BadRequestException('Tanggal awal periode invoice tidak boleh setelah tanggal akhir.')
+  }
+  return { label, start, end }
 }
