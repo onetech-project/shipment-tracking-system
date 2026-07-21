@@ -107,10 +107,10 @@ describe('PnlSettlementService', () => {
       // UPDATE targets the fact table by the (lt,to) unique key.
       expect(manager.query).toHaveBeenCalledWith(
         expect.stringContaining('UPDATE air_shipments_compileaircgk'),
-        expect.arrayContaining([
+        [
           'LT1', 'TO1', 100, '2026-07-2H', '2026-07-16', '2026-07-31',
           'LT2', 'TO2', 200, '2026-07-2H', '2026-07-16', '2026-07-31',
-        ]),
+        ],
       )
       // View refresh runs once after the transaction.
       expect(dataSource.query).toHaveBeenCalledWith(
@@ -132,10 +132,10 @@ describe('PnlSettlementService', () => {
 
       expect(manager.query).toHaveBeenCalledWith(
         expect.stringContaining('invoice_period_label = v.period_label'),
-        expect.arrayContaining([
+        [
           'LT1', 'TO1', 100, '2026-07-2H', '2026-07-16', '2026-07-31',
           'LT2', 'TO2', 200, '2026-07-2H', '2026-07-16', '2026-07-31',
-        ]),
+        ],
       )
     })
   })
