@@ -51,14 +51,18 @@ export class PnlInvoicePeriodManual20260721000001 implements MigrationInterface 
   }
 
   private viewSql(withManualPeriod: boolean): string {
-    // invoice_period is computed entirely inside `base` for both branches so the outer SELECT can
-    // always reference a bare `invoice_period` column — no per-branch outer-select variant needed.
+    // True branch: invoice_period is the manually-set column, already final — passed through `base`
+    // and the outer SELECT references it bare. False branch: `base` exposes the raw parsed date
+    // once (invoice_date), and the outer SELECT derives the bucketed label from it — computing
+    // parse_flexible_timestamp only once per row, same as the migration this reverts to.
     const invoiceBase = withManualPeriod
-      ? `c.invoice_period_label                             AS invoice_period,`
-      : `CASE WHEN parse_flexible_timestamp(c.extra_fields->>'date') IS NULL THEN NULL
-             ELSE to_char(parse_flexible_timestamp(c.extra_fields->>'date'), 'YYYY-MM')
-                  || CASE WHEN EXTRACT(DAY FROM parse_flexible_timestamp(c.extra_fields->>'date')) <= 15
-                          THEN '-1H' ELSE '-2H' END
+      ? `c.invoice_period_label                                AS invoice_period,`
+      : `parse_flexible_timestamp(c.extra_fields->>'date')     AS invoice_date,`
+    const invoicePeriodSelect = withManualPeriod
+      ? `invoice_period,`
+      : `CASE WHEN invoice_date IS NULL THEN NULL
+             ELSE to_char(invoice_date, 'YYYY-MM')
+                  || CASE WHEN EXTRACT(DAY FROM invoice_date) <= 15 THEN '-1H' ELSE '-2H' END
         END                                                                 AS invoice_period,`
 
     return `
@@ -174,7 +178,7 @@ export class PnlInvoicePeriodManual20260721000001 implements MigrationInterface 
       SELECT
         id, to_number, awb, completed_time, cycle_period,
         cycle_completed, cycle_ata, cycle_atd, date_completed, date_ata, date_atd,
-        invoice_period,
+        ${invoicePeriodSelect}
         lt_number, actual_revenue, actual_cost,
         (settled_at IS NOT NULL)                          AS is_settled,
         (actual_revenue - revenue_total)                  AS var_revenue,
