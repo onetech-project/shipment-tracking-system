@@ -30,6 +30,9 @@ import { GeneralParamsService } from '../general-params/general-params.service'
 /** System-managed columns that are never diff-compared against sheet data */
 const SYSTEM_COLUMNS = new Set(['id', 'is_locked', 'last_synced_at', 'created_at', 'updated_at'])
 
+/** Sheet reservasi tracking table — fixed, does not change between sheets */
+const RESERVASI_TABLE_NAME = 'air_shipments_smu_rate_cgk_spx'
+
 @Injectable()
 export class AirShipmentsService {
   private readonly logger = new Logger(AirShipmentsService.name)
@@ -137,13 +140,12 @@ export class AirShipmentsService {
     }
 
     if (alertFilter) {
-      const [{ nHours, mHours }, reservasiTableName, slaLookup, offloadByAwb] = await Promise.all([
+      const [{ nHours, mHours }, slaLookup, offloadByAwb] = await Promise.all([
         this.getAlertNMHours(),
-        this.generalParamsService.getValue('reservasi_table_name', ''),
         this.getSlaLookupByOriginDest(),
         this.getCachedOffloadByAwb(),
       ])
-      const reservasiByAwb = await this.getCachedReservasiTrackinganByAwb(reservasiTableName)
+      const reservasiByAwb = await this.getCachedReservasiTrackinganByAwb(RESERVASI_TABLE_NAME)
       // Phase 1: narrow scan (no extra_fields) to decide which rows match the alert filter
       const projectedRows: Record<string, unknown>[] = await this.dataSource.query(
         `SELECT ${this.buildAlertProjection(columns)} FROM "${tableName}" ${whereSql} ${orderBySql}`,
@@ -213,13 +215,12 @@ export class AirShipmentsService {
       throw new BadRequestException('Invalid table name')
     }
 
-    const [{ nHours, mHours }, reservasiTableName, slaLookup, offloadByAwb] = await Promise.all([
+    const [{ nHours, mHours }, slaLookup, offloadByAwb] = await Promise.all([
       this.getAlertNMHours(),
-      this.generalParamsService.getValue('reservasi_table_name', ''),
       this.getCachedSlaLookup(),
       this.getCachedOffloadByAwb(),
     ])
-    const reservasiByAwb = await this.getCachedReservasiTrackinganByAwb(reservasiTableName)
+    const reservasiByAwb = await this.getCachedReservasiTrackinganByAwb(RESERVASI_TABLE_NAME)
     const columns = await this.getTableColumns(tableName)
     const whereClauses: string[] = []
     const params: any[] = []
