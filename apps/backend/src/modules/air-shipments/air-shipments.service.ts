@@ -290,14 +290,18 @@ export class AirShipmentsService {
     const whereSql = `WHERE ${[...whereClauses, `lt_number IS NOT NULL`].join(' AND ')}`
 
     if (!excluded && alertFilter) {
-      const [{ nHours, mHours }, slaLookup, offloadByAwb] = await Promise.all([
+      const profile = this.getAlertProfileForTable(tableName)
+      const emptyOffload = new Map<string, { offload: boolean; hasEvidence: boolean }>()
+      const [{ nHours, mHours }, slaLookup] = await Promise.all([
         this.getAlertNMHours(),
         this.getSlaLookupByOriginDest(),
-        this.getCachedOffloadByAwb(),
       ])
-      const reservasiByAwb = await this.getCachedReservasiTrackinganByAwb(RESERVASI_TABLE_NAME)
+      const reservasiByAwb = profile.useSmuTracking
+        ? await this.getCachedReservasiTrackinganByAwb(RESERVASI_TABLE_NAME)
+        : new Map<string, string>()
+      const offloadByAwb = profile.useSmuTracking ? await this.getCachedOffloadByAwb() : emptyOffload
       const projectedRows: Record<string, unknown>[] = await this.dataSource.query(
-        `SELECT ${this.buildAlertProjection(columns)}, lt_number FROM "${tableName}" ${whereSql}`,
+        `SELECT ${this.buildAlertProjection(columns, profile)}, lt_number FROM "${tableName}" ${whereSql}`,
         params
       )
       const enriched = this.enrichRowsWithOffload(
@@ -307,7 +311,7 @@ export class AirShipmentsService {
         ),
         offloadByAwb,
       )
-      const filteredRows = this.filterRowsByAlert(enriched, alertFilter, nHours, mHours)
+      const filteredRows = this.filterRowsByAlert(enriched, alertFilter, nHours, mHours, profile)
       const ltNumbers = Array.from(
         new Set(
           filteredRows.map((row) => String(row['lt_number'] ?? '').trim()).filter(Boolean)
