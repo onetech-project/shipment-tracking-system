@@ -199,6 +199,102 @@ export class AirShipmentsService {
     return { data: rows, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } }
   }
 
+  /**
+   * Distinct LT numbers matching the currently active table filters — powers the
+   * searchable LT-number picker in the exclude/restore-by-LT modal. Mirrors
+   * findAllForTable's active-row filtering (alertFilter/routeFilter/date range)
+   * or findExcludedRows' excluded-row filtering (alertType), scoped down to just
+   * `lt_number` so it stays cheap even against large tables.
+   */
+  async findLtNumbersForTable(
+    tableName: string,
+    {
+      search,
+      limit = 50,
+      startDate,
+      endDate,
+      alertFilter,
+      routeFilter,
+      alertType,
+      excluded = false,
+    }: {
+      search?: string
+      limit?: number
+      startDate?: string
+      endDate?: string
+      alertFilter?: AlertFilter
+      routeFilter?: string | string[]
+      alertType?: AlertType
+      excluded?: boolean
+    }
+  ): Promise<string[]> {
+    if (!/^air_shipments_[a-z0-9_]+$/.test(tableName)) {
+      throw new BadRequestException('Invalid table name')
+    }
+
+    const columns = await this.getTableColumns(tableName)
+    if (!columns.includes('lt_number')) return []
+
+    const whereClauses: string[] = []
+    const params: any[] = []
+
+    if (excluded) {
+      whereClauses.push(`excluded_reasons IS NOT NULL AND excluded_reasons != '{}'::jsonb`)
+      if (alertType) {
+        whereClauses.push(`excluded_reasons ? $${params.length + 1}`)
+        params.push(alertType)
+      }
+    }
+
+    if (search?.trim()) {
+      whereClauses.push(`lt_number ILIKE $${params.length + 1}`)
+      params.push(`%${search.trim()}%`)
+    }
+
+    if (!excluded) {
+      const routeClause = this.buildRouteFilterClause(routeFilter, columns, params)
+      if (routeClause) whereClauses.push(routeClause)
+    }
+
+    const dateClause = this.buildDateRangeClause(columns, params, startDate, endDate)
+    if (dateClause) whereClauses.push(dateClause)
+
+    const whereSql = `WHERE ${[...whereClauses, `lt_number IS NOT NULL`].join(' AND ')}`
+
+    if (!excluded && alertFilter) {
+      const [{ nHours, mHours }, slaLookup, offloadByAwb] = await Promise.all([
+        this.getAlertNMHours(),
+        this.getSlaLookupByOriginDest(),
+        this.getCachedOffloadByAwb(),
+      ])
+      const reservasiByAwb = await this.getCachedReservasiTrackinganByAwb(RESERVASI_TABLE_NAME)
+      const projectedRows: Record<string, unknown>[] = await this.dataSource.query(
+        `SELECT ${this.buildAlertProjection(columns)}, lt_number FROM "${tableName}" ${whereSql}`,
+        params
+      )
+      const enriched = this.enrichRowsWithOffload(
+        this.enrichRowsWithReservasi(
+          this.enrichRowsWithSlaLookup(projectedRows, slaLookup),
+          reservasiByAwb,
+        ),
+        offloadByAwb,
+      )
+      const filteredRows = this.filterRowsByAlert(enriched, alertFilter, nHours, mHours)
+      const ltNumbers = Array.from(
+        new Set(
+          filteredRows.map((row) => String(row['lt_number'] ?? '').trim()).filter(Boolean)
+        )
+      ).sort()
+      return ltNumbers.slice(0, limit)
+    }
+
+    const rows = await this.dataSource.query(
+      `SELECT DISTINCT lt_number FROM "${tableName}" ${whereSql} ORDER BY lt_number LIMIT $${params.length + 1}`,
+      [...params, limit]
+    )
+    return rows.map((r: { lt_number: string }) => r.lt_number).filter(Boolean)
+  }
+
   /** Thin delegate kept for the Dashboard / AlertPieChart consumers. */
   async getAlertSummaryForTable(tableName: string, startDate?: string, endDate?: string, days?: number) {
     const { summary } = await this.getSlaOverviewForTable(tableName, startDate, endDate, days)

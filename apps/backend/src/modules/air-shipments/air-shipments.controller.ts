@@ -22,6 +22,7 @@ import { GoogleSheetConfig } from './entities/google-sheet-config.entity'
 import { Permission } from '@shared/auth'
 import { AuthenticatedUser, CurrentUser } from '../../common/decorators/current-user.decorator'
 import { ExcludedQueryDto, ExcludeRowDto, RestoreRowDto, ExcludeByLtDto, RestoreByLtDto } from './dto/excluded-query.dto'
+import { LtNumbersQueryDto } from './dto/lt-numbers-query.dto'
 import { SlaColumnLayoutDto } from './dto/sla-column-layout.dto'
 import { OffloadedAwbQueryDto, SetEvidenceDto } from './dto/tracking-smu.dto'
 import { SlaExportQueryDto } from './dto/sla-export-query.dto'
@@ -243,6 +244,25 @@ export class AirShipmentsController {
   ): Promise<{ layout: SlaColumnLayoutDto['layout'] }> {
     await this.service.setSlaColumnLayout(body.layout, user?.id)
     return { layout: body.layout }
+  }
+
+  @Get(':tableName/lt-numbers')
+  @UseGuards(RbacGuard)
+  @Authorize(Permission.READ_SLA)
+  async getLtNumbers(
+    @Param('tableName') tableName: string,
+    @Query() query: LtNumbersQueryDto
+  ): Promise<{ ltNumbers: string[] }> {
+    try {
+      const ltNumbers = await this.service.findLtNumbersForTable(tableName, query)
+      return { ltNumbers }
+    } catch (err: unknown) {
+      this.logger.error(
+        `[GET /air-shipments/${tableName}/lt-numbers]`,
+        err instanceof Error ? err.stack : String(err)
+      )
+      throw new InternalServerErrorException()
+    }
   }
 
   @Get(':tableName/excluded')

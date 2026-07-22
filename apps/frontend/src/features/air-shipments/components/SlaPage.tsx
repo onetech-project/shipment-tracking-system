@@ -631,6 +631,27 @@ export function SlaPage() {
 
   // ── Exclude / restore by LT number (global, above the table) ──────────────────
 
+  const handleSearchLtNumbers = useCallback(
+    async (query: string): Promise<string[]> => {
+      const params = new URLSearchParams({ limit: '50', startDate, endDate })
+      if (query) params.set('search', query)
+
+      if (ltModal === 'restore') {
+        params.set('excluded', 'true')
+        if (excludedAlertTypeFilter !== 'all') params.set('alertType', excludedAlertTypeFilter)
+      } else {
+        if (activeAlert) params.set('alertFilter', activeAlert)
+        for (const r of activeRoutes) params.append('routeFilter', r)
+      }
+
+      const response = await apiClient.get<{ ltNumbers: string[] }>(
+        `${TABLE_ENDPOINT}/lt-numbers?${params.toString()}`
+      )
+      return response.data.ltNumbers
+    },
+    [ltModal, startDate, endDate, activeAlert, activeRoutes, excludedAlertTypeFilter]
+  )
+
   async function handleLtConfirm(ltNumbers: string[], alertType: string, reason: string) {
     try {
       if (ltModal === 'exclude') {
@@ -1299,6 +1320,7 @@ export function SlaPage() {
         open={ltModal !== null}
         mode={ltModal ?? 'exclude'}
         alertTypes={LT_ALERT_TYPE_OPTIONS}
+        searchLtNumbers={handleSearchLtNumbers}
         defaultAlertType={activeAlert ?? ''}
         onConfirm={handleLtConfirm}
         onClose={() => setLtModal(null)}
