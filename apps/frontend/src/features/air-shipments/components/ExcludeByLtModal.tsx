@@ -188,6 +188,30 @@ export function ExcludeByLtModal({
                   className="absolute top-full z-[100] mt-2 max-h-80 w-full overflow-hidden rounded-lg border border-border bg-popover shadow-lg ring-1 ring-black/10"
                   style={{ boxShadow: '0 8px 32px 0 rgba(0,0,0,0.18)' }}
                 >
+                  <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-border bg-muted px-3 py-2">
+                    <span className="text-xs font-semibold text-muted-foreground">LT Numbers</span>
+                    <div className="flex gap-1">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setLtNumbers((prev) => Array.from(new Set([...prev, ...filteredLtOptions])))
+                        }
+                        className="rounded border border-border px-2 py-0.5 text-xs transition-colors hover:bg-accent"
+                      >
+                        All
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setLtNumbers((prev) => prev.filter((lt) => !filteredLtOptions.includes(lt)))
+                        }
+                        className="rounded border border-border px-2 py-0.5 text-xs transition-colors hover:bg-accent"
+                      >
+                        None
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="border-b border-border px-2 py-2">
                     <input
                       autoFocus
