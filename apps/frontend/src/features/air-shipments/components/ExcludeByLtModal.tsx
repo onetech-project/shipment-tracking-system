@@ -26,6 +26,8 @@ export interface ExcludeByLtModalProps {
   onClose: () => void
 }
 
+const CHIP_LIMIT = 5
+
 export function ExcludeByLtModal({
   open,
   mode,
@@ -40,6 +42,7 @@ export function ExcludeByLtModal({
   const [ltSearch, setLtSearch] = useState('')
   const [ltOptions, setLtOptions] = useState<string[]>([])
   const [ltOptionsLoading, setLtOptionsLoading] = useState(false)
+  const [chipsExpanded, setChipsExpanded] = useState(false)
   const [alertType, setAlertType] = useState('')
   const [reason, setReason] = useState('')
   const [loading, setLoading] = useState(false)
@@ -52,6 +55,7 @@ export function ExcludeByLtModal({
       setLtDropdownOpen(false)
       setLtSearch('')
       setLtOptions([])
+      setChipsExpanded(false)
       setAlertType(defaultAlertType ?? '')
       setReason('')
     }
@@ -255,8 +259,12 @@ export function ExcludeByLtModal({
             </div>
 
             {ltNumbers.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {ltNumbers.map((lt) => (
+              <div
+                className={`flex flex-wrap gap-1.5 pt-1 ${
+                  chipsExpanded ? 'max-h-40 overflow-y-auto' : ''
+                }`}
+              >
+                {(chipsExpanded ? ltNumbers : ltNumbers.slice(0, CHIP_LIMIT)).map((lt) => (
                   <Badge key={lt} variant="secondary" className="gap-1 pr-1">
                     {lt}
                     <button
@@ -270,6 +278,24 @@ export function ExcludeByLtModal({
                     </button>
                   </Badge>
                 ))}
+                {!chipsExpanded && ltNumbers.length > CHIP_LIMIT && (
+                  <button
+                    type="button"
+                    onClick={() => setChipsExpanded(true)}
+                    className="rounded-full border border-border px-2.5 py-0.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-accent"
+                  >
+                    {ltNumbers.length - CHIP_LIMIT}+ more
+                  </button>
+                )}
+                {chipsExpanded && ltNumbers.length > CHIP_LIMIT && (
+                  <button
+                    type="button"
+                    onClick={() => setChipsExpanded(false)}
+                    className="rounded-full border border-border px-2.5 py-0.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-accent"
+                  >
+                    Show less
+                  </button>
+                )}
               </div>
             )}
           </div>
