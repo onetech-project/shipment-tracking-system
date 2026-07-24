@@ -16,7 +16,6 @@ export class BarhalWizardRedesign20260724000001 implements MigrationInterface {
     await queryRunner.query(`
       ALTER TABLE air_shipments_compileaircgk
         ADD COLUMN IF NOT EXISTS remarks    TEXT GENERATED ALWAYS AS (extra_fields->>'remarks') STORED,
-        ADD COLUMN IF NOT EXISTS lt_number  TEXT GENERATED ALWAYS AS (extra_fields->>'lt_number') STORED,
         ADD COLUMN IF NOT EXISTS completed_date DATE GENERATED ALWAYS AS (
           CASE WHEN extra_fields->>'completed_time' IS NULL OR extra_fields->>'completed_time' = ''
                THEN NULL
@@ -113,7 +112,6 @@ export class BarhalWizardRedesign20260724000001 implements MigrationInterface {
     await queryRunner.query(`
       ALTER TABLE air_shipments_compileaircgk
         DROP COLUMN IF EXISTS remarks,
-        DROP COLUMN IF EXISTS lt_number,
         DROP COLUMN IF EXISTS completed_date
     `)
   }
