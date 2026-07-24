@@ -5,7 +5,8 @@ import { BarhalDashboardStats } from '../types'
 export interface BarhalDashboardParams {
   startDate?: string
   endDate?: string
-  route?: string
+  origin?: string
+  dest?: string
 }
 
 export function useBarhalDashboardStats(params: BarhalDashboardParams) {

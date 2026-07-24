@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
 import { useBarhalDashboardStats, exportBarhalCsv } from '@/features/barhal/hooks/useBarhalDashboard'
-import { useBarhalRoutes } from '@/features/barhal/hooks/useBarhal'
+import { useBarhalStations } from '@/features/barhal/hooks/useBarhal'
 import { BarhalStatCards } from '@/features/barhal/components/BarhalStatCards'
 import { BarhalRouteChart } from '@/features/barhal/components/BarhalRouteChart'
 import { triggerBlobDownload } from '@/shared/utils/file-download.util'
@@ -15,14 +15,16 @@ const fmt = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 })
 function BarhalDashboardContent() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
-  const [route, setRoute] = useState('')
+  const [origin, setOrigin] = useState('')
+  const [dest, setDest] = useState('')
   const [isExporting, setIsExporting] = useState(false)
 
-  const { data: routes } = useBarhalRoutes()
+  const { data: stations } = useBarhalStations()
   const { data, isLoading, isError, refetch } = useBarhalDashboardStats({
     startDate: startDate || undefined,
     endDate: endDate || undefined,
-    route: route || undefined,
+    origin: origin || undefined,
+    dest: dest || undefined,
   })
 
   const handleExport = async () => {
@@ -31,7 +33,8 @@ function BarhalDashboardContent() {
       const blob = await exportBarhalCsv({
         startDate: startDate || undefined,
         endDate: endDate || undefined,
-        route: route || undefined,
+        origin: origin || undefined,
+        dest: dest || undefined,
       })
       triggerBlobDownload(blob, `barhal-${startDate || 'all'}_${endDate || 'all'}.csv`)
     } catch (err) {
@@ -78,14 +81,26 @@ function BarhalDashboardContent() {
           className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
         />
         <select
-          value={route}
-          onChange={(e) => setRoute(e.target.value)}
+          value={origin}
+          onChange={(e) => setOrigin(e.target.value)}
           className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
         >
-          <option value="">Semua Rute</option>
-          {(routes ?? []).map((r) => (
-            <option key={r} value={r}>
-              {r}
+          <option value="">Semua Origin</option>
+          {(stations?.origins ?? []).map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+        <select
+          value={dest}
+          onChange={(e) => setDest(e.target.value)}
+          className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+        >
+          <option value="">Semua Destinasi</option>
+          {(stations?.dests ?? []).map((d) => (
+            <option key={d} value={d}>
+              {d}
             </option>
           ))}
         </select>
@@ -125,9 +140,12 @@ function BarhalDashboardContent() {
                   </tr>
                 ) : (
                   data.drillDown.map((row) => (
-                    <tr key={`${row.koli_date}-${row.route}`} className="hover:bg-accent/30">
+                    <tr
+                      key={`${row.koli_date}-${row.origin_name}-${row.dest_name}`}
+                      className="hover:bg-accent/30"
+                    >
                       <td className="px-3 py-2">{row.koli_date}</td>
-                      <td className="px-3 py-2">{row.route}</td>
+                      <td className="px-3 py-2">{`${row.origin_name} → ${row.dest_name}`}</td>
                       <td className="px-3 py-2">{row.koli_count}</td>
                       <td className="px-3 py-2">{fmt.format(row.weight_before)} kg</td>
                       <td className="px-3 py-2">{fmt.format(row.weight_after)} kg</td>
