@@ -7,8 +7,15 @@ import { CreateBarhalKoliDto } from './dto/create-barhal-koli.dto'
 import { ListBarhalKoliDto } from './dto/list-barhal-koli.dto'
 import { AvailableToDto } from './dto/available-to.dto'
 import { BarhalDashboardQueryDto } from './dto/barhal-dashboard-query.dto'
-import { buildRouteLabel, deriveStationCode } from './station-code.util'
 import { buildBarhalCsv, BarhalCsvRow } from './barhal-csv.builder'
+
+export function normalizeStationName(raw: string | null | undefined): string {
+  return (raw ?? '')
+    .trim()
+    .replace(/\s+DC$/i, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+}
 
 interface AvailableToRow {
   to_number: string
@@ -16,10 +23,10 @@ interface AvailableToRow {
   gross_weight: number | null
   origin_station: string | null
   dest_station: string | null
-  smu_account: string | null
-  smu_airlines: string | null
-  smu_flight_date: string | null
-  smu_flight_number: string | null
+  lt_number: string | null
+  remarks: string | null
+  date: string | null
+  vendor: 'ESP'
 }
 
 const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -39,30 +46,39 @@ export class BarhalService {
     private readonly dataSource: DataSource,
   ) {}
 
-  /** Distinct route labels ("CGK - SUB") derived from compileaircgk's station names. */
-  async getRoutes(): Promise<string[]> {
+  /** Distinct normalized origin/destination names among Barhal-eligible TOs, for wizard/filter dropdowns. */
+  async getStations(): Promise<{ origins: string[]; dests: string[] }> {
     const rows: { origin_station: string; dest_station: string }[] = await this.dataSource.query(`
       SELECT DISTINCT origin_station, dest_station
       FROM air_shipments_compileaircgk
-      WHERE origin_station IS NOT NULL AND dest_station IS NOT NULL
-        AND origin_station != '' AND dest_station != ''
+      WHERE remarks ILIKE '%barhal%'
+        AND origin_station IS NOT NULL AND origin_station != ''
+        AND dest_station IS NOT NULL AND dest_station != ''
     `)
-    const labels = new Set<string>()
+    const origins = new Set<string>()
+    const dests = new Set<string>()
     for (const row of rows) {
-      const label = buildRouteLabel(row.origin_station, row.dest_station)
-      if (label) labels.add(label)
+      const origin = normalizeStationName(row.origin_station)
+      const dest = normalizeStationName(row.dest_station)
+      if (origin) origins.add(origin)
+      if (dest) dests.add(dest)
     }
-    return Array.from(labels).sort()
+    return { origins: Array.from(origins).sort(), dests: Array.from(dests).sort() }
   }
 
-  /** TOs not yet packed into any Koli, joined with a live SMU preview (before it gets snapshotted). */
+  /** Barhal-only TOs (remarks ILIKE '%barhal%') not yet packed into any Koli. */
   async getAvailableTos(dto: AvailableToDto): Promise<AvailableToRow[]> {
     const params: unknown[] = []
-    const conditions: string[] = []
+    params.push('%barhal%')
+    const conditions: string[] = [`c.remarks ILIKE $${params.length}`]
 
     if (dto.search) {
       params.push(`%${dto.search}%`)
-      conditions.push(`(c.to_number ILIKE $${params.length} OR c.awb ILIKE $${params.length})`)
+      conditions.push(`(c.to_number ILIKE $${params.length} OR c.lt_number ILIKE $${params.length})`)
+    }
+    if (dto.date) {
+      params.push(dto.date)
+      conditions.push(`c.completed_date = $${params.length}`)
     }
 
     const rows: AvailableToRow[] = await this.dataSource.query(
@@ -73,25 +89,30 @@ export class BarhalService {
         c.gross_weight,
         c.origin_station,
         c.dest_station,
-        s.account   AS smu_account,
-        s.airlines  AS smu_airlines,
-        s.flight_date   AS smu_flight_date,
-        s.flight_number AS smu_flight_number
+        c.lt_number,
+        c.remarks,
+        c.completed_date AS date
       FROM air_shipments_compileaircgk c
-      LEFT JOIN air_shipments_smu_rate_cgk_spx s ON s.awb = c.awb
       WHERE c.to_number IS NOT NULL
         AND NOT EXISTS (SELECT 1 FROM barhal_koli_to bkt WHERE bkt.to_number = c.to_number)
-        ${conditions.length ? `AND ${conditions.join(' AND ')}` : ''}
+        AND ${conditions.join(' AND ')}
       ORDER BY c.to_number
       `,
       params,
     )
 
-    if (!dto.route) return rows
-    return rows.filter((row) => buildRouteLabel(row.origin_station, row.dest_station) === dto.route)
+    const filtered = rows.filter((row) => {
+      if (dto.origin && normalizeStationName(row.origin_station) !== dto.origin) return false
+      if (dto.dest && normalizeStationName(row.dest_station) !== dto.dest) return false
+      return true
+    })
+    return filtered.map((row) => ({ ...row, vendor: 'ESP' as const }))
   }
 
-  async listKoli(dto: ListBarhalKoliDto) {
+  // TODO(task-6/8): still filters/paginates against the old `route` field shape; rewritten in a
+  // later task. Cast to `any` purely to keep this file type-checking (Task 4 scope only).
+  async listKoli(dtoIn: ListBarhalKoliDto) {
+    const dto = dtoIn as any
     const page = dto.page ?? 1
     const pageSize = dto.pageSize ?? 25
     const qb = this.koliRepo
@@ -123,14 +144,19 @@ export class BarhalService {
     return koli
   }
 
-  async createKoli(dto: CreateBarhalKoliDto, userId?: string): Promise<BarhalKoli> {
+  // TODO(task-5): this method still references the pre-redesign DTO/row shape (route, toNumbers,
+  // lengthCm/widthCm/heightCm, smu_* per-line fields) and is rewritten wholesale in Task 5.
+  // `dto`/`toRows` are cast to `any` here purely so this file type-checks in the interim;
+  // no behavior in this method changed as part of Task 4.
+  async createKoli(dtoIn: CreateBarhalKoliDto, userId?: string): Promise<BarhalKoli> {
+    const dto = dtoIn as any
     const packingKayuWeight = dto.packingKayuWeight ?? 0
-    const [originCode, destCode] = dto.route.split(' - ').map((s) => s.trim())
+    const [originCode, destCode] = dto.route.split(' - ').map((s: string) => s.trim())
     if (!originCode || !destCode) {
       throw new BadRequestException('route must be formatted as "ORIGIN - DEST"')
     }
 
-    const toRows: AvailableToRow[] = await this.dataSource.query(
+    const toRows: any[] = await this.dataSource.query(
       `
       SELECT c.to_number, c.awb, c.gross_weight, c.origin_station, c.dest_station,
              s.account AS smu_account, s.airlines AS smu_airlines,
@@ -220,7 +246,10 @@ export class BarhalService {
     throw new ConflictException('Could not generate a unique Koli number, please retry')
   }
 
-  async getDashboard(dto: BarhalDashboardQueryDto) {
+  // TODO(task-6): still filters by the old `route` field; rewritten to origin/dest in Task 6.
+  // Cast to `any` purely to keep this file type-checking in the interim (Task 4 scope only).
+  async getDashboard(dtoIn: BarhalDashboardQueryDto) {
+    const dto = dtoIn as any
     const params: unknown[] = []
     const conditions: string[] = []
     if (dto.startDate && dto.endDate) {
@@ -287,7 +316,10 @@ export class BarhalService {
     return { totals, perRoute, drillDown }
   }
 
-  async exportCsv(dto: BarhalDashboardQueryDto): Promise<string> {
+  // TODO(task-7): still filters by the old `route` field; rewritten to origin/dest in Task 7.
+  // Cast to `any` purely to keep this file type-checking in the interim (Task 4 scope only).
+  async exportCsv(dtoIn: BarhalDashboardQueryDto): Promise<string> {
+    const dto = dtoIn as any
     const params: unknown[] = []
     const conditions: string[] = []
     if (dto.startDate && dto.endDate) {
@@ -323,6 +355,3 @@ export class BarhalService {
     return buildBarhalCsv(rows)
   }
 }
-
-// Re-export so callers deriving codes from raw station names (outside the service) stay consistent.
-export { deriveStationCode }
