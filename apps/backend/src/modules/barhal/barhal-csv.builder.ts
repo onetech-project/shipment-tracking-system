@@ -7,14 +7,15 @@
 export interface BarhalCsvRow {
   koliNumber: string
   koliDate: string
-  route: string
+  originName: string
+  destName: string
   totalTo: number
   weightBefore: number
   weightAfter: number
   chwt: number
 }
 
-const HEADERS = ['No. Koli', 'Tanggal', 'Rute', 'Total TO', 'Weight Before', 'Weight After', 'ChWt']
+const HEADERS = ['No. Koli', 'Tanggal', 'Origin', 'Destinasi', 'Total TO', 'Weight Before', 'Weight After', 'ChWt']
 
 function escapeCsvCell(value: unknown): string {
   const s = value === null || value === undefined ? '' : String(value)
@@ -25,15 +26,7 @@ export function buildBarhalCsv(rows: BarhalCsvRow[]): string {
   const lines = [HEADERS.map(escapeCsvCell).join(',')]
   for (const row of rows) {
     lines.push(
-      [
-        row.koliNumber,
-        row.koliDate,
-        row.route,
-        row.totalTo,
-        row.weightBefore,
-        row.weightAfter,
-        row.chwt,
-      ]
+      [row.koliNumber, row.koliDate, row.originName, row.destName, row.totalTo, row.weightBefore, row.weightAfter, row.chwt]
         .map(escapeCsvCell)
         .join(','),
     )

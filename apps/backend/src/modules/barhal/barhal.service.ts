@@ -113,10 +113,7 @@ export class BarhalService {
     return filtered.map((row) => ({ ...row, vendor: 'ESP' as const }))
   }
 
-  // TODO(task-6/8): still filters/paginates against the old `route` field shape; rewritten in a
-  // later task. Cast to `any` purely to keep this file type-checking (Task 4 scope only).
-  async listKoli(dtoIn: ListBarhalKoliDto) {
-    const dto = dtoIn as any
+  async listKoli(dto: ListBarhalKoliDto) {
     const page = dto.page ?? 1
     const pageSize = dto.pageSize ?? 25
     const qb = this.koliRepo
@@ -127,13 +124,14 @@ export class BarhalService {
       .take(pageSize)
 
     if (dto.date) qb.andWhere('k.koli_date = :date', { date: dto.date })
-    if (dto.route) qb.andWhere('k.route = :route', { route: dto.route })
+    if (dto.origin) qb.andWhere('k.origin_name = :origin', { origin: dto.origin })
+    if (dto.dest) qb.andWhere('k.dest_name = :dest', { dest: dto.dest })
     if (dto.search) {
       qb.andWhere(
         `(k.koli_number ILIKE :search OR EXISTS (
           SELECT 1 FROM barhal_koli_to bkt
-          WHERE bkt.koli_id = k.id AND (bkt.to_number ILIKE :search OR bkt.smu_flight_number ILIKE :search)
-        ))`,
+          WHERE bkt.koli_id = k.id AND bkt.to_number ILIKE :search
+        ) OR k.flight_no ILIKE :search)`,
         { search: `%${dto.search}%` },
       )
     }
@@ -265,19 +263,20 @@ export class BarhalService {
     return { updated: kolis.length }
   }
 
-  // TODO(task-6): still filters by the old `route` field; rewritten to origin/dest in Task 6.
-  // Cast to `any` purely to keep this file type-checking in the interim (Task 4 scope only).
-  async getDashboard(dtoIn: BarhalDashboardQueryDto) {
-    const dto = dtoIn as any
+  async getDashboard(dto: BarhalDashboardQueryDto) {
     const params: unknown[] = []
     const conditions: string[] = []
     if (dto.startDate && dto.endDate) {
       params.push(dto.startDate, dto.endDate)
       conditions.push(`k.koli_date BETWEEN $${params.length - 1} AND $${params.length}`)
     }
-    if (dto.route) {
-      params.push(dto.route)
-      conditions.push(`k.route = $${params.length}`)
+    if (dto.origin) {
+      params.push(dto.origin)
+      conditions.push(`k.origin_name = $${params.length}`)
+    }
+    if (dto.dest) {
+      params.push(dto.dest)
+      conditions.push(`k.dest_name = $${params.length}`)
     }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
 
@@ -299,7 +298,7 @@ export class BarhalService {
     const perRoute = await this.dataSource.query(
       `
       SELECT
-        k.route,
+        k.origin_name, k.dest_name,
         COUNT(*)::int AS koli_count,
         COALESCE(SUM(k.weight_before), 0)::numeric AS weight_before,
         COALESCE(SUM(k.weight_after), 0)::numeric AS weight_after,
@@ -312,22 +311,22 @@ export class BarhalService {
         GROUP BY bkt.koli_id
       ) l ON l.koli_id = k.id
       ${where}
-      GROUP BY k.route
-      ORDER BY k.route
+      GROUP BY k.origin_name, k.dest_name
+      ORDER BY k.origin_name, k.dest_name
       `,
       params,
     )
 
     const drillDown = await this.dataSource.query(
       `
-      SELECT k.koli_date, k.route,
+      SELECT k.koli_date, k.origin_name, k.dest_name,
              COUNT(*)::int AS koli_count,
              COALESCE(SUM(k.weight_before), 0)::numeric AS weight_before,
              COALESCE(SUM(k.weight_after), 0)::numeric AS weight_after
       FROM barhal_koli k
       ${where}
-      GROUP BY k.koli_date, k.route
-      ORDER BY k.koli_date DESC, k.route
+      GROUP BY k.koli_date, k.origin_name, k.dest_name
+      ORDER BY k.koli_date DESC, k.origin_name, k.dest_name
       `,
       params,
     )
@@ -335,29 +334,31 @@ export class BarhalService {
     return { totals, perRoute, drillDown }
   }
 
-  // TODO(task-7): still filters by the old `route` field; rewritten to origin/dest in Task 7.
-  // Cast to `any` purely to keep this file type-checking in the interim (Task 4 scope only).
-  async exportCsv(dtoIn: BarhalDashboardQueryDto): Promise<string> {
-    const dto = dtoIn as any
+  async exportCsv(dto: BarhalDashboardQueryDto): Promise<string> {
     const params: unknown[] = []
     const conditions: string[] = []
     if (dto.startDate && dto.endDate) {
       params.push(dto.startDate, dto.endDate)
       conditions.push(`k.koli_date BETWEEN $${params.length - 1} AND $${params.length}`)
     }
-    if (dto.route) {
-      params.push(dto.route)
-      conditions.push(`k.route = $${params.length}`)
+    if (dto.origin) {
+      params.push(dto.origin)
+      conditions.push(`k.origin_name = $${params.length}`)
+    }
+    if (dto.dest) {
+      params.push(dto.dest)
+      conditions.push(`k.dest_name = $${params.length}`)
     }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
 
-    const rows: (BarhalCsvRow & { koli_date: string })[] = await this.dataSource.query(
+    const rows: BarhalCsvRow[] = await this.dataSource.query(
       `
       SELECT
-        k.koli_number  AS "koliNumber",
-        k.koli_date    AS "koliDate",
-        k.route        AS "route",
-        k.total_to     AS "totalTo",
+        k.koli_number   AS "koliNumber",
+        k.koli_date     AS "koliDate",
+        k.origin_name   AS "originName",
+        k.dest_name     AS "destName",
+        k.total_to      AS "totalTo",
         k.weight_before::numeric AS "weightBefore",
         k.weight_after::numeric  AS "weightAfter",
         COALESCE((
