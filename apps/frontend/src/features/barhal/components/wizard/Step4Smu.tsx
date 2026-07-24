@@ -13,8 +13,8 @@ export function Step4Smu({ koli, onSaved }: Step4SmuProps) {
   const [smuNumber, setSmuNumber] = useState(koli.smu_number ?? '')
   const [airlines, setAirlines] = useState(koli.airlines ?? '')
   const [flightNo, setFlightNo] = useState(koli.flight_no ?? '')
-  const [std, setStd] = useState(koli.std ?? '')
-  const [sta, setSta] = useState(koli.sta ?? '')
+  const [std, setStd] = useState(koli.std ? koli.std.slice(0, 16) : '')
+  const [sta, setSta] = useState(koli.sta ? koli.sta.slice(0, 16) : '')
   const [error, setError] = useState<string | null>(null)
 
   const [bulkOpen, setBulkOpen] = useState(false)

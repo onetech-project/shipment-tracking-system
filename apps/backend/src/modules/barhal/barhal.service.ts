@@ -118,6 +118,7 @@ export class BarhalService {
     const pageSize = dto.pageSize ?? 25
     const qb = this.koliRepo
       .createQueryBuilder('k')
+      .leftJoinAndSelect('k.lines', 'lines')
       .orderBy('k.koli_date', 'DESC')
       .addOrderBy('k.koli_number', 'DESC')
       .skip((page - 1) * pageSize)
@@ -256,10 +257,12 @@ export class BarhalService {
   async bulkUpdateSmu(dto: BulkUpdateSmuDto): Promise<{ updated: number }> {
     const destName = normalizeStationName(dto.dest)
     const kolis = await this.koliRepo.find({ where: { koli_date: dto.koliDate, dest_name: destName || dto.dest } })
-    for (const koli of kolis) {
-      this.applySmuFields(koli, dto)
-      await this.koliRepo.save(koli)
-    }
+    await this.dataSource.transaction(async (manager) => {
+      for (const koli of kolis) {
+        this.applySmuFields(koli, dto)
+        await manager.save(BarhalKoli, koli)
+      }
+    })
     return { updated: kolis.length }
   }
 

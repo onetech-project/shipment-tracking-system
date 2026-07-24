@@ -116,9 +116,12 @@ describe('BarhalService', () => {
         save: jest.fn((v) => Promise.resolve(v)),
       }
       ;(service as any).koliRepo = koliRepo
+      const manager = { save: jest.fn((_, v) => Promise.resolve(v)) }
+      ;(service as any).dataSource.transaction = jest.fn((cb: any) => cb(manager))
       const result = await service.bulkUpdateSmu({ koliDate: '2026-06-01', dest: 'Badung', airlines: 'Garuda' })
       expect(result.updated).toBe(2)
-      expect(koliRepo.save).toHaveBeenCalledTimes(2)
+      expect(manager.save).toHaveBeenCalledTimes(2)
+      expect(koliRepo.save).not.toHaveBeenCalled()
       expect(koliRepo.find).toHaveBeenCalledWith({ where: { koli_date: '2026-06-01', dest_name: 'Badung' } })
     })
   })

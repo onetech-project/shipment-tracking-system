@@ -47,20 +47,29 @@ export function ToMultiSelect({ options, selected, onChange, isLoading }: ToMult
           filtered.map((to) => (
             <label
               key={to.to_number}
-              className="flex cursor-pointer items-center justify-between gap-2 border-b border-border/50 px-3 py-2 text-xs last:border-b-0 hover:bg-accent/30"
+              className="flex cursor-pointer flex-col gap-1 border-b border-border/50 px-3 py-2 text-xs last:border-b-0 hover:bg-accent/30"
             >
-              <span className="flex items-center gap-2 truncate">
-                <input
-                  type="checkbox"
-                  checked={selectedSet.has(to.to_number)}
-                  onChange={() => toggle(to.to_number)}
-                  className="h-3 w-3 rounded border border-border accent-accent"
-                />
-                <span className="truncate font-medium">{to.to_number}</span>
-                <span className="truncate text-muted-foreground">{to.awb ?? '—'}</span>
+              <span className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2 truncate">
+                  <input
+                    type="checkbox"
+                    checked={selectedSet.has(to.to_number)}
+                    onChange={() => toggle(to.to_number)}
+                    className="h-3 w-3 rounded border border-border accent-accent"
+                  />
+                  <span className="truncate font-medium">{to.to_number}</span>
+                  <span className="truncate text-muted-foreground">{to.awb ?? '—'}</span>
+                  <span className="shrink-0 text-muted-foreground">{to.date ?? '—'}</span>
+                  <span className="shrink-0 text-muted-foreground">{to.vendor}</span>
+                </span>
+                <span className="shrink-0 text-muted-foreground">
+                  {fmt.format(to.gross_weight ?? 0)} kg
+                </span>
               </span>
-              <span className="shrink-0 text-muted-foreground">
-                {fmt.format(to.gross_weight ?? 0)} kg
+              <span className="ml-5 flex items-center gap-2 truncate text-muted-foreground">
+                <span className="truncate">LT: {to.lt_number ?? '—'}</span>
+                <span className="truncate">{to.origin_station ?? '—'} → {to.dest_station ?? '—'}</span>
+                <span className="truncate">Remarks: {to.remarks ?? '—'}</span>
               </span>
             </label>
           ))
