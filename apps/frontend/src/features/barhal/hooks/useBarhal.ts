@@ -1,19 +1,29 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/client'
-import { AvailableTo, BarhalKoli, CreateBarhalKoliPayload } from '../types'
+import {
+  AvailableTo,
+  BarhalKoli,
+  BarhalStations,
+  CreateKoliShellPayload,
+  AttachTosPayload,
+  UpdatePackingPayload,
+  UpdateSmuPayload,
+  BulkUpdateSmuPayload,
+} from '../types'
 
 export interface ListBarhalKoliParams {
   search?: string
   date?: string
-  route?: string
+  origin?: string
+  dest?: string
   page?: number
   pageSize?: number
 }
 
-export function useBarhalRoutes() {
-  return useQuery<string[]>({
-    queryKey: ['barhal', 'routes'],
-    queryFn: () => apiClient.get('/barhal/routes').then((r) => r.data),
+export function useBarhalStations() {
+  return useQuery<BarhalStations>({
+    queryKey: ['barhal', 'stations'],
+    queryFn: () => apiClient.get('/barhal/stations').then((r) => r.data),
     staleTime: 5 * 60 * 1000,
   })
 }
@@ -34,7 +44,7 @@ export function useBarhalKoliDetail(id: string | null) {
   })
 }
 
-export function useAvailableTos(params: { route?: string; date?: string; search?: string }) {
+export function useAvailableTos(params: { origin?: string; dest?: string; date?: string; search?: string }) {
   return useQuery<AvailableTo[]>({
     queryKey: ['barhal', 'available-tos', params],
     queryFn: () => apiClient.get('/barhal/available-tos', { params }).then((r) => r.data),
@@ -42,13 +52,47 @@ export function useAvailableTos(params: { route?: string; date?: string; search?
   })
 }
 
-export function useCreateBarhalKoli() {
+export function useCreateKoliShell() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (payload: CreateBarhalKoliPayload) =>
+    mutationFn: (payload: CreateKoliShellPayload) =>
       apiClient.post<BarhalKoli>('/barhal/koli', payload).then((r) => r.data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['barhal'] })
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['barhal'] }),
+  })
+}
+
+export function useAttachTos(koliId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: AttachTosPayload) =>
+      apiClient.put<BarhalKoli>(`/barhal/koli/${koliId}/tos`, payload).then((r) => r.data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['barhal'] }),
+  })
+}
+
+export function useUpdatePacking(koliId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: UpdatePackingPayload) =>
+      apiClient.patch<BarhalKoli>(`/barhal/koli/${koliId}/packing`, payload).then((r) => r.data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['barhal'] }),
+  })
+}
+
+export function useUpdateSmu(koliId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: UpdateSmuPayload) =>
+      apiClient.patch<BarhalKoli>(`/barhal/koli/${koliId}/smu`, payload).then((r) => r.data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['barhal'] }),
+  })
+}
+
+export function useBulkUpdateSmu() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (payload: BulkUpdateSmuPayload) =>
+      apiClient.patch<{ updated: number }>('/barhal/koli/bulk-smu', payload).then((r) => r.data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['barhal'] }),
   })
 }
