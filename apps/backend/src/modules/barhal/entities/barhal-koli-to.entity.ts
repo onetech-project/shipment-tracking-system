@@ -24,18 +24,6 @@ export class BarhalKoliTo {
   @Column({ name: 'gross_weight', type: 'numeric', nullable: true })
   gross_weight: number | null
 
-  @Column({ name: 'smu_account', type: 'text', nullable: true })
-  smu_account: string | null
-
-  @Column({ name: 'smu_airlines', type: 'text', nullable: true })
-  smu_airlines: string | null
-
-  @Column({ name: 'smu_flight_date', type: 'text', nullable: true })
-  smu_flight_date: string | null
-
-  @Column({ name: 'smu_flight_number', type: 'text', nullable: true })
-  smu_flight_number: string | null
-
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   created_at: Date
 }
