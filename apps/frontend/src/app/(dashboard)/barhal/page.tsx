@@ -4,35 +4,44 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
-import { useBarhalList, useBarhalRoutes } from '@/features/barhal/hooks/useBarhal'
+import { useBarhalList, useBarhalStations } from '@/features/barhal/hooks/useBarhal'
 import { BarhalListTable } from '@/features/barhal/components/BarhalListTable'
 import { BarhalFilters } from '@/features/barhal/components/BarhalFilters'
-import { TambahKoliModal } from '@/features/barhal/components/TambahKoliModal'
+import { BarhalKoliWizard } from '@/features/barhal/components/wizard/BarhalKoliWizard'
+import { BarhalKoli } from '@/features/barhal/types'
 
 const PAGE_SIZE = 25
 
 function BarhalPageContent() {
   const [search, setSearch] = useState('')
   const [date, setDate] = useState('')
-  const [route, setRoute] = useState('')
+  const [origin, setOrigin] = useState('')
+  const [dest, setDest] = useState('')
   const [page, setPage] = useState(1)
-  const [modalOpen, setModalOpen] = useState(false)
+  const [wizardOpen, setWizardOpen] = useState(false)
+  const [wizardKoli, setWizardKoli] = useState<BarhalKoli | undefined>(undefined)
 
-  const { data: routes } = useBarhalRoutes()
+  const { data: stations } = useBarhalStations()
   const { data, isLoading, refetch } = useBarhalList({
     search: search || undefined,
     date: date || undefined,
-    route: route || undefined,
+    origin: origin || undefined,
+    dest: dest || undefined,
     page,
     pageSize: PAGE_SIZE,
   })
 
   useEffect(() => {
     setPage(1)
-  }, [search, date, route])
+  }, [search, date, origin, dest])
 
   const total = data?.total ?? 0
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+
+  const openWizardFor = (koli?: BarhalKoli) => {
+    setWizardKoli(koli)
+    setWizardOpen(true)
+  }
 
   return (
     <div className="space-y-6">
@@ -49,7 +58,7 @@ function BarhalPageContent() {
           </a>
           <button
             type="button"
-            onClick={() => setModalOpen(true)}
+            onClick={() => openWizardFor(undefined)}
             className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90"
           >
             Tambah Koli
@@ -62,12 +71,20 @@ function BarhalPageContent() {
         onSearchChange={setSearch}
         date={date}
         onDateChange={setDate}
-        route={route}
-        onRouteChange={setRoute}
-        routes={routes ?? []}
+        origin={origin}
+        onOriginChange={setOrigin}
+        dest={dest}
+        onDestChange={setDest}
+        stations={stations ?? { origins: [], dests: [] }}
       />
 
-      <BarhalListTable data={data?.data ?? []} page={page} pageSize={PAGE_SIZE} isLoading={isLoading} />
+      <BarhalListTable
+        data={data?.data ?? []}
+        page={page}
+        pageSize={PAGE_SIZE}
+        isLoading={isLoading}
+        onOpenKoli={openWizardFor}
+      />
 
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-2 text-sm">
@@ -91,7 +108,12 @@ function BarhalPageContent() {
         </div>
       )}
 
-      <TambahKoliModal open={modalOpen} onClose={() => setModalOpen(false)} onCreated={() => refetch()} />
+      <BarhalKoliWizard
+        open={wizardOpen}
+        initialKoli={wizardKoli}
+        onClose={() => setWizardOpen(false)}
+        onDone={() => refetch()}
+      />
     </div>
   )
 }

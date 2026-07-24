@@ -1,17 +1,36 @@
 'use client'
 
+import { Fragment, useState } from 'react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { BarhalKoli } from '../types'
+import { isKoliIncomplete } from './wizard/BarhalKoliWizard'
 
 interface BarhalListTableProps {
   data: BarhalKoli[]
   page: number
   pageSize: number
   isLoading?: boolean
+  onOpenKoli: (koli: BarhalKoli) => void
 }
 
 const fmt = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 })
+const COLUMN_COUNT = 8
 
-export function BarhalListTable({ data, page, pageSize, isLoading }: BarhalListTableProps) {
+export function BarhalListTable({ data, page, pageSize, isLoading, onOpenKoli }: BarhalListTableProps) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+
+  const toggleExpanded = (id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
   return (
     <div className="overflow-x-auto rounded-lg border bg-card">
       <table className="w-full text-sm">
@@ -22,33 +41,102 @@ export function BarhalListTable({ data, page, pageSize, isLoading }: BarhalListT
             <th className="px-3 py-2 font-medium">Total TO</th>
             <th className="px-3 py-2 font-medium">Weight Before</th>
             <th className="px-3 py-2 font-medium">Weight After</th>
-            <th className="px-3 py-2 font-medium">Rute</th>
+            <th className="px-3 py-2 font-medium">Origin</th>
+            <th className="px-3 py-2 font-medium">Destinasi</th>
+            <th className="px-3 py-2 font-medium">Aksi</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
           {isLoading ? (
             <tr>
-              <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
+              <td colSpan={COLUMN_COUNT} className="px-3 py-6 text-center text-muted-foreground">
                 Loading…
               </td>
             </tr>
           ) : data.length === 0 ? (
             <tr>
-              <td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">
+              <td colSpan={COLUMN_COUNT} className="px-3 py-6 text-center text-muted-foreground">
                 No Koli found.
               </td>
             </tr>
           ) : (
-            data.map((koli, i) => (
-              <tr key={koli.id} className="hover:bg-accent/30">
-                <td className="px-3 py-2 text-muted-foreground">{(page - 1) * pageSize + i + 1}</td>
-                <td className="px-3 py-2 font-medium">{koli.koli_number}</td>
-                <td className="px-3 py-2">{koli.total_to}</td>
-                <td className="px-3 py-2">{fmt.format(koli.weight_before)} kg</td>
-                <td className="px-3 py-2">{fmt.format(koli.weight_after)} kg</td>
-                <td className="px-3 py-2">{koli.route}</td>
-              </tr>
-            ))
+            data.map((koli, i) => {
+              const isExpanded = expanded.has(koli.id)
+              const incomplete = isKoliIncomplete(koli)
+              return (
+                <Fragment key={koli.id}>
+                  <tr className="hover:bg-accent/30">
+                    <td className="px-3 py-2 text-muted-foreground">{(page - 1) * pageSize + i + 1}</td>
+                    <td className="px-3 py-2 font-medium">
+                      <button
+                        type="button"
+                        onClick={() => toggleExpanded(koli.id)}
+                        className="flex items-center gap-1 hover:underline"
+                      >
+                        {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        {koli.koli_number}
+                      </button>
+                    </td>
+                    <td className="px-3 py-2">{koli.total_to}</td>
+                    <td className="px-3 py-2">
+                      {koli.weight_before != null ? `${fmt.format(koli.weight_before)} kg` : '-'}
+                    </td>
+                    <td className="px-3 py-2">
+                      {koli.weight_after != null ? `${fmt.format(koli.weight_after)} kg` : '-'}
+                    </td>
+                    <td className="px-3 py-2">{koli.origin_name}</td>
+                    <td className="px-3 py-2">{koli.dest_name}</td>
+                    <td className="px-3 py-2">
+                      <button
+                        type="button"
+                        onClick={() => onOpenKoli(koli)}
+                        className={`rounded-md px-3 py-1 text-xs font-medium transition ${
+                          incomplete
+                            ? 'bg-primary text-primary-foreground hover:opacity-90'
+                            : 'border border-border hover:bg-accent/50'
+                        }`}
+                      >
+                        {incomplete ? 'Lanjutkan' : 'Edit'}
+                      </button>
+                    </td>
+                  </tr>
+                  {isExpanded && (
+                    <tr>
+                      <td colSpan={COLUMN_COUNT} className="bg-muted/20 px-3 py-3">
+                        {koli.lines && koli.lines.length > 0 ? (
+                          <table className="w-full text-xs">
+                            <thead className="text-left uppercase text-muted-foreground">
+                              <tr>
+                                <th className="px-2 py-1 font-medium">Tanggal</th>
+                                <th className="px-2 py-1 font-medium">Origin</th>
+                                <th className="px-2 py-1 font-medium">Destinasi</th>
+                                <th className="px-2 py-1 font-medium">No. TO</th>
+                                <th className="px-2 py-1 font-medium">Gross Weight</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border">
+                              {koli.lines.map((line) => (
+                                <tr key={line.id}>
+                                  <td className="px-2 py-1">{koli.koli_date}</td>
+                                  <td className="px-2 py-1">{koli.origin_name}</td>
+                                  <td className="px-2 py-1">{koli.dest_name}</td>
+                                  <td className="px-2 py-1">{line.to_number}</td>
+                                  <td className="px-2 py-1">
+                                    {line.gross_weight != null ? `${fmt.format(line.gross_weight)} kg` : '-'}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">Belum ada TO yang ditambahkan.</p>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })
           )}
         </tbody>
       </table>

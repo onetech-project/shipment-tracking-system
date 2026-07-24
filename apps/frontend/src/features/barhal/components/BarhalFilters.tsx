@@ -7,9 +7,11 @@ interface BarhalFiltersProps {
   onSearchChange: (v: string) => void
   date: string
   onDateChange: (v: string) => void
-  route: string
-  onRouteChange: (v: string) => void
-  routes: string[]
+  origin: string
+  onOriginChange: (v: string) => void
+  dest: string
+  onDestChange: (v: string) => void
+  stations: { origins: string[]; dests: string[] }
 }
 
 export function BarhalFilters({
@@ -17,9 +19,11 @@ export function BarhalFilters({
   onSearchChange,
   date,
   onDateChange,
-  route,
-  onRouteChange,
-  routes,
+  origin,
+  onOriginChange,
+  dest,
+  onDestChange,
+  stations,
 }: BarhalFiltersProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -39,14 +43,26 @@ export function BarhalFilters({
         className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
       />
       <select
-        value={route}
-        onChange={(e) => onRouteChange(e.target.value)}
+        value={origin}
+        onChange={(e) => onOriginChange(e.target.value)}
         className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
       >
-        <option value="">Semua Rute</option>
-        {routes.map((r) => (
-          <option key={r} value={r}>
-            {r}
+        <option value="">Semua Origin</option>
+        {stations.origins.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
+      </select>
+      <select
+        value={dest}
+        onChange={(e) => onDestChange(e.target.value)}
+        className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+      >
+        <option value="">Semua Destinasi</option>
+        {stations.dests.map((d) => (
+          <option key={d} value={d}>
+            {d}
           </option>
         ))}
       </select>
