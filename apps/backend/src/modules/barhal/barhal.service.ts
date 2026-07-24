@@ -4,6 +4,7 @@ import { DataSource, Repository } from 'typeorm'
 import { BarhalKoli } from './entities/barhal-koli.entity'
 import { BarhalKoliTo } from './entities/barhal-koli-to.entity'
 import { CreateBarhalKoliDto } from './dto/create-barhal-koli.dto'
+import { AttachTosDto } from './dto/attach-tos.dto'
 import { ListBarhalKoliDto } from './dto/list-barhal-koli.dto'
 import { AvailableToDto } from './dto/available-to.dto'
 import { BarhalDashboardQueryDto } from './dto/barhal-dashboard-query.dto'
@@ -33,7 +34,7 @@ const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep
 
 function koliDatePrefix(koliDate: string): string {
   const [year, month, day] = koliDate.split('-').map(Number)
-  return `${String(day).padStart(2, '0')}${MONTH_ABBR[month - 1]}`
+  return `${day}${MONTH_ABBR[month - 1]}`
 }
 
 const UNIQUE_VIOLATION = '23505'
@@ -144,106 +145,80 @@ export class BarhalService {
     return koli
   }
 
-  // TODO(task-5): this method still references the pre-redesign DTO/row shape (route, toNumbers,
-  // lengthCm/widthCm/heightCm, smu_* per-line fields) and is rewritten wholesale in Task 5.
-  // `dto`/`toRows` are cast to `any` here purely so this file type-checks in the interim;
-  // no behavior in this method changed as part of Task 4.
-  async createKoli(dtoIn: CreateBarhalKoliDto, userId?: string): Promise<BarhalKoli> {
-    const dto = dtoIn as any
-    const packingKayuWeight = dto.packingKayuWeight ?? 0
-    const [originCode, destCode] = dto.route.split(' - ').map((s: string) => s.trim())
-    if (!originCode || !destCode) {
-      throw new BadRequestException('route must be formatted as "ORIGIN - DEST"')
+  async createKoliShell(dto: CreateBarhalKoliDto, userId?: string): Promise<BarhalKoli> {
+    const originName = normalizeStationName(dto.origin)
+    const destName = normalizeStationName(dto.dest)
+    if (!originName || !destName) {
+      throw new BadRequestException('origin and dest must not be blank')
     }
-
-    const toRows: any[] = await this.dataSource.query(
-      `
-      SELECT c.to_number, c.awb, c.gross_weight, c.origin_station, c.dest_station,
-             s.account AS smu_account, s.airlines AS smu_airlines,
-             s.flight_date AS smu_flight_date, s.flight_number AS smu_flight_number
-      FROM air_shipments_compileaircgk c
-      LEFT JOIN air_shipments_smu_rate_cgk_spx s ON s.awb = c.awb
-      WHERE c.to_number = ANY($1)
-      `,
-      [dto.toNumbers],
-    )
-    if (toRows.length !== dto.toNumbers.length) {
-      throw new BadRequestException('One or more selected TOs could not be found')
-    }
-
-    const weightBefore = toRows.reduce((sum, row) => sum + Number(row.gross_weight ?? 0), 0)
-    const weightAfter = weightBefore + packingKayuWeight
-    const volume =
-      dto.lengthCm != null && dto.widthCm != null && dto.heightCm != null
-        ? dto.lengthCm * dto.widthCm * dto.heightCm
-        : null
     const datePrefix = koliDatePrefix(dto.koliDate)
 
     const maxAttempts = 5
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         return await this.dataSource.transaction(async (manager) => {
-          // Serializes Koli-number generation for the same (date, route) pair only.
-          await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`${dto.koliDate}|${dto.route}`])
-
+          await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+            `${dto.koliDate}|${originName}|${destName}`,
+          ])
           const { count } = (
             await manager.query(
-              `SELECT COUNT(*)::int AS count FROM barhal_koli WHERE koli_date = $1 AND route = $2`,
-              [dto.koliDate, dto.route],
+              `SELECT COUNT(*)::int AS count FROM barhal_koli WHERE koli_date = $1 AND origin_name = $2 AND dest_name = $3`,
+              [dto.koliDate, originName, destName],
             )
           )[0]
           const sequenceNo = count + 1
-          const koliNumber = `${datePrefix}-${originCode}-${destCode}-Barhal${sequenceNo}`
+          const koliNumber = `${datePrefix}-${originName}-${destName}-Barhal${sequenceNo}`
 
           const koli = manager.create(BarhalKoli, {
             koli_number: koliNumber,
             koli_date: dto.koliDate,
-            route: dto.route,
-            origin_code: originCode,
-            dest_code: destCode,
+            origin_name: originName,
+            dest_name: destName,
             sequence_no: sequenceNo,
-            weight_before: weightBefore,
-            packing_kayu_weight: packingKayuWeight,
-            weight_after: weightAfter,
-            length_cm: dto.lengthCm ?? null,
-            width_cm: dto.widthCm ?? null,
-            height_cm: dto.heightCm ?? null,
-            volume,
-            total_to: toRows.length,
+            weight_before: null,
+            packing_kayu_weight: 0,
+            weight_after: null,
+            total_to: 0,
             created_by: userId ?? null,
           })
-          await manager.save(koli)
-
-          const lines = toRows.map((row) =>
-            manager.create(BarhalKoliTo, {
-              koli_id: koli.id,
-              to_number: row.to_number,
-              awb: row.awb,
-              gross_weight: row.gross_weight,
-              smu_account: row.smu_account,
-              smu_airlines: row.smu_airlines,
-              smu_flight_date: row.smu_flight_date,
-              smu_flight_number: row.smu_flight_number,
-            }),
-          )
-          await manager.save(lines)
-
-          return koli
+          return manager.save(koli)
         })
       } catch (err: unknown) {
         const code = (err as { code?: string })?.code
-        if (code === UNIQUE_VIOLATION) {
-          const detail = (err as { detail?: string })?.detail ?? ''
-          if (detail.includes('to_number')) {
-            throw new ConflictException('One or more selected TOs were already packed into another Koli')
-          }
-          if (attempt < maxAttempts - 1) continue // koli_number/sequence race — retry with a fresh count
-          throw new ConflictException('Could not generate a unique Koli number, please retry')
-        }
+        if (code === UNIQUE_VIOLATION && attempt < maxAttempts - 1) continue
+        if (code === UNIQUE_VIOLATION) throw new ConflictException('Could not generate a unique Koli number, please retry')
         throw err
       }
     }
     throw new ConflictException('Could not generate a unique Koli number, please retry')
+  }
+
+  async attachTos(id: string, dto: AttachTosDto): Promise<BarhalKoli> {
+    const koli = await this.koliRepo.findOne({ where: { id } })
+    if (!koli) throw new NotFoundException('Koli not found')
+
+    const toRows: { to_number: string; awb: string | null; gross_weight: number | null }[] = await this.dataSource.query(
+      `SELECT to_number, awb, gross_weight FROM air_shipments_compileaircgk WHERE to_number = ANY($1)`,
+      [dto.toNumbers],
+    )
+    if (toRows.length !== dto.toNumbers.length) {
+      throw new BadRequestException('One or more selected TOs could not be found')
+    }
+
+    try {
+      const lines = toRows.map((row) =>
+        this.lineRepo.create({ koli_id: id, to_number: row.to_number, awb: row.awb, gross_weight: row.gross_weight }),
+      )
+      await this.lineRepo.save(lines)
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code
+      if (code === UNIQUE_VIOLATION) throw new ConflictException('One or more selected TOs were already packed into another Koli')
+      throw err
+    }
+
+    koli.weight_before = toRows.reduce((sum, row) => sum + Number(row.gross_weight ?? 0), 0)
+    koli.total_to = toRows.length
+    return this.koliRepo.save(koli)
   }
 
   // TODO(task-6): still filters by the old `route` field; rewritten to origin/dest in Task 6.
