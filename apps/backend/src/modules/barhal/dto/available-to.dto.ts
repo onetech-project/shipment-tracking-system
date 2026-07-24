@@ -3,7 +3,11 @@ import { IsOptional, IsString, IsDateString } from 'class-validator'
 export class AvailableToDto {
   @IsOptional()
   @IsString()
-  route?: string
+  origin?: string
+
+  @IsOptional()
+  @IsString()
+  dest?: string
 
   @IsOptional()
   @IsDateString()

@@ -11,5 +11,9 @@ export class BarhalDashboardQueryDto {
 
   @IsOptional()
   @IsString()
-  route?: string
+  origin?: string
+
+  @IsOptional()
+  @IsString()
+  dest?: string
 }
