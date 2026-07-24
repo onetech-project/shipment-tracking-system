@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useUpdatePacking } from '../../hooks/useBarhal'
 import { BarhalKoli } from '../../types'
 
