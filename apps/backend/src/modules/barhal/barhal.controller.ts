@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, Res, StreamableFile, UseGuards } from '@nestjs/common'
+import { Body, Controller, Get, Param, Patch, Post, Put, Query, Res, StreamableFile, UseGuards } from '@nestjs/common'
 import { ApiTags } from '@nestjs/swagger'
 import { Response } from 'express'
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
@@ -7,6 +7,10 @@ import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-
 import { Permission } from '@shared/auth'
 import { BarhalService } from './barhal.service'
 import { CreateBarhalKoliDto } from './dto/create-barhal-koli.dto'
+import { AttachTosDto } from './dto/attach-tos.dto'
+import { UpdatePackingDto } from './dto/update-packing.dto'
+import { UpdateSmuDto } from './dto/update-smu.dto'
+import { BulkUpdateSmuDto } from './dto/bulk-update-smu.dto'
 import { ListBarhalKoliDto } from './dto/list-barhal-koli.dto'
 import { AvailableToDto } from './dto/available-to.dto'
 import { BarhalDashboardQueryDto } from './dto/barhal-dashboard-query.dto'
@@ -17,10 +21,10 @@ import { BarhalDashboardQueryDto } from './dto/barhal-dashboard-query.dto'
 export class BarhalController {
   constructor(private readonly service: BarhalService) {}
 
-  @Get('routes')
+  @Get('stations')
   @Authorize(Permission.READ_BARHAL)
-  getRoutes() {
-    return this.service.getRoutes()
+  getStations() {
+    return this.service.getStations()
   }
 
   @Get('available-tos')
@@ -43,8 +47,32 @@ export class BarhalController {
 
   @Post('koli')
   @Authorize(Permission.CREATE_BARHAL)
-  createKoli(@Body() dto: CreateBarhalKoliDto, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.createKoli(dto, user.id)
+  createKoliShell(@Body() dto: CreateBarhalKoliDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.createKoliShell(dto, user.id)
+  }
+
+  @Put('koli/:id/tos')
+  @Authorize(Permission.CREATE_BARHAL)
+  attachTos(@Param('id') id: string, @Body() dto: AttachTosDto) {
+    return this.service.attachTos(id, dto)
+  }
+
+  @Patch('koli/:id/packing')
+  @Authorize(Permission.CREATE_BARHAL)
+  updatePacking(@Param('id') id: string, @Body() dto: UpdatePackingDto) {
+    return this.service.updatePacking(id, dto)
+  }
+
+  @Patch('koli/:id/smu')
+  @Authorize(Permission.CREATE_BARHAL)
+  updateSmu(@Param('id') id: string, @Body() dto: UpdateSmuDto) {
+    return this.service.updateSmu(id, dto)
+  }
+
+  @Patch('koli/bulk-smu')
+  @Authorize(Permission.CREATE_BARHAL)
+  bulkUpdateSmu(@Body() dto: BulkUpdateSmuDto) {
+    return this.service.bulkUpdateSmu(dto)
   }
 
   @Get('dashboard')
