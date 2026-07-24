@@ -8,6 +8,9 @@ import { AttachTosDto } from './dto/attach-tos.dto'
 import { ListBarhalKoliDto } from './dto/list-barhal-koli.dto'
 import { AvailableToDto } from './dto/available-to.dto'
 import { BarhalDashboardQueryDto } from './dto/barhal-dashboard-query.dto'
+import { UpdatePackingDto } from './dto/update-packing.dto'
+import { UpdateSmuDto } from './dto/update-smu.dto'
+import { BulkUpdateSmuDto } from './dto/bulk-update-smu.dto'
 import { buildBarhalCsv, BarhalCsvRow } from './barhal-csv.builder'
 
 export function normalizeStationName(raw: string | null | undefined): string {
@@ -219,6 +222,47 @@ export class BarhalService {
     koli.weight_before = toRows.reduce((sum, row) => sum + Number(row.gross_weight ?? 0), 0)
     koli.total_to = toRows.length
     return this.koliRepo.save(koli)
+  }
+
+  async updatePacking(id: string, dto: UpdatePackingDto): Promise<BarhalKoli> {
+    const koli = await this.koliRepo.findOne({ where: { id } })
+    if (!koli) throw new NotFoundException('Koli not found')
+
+    koli.weight_after = dto.weightAfter
+    if (dto.lengthCm != null) koli.length_cm = dto.lengthCm
+    if (dto.widthCm != null) koli.width_cm = dto.widthCm
+    if (dto.heightCm != null) koli.height_cm = dto.heightCm
+    if (dto.batangKayu != null) koli.batang_kayu = dto.batangKayu
+    koli.volume =
+      koli.length_cm != null && koli.width_cm != null && koli.height_cm != null
+        ? (koli.length_cm * koli.width_cm * koli.height_cm) / 6000
+        : koli.volume
+    return this.koliRepo.save(koli)
+  }
+
+  private applySmuFields(koli: BarhalKoli, dto: UpdateSmuDto | BulkUpdateSmuDto): void {
+    if (dto.smuNumber) koli.smu_number = dto.smuNumber
+    if (dto.airlines) koli.airlines = dto.airlines
+    if (dto.flightNo) koli.flight_no = dto.flightNo
+    if (dto.std) koli.std = new Date(dto.std)
+    if (dto.sta) koli.sta = new Date(dto.sta)
+  }
+
+  async updateSmu(id: string, dto: UpdateSmuDto): Promise<BarhalKoli> {
+    const koli = await this.koliRepo.findOne({ where: { id } })
+    if (!koli) throw new NotFoundException('Koli not found')
+    this.applySmuFields(koli, dto)
+    return this.koliRepo.save(koli)
+  }
+
+  async bulkUpdateSmu(dto: BulkUpdateSmuDto): Promise<{ updated: number }> {
+    const destName = normalizeStationName(dto.dest)
+    const kolis = await this.koliRepo.find({ where: { koli_date: dto.koliDate, dest_name: destName || dto.dest } })
+    for (const koli of kolis) {
+      this.applySmuFields(koli, dto)
+      await this.koliRepo.save(koli)
+    }
+    return { updated: kolis.length }
   }
 
   // TODO(task-6): still filters by the old `route` field; rewritten to origin/dest in Task 6.

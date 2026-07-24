@@ -77,4 +77,49 @@ describe('BarhalService', () => {
       expect(koli.total_to).toBe(2)
     })
   })
+
+  describe('updatePacking', () => {
+    it('computes volume as (L*W*H)/6000 and stores weightAfter/batangKayu', async () => {
+      const koliRepo = {
+        findOne: jest.fn().mockResolvedValue({ id: 'k1', weight_before: 100 }),
+        save: jest.fn((v) => Promise.resolve(v)),
+      }
+      ;(service as any).koliRepo = koliRepo
+      const koli = await service.updatePacking('k1', { weightAfter: 120, lengthCm: 60, widthCm: 50, heightCm: 40, batangKayu: 8 })
+      expect(koli.weight_after).toBe(120)
+      expect(koli.volume).toBeCloseTo(20)
+      expect(koli.batang_kayu).toBe(8)
+    })
+  })
+
+  describe('updateSmu', () => {
+    it('does not overwrite existing fields left blank', async () => {
+      const koliRepo = {
+        findOne: jest.fn().mockResolvedValue({ id: 'k1', smu_number: 'SMU-OLD', airlines: 'Garuda' }),
+        save: jest.fn((v) => Promise.resolve(v)),
+      }
+      ;(service as any).koliRepo = koliRepo
+      const koli = await service.updateSmu('k1', { flightNo: 'GA123' })
+      expect(koli.smu_number).toBe('SMU-OLD')
+      expect(koli.airlines).toBe('Garuda')
+      expect(koli.flight_no).toBe('GA123')
+    })
+  })
+
+  describe('bulkUpdateSmu', () => {
+    it('updates every koli matching date+dest, skipping blank fields', async () => {
+      const koliRepo = {
+        find: jest.fn().mockResolvedValue([
+          { id: 'k1', smu_number: 'OLD' },
+          { id: 'k2', smu_number: null },
+        ]),
+        save: jest.fn((v) => Promise.resolve(v)),
+      }
+      ;(service as any).koliRepo = koliRepo
+      const result = await service.bulkUpdateSmu({ koliDate: '2026-06-01', dest: 'Badung', airlines: 'Garuda' })
+      expect(result.updated).toBe(2)
+      expect(koliRepo.save).toHaveBeenCalledTimes(2)
+      expect(koliRepo.find).toHaveBeenCalledWith({ where: { koli_date: '2026-06-01', dest_name: 'Badung' } })
+    })
+  })
 })
