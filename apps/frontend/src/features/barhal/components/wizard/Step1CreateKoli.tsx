@@ -5,6 +5,7 @@ import { useBarhalStations, useCreateKoliShell } from '../../hooks/useBarhal'
 import { BarhalKoli } from '../../types'
 
 interface Step1CreateKoliProps {
+  koli?: BarhalKoli
   onCreated: (koli: BarhalKoli) => void
 }
 
@@ -20,7 +21,7 @@ function previewKoliNumber(koliDate: string, origin: string, dest: string): stri
   return `${day}${MONTH_ABBR[month - 1]}-${stripDc(origin)}-${stripDc(dest)}-Barhal?`
 }
 
-export function Step1CreateKoli({ onCreated }: Step1CreateKoliProps) {
+export function Step1CreateKoli({ koli: existingKoli, onCreated }: Step1CreateKoliProps) {
   const [koliDate, setKoliDate] = useState('')
   const [origin, setOrigin] = useState('')
   const [dest, setDest] = useState('')
@@ -42,6 +43,43 @@ export function Step1CreateKoli({ onCreated }: Step1CreateKoliProps) {
         'Gagal membuat Koli. Silakan coba lagi.'
       setError(Array.isArray(message) ? message.join(', ') : message)
     }
+  }
+
+  if (existingKoli) {
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-3 gap-3">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Tanggal</label>
+            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">{existingKoli.koli_date}</div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Origin</label>
+            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">{existingKoli.origin_name}</div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Destinasi</label>
+            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">{existingKoli.dest_name}</div>
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">No. Koli</label>
+          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 font-mono text-sm">{existingKoli.koli_number}</div>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Tanggal, origin, dan destinasi tidak dapat diubah setelah Koli dibuat.
+        </p>
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => onCreated(existingKoli)}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90"
+          >
+            Lanjut
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (

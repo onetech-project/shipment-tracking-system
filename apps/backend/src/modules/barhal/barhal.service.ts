@@ -86,6 +86,12 @@ export class BarhalService {
       conditions.push(`c.completed_date = $${params.length}`)
     }
 
+    let excludeAttachedClause = 'NOT EXISTS (SELECT 1 FROM barhal_koli_to bkt WHERE bkt.to_number = c.to_number)'
+    if (dto.koliId) {
+      params.push(dto.koliId)
+      excludeAttachedClause = `NOT EXISTS (SELECT 1 FROM barhal_koli_to bkt WHERE bkt.to_number = c.to_number AND bkt.koli_id != $${params.length})`
+    }
+
     const rows: AvailableToRow[] = await this.dataSource.query(
       `
       SELECT
@@ -99,7 +105,7 @@ export class BarhalService {
         c.completed_date AS date
       FROM air_shipments_compileaircgk c
       WHERE c.to_number IS NOT NULL
-        AND NOT EXISTS (SELECT 1 FROM barhal_koli_to bkt WHERE bkt.to_number = c.to_number)
+        AND ${excludeAttachedClause}
         AND ${conditions.join(' AND ')}
       ORDER BY c.to_number
       `,
@@ -196,23 +202,29 @@ export class BarhalService {
     throw new ConflictException('Could not generate a unique Koli number, please retry')
   }
 
+  /** Replaces the Koli's full set of attached TOs with dto.toNumbers (may be empty to detach all). */
   async attachTos(id: string, dto: AttachTosDto): Promise<BarhalKoli> {
     const koli = await this.koliRepo.findOne({ where: { id } })
     if (!koli) throw new NotFoundException('Koli not found')
 
-    const toRows: { to_number: string; awb: string | null; gross_weight: number | null }[] = await this.dataSource.query(
-      `SELECT to_number, awb, gross_weight FROM air_shipments_compileaircgk WHERE to_number = ANY($1)`,
-      [dto.toNumbers],
-    )
+    const toRows: { to_number: string; awb: string | null; gross_weight: number | null }[] = dto.toNumbers.length
+      ? await this.dataSource.query(
+          `SELECT to_number, awb, gross_weight FROM air_shipments_compileaircgk WHERE to_number = ANY($1)`,
+          [dto.toNumbers],
+        )
+      : []
     if (toRows.length !== dto.toNumbers.length) {
       throw new BadRequestException('One or more selected TOs could not be found')
     }
 
     try {
-      const lines = toRows.map((row) =>
-        this.lineRepo.create({ koli_id: id, to_number: row.to_number, awb: row.awb, gross_weight: row.gross_weight }),
-      )
-      await this.lineRepo.save(lines)
+      await this.lineRepo.delete({ koli_id: id })
+      if (toRows.length) {
+        const lines = toRows.map((row) =>
+          this.lineRepo.create({ koli_id: id, to_number: row.to_number, awb: row.awb, gross_weight: row.gross_weight }),
+        )
+        await this.lineRepo.save(lines)
+      }
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code
       if (code === UNIQUE_VIOLATION) throw new ConflictException('One or more selected TOs were already packed into another Koli')
@@ -221,7 +233,8 @@ export class BarhalService {
 
     koli.weight_before = toRows.reduce((sum, row) => sum + Number(row.gross_weight ?? 0), 0)
     koli.total_to = toRows.length
-    return this.koliRepo.save(koli)
+    await this.koliRepo.save(koli)
+    return (await this.koliRepo.findOne({ where: { id }, relations: ['lines'] }))!
   }
 
   async updatePacking(id: string, dto: UpdatePackingDto): Promise<BarhalKoli> {

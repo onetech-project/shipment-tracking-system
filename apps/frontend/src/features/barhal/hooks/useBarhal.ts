@@ -45,7 +45,7 @@ export function useBarhalKoliDetail(id: string | null) {
   })
 }
 
-export function useAvailableTos(params: { origin?: string; dest?: string; date?: string; search?: string }) {
+export function useAvailableTos(params: { origin?: string; dest?: string; date?: string; search?: string; koliId?: string }) {
   return useQuery<AvailableTo[]>({
     queryKey: ['barhal', 'available-tos', params],
     queryFn: () => apiClient.get('/barhal/available-tos', { params }).then((r) => r.data),

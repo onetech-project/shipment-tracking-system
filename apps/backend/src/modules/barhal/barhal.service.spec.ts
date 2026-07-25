@@ -63,18 +63,39 @@ describe('BarhalService', () => {
   })
 
   describe('attachTos', () => {
-    it('sums gross_weight into weight_before and sets total_to', async () => {
-      const koliRepo = { findOne: jest.fn().mockResolvedValue({ id: 'k1' }), save: jest.fn((v) => Promise.resolve(v)) }
+    it('sums gross_weight into weight_before and sets total_to, reloading with lines relation', async () => {
+      const reloaded = { id: 'k1', weight_before: 15, total_to: 2, lines: [{ to_number: 'TO1' }, { to_number: 'TO2' }] }
+      const koliRepo = {
+        findOne: jest.fn().mockResolvedValueOnce({ id: 'k1' }).mockResolvedValueOnce(reloaded),
+        save: jest.fn((v) => Promise.resolve(v)),
+      }
       ;(service as any).koliRepo = koliRepo
       dataSource.query.mockResolvedValueOnce([
         { to_number: 'TO1', awb: 'AWB1', gross_weight: 10 },
         { to_number: 'TO2', awb: 'AWB2', gross_weight: 5 },
       ])
-      const lineRepo = { create: jest.fn((v) => v), save: jest.fn().mockResolvedValue(undefined) }
+      const lineRepo = { create: jest.fn((v) => v), save: jest.fn().mockResolvedValue(undefined), delete: jest.fn().mockResolvedValue(undefined) }
       ;(service as any).lineRepo = lineRepo
       const koli = await service.attachTos('k1', { toNumbers: ['TO1', 'TO2'] })
-      expect(koli.weight_before).toBe(15)
-      expect(koli.total_to).toBe(2)
+      expect(lineRepo.delete).toHaveBeenCalledWith({ koli_id: 'k1' })
+      expect(koli).toBe(reloaded)
+      expect(koliRepo.findOne).toHaveBeenLastCalledWith({ where: { id: 'k1' }, relations: ['lines'] })
+    })
+
+    it('detaches all TOs when toNumbers is empty, without querying air_shipments_compileaircgk', async () => {
+      const reloaded = { id: 'k1', weight_before: 0, total_to: 0, lines: [] }
+      const koliRepo = {
+        findOne: jest.fn().mockResolvedValueOnce({ id: 'k1' }).mockResolvedValueOnce(reloaded),
+        save: jest.fn((v) => Promise.resolve(v)),
+      }
+      ;(service as any).koliRepo = koliRepo
+      const lineRepo = { create: jest.fn((v) => v), save: jest.fn().mockResolvedValue(undefined), delete: jest.fn().mockResolvedValue(undefined) }
+      ;(service as any).lineRepo = lineRepo
+      const koli = await service.attachTos('k1', { toNumbers: [] })
+      expect(dataSource.query).not.toHaveBeenCalled()
+      expect(lineRepo.delete).toHaveBeenCalledWith({ koli_id: 'k1' })
+      expect(lineRepo.save).not.toHaveBeenCalled()
+      expect(koli.total_to).toBe(0)
     })
   })
 

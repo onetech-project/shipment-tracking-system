@@ -17,7 +17,7 @@ export function Step2SelectTos({ koli, onAttached }: Step2SelectTosProps) {
   const [date, setDate] = useState('')
   const [origin, setOrigin] = useState(koli.origin_name)
   const [dest, setDest] = useState(koli.dest_name)
-  const [selected, setSelected] = useState<string[]>([])
+  const [selected, setSelected] = useState<string[]>(() => koli.lines?.map((l) => l.to_number) ?? [])
   const [error, setError] = useState<string | null>(null)
 
   const { data: stations } = useBarhalStations()
@@ -26,6 +26,7 @@ export function Step2SelectTos({ koli, onAttached }: Step2SelectTosProps) {
     date: date || undefined,
     origin: origin || undefined,
     dest: dest || undefined,
+    koliId: koli.id,
   })
   const attachTos = useAttachTos(koli.id)
 
@@ -103,7 +104,7 @@ export function Step2SelectTos({ koli, onAttached }: Step2SelectTosProps) {
         <button
           type="button"
           onClick={handleSubmit}
-          disabled={selected.length === 0 || attachTos.isPending}
+          disabled={attachTos.isPending}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
         >
           {attachTos.isPending ? 'Menyimpan…' : 'Lanjut'}

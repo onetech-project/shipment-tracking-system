@@ -16,4 +16,9 @@ export class AvailableToDto {
   @IsOptional()
   @IsString()
   search?: string
+
+  /** When editing an existing Koli, include its own already-attached TOs (normally excluded) so they can be shown pre-selected. */
+  @IsOptional()
+  @IsString()
+  koliId?: string
 }

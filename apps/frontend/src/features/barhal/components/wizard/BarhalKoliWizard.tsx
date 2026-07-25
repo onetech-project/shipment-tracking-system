@@ -67,18 +67,31 @@ export function BarhalKoliWizard({ open, initialKoli, onClose, onDone }: BarhalK
         </DialogHeader>
 
         <div className="flex gap-2 border-b border-border pb-3 text-xs">
-          {STEP_LABELS.map((label, i) => (
-            <span
-              key={label}
-              className={`rounded-full px-3 py-1 ${step === i + 1 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}
-            >
-              {i + 1} · {label}
-            </span>
-          ))}
+          {STEP_LABELS.map((label, i) => {
+            const target = i + 1
+            const enabled = target === 1 || !!koli
+            return (
+              <button
+                key={label}
+                type="button"
+                disabled={!enabled}
+                onClick={() => enabled && setStep(target)}
+                className={`rounded-full px-3 py-1 transition ${
+                  step === target
+                    ? 'bg-primary text-primary-foreground'
+                    : enabled
+                      ? 'bg-muted text-muted-foreground hover:bg-muted/70'
+                      : 'cursor-not-allowed bg-muted/50 text-muted-foreground/50'
+                }`}
+              >
+                {target} · {label}
+              </button>
+            )
+          })}
         </div>
 
         <div className="max-h-[70vh] overflow-y-auto py-2">
-          {step === 1 && <Step1CreateKoli onCreated={(k) => handleStepDone(k, false)} />}
+          {step === 1 && <Step1CreateKoli koli={koli} onCreated={(k) => handleStepDone(k, false)} />}
           {step === 2 && koli && <Step2SelectTos koli={koli} onAttached={(k) => handleStepDone(k, false)} />}
           {step === 3 && koli && <Step3Packing koli={koli} onSaved={(k) => handleStepDone(k, true)} />}
         </div>
