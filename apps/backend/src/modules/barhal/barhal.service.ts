@@ -298,6 +298,10 @@ export class BarhalService {
         MIN(k.std)::text AS std,
         MIN(k.sta)::text AS sta,
         (
+          -- Assumption: SMU numbers are expected to be date/dest-specific in real usage.
+          -- This chWt sum is NOT re-scoped by the outer query's date/origin/dest filters;
+          -- it matches solely on smu_number, so if two Koli ever shared an SMU number
+          -- across different dates/destinations, the sum would span all of them.
           SELECT SUM(r.chwt)
           FROM (
             SELECT DISTINCT bkt.awb
@@ -504,6 +508,14 @@ export class BarhalService {
       koliParams,
     )
 
+    const recapBatangKayuNormalized = recapBatangKayu.map((row) => ({
+      ...row,
+      totalP: Number(row.totalP),
+      totalL: Number(row.totalL),
+      totalT: Number(row.totalT),
+      totalVolume: Number(row.totalVolume),
+    }))
+
     return {
       kpi: {
         totalKoli: kpiRow.koli_count,
@@ -514,7 +526,7 @@ export class BarhalService {
         totalBatangKayu: kpiRow.batang_kayu,
       },
       chartByDate,
-      recapBatangKayu,
+      recapBatangKayu: recapBatangKayuNormalized,
       recapPerTanggal,
       recapPerRute,
     }
