@@ -284,7 +284,7 @@ export class BarhalService {
     }
     const where = `WHERE ${conditions.join(' AND ')}`
 
-    return this.dataSource.query(
+    const rows = await this.dataSource.query(
       `
       SELECT
         k.smu_number AS "smuNumber",
@@ -314,6 +314,8 @@ export class BarhalService {
       `,
       params,
     )
+
+    return rows.map((row) => ({ ...row, chwt: row.chwt != null ? Number(row.chwt) : null }))
   }
 
   async getDashboard(dto: BarhalDashboardQueryDto) {

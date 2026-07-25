@@ -160,5 +160,27 @@ describe('BarhalService', () => {
       const rows = await service.getSmuList({})
       expect(rows[0].chwt).toBeNull()
     })
+
+    it('coerces numeric chwt from string to JS number when Postgres returns NUMERIC-as-string', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        {
+          smuNumber: 'SMU-3',
+          date: '2026-06-03',
+          originName: 'Jakarta',
+          destName: 'Surabaya',
+          totalKoli: 1,
+          totalTo: 2,
+          airlines: 'Batik',
+          flightNo: 'BT456',
+          std: '2026-06-03T08:00:00.000Z',
+          sta: '2026-06-03T10:30:00.000Z',
+          chwt: '42.50',
+        },
+      ])
+      const rows = await service.getSmuList({})
+      expect(rows).toHaveLength(1)
+      expect(rows[0].chwt).toBe(42.5)
+      expect(typeof rows[0].chwt).toBe('number')
+    })
   })
 })
