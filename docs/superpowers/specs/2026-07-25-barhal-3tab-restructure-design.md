@@ -51,15 +51,26 @@ New backend endpoint: `GET barhal/smu-list?date=&origin=&dest=`. Response per SM
 
 Same filters as today (From Date, To Date, Origin, Destination), extended response from the existing `GET barhal/dashboard` endpoint:
 
-- **KPI cards**: Total Koli, Total TO Barhal, Total Weight Before, Total Weight After, Total Variance (`weight_before − weight_after` summed), Total Batang Kayu.
-- **Chart**: Weight Before vs Weight After vs chWt Airlines, grouped by date (reuses the same AWB→rate join as the SMU list, aggregated per date across the filtered range).
-- **Tabel Rekap Batang Kayu**: Date, Total Koli, Total P, Total L, Total T, Total Volume, Total Batang Kayu (sums of `length_cm`/`width_cm`/`height_cm`/`volume`/`batang_kayu` grouped by date).
-- **Tabel Rekap Koli Pertanggal**: Date, Total TO, Total Koli, Total Weight Before, Total Weight After, chWt Airlines, Total Variance, Total Variance in Percent (`variance / weight_before * 100`), Add. Revenue (`total_P * total_L * total_T * 1000`). **`status` column is deferred** — omitted from this iteration pending a follow-up decision on its definition.
+All recap metrics below are **TO-POV** (scoped to Barhal-eligible TOs — `air_shipments_compileaircgk` rows with `remarks ILIKE '%barhal%'` — not to Koli), per the user's clarification:
 
-No new endpoint; `GET barhal/dashboard` response grows to include `kpi`, `chartByDate`, `recapBatangKayu`, `recapPerDate` blocks alongside the existing per-origin/dest breakdown.
+- **Total TO Barhal**: count of all Barhal-eligible TOs for the date/route, regardless of whether they're attached to a Koli yet.
+- **Total Koli**: count of Koli created for that date/route.
+- **Weight Before**: sum of `gross_weight` across those TOs.
+- **Weight After**: Weight Before + total packing-kayu weight increase (`weight_after − weight_before`, summed across the Koli for that date/route).
+- **chWt Airlines**: sum of `air_shipments_smu_rate_cgk_spx.chwt` matched by AWB across those same TOs (same join used in the SMU list; TOs with no matching rate row contribute 0 and don't block the rest of the row).
+- **Total Variance (selisih)**: Weight Before − Weight After (i.e. the packing-kayu weight increase itself). **Total Variance %**: `selisih / weight_before * 100`.
+- **Add. Revenue**: `total_P * total_L * total_T * 1000`, summed across the Koli for that date/route.
+- **Status**: `completed` if every Barhal-eligible TO for that date/route is attached to some `barhal_koli_to` row; `incomplete` if at least one is not yet attached.
+
+- **KPI cards** (same metrics, aggregated across the whole filtered range): Total Koli, Total TO Barhal, Total Weight Before, Total Weight After, Total Variance, Total Batang Kayu.
+- **Chart**: Weight Before vs Weight After vs chWt Airlines, grouped by date.
+- **Tabel Rekap Batang Kayu**: Date, Total Koli, Total P, Total L, Total T, Total Volume, Total Batang Kayu (Koli-sourced, unchanged from before — packing dimensions only exist at the Koli level).
+- **Tabel Rekap Per Tanggal** (TO-POV, grouped by Date): Date, Total TO, Total Koli, Weight Before, Weight After, chWt Airlines, Total Variance, Total Variance %, Add. Revenue, Status.
+- **Tabel Rekap Per Rute** (TO-POV, grouped by Origin+Destination): Origin, Destination, Total TO, Total Koli, Weight Before, Weight After, chWt Airlines, Total Variance, Total Variance %, Add. Revenue, Status.
+
+No new endpoint; `GET barhal/dashboard` response grows to include `kpi`, `chartByDate`, `recapBatangKayu`, `recapPerTanggal`, `recapPerRute` blocks alongside the existing per-origin/dest breakdown.
 
 ## Out of scope
 
-- Defining the `status` logic for Rekap Koli Pertanggal (explicitly deferred by the user).
 - Any change to `air_shipments_smu_rate_cgk_spx` itself (read-only join, no migration).
 - Any change to permissions (`READ_BARHAL`/`CREATE_BARHAL` reused throughout).
