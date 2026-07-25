@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useUpdateSmu } from '../hooks/useBarhal'
 import { BarhalKoli } from '../types'
+import { TimeSelect } from './TimeSelect'
 
 interface BarhalSmuInlineTableProps {
   data: BarhalKoli[]
@@ -63,7 +64,7 @@ function SmuRow({ koli, onSaved }: { koli: BarhalKoli; onSaved: () => void }) {
         {editing ? (
           <div className="flex gap-1">
             <input type="date" value={stdDate} onChange={(e) => setStdDate(e.target.value)} className={inputClass} />
-            <input type="time" value={stdTime} onChange={(e) => setStdTime(e.target.value)} className={inputClass} />
+            <TimeSelect value={stdTime} onChange={setStdTime} className={inputClass} />
           </div>
         ) : (
           koli.std || '-'
@@ -73,7 +74,7 @@ function SmuRow({ koli, onSaved }: { koli: BarhalKoli; onSaved: () => void }) {
         {editing ? (
           <div className="flex gap-1">
             <input type="date" value={staDate} onChange={(e) => setStaDate(e.target.value)} className={inputClass} />
-            <input type="time" value={staTime} onChange={(e) => setStaTime(e.target.value)} className={inputClass} />
+            <TimeSelect value={staTime} onChange={setStaTime} className={inputClass} />
           </div>
         ) : (
           koli.sta || '-'

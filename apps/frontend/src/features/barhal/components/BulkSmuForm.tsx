@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useBulkUpdateSmu } from '../hooks/useBarhal'
 import { BarhalStations } from '../types'
+import { TimeSelect } from './TimeSelect'
 
 interface BulkSmuFormProps {
   stations: BarhalStations
@@ -73,11 +74,11 @@ export function BulkSmuForm({ stations, onApplied }: BulkSmuFormProps) {
         <input placeholder="Flight No" value={flightNo} onChange={(e) => setFlightNo(e.target.value)} className={inputClass} />
         <div className="flex gap-1">
           <input type="date" value={stdDate} onChange={(e) => setStdDate(e.target.value)} className={inputClass} />
-          <input type="time" value={stdTime} onChange={(e) => setStdTime(e.target.value)} className={inputClass} />
+          <TimeSelect value={stdTime} onChange={setStdTime} className={inputClass} />
         </div>
         <div className="flex gap-1">
           <input type="date" value={staDate} onChange={(e) => setStaDate(e.target.value)} className={inputClass} />
-          <input type="time" value={staTime} onChange={(e) => setStaTime(e.target.value)} className={inputClass} />
+          <TimeSelect value={staTime} onChange={setStaTime} className={inputClass} />
         </div>
         <input placeholder="No. SMU" value={smuNumber} onChange={(e) => setSmuNumber(e.target.value)} className={inputClass} />
       </div>
