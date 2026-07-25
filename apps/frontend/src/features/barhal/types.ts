@@ -84,33 +84,77 @@ export interface BarhalStations {
   dests: string[]
 }
 
-export interface BarhalDashboardTotals {
-  koli_count: number
-  total_to: number
-  weight_before: number
-  weight_after: number
+export interface BarhalDashboardKpi {
+  totalKoli: number
+  totalTo: number
+  totalWeightBefore: number
+  totalWeightAfter: number
+  totalVariance: number
+  totalBatangKayu: number
 }
 
-export interface BarhalDashboardRouteItem {
-  origin_name: string
-  dest_name: string
-  koli_count: number
-  weight_before: number
-  weight_after: number
+export interface BarhalChartByDateItem {
+  date: string
+  weightBefore: number
+  weightAfter: number
   chwt: number
 }
 
-export interface BarhalDashboardDrillDownItem {
-  koli_date: string
-  origin_name: string
-  dest_name: string
-  koli_count: number
-  weight_before: number
-  weight_after: number
+export interface BarhalRecapBatangKayuItem {
+  date: string
+  totalKoli: number
+  totalP: number
+  totalL: number
+  totalT: number
+  totalVolume: number
+  totalBatangKayu: number
+}
+
+export interface BarhalRecapPerTanggalItem {
+  date: string
+  totalTo: number
+  totalKoli: number
+  weightBefore: number
+  weightAfter: number
+  chwt: number
+  variance: number
+  variancePercent: number
+  addRevenue: number
+  status: 'completed' | 'incomplete'
+}
+
+export interface BarhalRecapPerRuteItem {
+  originName: string
+  destName: string
+  totalTo: number
+  totalKoli: number
+  weightBefore: number
+  weightAfter: number
+  chwt: number
+  variance: number
+  variancePercent: number
+  addRevenue: number
+  status: 'completed' | 'incomplete'
 }
 
 export interface BarhalDashboardStats {
-  totals: BarhalDashboardTotals
-  perRoute: BarhalDashboardRouteItem[]
-  drillDown: BarhalDashboardDrillDownItem[]
+  kpi: BarhalDashboardKpi
+  chartByDate: BarhalChartByDateItem[]
+  recapBatangKayu: BarhalRecapBatangKayuItem[]
+  recapPerTanggal: BarhalRecapPerTanggalItem[]
+  recapPerRute: BarhalRecapPerRuteItem[]
+}
+
+export interface BarhalSmuListItem {
+  smuNumber: string
+  date: string
+  originName: string
+  destName: string
+  totalKoli: number
+  totalTo: number
+  airlines: string | null
+  flightNo: string | null
+  std: string | null
+  sta: string | null
+  chwt: number | null
 }
