@@ -65,7 +65,7 @@ function BarhalSmuPageContent() {
 
       <div>
         <p className="mb-2 text-sm font-medium">List SMU</p>
-        <BarhalSmuListTable data={smuList ?? []} isLoading={smuLoading} />
+        <BarhalSmuListTable data={smuList ?? []} isLoading={smuLoading} onUnassigned={handleSaved} />
       </div>
     </div>
   )

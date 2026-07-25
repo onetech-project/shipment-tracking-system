@@ -105,3 +105,20 @@ export function useSmuList(params: { date?: string; origin?: string; dest?: stri
     staleTime: 15 * 1000,
   })
 }
+
+export function useDeleteKoli() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (koliId: string) => apiClient.delete(`/barhal/koli/${koliId}`).then((r) => r.data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['barhal'] }),
+  })
+}
+
+export function useUnassignSmu() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (smuNumber: string) =>
+      apiClient.delete<{ updated: number }>(`/barhal/smu/${encodeURIComponent(smuNumber)}`).then((r) => r.data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['barhal'] }),
+  })
+}

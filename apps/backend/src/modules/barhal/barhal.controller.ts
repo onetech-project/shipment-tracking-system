@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, Query, Res, StreamableFile, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, Res, StreamableFile, UseGuards } from '@nestjs/common'
 import { ApiTags } from '@nestjs/swagger'
 import { Response } from 'express'
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
@@ -64,6 +64,12 @@ export class BarhalController {
     return this.service.attachTos(id, dto)
   }
 
+  @Delete('koli/:id')
+  @Authorize(Permission.CREATE_BARHAL)
+  deleteKoli(@Param('id') id: string) {
+    return this.service.deleteKoli(id)
+  }
+
   @Patch('koli/:id/packing')
   @Authorize(Permission.CREATE_BARHAL)
   updatePacking(@Param('id') id: string, @Body() dto: UpdatePackingDto) {
@@ -80,6 +86,12 @@ export class BarhalController {
   @Authorize(Permission.CREATE_BARHAL)
   bulkUpdateSmu(@Body() dto: BulkUpdateSmuDto) {
     return this.service.bulkUpdateSmu(dto)
+  }
+
+  @Delete('smu/:smuNumber')
+  @Authorize(Permission.CREATE_BARHAL)
+  unassignSmu(@Param('smuNumber') smuNumber: string) {
+    return this.service.unassignSmu(smuNumber)
   }
 
   @Get('dashboard')

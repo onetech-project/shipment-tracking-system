@@ -147,6 +147,51 @@ describe('BarhalService', () => {
     })
   })
 
+  describe('deleteKoli', () => {
+    it('deletes an existing koli', async () => {
+      const koliRepo = { findOne: jest.fn().mockResolvedValue({ id: 'k1' }), delete: jest.fn().mockResolvedValue(undefined) }
+      ;(service as any).koliRepo = koliRepo
+      await service.deleteKoli('k1')
+      expect(koliRepo.delete).toHaveBeenCalledWith({ id: 'k1' })
+    })
+
+    it('throws NotFoundException when koli does not exist', async () => {
+      const koliRepo = { findOne: jest.fn().mockResolvedValue(null), delete: jest.fn() }
+      ;(service as any).koliRepo = koliRepo
+      await expect(service.deleteKoli('missing')).rejects.toThrow('Koli not found')
+      expect(koliRepo.delete).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('unassignSmu', () => {
+    it('clears SMU/flight fields from every koli sharing smuNumber', async () => {
+      const koliRepo = {
+        find: jest.fn().mockResolvedValue([
+          { id: 'k1', smu_number: 'SMU-1', airlines: 'Garuda', flight_no: 'GA123', std: new Date(), sta: new Date() },
+          { id: 'k2', smu_number: 'SMU-1', airlines: 'Garuda', flight_no: 'GA123', std: new Date(), sta: new Date() },
+        ]),
+      }
+      ;(service as any).koliRepo = koliRepo
+      const manager = { save: jest.fn((_, v) => Promise.resolve(v)) }
+      ;(service as any).dataSource.transaction = jest.fn((cb: any) => cb(manager))
+      const result = await service.unassignSmu('SMU-1')
+      expect(result.updated).toBe(2)
+      expect(manager.save).toHaveBeenCalledTimes(2)
+      const [, savedKoli] = manager.save.mock.calls[0]
+      expect(savedKoli.smu_number).toBeNull()
+      expect(savedKoli.airlines).toBeNull()
+      expect(savedKoli.flight_no).toBeNull()
+      expect(savedKoli.std).toBeNull()
+      expect(savedKoli.sta).toBeNull()
+    })
+
+    it('throws NotFoundException when no koli has that smuNumber', async () => {
+      const koliRepo = { find: jest.fn().mockResolvedValue([]) }
+      ;(service as any).koliRepo = koliRepo
+      await expect(service.unassignSmu('MISSING')).rejects.toThrow('SMU not found')
+    })
+  })
+
   describe('getSmuList', () => {
     it('groups Koli by smu_number and sums matched chWt by AWB, applying date/origin/dest filters', async () => {
       dataSource.query.mockResolvedValueOnce([

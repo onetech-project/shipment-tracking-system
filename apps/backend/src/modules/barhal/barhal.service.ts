@@ -280,6 +280,30 @@ export class BarhalService {
     return { updated: kolis.length }
   }
 
+  /** Permanently deletes a Koli and its attached TO lines (cascade), freeing those TOs back up. */
+  async deleteKoli(id: string): Promise<void> {
+    const koli = await this.koliRepo.findOne({ where: { id } })
+    if (!koli) throw new NotFoundException('Koli not found')
+    await this.koliRepo.delete({ id })
+  }
+
+  /** Clears SMU/flight fields from every Koli sharing smuNumber, without deleting the Koli records themselves. */
+  async unassignSmu(smuNumber: string): Promise<{ updated: number }> {
+    const kolis = await this.koliRepo.find({ where: { smu_number: smuNumber } })
+    if (kolis.length === 0) throw new NotFoundException('SMU not found')
+    await this.dataSource.transaction(async (manager) => {
+      for (const koli of kolis) {
+        koli.smu_number = null
+        koli.airlines = null
+        koli.flight_no = null
+        koli.std = null
+        koli.sta = null
+        await manager.save(BarhalKoli, koli)
+      }
+    })
+    return { updated: kolis.length }
+  }
+
   async getSmuList(dto: SmuListQueryDto) {
     const params: unknown[] = []
     const conditions: string[] = [`k.smu_number IS NOT NULL`]
