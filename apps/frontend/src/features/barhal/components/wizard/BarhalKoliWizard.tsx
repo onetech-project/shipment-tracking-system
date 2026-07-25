@@ -5,10 +5,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Step1CreateKoli } from './Step1CreateKoli'
 import { Step2SelectTos } from './Step2SelectTos'
 import { Step3Packing } from './Step3Packing'
-import { Step4Smu } from './Step4Smu'
 import { BarhalKoli } from '../../types'
 
-const STEP_LABELS = ['Buat Koli', 'Pilih TO', 'Kelola Koli & Berat', 'Input SMU']
+const STEP_LABELS = ['Buat Koli', 'Pilih TO', 'Kelola Koli & Berat']
 
 export function isKoliIncomplete(koli: BarhalKoli): boolean {
   return (
@@ -17,15 +16,13 @@ export function isKoliIncomplete(koli: BarhalKoli): boolean {
     koli.length_cm == null ||
     koli.width_cm == null ||
     koli.height_cm == null ||
-    koli.batang_kayu == null ||
-    !koli.smu_number
+    koli.batang_kayu == null
   )
 }
 
 function nextStepFor(koli: BarhalKoli): number {
   if (koli.total_to === 0) return 2
-  if (koli.weight_after == null || koli.length_cm == null || koli.width_cm == null || koli.height_cm == null || koli.batang_kayu == null) return 3
-  return 4
+  return 3
 }
 
 interface BarhalKoliWizardProps {
@@ -76,8 +73,7 @@ export function BarhalKoliWizard({ open, initialKoli, onClose, onDone }: BarhalK
         <div className="max-h-[70vh] overflow-y-auto py-2">
           {step === 1 && <Step1CreateKoli onCreated={(k) => handleStepDone(k, false)} />}
           {step === 2 && koli && <Step2SelectTos koli={koli} onAttached={(k) => handleStepDone(k, false)} />}
-          {step === 3 && koli && <Step3Packing koli={koli} onSaved={(k) => handleStepDone(k, false)} />}
-          {step === 4 && koli && <Step4Smu koli={koli} onSaved={(k) => handleStepDone(k, true)} />}
+          {step === 3 && koli && <Step3Packing koli={koli} onSaved={(k) => handleStepDone(k, true)} />}
         </div>
       </DialogContent>
     </Dialog>
