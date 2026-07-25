@@ -394,7 +394,7 @@ export class BarhalService {
       SELECT
         g.to_date::text AS date,
         (SELECT COUNT(DISTINCT to_number) FROM scoped s WHERE s.to_date = g.to_date)::int AS total_to,
-        (SELECT COUNT(DISTINCT to_number) FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number WHERE s.to_date = g.to_date)::int AS attached_to,
+        (SELECT COUNT(DISTINCT s.to_number) FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number WHERE s.to_date = g.to_date)::int AS attached_to,
         (SELECT COUNT(DISTINCT bkt.koli_id) FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number WHERE s.to_date = g.to_date)::int AS total_koli,
         (SELECT COALESCE(SUM(gross_weight), 0) FROM scoped s WHERE s.to_date = g.to_date)::numeric AS weight_before,
         (SELECT COALESCE(SUM(r.chwt), 0)
@@ -452,7 +452,7 @@ export class BarhalService {
         g.origin_name AS "originName",
         g.dest_name AS "destName",
         (SELECT COUNT(DISTINCT to_number) FROM scoped s WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name)::int AS total_to,
-        (SELECT COUNT(DISTINCT to_number) FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name)::int AS attached_to,
+        (SELECT COUNT(DISTINCT s.to_number) FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name)::int AS attached_to,
         (SELECT COUNT(DISTINCT bkt.koli_id) FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name)::int AS total_koli,
         (SELECT COALESCE(SUM(gross_weight), 0) FROM scoped s WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name)::numeric AS weight_before,
         (SELECT COALESCE(SUM(r.chwt), 0)
