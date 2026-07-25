@@ -1,16 +1,16 @@
 'use client'
 
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
-import { BarhalDashboardRouteItem } from '../types'
+import { BarhalChartByDateItem } from '../types'
 
-interface BarhalRouteChartProps {
-  data: BarhalDashboardRouteItem[]
+interface BarhalWeightChartProps {
+  data: BarhalChartByDateItem[]
 }
 
 const fmt = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 })
 
 interface TooltipPayload {
-  payload: BarhalDashboardRouteItem
+  payload: BarhalChartByDateItem
 }
 
 function CustomTooltip({ active, payload }: { active?: boolean; payload?: TooltipPayload[] }) {
@@ -18,15 +18,15 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Toolti
   const p = payload[0].payload
   return (
     <div className="rounded-md border bg-background p-2 text-xs shadow-md">
-      <p className="font-medium">{`${p.origin_name} → ${p.dest_name}`}</p>
-      <p className="text-muted-foreground">Weight Before: {fmt.format(p.weight_before)} kg</p>
-      <p className="text-muted-foreground">Weight After: {fmt.format(p.weight_after)} kg</p>
+      <p className="font-medium">{p.date}</p>
+      <p className="text-muted-foreground">Weight Before: {fmt.format(p.weightBefore)} kg</p>
+      <p className="text-muted-foreground">Weight After: {fmt.format(p.weightAfter)} kg</p>
       <p className="text-muted-foreground">ChWt: {fmt.format(p.chwt)} kg</p>
     </div>
   )
 }
 
-export function BarhalRouteChart({ data }: BarhalRouteChartProps) {
+export function BarhalWeightChart({ data }: BarhalWeightChartProps) {
   if (data.length === 0) {
     return (
       <div className="rounded-lg border bg-card p-6 text-center">
@@ -35,23 +35,18 @@ export function BarhalRouteChart({ data }: BarhalRouteChartProps) {
     )
   }
 
-  const chartData = data.map((item) => ({
-    ...item,
-    route: `${item.origin_name} → ${item.dest_name}`,
-  }))
-
   return (
     <div className="rounded-lg border bg-card p-4">
-      <p className="mb-4 text-sm font-medium">Weight Before / After / ChWt per Rute</p>
+      <p className="mb-4 text-sm font-medium">Weight Before / After / ChWt per Tanggal</p>
       <ResponsiveContainer width="100%" height={320}>
-        <BarChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+        <BarChart data={data} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-          <XAxis dataKey="route" tick={{ fontSize: 11 }} />
+          <XAxis dataKey="date" tick={{ fontSize: 11 }} />
           <YAxis tick={{ fontSize: 11 }} width={60} />
           <Tooltip content={<CustomTooltip />} />
           <Legend wrapperStyle={{ fontSize: 12 }} />
-          <Bar dataKey="weight_before" name="Weight Before" fill="#60A5FA" radius={[4, 4, 0, 0]} />
-          <Bar dataKey="weight_after" name="Weight After" fill="#22C55E" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="weightBefore" name="Weight Before" fill="#60A5FA" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="weightAfter" name="Weight After" fill="#22C55E" radius={[4, 4, 0, 0]} />
           <Bar dataKey="chwt" name="ChWt" fill="#F59E0B" radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
