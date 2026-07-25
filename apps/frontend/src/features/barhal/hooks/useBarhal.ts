@@ -3,6 +3,7 @@ import { apiClient } from '@/shared/api/client'
 import {
   AvailableTo,
   BarhalKoli,
+  BarhalSmuListItem,
   BarhalStations,
   CreateKoliShellPayload,
   AttachTosPayload,
@@ -94,5 +95,13 @@ export function useBulkUpdateSmu() {
     mutationFn: (payload: BulkUpdateSmuPayload) =>
       apiClient.patch<{ updated: number }>('/barhal/koli/bulk-smu', payload).then((r) => r.data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['barhal'] }),
+  })
+}
+
+export function useSmuList(params: { date?: string; origin?: string; dest?: string }) {
+  return useQuery<BarhalSmuListItem[]>({
+    queryKey: ['barhal', 'smu-list', params],
+    queryFn: () => apiClient.get('/barhal/smu-list', { params }).then((r) => r.data),
+    staleTime: 15 * 1000,
   })
 }
