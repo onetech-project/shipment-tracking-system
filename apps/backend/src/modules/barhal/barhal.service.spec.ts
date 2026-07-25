@@ -183,4 +183,63 @@ describe('BarhalService', () => {
       expect(typeof rows[0].chwt).toBe('number')
     })
   })
+
+  describe('getDashboard', () => {
+    it('returns TO-POV kpi/chartByDate/recapBatangKayu/recapPerTanggal/recapPerRute', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 2, total_to: 3, weight_before: 30, weight_increase: 6, batang_kayu: 10 }]) // kpi
+        .mockResolvedValueOnce([
+          { date: '2026-06-01', total_to: 3, attached_to: 3, total_koli: 2, weight_before: 30, chwt: 25, weight_increase: 6, add_revenue: 500 },
+        ]) // recapPerTanggal
+        .mockResolvedValueOnce([
+          { originName: 'Kosambi', destName: 'Badung', total_to: 3, attached_to: 2, total_koli: 2, weight_before: 30, chwt: 25, weight_increase: 6, add_revenue: 500 },
+        ]) // recapPerRute
+        .mockResolvedValueOnce([
+          { date: '2026-06-01', totalKoli: 2, totalP: 100, totalL: 80, totalT: 60, totalVolume: 80, totalBatangKayu: 10 },
+        ]) // recapBatangKayu
+
+      const result = await service.getDashboard({})
+
+      expect(result.kpi).toEqual({
+        totalKoli: 2,
+        totalTo: 3,
+        totalWeightBefore: 30,
+        totalWeightAfter: 36,
+        totalVariance: -6,
+        totalBatangKayu: 10,
+      })
+      expect(result.chartByDate).toEqual([{ date: '2026-06-01', weightBefore: 30, weightAfter: 36, chwt: 25 }])
+      expect(result.recapPerTanggal[0]).toMatchObject({
+        date: '2026-06-01',
+        totalTo: 3,
+        totalKoli: 2,
+        weightBefore: 30,
+        weightAfter: 36,
+        chwt: 25,
+        variance: -6,
+        addRevenue: 500,
+        status: 'completed',
+      })
+      expect(result.recapPerTanggal[0].variancePercent).toBeCloseTo(-20)
+      expect(result.recapPerRute[0]).toMatchObject({
+        originName: 'Kosambi',
+        destName: 'Badung',
+        status: 'incomplete',
+      })
+      expect(result.recapBatangKayu).toEqual([
+        { date: '2026-06-01', totalKoli: 2, totalP: 100, totalL: 80, totalT: 60, totalVolume: 80, totalBatangKayu: 10 },
+      ])
+    })
+
+    it('reports variancePercent as 0 when weightBefore is 0 (no division by zero)', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
+        .mockResolvedValueOnce([{ date: '2026-06-01', total_to: 0, attached_to: 0, total_koli: 0, weight_before: 0, chwt: 0, weight_increase: 0, add_revenue: 0 }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      const result = await service.getDashboard({})
+      expect(result.recapPerTanggal[0].variancePercent).toBe(0)
+    })
+  })
 })

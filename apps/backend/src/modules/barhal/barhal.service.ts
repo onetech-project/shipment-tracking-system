@@ -318,75 +318,206 @@ export class BarhalService {
     return rows.map((row) => ({ ...row, chwt: row.chwt != null ? Number(row.chwt) : null }))
   }
 
+  private normalizedStationSql(column: string): string {
+    return `TRIM(REGEXP_REPLACE(REGEXP_REPLACE(${column}, '\\s+DC$', '', 'i'), '\\s+', ' ', 'g'))`
+  }
+
   async getDashboard(dto: BarhalDashboardQueryDto) {
     const params: unknown[] = []
-    const conditions: string[] = []
+    const conditions: string[] = [`e.remarks ILIKE '%barhal%'`, `e.to_number IS NOT NULL`, `e.completed_date IS NOT NULL`]
     if (dto.startDate && dto.endDate) {
       params.push(dto.startDate, dto.endDate)
-      conditions.push(`k.koli_date BETWEEN $${params.length - 1} AND $${params.length}`)
+      conditions.push(`e.completed_date BETWEEN $${params.length - 1} AND $${params.length}`)
     }
     if (dto.origin) {
       params.push(dto.origin)
-      conditions.push(`k.origin_name = $${params.length}`)
+      conditions.push(`${this.normalizedStationSql('e.origin_station')} = $${params.length}`)
     }
     if (dto.dest) {
       params.push(dto.dest)
-      conditions.push(`k.dest_name = $${params.length}`)
+      conditions.push(`${this.normalizedStationSql('e.dest_station')} = $${params.length}`)
     }
-    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+    const toWhere = `WHERE ${conditions.join(' AND ')}`
 
-    const totals = (
+    const scopedCte = `
+      scoped AS (
+        SELECT
+          e.to_number,
+          e.gross_weight,
+          e.awb,
+          e.completed_date AS to_date,
+          ${this.normalizedStationSql('e.origin_station')} AS origin_name,
+          ${this.normalizedStationSql('e.dest_station')} AS dest_name
+        FROM air_shipments_compileaircgk e
+        ${toWhere}
+      )
+    `
+
+    const kpiRow = (
       await this.dataSource.query(
         `
+        WITH ${scopedCte},
+        koli_ids AS (
+          SELECT DISTINCT bkt.koli_id FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number
+        )
         SELECT
-          COUNT(*)::int AS koli_count,
-          COALESCE(SUM(k.total_to), 0)::int AS total_to,
-          COALESCE(SUM(k.weight_before), 0)::numeric AS weight_before,
-          COALESCE(SUM(k.weight_after), 0)::numeric AS weight_after
-        FROM barhal_koli k
-        ${where}
+          (SELECT COUNT(*)::int FROM koli_ids) AS koli_count,
+          (SELECT COUNT(DISTINCT to_number)::int FROM scoped) AS total_to,
+          (SELECT COALESCE(SUM(gross_weight), 0)::numeric FROM scoped) AS weight_before,
+          (SELECT COALESCE(SUM(k.weight_after - k.weight_before), 0)::numeric
+             FROM koli_ids ki JOIN barhal_koli k ON k.id = ki.koli_id
+             WHERE k.weight_before IS NOT NULL AND k.weight_after IS NOT NULL) AS weight_increase,
+          (SELECT COALESCE(SUM(k.batang_kayu), 0)::int
+             FROM koli_ids ki JOIN barhal_koli k ON k.id = ki.koli_id) AS batang_kayu
         `,
         params,
       )
     )[0]
 
-    const perRoute = await this.dataSource.query(
+    const perTanggalRows: {
+      date: string
+      total_to: number
+      attached_to: number
+      total_koli: number
+      weight_before: string
+      chwt: string
+      weight_increase: string
+      add_revenue: string
+    }[] = await this.dataSource.query(
+      `
+      WITH ${scopedCte},
+      groups AS (SELECT DISTINCT to_date FROM scoped)
+      SELECT
+        g.to_date::text AS date,
+        (SELECT COUNT(DISTINCT to_number) FROM scoped s WHERE s.to_date = g.to_date)::int AS total_to,
+        (SELECT COUNT(DISTINCT to_number) FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number WHERE s.to_date = g.to_date)::int AS attached_to,
+        (SELECT COUNT(DISTINCT bkt.koli_id) FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number WHERE s.to_date = g.to_date)::int AS total_koli,
+        (SELECT COALESCE(SUM(gross_weight), 0) FROM scoped s WHERE s.to_date = g.to_date)::numeric AS weight_before,
+        (SELECT COALESCE(SUM(r.chwt), 0)
+           FROM (SELECT DISTINCT s.awb FROM scoped s WHERE s.to_date = g.to_date AND s.awb IS NOT NULL) awbs
+           LEFT JOIN air_shipments_smu_rate_cgk_spx r ON r.awb = awbs.awb)::numeric AS chwt,
+        (SELECT COALESCE(SUM(k.weight_after - k.weight_before), 0)
+           FROM (SELECT DISTINCT bkt.koli_id FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number WHERE s.to_date = g.to_date) dk
+           JOIN barhal_koli k ON k.id = dk.koli_id
+           WHERE k.weight_before IS NOT NULL AND k.weight_after IS NOT NULL)::numeric AS weight_increase,
+        (SELECT COALESCE(SUM(k.length_cm * k.width_cm * k.height_cm * 1000), 0)
+           FROM (SELECT DISTINCT bkt.koli_id FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number WHERE s.to_date = g.to_date) dk
+           JOIN barhal_koli k ON k.id = dk.koli_id
+           WHERE k.length_cm IS NOT NULL AND k.width_cm IS NOT NULL AND k.height_cm IS NOT NULL)::numeric AS add_revenue
+      FROM groups g
+      ORDER BY g.to_date DESC
+      `,
+      params,
+    )
+
+    const toRecapItem = (row: { total_to: number; attached_to: number; total_koli: number; weight_before: string; chwt: string; weight_increase: string; add_revenue: string }) => {
+      const weightBefore = Number(row.weight_before)
+      const weightAfter = weightBefore + Number(row.weight_increase)
+      const variance = weightBefore - weightAfter
+      return {
+        totalTo: row.total_to,
+        totalKoli: row.total_koli,
+        weightBefore,
+        weightAfter,
+        chwt: Number(row.chwt),
+        variance,
+        variancePercent: weightBefore > 0 ? (variance / weightBefore) * 100 : 0,
+        addRevenue: Number(row.add_revenue),
+        status: row.total_to === row.attached_to ? ('completed' as const) : ('incomplete' as const),
+      }
+    }
+
+    const recapPerTanggal = perTanggalRows.map((row) => ({ date: row.date, ...toRecapItem(row) }))
+    const chartByDate = recapPerTanggal.map((r) => ({ date: r.date, weightBefore: r.weightBefore, weightAfter: r.weightAfter, chwt: r.chwt }))
+
+    const perRuteRows: {
+      originName: string
+      destName: string
+      total_to: number
+      attached_to: number
+      total_koli: number
+      weight_before: string
+      chwt: string
+      weight_increase: string
+      add_revenue: string
+    }[] = await this.dataSource.query(
+      `
+      WITH ${scopedCte},
+      groups AS (SELECT DISTINCT origin_name, dest_name FROM scoped)
+      SELECT
+        g.origin_name AS "originName",
+        g.dest_name AS "destName",
+        (SELECT COUNT(DISTINCT to_number) FROM scoped s WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name)::int AS total_to,
+        (SELECT COUNT(DISTINCT to_number) FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name)::int AS attached_to,
+        (SELECT COUNT(DISTINCT bkt.koli_id) FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name)::int AS total_koli,
+        (SELECT COALESCE(SUM(gross_weight), 0) FROM scoped s WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name)::numeric AS weight_before,
+        (SELECT COALESCE(SUM(r.chwt), 0)
+           FROM (SELECT DISTINCT s.awb FROM scoped s WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name AND s.awb IS NOT NULL) awbs
+           LEFT JOIN air_shipments_smu_rate_cgk_spx r ON r.awb = awbs.awb)::numeric AS chwt,
+        (SELECT COALESCE(SUM(k.weight_after - k.weight_before), 0)
+           FROM (SELECT DISTINCT bkt.koli_id FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name) dk
+           JOIN barhal_koli k ON k.id = dk.koli_id
+           WHERE k.weight_before IS NOT NULL AND k.weight_after IS NOT NULL)::numeric AS weight_increase,
+        (SELECT COALESCE(SUM(k.length_cm * k.width_cm * k.height_cm * 1000), 0)
+           FROM (SELECT DISTINCT bkt.koli_id FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name) dk
+           JOIN barhal_koli k ON k.id = dk.koli_id
+           WHERE k.length_cm IS NOT NULL AND k.width_cm IS NOT NULL AND k.height_cm IS NOT NULL)::numeric AS add_revenue
+      FROM groups g
+      ORDER BY g.origin_name, g.dest_name
+      `,
+      params,
+    )
+
+    const recapPerRute = perRuteRows.map((row) => ({ originName: row.originName, destName: row.destName, ...toRecapItem(row) }))
+
+    const koliParams: unknown[] = []
+    const koliConditions: string[] = []
+    if (dto.startDate && dto.endDate) {
+      koliParams.push(dto.startDate, dto.endDate)
+      koliConditions.push(`k.koli_date BETWEEN $${koliParams.length - 1} AND $${koliParams.length}`)
+    }
+    if (dto.origin) {
+      koliParams.push(dto.origin)
+      koliConditions.push(`k.origin_name = $${koliParams.length}`)
+    }
+    if (dto.dest) {
+      koliParams.push(dto.dest)
+      koliConditions.push(`k.dest_name = $${koliParams.length}`)
+    }
+    const koliWhere = koliConditions.length ? `WHERE ${koliConditions.join(' AND ')}` : ''
+
+    const recapBatangKayu = await this.dataSource.query(
       `
       SELECT
-        k.origin_name, k.dest_name,
-        COUNT(*)::int AS koli_count,
-        COALESCE(SUM(k.weight_before), 0)::numeric AS weight_before,
-        COALESCE(SUM(k.weight_after), 0)::numeric AS weight_after,
-        COALESCE(SUM(l.chwt), 0)::numeric AS chwt
+        k.koli_date::text AS date,
+        COUNT(*)::int AS "totalKoli",
+        COALESCE(SUM(k.length_cm), 0)::numeric AS "totalP",
+        COALESCE(SUM(k.width_cm), 0)::numeric AS "totalL",
+        COALESCE(SUM(k.height_cm), 0)::numeric AS "totalT",
+        COALESCE(SUM(k.volume), 0)::numeric AS "totalVolume",
+        COALESCE(SUM(k.batang_kayu), 0)::int AS "totalBatangKayu"
       FROM barhal_koli k
-      LEFT JOIN (
-        SELECT bkt.koli_id, SUM(s.chwt) AS chwt
-        FROM barhal_koli_to bkt
-        LEFT JOIN air_shipments_smu_rate_cgk_spx s ON s.awb = bkt.awb
-        GROUP BY bkt.koli_id
-      ) l ON l.koli_id = k.id
-      ${where}
-      GROUP BY k.origin_name, k.dest_name
-      ORDER BY k.origin_name, k.dest_name
+      ${koliWhere}
+      GROUP BY k.koli_date
+      ORDER BY k.koli_date DESC
       `,
-      params,
+      koliParams,
     )
 
-    const drillDown = await this.dataSource.query(
-      `
-      SELECT k.koli_date, k.origin_name, k.dest_name,
-             COUNT(*)::int AS koli_count,
-             COALESCE(SUM(k.weight_before), 0)::numeric AS weight_before,
-             COALESCE(SUM(k.weight_after), 0)::numeric AS weight_after
-      FROM barhal_koli k
-      ${where}
-      GROUP BY k.koli_date, k.origin_name, k.dest_name
-      ORDER BY k.koli_date DESC, k.origin_name, k.dest_name
-      `,
-      params,
-    )
-
-    return { totals, perRoute, drillDown }
+    return {
+      kpi: {
+        totalKoli: kpiRow.koli_count,
+        totalTo: kpiRow.total_to,
+        totalWeightBefore: Number(kpiRow.weight_before),
+        totalWeightAfter: Number(kpiRow.weight_before) + Number(kpiRow.weight_increase),
+        totalVariance: -Number(kpiRow.weight_increase),
+        totalBatangKayu: kpiRow.batang_kayu,
+      },
+      chartByDate,
+      recapBatangKayu,
+      recapPerTanggal,
+      recapPerRute,
+    }
   }
 
   async exportCsv(dto: BarhalDashboardQueryDto): Promise<string> {
