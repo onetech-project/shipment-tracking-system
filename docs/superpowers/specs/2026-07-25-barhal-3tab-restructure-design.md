@@ -58,7 +58,7 @@ All recap metrics below are **TO-POV** (scoped to Barhal-eligible TOs — `air_s
 - **Weight Before**: sum of `gross_weight` across those TOs.
 - **Weight After**: Weight Before + total packing-kayu weight increase (`weight_after − weight_before`, summed across the Koli for that date/route).
 - **chWt Airlines**: sum of `air_shipments_smu_rate_cgk_spx.chwt` matched by AWB across those same TOs (same join used in the SMU list; TOs with no matching rate row contribute 0 and don't block the rest of the row).
-- **Total Variance (selisih)**: Weight Before − Weight After (i.e. the packing-kayu weight increase itself). **Total Variance %**: `selisih / weight_before * 100`.
+- **Total Variance (selisih)**: Weight After − Weight Before (i.e. the packing-kayu weight increase itself; positive when packing added weight). **Total Variance %**: `selisih / weight_before * 100`.
 - **Add. Revenue**: `total_P * total_L * total_T * 1000`, summed across the Koli for that date/route.
 - **Status**: `completed` if every Barhal-eligible TO for that date/route is attached to some `barhal_koli_to` row; `incomplete` if at least one is not yet attached.
 

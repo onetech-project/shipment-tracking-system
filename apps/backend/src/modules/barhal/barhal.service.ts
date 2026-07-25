@@ -417,7 +417,7 @@ export class BarhalService {
     const toRecapItem = (row: { total_to: number; attached_to: number; total_koli: number; weight_before: string; chwt: string; weight_increase: string; add_revenue: string }) => {
       const weightBefore = Number(row.weight_before)
       const weightAfter = weightBefore + Number(row.weight_increase)
-      const variance = weightBefore - weightAfter
+      const variance = weightAfter - weightBefore
       return {
         totalTo: row.total_to,
         totalKoli: row.total_koli,
@@ -522,7 +522,7 @@ export class BarhalService {
         totalTo: kpiRow.total_to,
         totalWeightBefore: Number(kpiRow.weight_before),
         totalWeightAfter: Number(kpiRow.weight_before) + Number(kpiRow.weight_increase),
-        totalVariance: -Number(kpiRow.weight_increase),
+        totalVariance: Number(kpiRow.weight_increase),
         totalBatangKayu: kpiRow.batang_kayu,
       },
       chartByDate,

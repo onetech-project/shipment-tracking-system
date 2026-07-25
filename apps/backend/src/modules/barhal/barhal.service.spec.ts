@@ -205,7 +205,7 @@ describe('BarhalService', () => {
         totalTo: 3,
         totalWeightBefore: 30,
         totalWeightAfter: 36,
-        totalVariance: -6,
+        totalVariance: 6,
         totalBatangKayu: 10,
       })
       expect(result.chartByDate).toEqual([{ date: '2026-06-01', weightBefore: 30, weightAfter: 36, chwt: 25 }])
@@ -216,11 +216,11 @@ describe('BarhalService', () => {
         weightBefore: 30,
         weightAfter: 36,
         chwt: 25,
-        variance: -6,
+        variance: 6,
         addRevenue: 500,
         status: 'completed',
       })
-      expect(result.recapPerTanggal[0].variancePercent).toBeCloseTo(-20)
+      expect(result.recapPerTanggal[0].variancePercent).toBeCloseTo(20)
       expect(result.recapPerRute[0]).toMatchObject({
         originName: 'Kosambi',
         destName: 'Badung',
