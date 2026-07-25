@@ -11,6 +11,7 @@ import { BarhalDashboardQueryDto } from './dto/barhal-dashboard-query.dto'
 import { UpdatePackingDto } from './dto/update-packing.dto'
 import { UpdateSmuDto } from './dto/update-smu.dto'
 import { BulkUpdateSmuDto } from './dto/bulk-update-smu.dto'
+import { SmuListQueryDto } from './dto/smu-list-query.dto'
 import { buildBarhalCsv, BarhalCsvRow } from './barhal-csv.builder'
 
 export function normalizeStationName(raw: string | null | undefined): string {
@@ -264,6 +265,55 @@ export class BarhalService {
       }
     })
     return { updated: kolis.length }
+  }
+
+  async getSmuList(dto: SmuListQueryDto) {
+    const params: unknown[] = []
+    const conditions: string[] = [`k.smu_number IS NOT NULL`]
+    if (dto.date) {
+      params.push(dto.date)
+      conditions.push(`k.koli_date = $${params.length}`)
+    }
+    if (dto.origin) {
+      params.push(dto.origin)
+      conditions.push(`k.origin_name = $${params.length}`)
+    }
+    if (dto.dest) {
+      params.push(dto.dest)
+      conditions.push(`k.dest_name = $${params.length}`)
+    }
+    const where = `WHERE ${conditions.join(' AND ')}`
+
+    return this.dataSource.query(
+      `
+      SELECT
+        k.smu_number AS "smuNumber",
+        MIN(k.koli_date)::text AS date,
+        MIN(k.origin_name) AS "originName",
+        MIN(k.dest_name) AS "destName",
+        COUNT(DISTINCT k.id)::int AS "totalKoli",
+        COALESCE(SUM(k.total_to), 0)::int AS "totalTo",
+        MIN(k.airlines) AS airlines,
+        MIN(k.flight_no) AS "flightNo",
+        MIN(k.std)::text AS std,
+        MIN(k.sta)::text AS sta,
+        (
+          SELECT SUM(r.chwt)
+          FROM (
+            SELECT DISTINCT bkt.awb
+            FROM barhal_koli bk
+            JOIN barhal_koli_to bkt ON bkt.koli_id = bk.id
+            WHERE bk.smu_number = k.smu_number AND bkt.awb IS NOT NULL
+          ) awbs
+          LEFT JOIN air_shipments_smu_rate_cgk_spx r ON r.awb = awbs.awb
+        )::numeric AS chwt
+      FROM barhal_koli k
+      ${where}
+      GROUP BY k.smu_number
+      ORDER BY MIN(k.koli_date) DESC
+      `,
+      params,
+    )
   }
 
   async getDashboard(dto: BarhalDashboardQueryDto) {

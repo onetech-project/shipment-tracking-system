@@ -14,6 +14,7 @@ import { BulkUpdateSmuDto } from './dto/bulk-update-smu.dto'
 import { ListBarhalKoliDto } from './dto/list-barhal-koli.dto'
 import { AvailableToDto } from './dto/available-to.dto'
 import { BarhalDashboardQueryDto } from './dto/barhal-dashboard-query.dto'
+import { SmuListQueryDto } from './dto/smu-list-query.dto'
 
 @ApiTags('Barhal')
 @Controller('barhal')
@@ -31,6 +32,12 @@ export class BarhalController {
   @Authorize(Permission.READ_BARHAL)
   getAvailableTos(@Query() dto: AvailableToDto) {
     return this.service.getAvailableTos(dto)
+  }
+
+  @Get('smu-list')
+  @Authorize(Permission.READ_BARHAL)
+  getSmuList(@Query() dto: SmuListQueryDto) {
+    return this.service.getSmuList(dto)
   }
 
   @Get('koli')

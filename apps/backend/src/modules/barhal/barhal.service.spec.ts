@@ -125,4 +125,40 @@ describe('BarhalService', () => {
       expect(koliRepo.find).toHaveBeenCalledWith({ where: { koli_date: '2026-06-01', dest_name: 'Badung' } })
     })
   })
+
+  describe('getSmuList', () => {
+    it('groups Koli by smu_number and sums matched chWt by AWB, applying date/origin/dest filters', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        {
+          smuNumber: 'SMU-1',
+          date: '2026-06-01',
+          originName: 'Kosambi',
+          destName: 'Badung',
+          totalKoli: 2,
+          totalTo: 3,
+          airlines: 'Garuda',
+          flightNo: 'GA123',
+          std: '2026-06-01T10:00:00.000Z',
+          sta: '2026-06-01T12:00:00.000Z',
+          chwt: 42,
+        },
+      ])
+      const rows = await service.getSmuList({ date: '2026-06-01', origin: 'Kosambi', dest: 'Badung' })
+      expect(rows).toHaveLength(1)
+      expect(rows[0].smuNumber).toBe('SMU-1')
+      expect(rows[0].chwt).toBe(42)
+      const [sql, params] = dataSource.query.mock.calls[0]
+      expect(sql).toMatch(/smu_number IS NOT NULL/)
+      expect(sql).toMatch(/GROUP BY k\.smu_number/)
+      expect(params).toEqual(['2026-06-01', 'Kosambi', 'Badung'])
+    })
+
+    it('surfaces chwt as null when no AWB in the group matches the rate table', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { smuNumber: 'SMU-2', date: '2026-06-02', originName: 'A', destName: 'B', totalKoli: 1, totalTo: 1, airlines: null, flightNo: null, std: null, sta: null, chwt: null },
+      ])
+      const rows = await service.getSmuList({})
+      expect(rows[0].chwt).toBeNull()
+    })
+  })
 })
