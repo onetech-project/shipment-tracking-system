@@ -53,13 +53,13 @@ export function Step3Packing({ koli, onSaved }: Step3PackingProps) {
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="text-sm font-medium">Berat Sebelum</label>
+          <label className="block text-sm font-medium">Berat Sebelum</label>
           <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
             {fmt.format(weightBefore)} kg
           </div>
         </div>
         <div className="space-y-1.5">
-          <label className="text-sm font-medium">Berat Setelah Packing Kayu (kg)</label>
+          <label className="block text-sm font-medium">Berat Setelah Packing Kayu (kg)</label>
           <input
             type="number"
             min={0}
@@ -78,22 +78,22 @@ export function Step3Packing({ koli, onSaved }: Step3PackingProps) {
 
       <div className="grid grid-cols-4 gap-3">
         <div className="space-y-1.5">
-          <label className="text-sm font-medium">Panjang (cm)</label>
+          <label className="block text-sm font-medium">Panjang (cm)</label>
           <input type="number" min={0} value={lengthCm} onChange={(e) => setLengthCm(e.target.value)}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
         </div>
         <div className="space-y-1.5">
-          <label className="text-sm font-medium">Lebar (cm)</label>
+          <label className="block text-sm font-medium">Lebar (cm)</label>
           <input type="number" min={0} value={widthCm} onChange={(e) => setWidthCm(e.target.value)}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
         </div>
         <div className="space-y-1.5">
-          <label className="text-sm font-medium">Tinggi (cm)</label>
+          <label className="block text-sm font-medium">Tinggi (cm)</label>
           <input type="number" min={0} value={heightCm} onChange={(e) => setHeightCm(e.target.value)}
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
         </div>
         <div className="space-y-1.5">
-          <label className="text-sm font-medium">Volume</label>
+          <label className="block text-sm font-medium">Volume</label>
           <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
             {volume != null ? fmt.format(volume) : '—'}
           </div>
@@ -101,7 +101,7 @@ export function Step3Packing({ koli, onSaved }: Step3PackingProps) {
       </div>
 
       <div className="space-y-1.5">
-        <label className="text-sm font-medium">Jumlah Batang Kayu</label>
+        <label className="block text-sm font-medium">Jumlah Batang Kayu</label>
         <input type="number" min={0} value={batangKayu} onChange={(e) => setBatangKayu(e.target.value)}
           className="w-full max-w-xs rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
       </div>
