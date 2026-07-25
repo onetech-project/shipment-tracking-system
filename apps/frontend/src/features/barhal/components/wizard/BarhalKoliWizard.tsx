@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Step1CreateKoli } from './Step1CreateKoli'
 import { Step2SelectTos } from './Step2SelectTos'
@@ -35,6 +35,13 @@ interface BarhalKoliWizardProps {
 export function BarhalKoliWizard({ open, initialKoli, onClose, onDone }: BarhalKoliWizardProps) {
   const [koli, setKoli] = useState<BarhalKoli | undefined>(initialKoli)
   const [step, setStep] = useState(initialKoli ? nextStepFor(initialKoli) : 1)
+
+  useEffect(() => {
+    if (open) {
+      setKoli(initialKoli)
+      setStep(initialKoli ? nextStepFor(initialKoli) : 1)
+    }
+  }, [open, initialKoli])
 
   const handleClose = () => {
     setKoli(undefined)
