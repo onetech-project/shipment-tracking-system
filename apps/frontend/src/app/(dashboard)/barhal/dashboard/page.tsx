@@ -6,11 +6,12 @@ import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
 import { useBarhalDashboardStats, exportBarhalCsv } from '@/features/barhal/hooks/useBarhalDashboard'
 import { useBarhalStations } from '@/features/barhal/hooks/useBarhal'
+import { BarhalTabNav } from '@/features/barhal/components/BarhalTabNav'
 import { BarhalStatCards } from '@/features/barhal/components/BarhalStatCards'
-import { BarhalRouteChart } from '@/features/barhal/components/BarhalRouteChart'
+import { BarhalWeightChart } from '@/features/barhal/components/BarhalWeightChart'
+import { BarhalRecapBatangKayuTable } from '@/features/barhal/components/BarhalRecapBatangKayuTable'
+import { BarhalRecapToTable } from '@/features/barhal/components/BarhalRecapToTable'
 import { triggerBlobDownload } from '@/shared/utils/file-download.util'
-
-const fmt = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 })
 
 function BarhalDashboardContent() {
   const [startDate, setStartDate] = useState('')
@@ -51,20 +52,17 @@ function BarhalDashboardContent() {
           <h1 className="text-2xl font-bold tracking-tight">Barhal Dashboard</h1>
           <p className="text-sm text-muted-foreground">Statistik packing kayu &amp; Koli</p>
         </div>
-        <div className="flex items-center gap-2">
-          <a href="/barhal" className="text-sm text-primary underline">
-            List Koli
-          </a>
-          <button
-            type="button"
-            onClick={handleExport}
-            disabled={isExporting}
-            className="rounded-lg border border-border px-4 py-2 text-sm font-medium transition hover:bg-muted disabled:opacity-50"
-          >
-            {isExporting ? 'Exporting…' : 'Export CSV'}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={handleExport}
+          disabled={isExporting}
+          className="rounded-lg border border-border px-4 py-2 text-sm font-medium transition hover:bg-muted disabled:opacity-50"
+        >
+          {isExporting ? 'Exporting…' : 'Export CSV'}
+        </button>
       </div>
+
+      <BarhalTabNav active="dashboard" />
 
       <div className="flex flex-wrap items-center gap-2">
         <input
@@ -87,9 +85,7 @@ function BarhalDashboardContent() {
         >
           <option value="">Semua Origin</option>
           {(stations?.origins ?? []).map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
+            <option key={o} value={o}>{o}</option>
           ))}
         </select>
         <select
@@ -99,9 +95,7 @@ function BarhalDashboardContent() {
         >
           <option value="">Semua Destinasi</option>
           {(stations?.dests ?? []).map((d) => (
-            <option key={d} value={d}>
-              {d}
-            </option>
+            <option key={d} value={d}>{d}</option>
           ))}
         </select>
       </div>
@@ -117,43 +111,22 @@ function BarhalDashboardContent() {
         <p className="text-sm text-muted-foreground">Loading…</p>
       ) : (
         <>
-          <BarhalStatCards totals={data.totals} />
-          <BarhalRouteChart data={data.perRoute} />
+          <BarhalStatCards kpi={data.kpi} />
+          <BarhalWeightChart data={data.chartByDate} />
 
-          <div className="overflow-x-auto rounded-lg border bg-card">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th className="px-3 py-2 font-medium">Tanggal</th>
-                  <th className="px-3 py-2 font-medium">Rute</th>
-                  <th className="px-3 py-2 font-medium">Total Koli</th>
-                  <th className="px-3 py-2 font-medium">Weight Before</th>
-                  <th className="px-3 py-2 font-medium">Weight After</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {data.drillDown.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="px-3 py-6 text-center text-muted-foreground">
-                      No data for this range.
-                    </td>
-                  </tr>
-                ) : (
-                  data.drillDown.map((row) => (
-                    <tr
-                      key={`${row.koli_date}-${row.origin_name}-${row.dest_name}`}
-                      className="hover:bg-accent/30"
-                    >
-                      <td className="px-3 py-2">{row.koli_date}</td>
-                      <td className="px-3 py-2">{`${row.origin_name} → ${row.dest_name}`}</td>
-                      <td className="px-3 py-2">{row.koli_count}</td>
-                      <td className="px-3 py-2">{fmt.format(row.weight_before)} kg</td>
-                      <td className="px-3 py-2">{fmt.format(row.weight_after)} kg</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+          <div>
+            <p className="mb-2 text-sm font-medium">Rekap Batang Kayu</p>
+            <BarhalRecapBatangKayuTable data={data.recapBatangKayu} />
+          </div>
+
+          <div>
+            <p className="mb-2 text-sm font-medium">Rekap Per Tanggal</p>
+            <BarhalRecapToTable rows={data.recapPerTanggal} groupColumnLabel="Date" />
+          </div>
+
+          <div>
+            <p className="mb-2 text-sm font-medium">Rekap Per Rute</p>
+            <BarhalRecapToTable rows={data.recapPerRute} groupColumnLabel="Rute" />
           </div>
         </>
       )}
