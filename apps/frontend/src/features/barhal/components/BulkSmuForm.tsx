@@ -12,14 +12,21 @@ interface BulkSmuFormProps {
 const inputClass =
   'rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring'
 
+function combineDateTime(date: string, time: string): string | undefined {
+  if (!date || !time) return undefined
+  return `${date}T${time}`
+}
+
 export function BulkSmuForm({ stations, onApplied }: BulkSmuFormProps) {
   const [koliDate, setKoliDate] = useState('')
   const [origin, setOrigin] = useState('')
   const [dest, setDest] = useState('')
   const [airlines, setAirlines] = useState('')
   const [flightNo, setFlightNo] = useState('')
-  const [std, setStd] = useState('')
-  const [sta, setSta] = useState('')
+  const [stdDate, setStdDate] = useState('')
+  const [stdTime, setStdTime] = useState('')
+  const [staDate, setStaDate] = useState('')
+  const [staTime, setStaTime] = useState('')
   const [smuNumber, setSmuNumber] = useState('')
   const [result, setResult] = useState<string | null>(null)
 
@@ -35,8 +42,8 @@ export function BulkSmuForm({ stations, onApplied }: BulkSmuFormProps) {
       smuNumber: smuNumber || undefined,
       airlines: airlines || undefined,
       flightNo: flightNo || undefined,
-      std: std || undefined,
-      sta: sta || undefined,
+      std: combineDateTime(stdDate, stdTime),
+      sta: combineDateTime(staDate, staTime),
     })
     setResult(`Diterapkan ke ${res.updated} Koli (${koliDate} → ${dest})`)
     onApplied()
@@ -64,8 +71,14 @@ export function BulkSmuForm({ stations, onApplied }: BulkSmuFormProps) {
         </select>
         <input placeholder="Airlines" value={airlines} onChange={(e) => setAirlines(e.target.value)} className={inputClass} />
         <input placeholder="Flight No" value={flightNo} onChange={(e) => setFlightNo(e.target.value)} className={inputClass} />
-        <input type="datetime-local" value={std} onChange={(e) => setStd(e.target.value)} className={inputClass} />
-        <input type="datetime-local" value={sta} onChange={(e) => setSta(e.target.value)} className={inputClass} />
+        <div className="flex gap-1">
+          <input type="date" value={stdDate} onChange={(e) => setStdDate(e.target.value)} className={inputClass} />
+          <input type="time" value={stdTime} onChange={(e) => setStdTime(e.target.value)} className={inputClass} />
+        </div>
+        <div className="flex gap-1">
+          <input type="date" value={staDate} onChange={(e) => setStaDate(e.target.value)} className={inputClass} />
+          <input type="time" value={staTime} onChange={(e) => setStaTime(e.target.value)} className={inputClass} />
+        </div>
         <input placeholder="No. SMU" value={smuNumber} onChange={(e) => setSmuNumber(e.target.value)} className={inputClass} />
       </div>
       <div className="mt-3 flex items-center gap-3">
