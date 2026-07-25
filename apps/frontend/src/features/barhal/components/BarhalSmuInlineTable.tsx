@@ -10,25 +10,12 @@ interface BarhalSmuInlineTableProps {
   onSaved: () => void
 }
 
-function splitDateTime(iso: string | null): { date: string; time: string } {
-  if (!iso) return { date: '', time: '' }
-  const [date, time] = iso.slice(0, 16).split('T')
-  return { date: date ?? '', time: time ?? '' }
-}
-
-function combineDateTime(date: string, time: string): string | undefined {
-  if (!date || !time) return undefined
-  return `${date}T${time}`
-}
-
 function SmuRow({ koli, onSaved }: { koli: BarhalKoli; onSaved: () => void }) {
   const [editing, setEditing] = useState(false)
   const [airlines, setAirlines] = useState(koli.airlines ?? '')
   const [flightNo, setFlightNo] = useState(koli.flight_no ?? '')
-  const [stdDate, setStdDate] = useState(splitDateTime(koli.std).date)
-  const [stdTime, setStdTime] = useState(splitDateTime(koli.std).time)
-  const [staDate, setStaDate] = useState(splitDateTime(koli.sta).date)
-  const [staTime, setStaTime] = useState(splitDateTime(koli.sta).time)
+  const [std, setStd] = useState(koli.std ? koli.std.slice(0, 16) : '')
+  const [sta, setSta] = useState(koli.sta ? koli.sta.slice(0, 16) : '')
   const [smuNumber, setSmuNumber] = useState(koli.smu_number ?? '')
 
   const updateSmu = useUpdateSmu(koli.id)
@@ -41,8 +28,8 @@ function SmuRow({ koli, onSaved }: { koli: BarhalKoli; onSaved: () => void }) {
       smuNumber: smuNumber || undefined,
       airlines: airlines || undefined,
       flightNo: flightNo || undefined,
-      std: combineDateTime(stdDate, stdTime),
-      sta: combineDateTime(staDate, staTime),
+      std: std || undefined,
+      sta: sta || undefined,
     })
     setEditing(false)
     onSaved()
@@ -61,20 +48,14 @@ function SmuRow({ koli, onSaved }: { koli: BarhalKoli; onSaved: () => void }) {
       </td>
       <td className="px-3 py-2">
         {editing ? (
-          <div className="flex gap-1">
-            <input type="date" value={stdDate} onChange={(e) => setStdDate(e.target.value)} className={inputClass} />
-            <input type="time" value={stdTime} onChange={(e) => setStdTime(e.target.value)} className={inputClass} />
-          </div>
+          <input type="datetime-local" value={std} onChange={(e) => setStd(e.target.value)} className={inputClass} />
         ) : (
           koli.std || '-'
         )}
       </td>
       <td className="px-3 py-2">
         {editing ? (
-          <div className="flex gap-1">
-            <input type="date" value={staDate} onChange={(e) => setStaDate(e.target.value)} className={inputClass} />
-            <input type="time" value={staTime} onChange={(e) => setStaTime(e.target.value)} className={inputClass} />
-          </div>
+          <input type="datetime-local" value={sta} onChange={(e) => setSta(e.target.value)} className={inputClass} />
         ) : (
           koli.sta || '-'
         )}
