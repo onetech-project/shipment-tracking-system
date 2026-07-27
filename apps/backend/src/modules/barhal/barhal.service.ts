@@ -128,7 +128,12 @@ export class BarhalService {
       return true
     })
     const AVAILABLE_TOS_LIMIT = 100
-    return filtered.slice(0, AVAILABLE_TOS_LIMIT).map((row) => ({ ...row, vendor: 'ESP' as const }))
+    return filtered.slice(0, AVAILABLE_TOS_LIMIT).map((row) => ({
+      ...row,
+      origin_station: row.origin_station ? normalizeStationName(row.origin_station) : row.origin_station,
+      dest_station: row.dest_station ? normalizeStationName(row.dest_station) : row.dest_station,
+      vendor: 'ESP' as const,
+    }))
   }
 
   async listKoli(dto: ListBarhalKoliDto) {
