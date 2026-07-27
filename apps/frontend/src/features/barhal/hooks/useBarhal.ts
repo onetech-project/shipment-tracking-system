@@ -29,11 +29,12 @@ export function useBarhalStations() {
   })
 }
 
-export function useBarhalList(params: ListBarhalKoliParams) {
+export function useBarhalList(params: ListBarhalKoliParams, options?: { enabled?: boolean }) {
   return useQuery<{ data: BarhalKoli[]; total: number; page: number; pageSize: number }>({
     queryKey: ['barhal', 'koli', params],
     queryFn: () => apiClient.get('/barhal/koli', { params }).then((r) => r.data),
     staleTime: 30 * 1000,
+    enabled: options?.enabled ?? true,
   })
 }
 

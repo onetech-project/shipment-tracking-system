@@ -12,6 +12,12 @@ describe('normalizeStationName', () => {
     expect(normalizeStationName('Denpasar')).toBe('Denpasar')
     expect(normalizeStationName(null)).toBe('')
   })
+
+  it('normalizes casing so inconsistently-typed sheet data matches', () => {
+    expect(normalizeStationName('MAKASSAR')).toBe('Makassar')
+    expect(normalizeStationName('makassar dc')).toBe('Makassar')
+    expect(normalizeStationName('JAKARTA')).toBe(normalizeStationName('jakarta'))
+  })
 })
 
 describe('BarhalService', () => {

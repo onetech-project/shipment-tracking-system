@@ -14,12 +14,20 @@ import { BulkUpdateSmuDto } from './dto/bulk-update-smu.dto'
 import { SmuListQueryDto } from './dto/smu-list-query.dto'
 import { buildBarhalCsv, BarhalCsvRow } from './barhal-csv.builder'
 
+/**
+ * Station names come from a manually-maintained Google Sheet, so the same real station
+ * often appears with inconsistent casing/whitespace (e.g. "MAKASSAR" vs "Makassar").
+ * Normalizing to a single title-cased form here (and via matching SQL in
+ * normalizedStationSql) keeps filtering, koli grouping, and dropdown dedup consistent.
+ */
 export function normalizeStationName(raw: string | null | undefined): string {
   return (raw ?? '')
     .trim()
     .replace(/\s+DC$/i, '')
     .trim()
     .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 interface AvailableToRow {
@@ -112,12 +120,15 @@ export class BarhalService {
       params,
     )
 
+    const originFilter = dto.origin ? normalizeStationName(dto.origin) : undefined
+    const destFilter = dto.dest ? normalizeStationName(dto.dest) : undefined
     const filtered = rows.filter((row) => {
-      if (dto.origin && normalizeStationName(row.origin_station) !== dto.origin) return false
-      if (dto.dest && normalizeStationName(row.dest_station) !== dto.dest) return false
+      if (originFilter && normalizeStationName(row.origin_station) !== originFilter) return false
+      if (destFilter && normalizeStationName(row.dest_station) !== destFilter) return false
       return true
     })
-    return filtered.map((row) => ({ ...row, vendor: 'ESP' as const }))
+    const AVAILABLE_TOS_LIMIT = 100
+    return filtered.slice(0, AVAILABLE_TOS_LIMIT).map((row) => ({ ...row, vendor: 'ESP' as const }))
   }
 
   async listKoli(dto: ListBarhalKoliDto) {
@@ -360,7 +371,7 @@ export class BarhalService {
   }
 
   private normalizedStationSql(column: string): string {
-    return `TRIM(REGEXP_REPLACE(REGEXP_REPLACE(${column}, '\\s+DC$', '', 'i'), '\\s+', ' ', 'g'))`
+    return `INITCAP(TRIM(REGEXP_REPLACE(REGEXP_REPLACE(${column}, '\\s+DC$', '', 'i'), '\\s+', ' ', 'g')))`
   }
 
   async getDashboard(dto: BarhalDashboardQueryDto) {

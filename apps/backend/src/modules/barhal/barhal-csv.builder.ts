@@ -6,13 +6,13 @@
 
 export interface BarhalCsvRow {
   koliNumber: string
-  koliDate: string
+  koliDate: string | Date
   originName: string
   destName: string
   totalTo: number
-  weightBefore: number
-  weightAfter: number
-  chwt: number
+  weightBefore: number | string | null
+  weightAfter: number | string | null
+  chwt: number | string | null
 }
 
 const HEADERS = ['No. Koli', 'Tanggal', 'Origin', 'Destinasi', 'Total TO', 'Weight Before', 'Weight After', 'ChWt']
@@ -22,11 +22,36 @@ function escapeCsvCell(value: unknown): string {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+function formatCsvDate(date: string | Date): string {
+  if (date instanceof Date) {
+    return `${String(date.getUTCDate()).padStart(2, '0')} ${MONTH_ABBR[date.getUTCMonth()]} ${date.getUTCFullYear()}`
+  }
+  const [year, month, day] = date.slice(0, 10).split('-').map(Number)
+  if (!year || !month || !day) return date
+  return `${String(day).padStart(2, '0')} ${MONTH_ABBR[month - 1]} ${year}`
+}
+
+function formatCsvWeight(value: number | string | null): string {
+  const num = Number(value ?? 0)
+  return Number.isFinite(num) ? num.toFixed(1) : '0.0'
+}
+
 export function buildBarhalCsv(rows: BarhalCsvRow[]): string {
   const lines = [HEADERS.map(escapeCsvCell).join(',')]
   for (const row of rows) {
     lines.push(
-      [row.koliNumber, row.koliDate, row.originName, row.destName, row.totalTo, row.weightBefore, row.weightAfter, row.chwt]
+      [
+        row.koliNumber,
+        formatCsvDate(row.koliDate),
+        row.originName,
+        row.destName,
+        row.totalTo,
+        formatCsvWeight(row.weightBefore),
+        formatCsvWeight(row.weightAfter),
+        formatCsvWeight(row.chwt),
+      ]
         .map(escapeCsvCell)
         .join(','),
     )

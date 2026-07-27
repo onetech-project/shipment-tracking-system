@@ -11,6 +11,45 @@ interface Step2SelectTosProps {
 }
 
 const fmt = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 })
+const CHIP_LIMIT = 5
+
+function SelectedToChips({ toNumbers }: { toNumbers: string[] }) {
+  const [expanded, setExpanded] = useState(false)
+  const visible = toNumbers.slice(0, CHIP_LIMIT)
+  const rest = toNumbers.slice(CHIP_LIMIT)
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {visible.map((to) => (
+        <span key={to} className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium">
+          {to}
+        </span>
+      ))}
+      {rest.length > 0 && (
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground hover:bg-accent/50"
+          >
+            {rest.length}+ lainnya
+          </button>
+          {expanded && (
+            <div className="absolute left-0 top-full z-10 mt-1 max-h-48 w-48 overflow-auto rounded-lg border border-border bg-popover p-2 shadow-md">
+              <div className="flex flex-wrap gap-1.5">
+                {rest.map((to) => (
+                  <span key={to} className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium">
+                    {to}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export function Step2SelectTos({ koli, onAttached }: Step2SelectTosProps) {
   const [search, setSearch] = useState('')
@@ -93,9 +132,10 @@ export function Step2SelectTos({ koli, onAttached }: Step2SelectTosProps) {
 
       <ToMultiSelect options={availableTos ?? []} selected={selected} onChange={setSelected} isLoading={isLoading} />
 
-      <div className="flex items-center gap-3 text-sm">
-        <span className="rounded-full bg-muted px-3 py-1">Dipilih: {selectedRows.length} TO</span>
-        <span className="rounded-full bg-muted px-3 py-1">Total berat: {fmt.format(totalWeight)} kg</span>
+      <div className="flex flex-wrap items-start gap-3 text-sm">
+        <span className="shrink-0 rounded-full bg-muted px-3 py-1">Dipilih: {selected.length} TO</span>
+        <span className="shrink-0 rounded-full bg-muted px-3 py-1">Total berat: {fmt.format(totalWeight)} kg</span>
+        {selected.length > 0 && <SelectedToChips toNumbers={selected} />}
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}

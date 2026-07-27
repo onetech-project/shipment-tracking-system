@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useBarhalStations, useCreateKoliShell } from '../../hooks/useBarhal'
+import { useBarhalList, useBarhalStations, useCreateKoliShell } from '../../hooks/useBarhal'
 import { BarhalKoli } from '../../types'
 
 interface Step1CreateKoliProps {
@@ -15,10 +15,11 @@ function stripDc(name: string): string {
   return name.trim().replace(/\s+DC$/i, '').trim()
 }
 
-function previewKoliNumber(koliDate: string, origin: string, dest: string): string {
+function previewKoliNumber(koliDate: string, origin: string, dest: string, nextSequence: number | undefined): string {
   if (!koliDate || !origin || !dest) return ''
   const [, month, day] = koliDate.split('-').map(Number)
-  return `${day}${MONTH_ABBR[month - 1]}-${stripDc(origin)}-${stripDc(dest)}-Barhal?`
+  const sequence = nextSequence ?? '…'
+  return `${day}${MONTH_ABBR[month - 1]}-${stripDc(origin)}-${stripDc(dest)}-Barhal${sequence}`
 }
 
 export function Step1CreateKoli({ koli: existingKoli, onCreated }: Step1CreateKoliProps) {
@@ -29,6 +30,13 @@ export function Step1CreateKoli({ koli: existingKoli, onCreated }: Step1CreateKo
 
   const { data: stations } = useBarhalStations()
   const createShell = useCreateKoliShell()
+
+  const previewFiltersReady = !!koliDate && !!origin && !!dest
+  const { data: existingForRoute } = useBarhalList(
+    { date: koliDate, origin, dest, page: 1, pageSize: 1 },
+    { enabled: previewFiltersReady },
+  )
+  const nextSequenceDisplay = previewFiltersReady && existingForRoute ? existingForRoute.total + 1 : undefined
 
   const canSubmit = !!koliDate && !!origin && !!dest && !createShell.isPending
 
@@ -129,7 +137,7 @@ export function Step1CreateKoli({ koli: existingKoli, onCreated }: Step1CreateKo
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Preview ID Koli</label>
         <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 font-mono text-sm">
-          {previewKoliNumber(koliDate, origin, dest) || '—'}
+          {previewKoliNumber(koliDate, origin, dest, nextSequenceDisplay) || '—'}
         </div>
       </div>
 

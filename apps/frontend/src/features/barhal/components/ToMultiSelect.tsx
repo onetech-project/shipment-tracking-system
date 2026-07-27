@@ -11,6 +11,15 @@ interface ToMultiSelectProps {
 }
 
 const fmt = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 })
+const AVAILABLE_TOS_LIMIT = 100
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+function formatDate(isoDate: string | null | undefined): string {
+  if (!isoDate) return '—'
+  const [year, month, day] = isoDate.slice(0, 10).split('-').map(Number)
+  if (!year || !month || !day) return isoDate
+  return `${String(day).padStart(2, '0')} ${MONTH_ABBR[month - 1]} ${year}`
+}
 
 export function ToMultiSelect({ options, selected, onChange, isLoading }: ToMultiSelectProps) {
   const [search, setSearch] = useState('')
@@ -59,7 +68,7 @@ export function ToMultiSelect({ options, selected, onChange, isLoading }: ToMult
                   />
                   <span className="truncate font-medium">{to.to_number}</span>
                   <span className="truncate text-muted-foreground">{to.awb ?? '—'}</span>
-                  <span className="shrink-0 text-muted-foreground">{to.date ?? '—'}</span>
+                  <span className="shrink-0 text-muted-foreground">{formatDate(to.date)}</span>
                   <span className="shrink-0 text-muted-foreground">{to.vendor}</span>
                 </span>
                 <span className="shrink-0 text-muted-foreground">
@@ -67,7 +76,7 @@ export function ToMultiSelect({ options, selected, onChange, isLoading }: ToMult
                 </span>
               </span>
               <span className="ml-5 flex items-center gap-2 truncate text-muted-foreground">
-                <span className="truncate">LT: {to.lt_number ?? '—'}</span>
+                <span className="truncate">{to.lt_number ?? '—'}</span>
                 <span className="truncate">{to.origin_station ?? '—'} → {to.dest_station ?? '—'}</span>
                 <span className="truncate">Remarks: {to.remarks ?? '—'}</span>
               </span>
@@ -75,6 +84,11 @@ export function ToMultiSelect({ options, selected, onChange, isLoading }: ToMult
           ))
         )}
       </div>
+      {!isLoading && !search.trim() && options.length >= AVAILABLE_TOS_LIMIT && (
+        <p className="border-t border-border px-3 py-2 text-center text-xs text-muted-foreground">
+          Tidak menemukan data? Ketik nomor TO untuk pencarian.
+        </p>
+      )}
     </div>
   )
 }

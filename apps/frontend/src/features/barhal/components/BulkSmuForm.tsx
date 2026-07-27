@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { ReactNode, useState } from 'react'
 import { useBulkUpdateSmu } from '../hooks/useBarhal'
 import { BarhalStations } from '../types'
 
@@ -11,6 +11,15 @@ interface BulkSmuFormProps {
 
 const inputClass =
   'rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring'
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      {children}
+    </label>
+  )
+}
 
 export function BulkSmuForm({ stations, onApplied }: BulkSmuFormProps) {
   const [koliDate, setKoliDate] = useState('')
@@ -49,24 +58,40 @@ export function BulkSmuForm({ stations, onApplied }: BulkSmuFormProps) {
         Date + Destinasi menentukan Koli mana yang menerima data ini. Kolom kosong tidak akan menimpa data yang sudah ada.
       </p>
       <div className="grid grid-cols-4 gap-3">
-        <input type="date" value={koliDate} onChange={(e) => setKoliDate(e.target.value)} className={inputClass} />
-        <select value={origin} onChange={(e) => setOrigin(e.target.value)} className={inputClass}>
-          <option value="">Origin</option>
-          {stations.origins.map((o) => (
-            <option key={o} value={o}>{o}</option>
-          ))}
-        </select>
-        <select value={dest} onChange={(e) => setDest(e.target.value)} className={inputClass}>
-          <option value="">Destination</option>
-          {stations.dests.map((d) => (
-            <option key={d} value={d}>{d}</option>
-          ))}
-        </select>
-        <input placeholder="Airlines" value={airlines} onChange={(e) => setAirlines(e.target.value)} className={inputClass} />
-        <input placeholder="Flight No" value={flightNo} onChange={(e) => setFlightNo(e.target.value)} className={inputClass} />
-        <input type="datetime-local" value={std} onChange={(e) => setStd(e.target.value)} className={inputClass} />
-        <input type="datetime-local" value={sta} onChange={(e) => setSta(e.target.value)} className={inputClass} />
-        <input placeholder="No. SMU" value={smuNumber} onChange={(e) => setSmuNumber(e.target.value)} className={inputClass} />
+        <Field label="Date">
+          <input type="date" value={koliDate} onChange={(e) => setKoliDate(e.target.value)} className={inputClass} />
+        </Field>
+        <Field label="Origin">
+          <select value={origin} onChange={(e) => setOrigin(e.target.value)} className={inputClass}>
+            <option value="">Origin</option>
+            {stations.origins.map((o) => (
+              <option key={o} value={o}>{o}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Destination">
+          <select value={dest} onChange={(e) => setDest(e.target.value)} className={inputClass}>
+            <option value="">Destination</option>
+            {stations.dests.map((d) => (
+              <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Airlines">
+          <input placeholder="Airlines" value={airlines} onChange={(e) => setAirlines(e.target.value)} className={inputClass} />
+        </Field>
+        <Field label="Flight No">
+          <input placeholder="Flight No" value={flightNo} onChange={(e) => setFlightNo(e.target.value)} className={inputClass} />
+        </Field>
+        <Field label="STD">
+          <input type="datetime-local" value={std} onChange={(e) => setStd(e.target.value)} className={inputClass} />
+        </Field>
+        <Field label="STA">
+          <input type="datetime-local" value={sta} onChange={(e) => setSta(e.target.value)} className={inputClass} />
+        </Field>
+        <Field label="No. SMU">
+          <input placeholder="No. SMU" value={smuNumber} onChange={(e) => setSmuNumber(e.target.value)} className={inputClass} />
+        </Field>
       </div>
       <div className="mt-3 flex items-center gap-3">
         <button
