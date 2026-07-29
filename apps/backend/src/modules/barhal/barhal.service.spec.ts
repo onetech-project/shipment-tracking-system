@@ -261,10 +261,10 @@ describe('BarhalService', () => {
       dataSource.query
         .mockResolvedValueOnce([{ koli_count: 2, total_to: 3, weight_before: 30, weight_increase: 6, batang_kayu: 10 }]) // kpi
         .mockResolvedValueOnce([
-          { date: '2026-06-01', total_to: 3, attached_to: 3, total_koli: 2, weight_before: 30, chwt: 25, weight_increase: 6, add_revenue: 500 },
+          { date: '2026-06-01', total_to: 3, attached_to: 3, total_koli: 2, weight_before: 30, chwt: 25, missing_chwt: 0, weight_increase: 6, add_revenue: 500 },
         ]) // recapPerTanggal
         .mockResolvedValueOnce([
-          { originName: 'Kosambi', destName: 'Badung', total_to: 3, attached_to: 2, total_koli: 2, weight_before: 30, chwt: 25, weight_increase: 6, add_revenue: 500 },
+          { originName: 'Kosambi', destName: 'Badung', total_to: 3, attached_to: 2, total_koli: 2, weight_before: 30, chwt: 25, missing_chwt: 1, weight_increase: 6, add_revenue: 500 },
         ]) // recapPerRute
         .mockResolvedValueOnce([
           { date: '2026-06-01', totalKoli: 2, totalP: 100, totalL: 80, totalT: 60, totalVolume: 80, totalBatangKayu: 10 },
@@ -306,7 +306,7 @@ describe('BarhalService', () => {
     it('reports variancePercent as 0 when weightBefore is 0 (no division by zero)', async () => {
       dataSource.query
         .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
-        .mockResolvedValueOnce([{ date: '2026-06-01', total_to: 0, attached_to: 0, total_koli: 0, weight_before: 0, chwt: 0, weight_increase: 0, add_revenue: 0 }])
+        .mockResolvedValueOnce([{ date: '2026-06-01', total_to: 0, attached_to: 0, total_koli: 0, weight_before: 0, chwt: 0, missing_chwt: 0, weight_increase: 0, add_revenue: 0 }])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
 

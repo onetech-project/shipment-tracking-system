@@ -438,6 +438,7 @@ export class BarhalService {
       total_koli: number
       weight_before: string
       chwt: string
+      missing_chwt: number
       weight_increase: string
       add_revenue: string
     }[] = await this.dataSource.query(
@@ -449,15 +450,20 @@ export class BarhalService {
         (SELECT COUNT(DISTINCT to_number) FROM scoped s WHERE s.to_date = g.to_date)::int AS total_to,
         (SELECT COUNT(DISTINCT s.to_number) FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number WHERE s.to_date = g.to_date)::int AS attached_to,
         (SELECT COUNT(DISTINCT bkt.koli_id) FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number WHERE s.to_date = g.to_date)::int AS total_koli,
-        (SELECT COALESCE(SUM(gross_weight), 0) FROM scoped s WHERE s.to_date = g.to_date)::numeric AS weight_before,
+        (SELECT COALESCE(SUM(dt.gross_weight), 0)
+           FROM (SELECT DISTINCT ON (s.to_number) s.to_number, s.gross_weight FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number WHERE s.to_date = g.to_date) dt)::numeric AS weight_before,
         (SELECT COALESCE(SUM(r.chwt), 0)
            FROM (SELECT DISTINCT s.awb FROM scoped s WHERE s.to_date = g.to_date AND s.awb IS NOT NULL) awbs
            LEFT JOIN air_shipments_smu_rate_cgk_spx r ON r.awb = awbs.awb)::numeric AS chwt,
+        (SELECT COUNT(DISTINCT awbs.awb)
+           FROM (SELECT DISTINCT s.awb FROM scoped s WHERE s.to_date = g.to_date AND s.awb IS NOT NULL) awbs
+           LEFT JOIN air_shipments_smu_rate_cgk_spx r ON r.awb = awbs.awb
+           WHERE r.chwt IS NULL)::int AS missing_chwt,
         (SELECT COALESCE(SUM(k.weight_after - k.weight_before), 0)
            FROM (SELECT DISTINCT bkt.koli_id FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number WHERE s.to_date = g.to_date) dk
            JOIN barhal_koli k ON k.id = dk.koli_id
            WHERE k.weight_before IS NOT NULL AND k.weight_after IS NOT NULL)::numeric AS weight_increase,
-        (SELECT COALESCE(SUM(k.length_cm * k.width_cm * k.height_cm * 1000), 0)
+        (SELECT COALESCE(SUM((k.length_cm + k.width_cm + k.height_cm) * 1000), 0)
            FROM (SELECT DISTINCT bkt.koli_id FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number WHERE s.to_date = g.to_date) dk
            JOIN barhal_koli k ON k.id = dk.koli_id
            WHERE k.length_cm IS NOT NULL AND k.width_cm IS NOT NULL AND k.height_cm IS NOT NULL)::numeric AS add_revenue
@@ -467,7 +473,7 @@ export class BarhalService {
       params,
     )
 
-    const toRecapItem = (row: { total_to: number; attached_to: number; total_koli: number; weight_before: string; chwt: string; weight_increase: string; add_revenue: string }) => {
+    const toRecapItem = (row: { total_to: number; attached_to: number; total_koli: number; weight_before: string; chwt: string; missing_chwt: number; weight_increase: string; add_revenue: string }) => {
       const weightBefore = Number(row.weight_before)
       const weightAfter = weightBefore + Number(row.weight_increase)
       const variance = weightAfter - weightBefore
@@ -480,7 +486,7 @@ export class BarhalService {
         variance,
         variancePercent: weightBefore > 0 ? (variance / weightBefore) * 100 : 0,
         addRevenue: Number(row.add_revenue),
-        status: row.total_to === row.attached_to ? ('completed' as const) : ('incomplete' as const),
+        status: row.missing_chwt === 0 ? ('completed' as const) : ('incomplete' as const),
       }
     }
 
@@ -495,6 +501,7 @@ export class BarhalService {
       total_koli: number
       weight_before: string
       chwt: string
+      missing_chwt: number
       weight_increase: string
       add_revenue: string
     }[] = await this.dataSource.query(
@@ -507,15 +514,20 @@ export class BarhalService {
         (SELECT COUNT(DISTINCT to_number) FROM scoped s WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name)::int AS total_to,
         (SELECT COUNT(DISTINCT s.to_number) FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name)::int AS attached_to,
         (SELECT COUNT(DISTINCT bkt.koli_id) FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name)::int AS total_koli,
-        (SELECT COALESCE(SUM(gross_weight), 0) FROM scoped s WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name)::numeric AS weight_before,
+        (SELECT COALESCE(SUM(dt.gross_weight), 0)
+           FROM (SELECT DISTINCT ON (s.to_number) s.to_number, s.gross_weight FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name) dt)::numeric AS weight_before,
         (SELECT COALESCE(SUM(r.chwt), 0)
            FROM (SELECT DISTINCT s.awb FROM scoped s WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name AND s.awb IS NOT NULL) awbs
            LEFT JOIN air_shipments_smu_rate_cgk_spx r ON r.awb = awbs.awb)::numeric AS chwt,
+        (SELECT COUNT(DISTINCT awbs.awb)
+           FROM (SELECT DISTINCT s.awb FROM scoped s WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name AND s.awb IS NOT NULL) awbs
+           LEFT JOIN air_shipments_smu_rate_cgk_spx r ON r.awb = awbs.awb
+           WHERE r.chwt IS NULL)::int AS missing_chwt,
         (SELECT COALESCE(SUM(k.weight_after - k.weight_before), 0)
            FROM (SELECT DISTINCT bkt.koli_id FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name) dk
            JOIN barhal_koli k ON k.id = dk.koli_id
            WHERE k.weight_before IS NOT NULL AND k.weight_after IS NOT NULL)::numeric AS weight_increase,
-        (SELECT COALESCE(SUM(k.length_cm * k.width_cm * k.height_cm * 1000), 0)
+        (SELECT COALESCE(SUM((k.length_cm + k.width_cm + k.height_cm) * 1000), 0)
            FROM (SELECT DISTINCT bkt.koli_id FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name) dk
            JOIN barhal_koli k ON k.id = dk.koli_id
            WHERE k.length_cm IS NOT NULL AND k.width_cm IS NOT NULL AND k.height_cm IS NOT NULL)::numeric AS add_revenue
