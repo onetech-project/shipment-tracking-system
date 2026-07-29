@@ -8,13 +8,15 @@ import {
   DashboardAlertKey,
   DashboardAlertSummary,
 } from '@/features/air-shipments/components/DashboardAlertCards'
+import { AIR_SLA_MODE, SEA_SLA_MODE, type SlaMode } from '@/features/air-shipments/sla-mode.config'
 import { GeneralParamsModal } from '@/features/general-params/components/GeneralParamsModal'
 import { useGeneralParams } from '@/features/general-params/hooks/useGeneralParams'
 import { useSyncNotification } from '@/features/air-shipments/hooks/useSyncNotification'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
+import { cn } from '@/lib/utils'
 
-const TABLE_ENDPOINT = `/air-shipments/air_shipments_compileaircgk`
+const DASHBOARD_MODES: SlaMode[] = [AIR_SLA_MODE, SEA_SLA_MODE]
 
 function toDateStr(d: Date): string {
   return d.toISOString().slice(0, 10)
@@ -46,6 +48,7 @@ export default function DashboardPage() {
   const canReadSla = hasPermission('read.sla')
   const router = useRouter()
 
+  const [mode, setMode] = useState<SlaMode>(AIR_SLA_MODE)
   const [startDate, setStartDate] = useState(() => defaultDateRange().start)
   const [endDate, setEndDate] = useState(() => defaultDateRange().end)
   const [dateError, setDateError] = useState<string | null>(null)
@@ -59,7 +62,7 @@ export default function DashboardPage() {
     setSummaryLoading(true)
     try {
       const response = await apiClient.get<DashboardAlertSummary>(
-        `${TABLE_ENDPOINT}/alert-summary?startDate=${startDate}&endDate=${endDate}`
+        `/air-shipments/${mode.tableName}/alert-summary?startDate=${startDate}&endDate=${endDate}`
       )
       setSummary(response.data)
     } catch {
@@ -81,16 +84,16 @@ export default function DashboardPage() {
     void fetchAlertSummary()
     setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startDate, endDate, paramsLoaded, canReadSla])
+  }, [startDate, endDate, paramsLoaded, canReadSla, mode])
 
   useEffect(() => {
     if (!canReadSla) return
-    if (lastCompletedSheet === 'compileaircgk') {
+    if (lastCompletedSheet === mode.syncSheetKey) {
       void fetchAlertSummary()
       setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastCompletedSheet, canReadSla])
+  }, [lastCompletedSheet, canReadSla, mode])
 
   const handleRouteSelect = (alertKey: DashboardAlertKey, route: string) => {
     const params = new URLSearchParams()
@@ -98,7 +101,7 @@ export default function DashboardPage() {
     params.set('route', route)
     params.set('startDate', startDate)
     params.set('endDate', endDate)
-    router.push(`/sla?${params.toString()}`)
+    router.push(`/sla/${mode.key}?${params.toString()}`)
   }
 
   return (
@@ -114,10 +117,32 @@ export default function DashboardPage() {
 
         {canReadSla && (
           <>
+            <nav className="flex gap-1 border-b border-border">
+              {DASHBOARD_MODES.map((m) => {
+                const isActive = m.key === mode.key
+                return (
+                  <button
+                    key={m.key}
+                    type="button"
+                    onClick={() => setMode(m)}
+                    className={cn(
+                      'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
+                      isActive
+                        ? 'border-primary text-foreground'
+                        : 'border-transparent text-muted-foreground hover:text-foreground'
+                    )}
+                    aria-current={isActive ? 'page' : undefined}
+                  >
+                    {m.key === 'air' ? 'Air' : 'Sea'}
+                  </button>
+                )
+              })}
+            </nav>
             <DashboardAlertCards
               summary={summary}
               activeAlert={null}
               onRouteSelect={handleRouteSelect}
+              alertCards={mode.alerts}
               isLoading={summaryLoading}
               startDate={startDate}
               endDate={endDate}
@@ -125,7 +150,7 @@ export default function DashboardPage() {
               onEndDateChange={setEndDate}
               dateError={dateError}
               lastUpdated={lastUpdated}
-              syncNote="Live refresh is active for Compile Air CGK synchronization."
+              syncNote={mode.syncNote}
               onConfigure={() => setShowConfigModal(true)}
               isConnected={isConnected}
               lastSyncAt={lastSyncAt}

@@ -4,26 +4,8 @@ export interface RouteAlertRow {
   route: string
   totalTonnage: number
   totalCount: number
-  alerts: {
-    reservasiPenerbangan: number
-    flightTracking: number
-    potensiMelebihiSla: number
-    melewatiSla: number
-    potensiMelebihiTjph: number
-    melewatiTjph: number
-    spxTjphAlert: number
-    spxSlaAlert: number
-  }
-  alertCounts: {
-    reservasiPenerbangan: number
-    flightTracking: number
-    potensiMelebihiSla: number
-    melewatiSla: number
-    potensiMelebihiTjph: number
-    melewatiTjph: number
-    spxTjphAlert: number
-    spxSlaAlert: number
-  }
+  alerts: Record<string, number>
+  alertCounts: Record<string, number>
   otp: {
     percentage: number | null
     onTimeWeight: number
@@ -36,19 +18,10 @@ export interface RouteAlertRow {
 interface RouteAlertTableProps {
   data: RouteAlertRow[]
   isLoading: boolean
-  onAlertClick: (route: string, alertKey: keyof RouteAlertRow['alerts']) => void
+  onAlertClick: (route: string, alertKey: string) => void
+  /** Alert columns to render, in order — sourced from the active SlaMode. */
+  cols: Array<{ key: string; label: string; color: string }>
 }
-
-const ALERT_COLS: Array<{ key: keyof RouteAlertRow['alerts']; label: string; color: string }> = [
-  { key: 'reservasiPenerbangan', label: 'Flight Res.', color: '#F97316' },
-  { key: 'flightTracking', label: 'Flight Track.', color: '#3B82F6' },
-  { key: 'potensiMelebihiSla', label: 'Pot. SLA', color: '#EAB308' },
-  { key: 'melewatiSla', label: 'SLA Breach', color: '#EF4444' },
-  { key: 'potensiMelebihiTjph', label: 'Pot. TJPH', color: '#8B5CF6' },
-  { key: 'melewatiTjph', label: 'TJPH Breach', color: '#DC2626' },
-  { key: 'spxTjphAlert', label: 'SPX TJPH', color: '#0D9488' },
-  { key: 'spxSlaAlert', label: 'SPX SLA', color: '#0891B2' },
-]
 
 function fmt(n: number) {
   return n.toLocaleString('id-ID', { maximumFractionDigits: 2 })
@@ -60,7 +33,7 @@ function otpColor(pct: number) {
   return '#EF4444'
 }
 
-export function RouteAlertTable({ data, isLoading, onAlertClick }: RouteAlertTableProps) {
+export function RouteAlertTable({ data, isLoading, onAlertClick, cols }: RouteAlertTableProps) {
   return (
     <div className="rounded-3xl border border-border bg-panel p-4 shadow-sm">
       <h3 className="mb-3 text-base font-semibold text-foreground">Alerts by Route</h3>
@@ -78,7 +51,7 @@ export function RouteAlertTable({ data, isLoading, onAlertClick }: RouteAlertTab
                   <span className="text-xs text-muted-foreground">(TOs)</span> Total{' '}
                   <span className="text-xs text-muted-foreground">(Kg)</span>
                 </th>
-                {ALERT_COLS.map((col) => (
+                {cols.map((col) => (
                   <th key={col.key} className="py-2 pr-4 text-right font-medium" style={{ color: col.color }}>
                     <span className="text-xs opacity-60">(TOs)</span> {col.label}{' '}
                     <span className="text-xs opacity-60">(Kg)</span>
@@ -109,9 +82,9 @@ export function RouteAlertTable({ data, isLoading, onAlertClick }: RouteAlertTab
                       <span className="text-muted-foreground">({row.totalCount})</span>{' '}
                       {fmt(row.totalTonnage)}
                     </td>
-                    {ALERT_COLS.map((col) => {
-                      const tonnage = row.alerts[col.key]
-                      const count = row.alertCounts[col.key]
+                    {cols.map((col) => {
+                      const tonnage = row.alerts[col.key] ?? 0
+                      const count = row.alertCounts[col.key] ?? 0
                       const hasAlert = tonnage > 0
                       return (
                         <td key={col.key} className="py-2 pr-4 text-right">

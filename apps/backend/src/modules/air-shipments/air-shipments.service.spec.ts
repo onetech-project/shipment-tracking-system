@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing'
 import { getRepositoryToken } from '@nestjs/typeorm'
 import { Repository, DataSource } from 'typeorm'
 import { AirShipmentsService } from './air-shipments.service'
+import { AIR_ALERT_PROFILE } from './alert-evaluator'
 import { SheetsService } from './sheets.service'
 import { DynamicTableService } from './dynamic-table.service'
 import { AirShipmentCgk } from './entities/air-shipment-cgk.entity'
@@ -670,27 +671,31 @@ describe('AirShipmentsService — isVoidRow / VOID filtering', () => {
     const svc = AirShipmentsService as any
 
     it('returns true for ata_vendor_wh_destination = "VOID"', () => {
-      expect(svc.isVoidRow({ ata_vendor_wh_destination: 'VOID' })).toBe(true)
+      expect(svc.isVoidRow({ ata_vendor_wh_destination: 'VOID' }, AIR_ALERT_PROFILE)).toBe(true)
     })
 
     it('returns true for lowercase "void"', () => {
-      expect(svc.isVoidRow({ ata_vendor_wh_destination: 'void' })).toBe(true)
+      expect(svc.isVoidRow({ ata_vendor_wh_destination: 'void' }, AIR_ALERT_PROFILE)).toBe(true)
     })
 
     it('returns true for whitespace-padded "  VOID  "', () => {
-      expect(svc.isVoidRow({ ata_vendor_wh_destination: '  VOID  ' })).toBe(true)
+      expect(svc.isVoidRow({ ata_vendor_wh_destination: '  VOID  ' }, AIR_ALERT_PROFILE)).toBe(true)
     })
 
     it('returns false for a real datetime value', () => {
-      expect(svc.isVoidRow({ ata_vendor_wh_destination: '11-May-2026 10:30' })).toBe(false)
+      expect(svc.isVoidRow({ ata_vendor_wh_destination: '11-May-2026 10:30' }, AIR_ALERT_PROFILE)).toBe(
+        false
+      )
     })
 
     it('returns true when ata_vendor_wh_destination is "VOID" inside extra_fields', () => {
-      expect(svc.isVoidRow({ extra_fields: { ata_vendor_wh_destination: 'VOID' } })).toBe(true)
+      expect(
+        svc.isVoidRow({ extra_fields: { ata_vendor_wh_destination: 'VOID' } }, AIR_ALERT_PROFILE)
+      ).toBe(true)
     })
 
     it('returns false when ata_vendor_wh_destination is absent', () => {
-      expect(svc.isVoidRow({})).toBe(false)
+      expect(svc.isVoidRow({}, AIR_ALERT_PROFILE)).toBe(false)
     })
   })
 
@@ -826,7 +831,7 @@ describe('AirShipmentsService — filterRowsByAlert()', () => {
       },
     }
     // filterRowsByAlert is private — access via bracket notation
-    const result = (service as any).filterRowsByAlert([row], 'melewatiSla', 5, 5)
+    const result = (service as any).filterRowsByAlert([row], 'melewatiSla', 5, 5, AIR_ALERT_PROFILE)
     expect(result).toHaveLength(0)
   })
 
@@ -844,7 +849,7 @@ describe('AirShipmentsService — filterRowsByAlert()', () => {
         sla: '1:00:00',
       },
     }
-    const result = (service as any).filterRowsByAlert([row], 'melewatiSla', 5, 5)
+    const result = (service as any).filterRowsByAlert([row], 'melewatiSla', 5, 5, AIR_ALERT_PROFILE)
     expect(result).toHaveLength(1)
 
     jest.useRealTimers()

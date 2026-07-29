@@ -323,13 +323,18 @@ export async function clearAwbEvidence(awb: string): Promise<void> {
 
 // ── SLA table column layout (single app-wide config, DB-backed + audited) ────────
 
-export async function fetchSlaColumnLayout(): Promise<SlaColumnLayoutItem[]> {
+export async function fetchSlaColumnLayout(mode: 'air' | 'sea' = 'air'): Promise<SlaColumnLayoutItem[]> {
+  const qs = mode === 'sea' ? '?mode=sea' : ''
   const res = await apiClient.get<{ layout: SlaColumnLayoutItem[] }>(
-    '/air-shipments/sla-column-layout'
+    `/air-shipments/sla-column-layout${qs}`
   )
   return Array.isArray(res.data?.layout) ? res.data.layout : []
 }
 
-export async function saveSlaColumnLayout(layout: SlaColumnLayoutItem[]): Promise<void> {
-  await apiClient.put('/air-shipments/sla-column-layout', { layout })
+export async function saveSlaColumnLayout(
+  layout: SlaColumnLayoutItem[],
+  mode: 'air' | 'sea' = 'air'
+): Promise<void> {
+  const qs = mode === 'sea' ? '?mode=sea' : ''
+  await apiClient.put(`/air-shipments/sla-column-layout${qs}`, { layout })
 }

@@ -1,4 +1,10 @@
-import { evaluateAlerts, ALERT_TYPES } from './alert-evaluator'
+import {
+  evaluateAlerts,
+  ALERT_TYPES,
+  SEA_ALERT_PROFILE,
+  AIR_ALERT_PROFILE,
+  resolveAlertProfile,
+} from './alert-evaluator'
 
 describe('evaluateAlerts', () => {
   beforeAll(() => {
@@ -26,6 +32,7 @@ describe('evaluateAlerts', () => {
     jest.setSystemTime(new Date('2025-01-01T08:30:00Z')) // 30min after atd_origin, all fields present
     expect(evaluateAlerts(baseRow, N, M)).toEqual({
       reservasiPenerbangan: false,
+      reservasiKapal: false,
       flightTracking: false,
       potensiMelebihiSla: false,
       melewatiSla: false,
@@ -503,6 +510,7 @@ describe('evaluateAlerts', () => {
         ),
       ).toEqual({
         reservasiPenerbangan: false,
+        reservasiKapal: false,
         flightTracking: false,
         potensiMelebihiSla: false,
         melewatiSla: true,
@@ -542,6 +550,7 @@ describe('evaluateAlerts', () => {
       jest.setSystemTime(new Date('2025-01-01T13:00:00Z'))
       expect(evaluateAlerts(baseRow, N, M)).toEqual({
         reservasiPenerbangan: false,
+        reservasiKapal: false,
         flightTracking: false,
         potensiMelebihiSla: false,
         melewatiSla: true,
@@ -557,6 +566,7 @@ describe('evaluateAlerts', () => {
       jest.setSystemTime(new Date('2025-01-01T13:00:00Z'))
       expect(evaluateAlerts({ ...baseRow, sla: '10:00:00' }, N, M)).toEqual({
         reservasiPenerbangan: false,
+        reservasiKapal: false,
         flightTracking: false,
         potensiMelebihiSla: false,
         melewatiSla: false,
@@ -639,9 +649,10 @@ describe('evaluateAlerts', () => {
     ).toBe(true)
   })
 
-  it('ALERT_TYPES array contains exactly the 8 alert types', () => {
+  it('ALERT_TYPES array contains exactly the 9 alert types', () => {
     expect(ALERT_TYPES).toEqual([
       'reservasiPenerbangan',
+      'reservasiKapal',
       'flightTracking',
       'potensiMelebihiSla',
       'melewatiSla',
@@ -652,10 +663,11 @@ describe('evaluateAlerts', () => {
     ])
   })
 
-  it("ALERT_FILTERS array contains all 8 alert types plus 'normal' and 'any'", () => {
+  it("ALERT_FILTERS array contains all 9 alert types plus 'normal' and 'any'", () => {
     const { ALERT_FILTERS } = require('./alert-evaluator')
     expect(ALERT_FILTERS).toEqual([
       'reservasiPenerbangan',
+      'reservasiKapal',
       'flightTracking',
       'potensiMelebihiSla',
       'melewatiSla',
@@ -666,5 +678,155 @@ describe('evaluateAlerts', () => {
       'normal',
       'any',
     ])
+  })
+})
+
+describe('evaluateAlerts — SEA profile', () => {
+  beforeAll(() => jest.useFakeTimers())
+  afterAll(() => jest.useRealTimers())
+
+  // Base sea row: ship assigned, sailed and arrived, inside all deadlines at 08:30
+  const seaBase = {
+    atd_origin: '2025-01-01T08:00:00Z',
+    actual_ship_name: 'Berkah Express',
+    sla: '02:00:00', // maxSla = 10:00
+    tjph: '04:00:00', // maxTjph = 12:00
+    ata_sailing: '2025-01-01T09:00:00Z',
+    atd_sailing: '2025-01-01T08:30:00Z',
+  }
+  const N = 1
+  const M = 1
+  const NOW_OK = new Date('2025-01-01T08:30:00Z')
+
+  const evalSea = (row: Record<string, unknown>, now: Date) =>
+    evaluateAlerts(row, N, M, now, SEA_ALERT_PROFILE)
+
+  it('returns all false for a healthy row', () => {
+    const flags = evalSea(seaBase, NOW_OK)
+    expect(Object.values(flags).some(Boolean)).toBe(false)
+    expect(flags).toHaveProperty('reservasiKapal', false)
+  })
+
+  describe('reservasiKapal (Sea Reservation)', () => {
+    it('triggers when ship name empty, not completed, past atd_origin + n, not sailed', () => {
+      const row = { atd_origin: '2025-01-01T08:00:00Z', sla: '02:00:00' }
+      const flags = evalSea(row, new Date('2025-01-01T09:30:00Z')) // 1.5h after departure, n=1h
+      expect(flags.reservasiKapal).toBe(true)
+    })
+    it('does NOT trigger when actual_ship_name is set', () => {
+      const row = { atd_origin: '2025-01-01T08:00:00Z', actual_ship_name: 'KM Sejahtera' }
+      expect(evalSea(row, new Date('2025-01-01T09:30:00Z')).reservasiKapal).toBe(false)
+    })
+    it('does NOT trigger before atd_origin + n hours', () => {
+      const row = { atd_origin: '2025-01-01T08:00:00Z' }
+      expect(evalSea(row, new Date('2025-01-01T08:30:00Z')).reservasiKapal).toBe(false)
+    })
+    it('does NOT trigger when the vessel already sailed (atd_sailing set)', () => {
+      const row = { atd_origin: '2025-01-01T08:00:00Z', atd_sailing: '2025-01-01T09:00:00Z' }
+      expect(evalSea(row, new Date('2025-01-01T09:30:00Z')).reservasiKapal).toBe(false)
+    })
+    it('does NOT trigger when completed', () => {
+      const row = {
+        atd_origin: '2025-01-01T08:00:00Z',
+        ata_vendor_wh_destination_sertakan_link_evidence: '2025-01-01T09:00:00Z',
+      }
+      expect(evalSea(row, new Date('2025-01-01T09:30:00Z')).reservasiKapal).toBe(false)
+    })
+  })
+
+  describe('potential breaches use ata_sailing + m', () => {
+    it('potensiMelebihiSla triggers when ata_sailing + m > maxSla and not completed', () => {
+      // maxSla 10:00; ata_sailing 09:30 + 1h = 10:30 > 10:00
+      const row = { ...seaBase, ata_sailing: '2025-01-01T09:30:00Z' }
+      expect(evalSea(row, NOW_OK).potensiMelebihiSla).toBe(true)
+    })
+    it('potensiMelebihiSla suppressed when completed', () => {
+      const row = {
+        ...seaBase,
+        ata_sailing: '2025-01-01T09:30:00Z',
+        ata_vendor_wh_destination_sertakan_link_evidence: '2025-01-01T09:45:00Z',
+      }
+      expect(evalSea(row, NOW_OK).potensiMelebihiSla).toBe(false)
+    })
+    it('potensiMelebihiTjph triggers when ata_sailing + m > maxTjph', () => {
+      // maxTjph 12:00; ata_sailing 11:30 + 1h = 12:30 > 12:00
+      const row = { ...seaBase, ata_sailing: '2025-01-01T11:30:00Z' }
+      expect(evalSea(row, NOW_OK).potensiMelebihiTjph).toBe(true)
+    })
+    it('ignores air ata_flight for the sea profile', () => {
+      const row = { ...seaBase, ata_flight: '2025-01-01T11:30:00Z' } // would breach in AIR profile
+      expect(evalSea(row, NOW_OK).potensiMelebihiSla).toBe(false)
+    })
+  })
+
+  describe('breaches use the sea completion field', () => {
+    it('melewatiSla via sea completion after maxSla', () => {
+      const row = {
+        ...seaBase,
+        ata_vendor_wh_destination_sertakan_link_evidence: '2025-01-01T10:30:00Z',
+      }
+      expect(evalSea(row, NOW_OK).melewatiSla).toBe(true)
+    })
+    it('melewatiSla via now when not completed and past maxSla', () => {
+      expect(evalSea(seaBase, new Date('2025-01-01T10:30:00Z')).melewatiSla).toBe(true)
+    })
+    it('melewatiTjph via sea completion after maxTjph', () => {
+      const row = {
+        ...seaBase,
+        ata_vendor_wh_destination_sertakan_link_evidence: '2025-01-01T12:30:00Z',
+      }
+      expect(evalSea(row, NOW_OK).melewatiTjph).toBe(true)
+    })
+    it('air completion field does not complete a sea row', () => {
+      // ata_vendor_wh_destination (air name) set early, sea field empty, now past maxSla
+      const row = { ...seaBase, ata_vendor_wh_destination: '2025-01-01T09:00:00Z' }
+      expect(evalSea(row, new Date('2025-01-01T10:30:00Z')).melewatiSla).toBe(true)
+    })
+  })
+
+  describe('SPX alerts use trip_completed', () => {
+    it('spxSlaAlert when trip_completed after maxSla', () => {
+      const row = { ...seaBase, trip_completed: '2025-01-01T10:30:00Z' }
+      expect(evalSea(row, NOW_OK).spxSlaAlert).toBe(true)
+    })
+    it('spxTjphAlert when trip_completed after maxTjph', () => {
+      const row = { ...seaBase, trip_completed: '2025-01-01T12:30:00Z' }
+      expect(evalSea(row, NOW_OK).spxTjphAlert).toBe(true)
+    })
+    it('spxSlaAlert falls back to now when trip_completed empty', () => {
+      expect(evalSea(seaBase, new Date('2025-01-01T10:30:00Z')).spxSlaAlert).toBe(true)
+    })
+    it('air completed_time does not drive sea SPX alerts', () => {
+      const row = { ...seaBase, completed_time: '2025-01-01T10:30:00Z' }
+      expect(evalSea(row, NOW_OK).spxSlaAlert).toBe(false)
+    })
+  })
+
+  it('air-only alerts never fire for the sea profile', () => {
+    const row = {
+      atd_origin: '2025-01-01T08:00:00Z',
+      sla: '02:00:00',
+      offload_status: 'offload', // would fire flightTracking in AIR profile
+    }
+    const flags = evalSea(row, new Date('2025-01-01T09:30:00Z'))
+    expect(flags.flightTracking).toBe(false)
+    expect(flags.reservasiPenerbangan).toBe(false)
+  })
+})
+
+describe('AIR profile default & profile resolution', () => {
+  it('reservasiKapal is always false for the AIR profile', () => {
+    const row = { atd_origin: '2025-01-01T08:00:00Z' } // empty ship name + reservation guards met
+    const flags = evaluateAlerts(row, 1, 1, new Date('2025-01-01T09:30:00Z'))
+    expect(flags.reservasiKapal).toBe(false)
+  })
+  it('resolveAlertProfile picks SEA for the configured table, AIR otherwise', () => {
+    expect(resolveAlertProfile('air_shipments_compileseanonjava', 'air_shipments_compileseanonjava')).toBe(SEA_ALERT_PROFILE)
+    expect(resolveAlertProfile('air_shipments_compileaircgk', 'air_shipments_compileseanonjava')).toBe(AIR_ALERT_PROFILE)
+    expect(resolveAlertProfile('air_shipments_compileseanonjava', ' air_shipments_compileseanonjava ')).toBe(SEA_ALERT_PROFILE)
+  })
+  it('resolveAlertProfile defaults the sea table to SEA_SLA_TABLE_NAME (no param)', () => {
+    expect(resolveAlertProfile('air_shipments_compileseanonjava')).toBe(SEA_ALERT_PROFILE)
+    expect(resolveAlertProfile('air_shipments_compileaircgk')).toBe(AIR_ALERT_PROFILE)
   })
 })

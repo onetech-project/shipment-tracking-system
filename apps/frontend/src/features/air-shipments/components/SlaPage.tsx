@@ -36,7 +36,8 @@ import { ExcludeByLtModal } from '@/features/air-shipments/components/ExcludeByL
 import { MultiRouteFilter } from '@/features/air-shipments/components/MultiRouteFilter'
 import { EvidenceModal } from '@/features/air-shipments/components/EvidenceModal'
 import { OffloadedAwbTable } from '@/features/air-shipments/components/OffloadedAwbTable'
-import { SLA_FROZEN_KEYS, SLA_DEFAULT_VISIBLE, colLabel, frozenColWidth } from '@/features/air-shipments/columns.config'
+import { colLabel, frozenColWidth } from '@/features/air-shipments/columns.config'
+import { type SlaMode } from '@/features/air-shipments/sla-mode.config'
 import {
   AirShipmentRow,
   AirShipmentsResponse,
@@ -108,52 +109,37 @@ interface SlaOverviewResponse {
   routeAlerts: RouteAlertRow[]
 }
 
-const TABLE_NAME = 'air_shipments_compileaircgk'
-const TABLE_ENDPOINT = `/air-shipments/${TABLE_NAME}`
-
 type AlertFilterOption = DashboardAlertKey
-
-const ALERT_OPTIONS: Array<{ value: AlertFilterOption | null; label: string }> = [
-  { value: null, label: 'All Alerts' },
-  { value: 'reservasiPenerbangan', label: 'Flight Reservations' },
-  { value: 'flightTracking', label: 'Flight Tracking' },
-  { value: 'potensiMelebihiSla', label: 'Potential SLA Breach' },
-  { value: 'melewatiSla', label: 'SLA Breach' },
-  { value: 'potensiMelebihiTjph', label: 'Potential TJPH Breach' },
-  { value: 'melewatiTjph', label: 'TJPH Breach' },
-  { value: 'spxTjphAlert', label: 'SPX TJPH Alert' },
-  { value: 'spxSlaAlert', label: 'SPX SLA Alert' },
-]
-
-/** Map from alert key → human-readable label (derived from ALERT_OPTIONS) */
-const ALERT_TYPE_LABELS: Record<string, string> = Object.fromEntries(
-  ALERT_OPTIONS.filter((o) => o.value !== null).map((o) => [o.value as string, o.label])
-)
-
-/** Selectable alert types for the exclude/restore-by-LT modal (no "All Alerts" option). */
-const LT_ALERT_TYPE_OPTIONS = ALERT_OPTIONS.filter(
-  (o): o is { value: AlertFilterOption; label: string } => o.value !== null
-).map((o) => ({ value: o.value, label: o.label }))
-
-/** Alert badge colours (matching DashboardAlertCards) */
-const ALERT_BADGE_COLORS: Record<string, string> = {
-  reservasiPenerbangan: '#F97316',
-  flightTracking: '#3B82F6',
-  potensiMelebihiSla: '#EAB308',
-  melewatiSla: '#EF4444',
-  potensiMelebihiTjph: '#8B5CF6',
-  melewatiTjph: '#DC2626',
-  spxTjphAlert: '#0D9488',
-  spxSlaAlert: '#0891B2',
-}
 
 type BatchOp = 'lock' | 'delete' | null
 
-export function SlaPage() {
+export function SlaPage({ mode }: { mode: SlaMode }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { isConnected, lastSyncAt, lastCompletedSheet } = useSyncNotification()
   const { params: generalParams, reload: reloadGeneralParams, loaded: paramsLoaded } = useGeneralParams()
+
+  const TABLE_NAME = mode.tableName
+  const TABLE_ENDPOINT = `/air-shipments/${TABLE_NAME}`
+  const ALERT_OPTIONS = useMemo(
+    () => [
+      { value: null as AlertFilterOption | null, label: 'All Alerts' },
+      ...mode.alerts.map((a) => ({ value: a.key as AlertFilterOption, label: a.label })),
+    ],
+    [mode]
+  )
+  const ALERT_TYPE_LABELS = useMemo(
+    () => Object.fromEntries(mode.alerts.map((a) => [a.key, a.label])),
+    [mode]
+  )
+  const LT_ALERT_TYPE_OPTIONS = useMemo(
+    () => mode.alerts.map((a) => ({ value: a.key as AlertFilterOption, label: a.label })),
+    [mode]
+  )
+  const ALERT_BADGE_COLORS = useMemo(
+    () => Object.fromEntries(mode.alerts.map((a) => [a.key, a.color])),
+    [mode]
+  )
 
   const tableRef = useRef<HTMLDivElement | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -384,7 +370,7 @@ export function SlaPage() {
   }, [activeTab, isFlightTracking, fetchOffloadedExcluded])
 
   useEffect(() => {
-    if (lastCompletedSheet !== 'compileaircgk') return
+    if (lastCompletedSheet !== mode.syncSheetKey) return
     // Silent refresh — bypass loading-state setters to prevent layout shifts that move the scroll position
     void fetchSlaOverview({ silent: true })
     setLastUpdated(new Date().toLocaleTimeString([], { hour12: false }))
@@ -424,7 +410,7 @@ export function SlaPage() {
   useEffect(() => {
     if (!paramsLoaded) return
     let cancelled = false
-    void fetchSlaColumnLayout()
+    void fetchSlaColumnLayout(mode.key)
       .then((stored) => {
         if (cancelled) return
         const norm = normalizeLayout(stored ?? [])
@@ -450,18 +436,18 @@ export function SlaPage() {
     setColumnLayout((prev) => {
       const kept = [...prev]
       const seen = new Set(kept.map((i) => i.key))
-      const frozenDefaults = SLA_FROZEN_KEYS.map((c) => c.key).filter(
+      const frozenDefaults = mode.frozenKeys.map((c) => c.key).filter(
         (k) => allDataColumns.has(k) && !seen.has(k)
       )
       const others = Array.from(allDataColumns).filter(
         (k) => !seen.has(k) && !frozenDefaults.includes(k)
       )
       for (const key of [...frozenDefaults, ...others]) {
-        const isFrozenDefault = SLA_FROZEN_KEYS.some((c) => c.key === key)
+        const isFrozenDefault = mode.frozenKeys.some((c) => c.key === key)
         kept.push({
           key,
           frozen: isFrozenDefault,
-          visible: isFrozenDefault || SLA_DEFAULT_VISIBLE.has(key),
+          visible: isFrozenDefault || mode.defaultVisibleColumns.has(key),
         })
       }
       return normalizeLayout(kept)
@@ -477,7 +463,7 @@ export function SlaPage() {
     if (serialized === lastSavedLayoutRef.current) return
     const handle = window.setTimeout(() => {
       lastSavedLayoutRef.current = serialized
-      void saveSlaColumnLayout(columnLayout).catch(() => {
+      void saveSlaColumnLayout(columnLayout, mode.key).catch(() => {
         // Save failed — clear the snapshot so the next change retries.
         lastSavedLayoutRef.current = null
       })
@@ -711,14 +697,14 @@ export function SlaPage() {
 
   // ── Alert filter helpers ────────────────────────────────────────────────────
 
-  /** Rewrites the `/sla` URL to reflect the current alert + routes + date range. */
+  /** Rewrites the current tab's URL (/sla/air or /sla/sea) to reflect the alert + routes + dates. */
   const syncUrl = (alertKey: AlertFilterOption | null, routesList: string[]) => {
     const params = new URLSearchParams()
     if (alertKey) params.set('alert', alertKey)
     if (routesList.length) params.set('route', routesList.join(','))
     params.set('startDate', startDate)
     params.set('endDate', endDate)
-    router.replace(`/sla?${params.toString()}`, { scroll: false })
+    router.replace(`/sla/${mode.key}?${params.toString()}`, { scroll: false })
   }
 
   // Drill-down from a card / route-alert table: focus a single route (replaces selection).
@@ -785,13 +771,14 @@ export function SlaPage() {
 
   return (
     <div className="space-y-8">
-      <PageHeader title="SLA Monitoring" />
+      <PageHeader title={mode.pageTitle} />
 
       <section className="space-y-6">
         <DashboardAlertCards
           summary={summary}
           activeAlert={activeAlert}
           onRouteSelect={handleRouteSelect}
+          alertCards={mode.alerts}
           isLoading={summaryLoading}
           startDate={startDate}
           endDate={endDate}
@@ -799,7 +786,7 @@ export function SlaPage() {
           onEndDateChange={(d) => { setEndDate(d); setPage(1); setExcludedPage(1) }}
           dateError={dateError}
           lastUpdated={lastUpdated}
-          syncNote="Live refresh is active for Compile Air CGK synchronization."
+          syncNote={mode.syncNote}
           onConfigure={() => setShowConfigModal(true)}
           isConnected={isConnected}
           lastSyncAt={lastSyncAt}
@@ -822,6 +809,7 @@ export function SlaPage() {
         <RouteAlertTable
           data={routeAlertData}
           isLoading={routeAlertLoading}
+          cols={mode.alerts.map(({ key, shortLabel, color }) => ({ key, label: shortLabel, color }))}
           onAlertClick={(route, alertKey) =>
             applyRouteAlertFilter(alertKey as DashboardAlertKey, route)
           }

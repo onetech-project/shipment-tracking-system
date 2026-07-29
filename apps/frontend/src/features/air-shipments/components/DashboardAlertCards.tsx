@@ -2,31 +2,17 @@
 
 import { useState, type ElementType } from 'react'
 import {
-  AlertTriangle,
-  Hourglass,
-  Plane,
-  PlaneLanding,
-  Clock,
-  ShieldAlert,
   CheckCircle,
   ChevronDown,
   ChevronUp,
   MapPin,
   Settings,
-  Timer,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { SyncStatusBadge } from '@/features/air-shipments/components/SyncStatusBadge'
 
-export type DashboardAlertKey =
-  | 'reservasiPenerbangan'
-  | 'flightTracking'
-  | 'potensiMelebihiSla'
-  | 'melewatiSla'
-  | 'potensiMelebihiTjph'
-  | 'melewatiTjph'
-  | 'spxTjphAlert'
-  | 'spxSlaAlert'
+/** Alert keys are mode-driven (see sla-mode.config); kept as a string alias for readability. */
+export type DashboardAlertKey = string
 
 export interface AlertSummaryItem {
   routes: number
@@ -44,7 +30,7 @@ export interface OtpSummary {
 export interface DashboardAlertSummary {
   nHours: number
   mHours: number
-  alerts: Record<DashboardAlertKey, AlertSummaryItem>
+  alerts: Record<string, AlertSummaryItem>
   otp?: OtpSummary
 }
 
@@ -52,6 +38,8 @@ interface DashboardAlertCardsProps {
   summary: DashboardAlertSummary | null
   activeAlert: DashboardAlertKey | null
   onRouteSelect: (alertKey: DashboardAlertKey, route: string) => void
+  /** Alert cards to render, in order — sourced from the active SlaMode. */
+  alertCards: Array<{ key: string; label: string; color: string; icon: ElementType }>
   isLoading?: boolean
   error?: string | null
   // Date range filter (optional — if provided, shows date pickers in header)
@@ -68,26 +56,11 @@ interface DashboardAlertCardsProps {
   lastSyncAt?: string | null
 }
 
-const ALERT_CARDS: Array<{
-  key: DashboardAlertKey
-  label: string
-  color: string
-  icon: ElementType
-}> = [
-  { key: 'reservasiPenerbangan', label: 'Flight Reservations', color: '#F97316', icon: Clock },
-  { key: 'flightTracking', label: 'Flight Tracking', color: '#3B82F6', icon: Plane },
-  { key: 'potensiMelebihiSla', label: 'Potential SLA Breach', color: '#EAB308', icon: Hourglass },
-  { key: 'melewatiSla', label: 'SLA Breach', color: '#EF4444', icon: AlertTriangle },
-  { key: 'potensiMelebihiTjph', label: 'Potential TJPH Breach', color: '#8B5CF6', icon: PlaneLanding },
-  { key: 'melewatiTjph', label: 'TJPH Breach', color: '#DC2626', icon: ShieldAlert },
-  { key: 'spxTjphAlert', label: 'SPX TJPH Alert', color: '#0D9488', icon: Timer },
-  { key: 'spxSlaAlert', label: 'SPX SLA Alert', color: '#0891B2', icon: ShieldAlert },
-]
-
 export function DashboardAlertCards({
   summary,
   activeAlert,
   onRouteSelect,
+  alertCards,
   isLoading,
   error,
   startDate,
@@ -194,7 +167,7 @@ export function DashboardAlertCards({
 
       {/* ── Alert Cards Grid ── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {ALERT_CARDS.map((card) => {
+        {alertCards.map((card) => {
           const item = summary?.alerts[card.key]
           const routes = item?.routes ?? 0
           const tonnage = item?.tonnage ?? 0
