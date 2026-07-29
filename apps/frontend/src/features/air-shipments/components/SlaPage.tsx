@@ -238,6 +238,14 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
     }
   }
 
+  // When every route is selected, sending them all as query params can blow past URL
+  // length limits — treat "all selected" the same as "no filter" on the wire while the
+  // checkboxes stay checked in the UI.
+  const effectiveRouteFilter = useCallback(
+    (list: string[]): string[] => (list.length > 0 && list.length === routes.length ? [] : list),
+    [routes.length]
+  )
+
   const fetchTableData = async () => {
     setIsLoading(true)
     setError(null)
@@ -252,7 +260,7 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
       })
       if (searchQuery.trim()) params.set('search', searchQuery.trim())
       params.set('alertFilter', activeAlert ?? 'any')
-      for (const r of activeRoutes) params.append('routeFilter', r)
+      for (const r of effectiveRouteFilter(activeRoutes)) params.append('routeFilter', r)
 
       const response = await apiClient.get<AirShipmentsResponse>(
         `${TABLE_ENDPOINT}?${params.toString()}`
@@ -285,21 +293,21 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
 
   const fetchOffloadedActive = useCallback(async () => {
     try {
-      const res = await fetchOffloadedAwbs({ page: offloadedPage, limit: 50, search: searchQuery, withEvidence: false, startDate, endDate, routeFilter: activeRoutes })
+      const res = await fetchOffloadedAwbs({ page: offloadedPage, limit: 50, search: searchQuery, withEvidence: false, startDate, endDate, routeFilter: effectiveRouteFilter(activeRoutes) })
       setOffloadedData(res)
     } catch {
       setOffloadedData(null)
     }
-  }, [offloadedPage, searchQuery, startDate, endDate, activeRoutes])
+  }, [offloadedPage, searchQuery, startDate, endDate, activeRoutes, effectiveRouteFilter])
 
   const fetchOffloadedExcluded = useCallback(async () => {
     try {
-      const res = await fetchOffloadedAwbs({ page: excludedPage, limit: 50, search: searchQuery, withEvidence: true, startDate, endDate, routeFilter: activeRoutes })
+      const res = await fetchOffloadedAwbs({ page: excludedPage, limit: 50, search: searchQuery, withEvidence: true, startDate, endDate, routeFilter: effectiveRouteFilter(activeRoutes) })
       setExcludedOffloaded(res)
     } catch {
       setExcludedOffloaded(null)
     }
-  }, [excludedPage, searchQuery, startDate, endDate, activeRoutes])
+  }, [excludedPage, searchQuery, startDate, endDate, activeRoutes, effectiveRouteFilter])
 
   const refresh = useCallback(() => {
     void fetchTableData()
@@ -627,7 +635,7 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
         if (excludedAlertTypeFilter !== 'all') params.set('alertType', excludedAlertTypeFilter)
       } else {
         if (activeAlert) params.set('alertFilter', activeAlert)
-        for (const r of activeRoutes) params.append('routeFilter', r)
+        for (const r of effectiveRouteFilter(activeRoutes)) params.append('routeFilter', r)
       }
 
       const response = await apiClient.get<{ ltNumbers: string[] }>(
@@ -635,7 +643,7 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
       )
       return response.data.ltNumbers
     },
-    [ltModal, startDate, endDate, activeAlert, activeRoutes, excludedAlertTypeFilter]
+    [ltModal, startDate, endDate, activeAlert, activeRoutes, excludedAlertTypeFilter, effectiveRouteFilter]
   )
 
   async function handleLtConfirm(ltNumbers: string[], alertType: string, reason: string) {
@@ -701,7 +709,8 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
   const syncUrl = (alertKey: AlertFilterOption | null, routesList: string[]) => {
     const params = new URLSearchParams()
     if (alertKey) params.set('alert', alertKey)
-    if (routesList.length) params.set('route', routesList.join(','))
+    const urlRoutes = effectiveRouteFilter(routesList)
+    if (urlRoutes.length) params.set('route', urlRoutes.join(','))
     params.set('startDate', startDate)
     params.set('endDate', endDate)
     router.replace(`/sla/${mode.key}?${params.toString()}`, { scroll: false })
@@ -749,7 +758,7 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
         startDate,
         endDate,
         alertFilter: activeAlert ?? 'any',
-        routeFilter: activeRoutes,
+        routeFilter: effectiveRouteFilter(activeRoutes),
         search: searchQuery,
         excludedAlertType: excludedAlertTypeFilter !== 'all' ? excludedAlertTypeFilter : undefined,
         columns: orderedVisibleColumns,
