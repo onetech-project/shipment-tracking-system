@@ -30,6 +30,12 @@ export interface SettlementCommitResult {
   errorRows: number
 }
 
+export interface InvoicePeriodInput {
+  label: string
+  start: string
+  end: string
+}
+
 export interface SettlementSummary {
   label: string
   totalTos: number
@@ -46,6 +52,7 @@ export interface SettlementToRow {
   toNumber: string
   ltNumber: string | null
   awb: string | null
+  invoicePeriod: string | null
   originStation: string | null
   destStation: string | null
   estRevenue: number | null
@@ -80,7 +87,7 @@ export class PnlSettlementService {
     }
   }
 
-  async commit(buffer: Buffer): Promise<SettlementCommitResult> {
+  async commit(buffer: Buffer, period: InvoicePeriodInput): Promise<SettlementCommitResult> {
     const parsed = parseSettlementWorkbook(buffer)
     let updated = 0
 
@@ -90,17 +97,21 @@ export class PnlSettlementService {
         const params: unknown[] = []
         const values = chunk
           .map((r, j) => {
-            const b = j * 3
-            params.push(r.ltNumber, r.toNumber, r.actualRevenue)
-            return `($${b + 1}, $${b + 2}, $${b + 3}::numeric)`
+            const b = j * 6
+            params.push(r.ltNumber, r.toNumber, r.actualRevenue, period.label, period.start, period.end)
+            return `($${b + 1}, $${b + 2}, $${b + 3}::numeric, $${b + 4}, $${b + 5}::date, $${b + 6}::date)`
           })
           .join(', ')
         // Settle only revenue for now (actual_cost stays NULL until vendor invoices land).
+        // The chosen invoice period applies to every row in this upload batch.
         const res = await manager.query(
           `
           UPDATE air_shipments_compileaircgk c
-          SET actual_revenue = v.rev, settled_at = NOW()
-          FROM (VALUES ${values}) AS v(lt, to_num, rev)
+          SET actual_revenue = v.rev, settled_at = NOW(),
+              invoice_period_label = v.period_label,
+              invoice_period_start = v.period_start,
+              invoice_period_end = v.period_end
+          FROM (VALUES ${values}) AS v(lt, to_num, rev, period_label, period_start, period_end)
           WHERE c.lt_number = v.lt AND c.to_number = v.to_num
           `,
           params,
@@ -204,7 +215,7 @@ export class PnlSettlementService {
     const offset = (page - 1) * limit
     const dataRows = await this.dataSource.query(
       `
-      SELECT to_number, lt_number, awb, origin_station, dest_station,
+      SELECT to_number, lt_number, awb, invoice_period, origin_station, dest_station,
              revenue_total AS est_revenue, actual_revenue AS act_revenue,
              var_revenue, is_settled
       FROM v_pnl_to
@@ -227,6 +238,7 @@ export class PnlSettlementService {
           toNumber: r.to_number as string,
           ltNumber: (r.lt_number as string) ?? null,
           awb: (r.awb as string) ?? null,
+          invoicePeriod: (r.invoice_period as string) ?? null,
           originStation: (r.origin_station as string) ?? null,
           destStation: (r.dest_station as string) ?? null,
           estRevenue: est,

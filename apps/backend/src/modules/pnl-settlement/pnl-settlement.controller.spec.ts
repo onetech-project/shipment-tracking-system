@@ -38,10 +38,25 @@ describe('PnlSettlementController', () => {
     expect(mockService.preview).toHaveBeenCalledWith(expect.any(Buffer))
   })
 
-  it('commit forwards the file buffer to the service', async () => {
+  it('commit forwards the file buffer and period to the service', async () => {
     mockService.commit.mockResolvedValueOnce({ updated: 1 })
-    await controller.commit(fakeFile('inv.csv'))
-    expect(mockService.commit).toHaveBeenCalledWith(expect.any(Buffer))
+    await controller.commit(fakeFile('inv.csv'), '2026-07-2H', '2026-07-16', '2026-07-31')
+    expect(mockService.commit).toHaveBeenCalledWith(
+      expect.any(Buffer),
+      { label: '2026-07-2H', start: '2026-07-16', end: '2026-07-31' },
+    )
+  })
+
+  it('rejects commit missing periodLabel', () => {
+    expect(() =>
+      controller.commit(fakeFile('inv.csv'), undefined, '2026-07-16', '2026-07-31'),
+    ).toThrow(BadRequestException)
+  })
+
+  it('rejects commit where periodStart is after periodEnd', () => {
+    expect(() =>
+      controller.commit(fakeFile('inv.csv'), '2026-07-2H', '2026-07-31', '2026-07-16'),
+    ).toThrow(BadRequestException)
   })
 
   it('rejects a missing file', () => {

@@ -24,6 +24,7 @@ export interface SettlementToRow {
   toNumber: string
   ltNumber: string | null
   awb: string | null
+  invoicePeriod: string | null
   originStation: string | null
   destStation: string | null
   estRevenue: number | null
@@ -109,12 +110,22 @@ export function useSettlementPreview() {
   })
 }
 
+export interface SettlementCommitInput {
+  file: File
+  periodLabel: string
+  periodStart: string
+  periodEnd: string
+}
+
 export function useSettlementCommit() {
   const qc = useQueryClient()
-  return useMutation<SettlementCommitResult, unknown, File>({
-    mutationFn: (file: File) => {
+  return useMutation<SettlementCommitResult, unknown, SettlementCommitInput>({
+    mutationFn: ({ file, periodLabel, periodStart, periodEnd }: SettlementCommitInput) => {
       const form = new FormData()
       form.append('file', file)
+      form.append('periodLabel', periodLabel)
+      form.append('periodStart', periodStart)
+      form.append('periodEnd', periodEnd)
       return apiClient
         .post('/pnl-settlement/commit', form, {
           headers: { 'Content-Type': 'multipart/form-data' },
