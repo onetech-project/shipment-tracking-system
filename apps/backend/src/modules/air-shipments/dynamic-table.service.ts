@@ -41,10 +41,14 @@ export class DynamicTableService {
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         last_synced_at TIMESTAMPTZ,
-        extra_fields JSONB DEFAULT '{}'::jsonb
+        extra_fields JSONB DEFAULT '{}'::jsonb,
+        excluded_reasons JSONB
       )`
 
       await this.dataSource.query(createSql)
+      await this.dataSource.query(
+        `ALTER TABLE ${qTable} ADD COLUMN IF NOT EXISTS excluded_reasons JSONB`
+      )
 
       // 2) Ensure unique key columns exist
       const rawKeys = cfg.uniqueKey ?? []
