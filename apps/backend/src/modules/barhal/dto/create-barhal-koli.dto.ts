@@ -1,4 +1,4 @@
-import { IsDateString, IsString } from 'class-validator'
+import { IsDateString, IsIn, IsString } from 'class-validator'
 
 export class CreateBarhalKoliDto {
   @IsDateString()
@@ -9,4 +9,7 @@ export class CreateBarhalKoliDto {
 
   @IsString()
   dest: string
+
+  @IsIn(['HP', 'Bukan HP'])
+  komoditi: string
 }

@@ -31,6 +31,9 @@ export class BarhalKoli {
   @Column({ name: 'dest_name', type: 'text' })
   dest_name: string
 
+  @Column({ name: 'komoditi', type: 'text' })
+  komoditi: string
+
   @Column({ name: 'sequence_no', type: 'integer' })
   sequence_no: number
 

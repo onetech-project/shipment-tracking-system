@@ -26,6 +26,7 @@ export function Step1CreateKoli({ koli: existingKoli, onCreated }: Step1CreateKo
   const [koliDate, setKoliDate] = useState('')
   const [origin, setOrigin] = useState('')
   const [dest, setDest] = useState('')
+  const [komoditi, setKomoditi] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const { data: stations } = useBarhalStations()
@@ -38,12 +39,12 @@ export function Step1CreateKoli({ koli: existingKoli, onCreated }: Step1CreateKo
   )
   const nextSequenceDisplay = previewFiltersReady && existingForRoute ? existingForRoute.total + 1 : undefined
 
-  const canSubmit = !!koliDate && !!origin && !!dest && !createShell.isPending
+  const canSubmit = !!koliDate && !!origin && !!dest && !!komoditi && !createShell.isPending
 
   const handleSubmit = async () => {
     setError(null)
     try {
-      const koli = await createShell.mutateAsync({ koliDate, origin, dest })
+      const koli = await createShell.mutateAsync({ koliDate, origin, dest, komoditi })
       onCreated(koli)
     } catch (err) {
       const message =
@@ -69,6 +70,10 @@ export function Step1CreateKoli({ koli: existingKoli, onCreated }: Step1CreateKo
             <label className="text-sm font-medium">Destinasi</label>
             <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">{existingKoli.dest_name}</div>
           </div>
+        </div>
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">Komoditi</label>
+          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">{existingKoli.komoditi}</div>
         </div>
         <div className="space-y-1.5">
           <label className="text-sm font-medium">No. Koli</label>
@@ -132,6 +137,19 @@ export function Step1CreateKoli({ koli: existingKoli, onCreated }: Step1CreateKo
             ))}
           </select>
         </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium">Komoditi</label>
+        <select
+          value={komoditi}
+          onChange={(e) => setKomoditi(e.target.value)}
+          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          <option value="">— Pilih komoditi —</option>
+          <option value="HP">HP</option>
+          <option value="Bukan HP">Bukan HP</option>
+        </select>
       </div>
 
       <div className="space-y-1.5">

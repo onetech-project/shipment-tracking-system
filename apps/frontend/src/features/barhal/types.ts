@@ -12,6 +12,7 @@ export interface BarhalKoli {
   koli_date: string
   origin_name: string
   dest_name: string
+  komoditi: string
   sequence_no: number
   weight_before: number | null
   packing_kayu_weight: number
@@ -47,6 +48,7 @@ export interface CreateKoliShellPayload {
   koliDate: string
   origin: string
   dest: string
+  komoditi: string
 }
 
 export interface AttachTosPayload {

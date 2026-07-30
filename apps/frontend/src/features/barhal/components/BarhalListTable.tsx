@@ -15,7 +15,7 @@ interface BarhalListTableProps {
 }
 
 const fmt = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 })
-const COLUMN_COUNT = 8
+const COLUMN_COUNT = 9
 
 interface KoliRowProps {
   koli: BarhalKoli
@@ -59,6 +59,7 @@ function KoliRow({ koli, index, page, pageSize, isExpanded, onToggleExpanded, on
         </td>
         <td className="px-3 py-2">{koli.origin_name}</td>
         <td className="px-3 py-2">{koli.dest_name}</td>
+        <td className="px-3 py-2">{koli.komoditi}</td>
         <td className="px-3 py-2">
           <div className="flex items-center gap-2">
             <button
@@ -148,6 +149,7 @@ export function BarhalListTable({ data, page, pageSize, isLoading, onOpenKoli }:
             <th className="px-3 py-2 font-medium">Weight After</th>
             <th className="px-3 py-2 font-medium">Origin</th>
             <th className="px-3 py-2 font-medium">Destinasi</th>
+            <th className="px-3 py-2 font-medium">Komoditi</th>
             <th className="px-3 py-2 font-medium">Aksi</th>
           </tr>
         </thead>

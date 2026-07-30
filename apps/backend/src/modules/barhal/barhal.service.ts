@@ -199,6 +199,7 @@ export class BarhalService {
             koli_date: dto.koliDate,
             origin_name: originName,
             dest_name: destName,
+            komoditi: dto.komoditi,
             sequence_no: sequenceNo,
             weight_before: null,
             packing_kayu_weight: 0,
