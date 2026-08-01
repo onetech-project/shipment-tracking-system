@@ -11,6 +11,7 @@ import { BarhalStatCards } from '@/features/barhal/components/BarhalStatCards'
 import { BarhalWeightChart } from '@/features/barhal/components/BarhalWeightChart'
 import { BarhalRecapBatangKayuTable } from '@/features/barhal/components/BarhalRecapBatangKayuTable'
 import { BarhalRecapToTable } from '@/features/barhal/components/BarhalRecapToTable'
+import { BarhalToDetailTable } from '@/features/barhal/components/BarhalToDetailTable'
 import { triggerBlobDownload } from '@/shared/utils/file-download.util'
 
 function BarhalDashboardContent() {
@@ -130,6 +131,11 @@ function BarhalDashboardContent() {
           </div>
         </>
       )}
+
+      <div>
+        <p className="mb-2 text-sm font-medium">Detail TO</p>
+        <BarhalToDetailTable startDate={startDate} endDate={endDate} origin={origin} dest={dest} />
+      </div>
     </div>
   )
 }
