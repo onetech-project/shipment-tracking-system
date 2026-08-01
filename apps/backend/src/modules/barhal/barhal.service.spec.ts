@@ -59,7 +59,7 @@ describe('BarhalService', () => {
         .mockResolvedValueOnce([{ count: 0 }]) // sequence count
       const manager = { query: dataSource.query, create: jest.fn((_, v) => v), save: jest.fn((v) => Promise.resolve(v)) }
       ;(service as any).dataSource.transaction = jest.fn((cb: any) => cb(manager))
-      const koli = await service.createKoliShell({ koliDate: '2026-06-01', origin: 'Kosambi DC', dest: 'Badung DC' })
+      const koli = await service.createKoliShell({ koliDate: '2026-06-01', origin: 'Kosambi DC', dest: 'Badung DC', komoditi: 'HP' })
       expect(koli.koli_number).toBe('1Jun-Kosambi-Badung-Barhal1')
       expect(koli.origin_name).toBe('Kosambi')
       expect(koli.dest_name).toBe('Badung')
@@ -312,6 +312,98 @@ describe('BarhalService', () => {
 
       const result = await service.getDashboard({})
       expect(result.recapPerTanggal[0].variancePercent).toBe(0)
+    })
+  })
+
+  describe('getToDetail', () => {
+    it('joins barhal_koli_to and returns koliNumber for the in-koli tab', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ total: 1 }])
+        .mockResolvedValueOnce([
+          {
+            date: '2026-07-26',
+            originName: 'Makassar',
+            destName: 'Kosambi',
+            toNumber: 'TO1',
+            koliNumber: '26Jul-Makassar-Kosambi-Barhal1',
+            grossWeight: '12.5',
+          },
+        ])
+
+      const result = await service.getToDetail({ tab: 'in-koli', page: 1, pageSize: 25 })
+
+      expect(result.total).toBe(1)
+      expect(result.data).toEqual([
+        {
+          date: '2026-07-26',
+          originName: 'Makassar',
+          destName: 'Kosambi',
+          toNumber: 'TO1',
+          koliNumber: '26Jul-Makassar-Kosambi-Barhal1',
+          grossWeight: 12.5,
+        },
+      ])
+
+      const [countSql] = dataSource.query.mock.calls[0]
+      const [dataSql] = dataSource.query.mock.calls[1]
+      expect(countSql).toMatch(/JOIN barhal_koli_to/i)
+      expect(dataSql).toMatch(/JOIN barhal_koli k ON k\.id = bkt\.koli_id/i)
+      expect(dataSql).toMatch(/remarks ILIKE '%barhal%'/i)
+    })
+
+    it('uses NOT EXISTS and yields a null koliNumber for the not-in-koli tab', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ total: 1 }])
+        .mockResolvedValueOnce([
+          {
+            date: '2026-07-26',
+            originName: 'Makassar',
+            destName: 'Kosambi',
+            toNumber: 'TO9',
+            koliNumber: null,
+            grossWeight: null,
+          },
+        ])
+
+      const result = await service.getToDetail({ tab: 'not-in-koli', page: 1, pageSize: 25 })
+
+      expect(result.data[0].koliNumber).toBeNull()
+      expect(result.data[0].grossWeight).toBeNull()
+      const [dataSql] = dataSource.query.mock.calls[1]
+      expect(dataSql).toMatch(/NOT EXISTS/i)
+      expect(dataSql).not.toMatch(/JOIN barhal_koli_to/i)
+    })
+
+    it('binds date range, origin and dest as parameters', async () => {
+      dataSource.query.mockResolvedValueOnce([{ total: 0 }]).mockResolvedValueOnce([])
+
+      await service.getToDetail({
+        tab: 'in-koli',
+        startDate: '2026-07-01',
+        endDate: '2026-07-31',
+        origin: 'Makassar',
+        dest: 'Kosambi',
+        page: 1,
+        pageSize: 25,
+      })
+
+      const [countSql, countParams] = dataSource.query.mock.calls[0]
+      expect(countParams).toEqual(['2026-07-01', '2026-07-31', 'Makassar', 'Kosambi'])
+      expect(countSql).toMatch(/completed_date BETWEEN \$1 AND \$2/i)
+      expect(countSql).not.toMatch(/Makassar/)
+    })
+
+    it('translates page and pageSize into LIMIT and OFFSET', async () => {
+      dataSource.query.mockResolvedValueOnce([{ total: 60 }]).mockResolvedValueOnce([])
+
+      const result = await service.getToDetail({ tab: 'in-koli', page: 3, pageSize: 20 })
+
+      const [dataSql, dataParams] = dataSource.query.mock.calls[1]
+      expect(dataSql).toMatch(/LIMIT \$1 OFFSET \$2/i)
+      expect(dataParams).toEqual([20, 40])
+      expect(result.page).toBe(3)
+      expect(result.pageSize).toBe(20)
+      expect(result.total).toBe(60)
     })
   })
 })

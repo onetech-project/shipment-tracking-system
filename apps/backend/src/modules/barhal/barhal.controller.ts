@@ -15,6 +15,7 @@ import { ListBarhalKoliDto } from './dto/list-barhal-koli.dto'
 import { AvailableToDto } from './dto/available-to.dto'
 import { BarhalDashboardQueryDto } from './dto/barhal-dashboard-query.dto'
 import { SmuListQueryDto } from './dto/smu-list-query.dto'
+import { BarhalToDetailQueryDto } from './dto/barhal-to-detail-query.dto'
 
 @ApiTags('Barhal')
 @Controller('barhal')
@@ -98,6 +99,12 @@ export class BarhalController {
   @Authorize(Permission.READ_BARHAL)
   getDashboard(@Query() dto: BarhalDashboardQueryDto) {
     return this.service.getDashboard(dto)
+  }
+
+  @Get('to-detail')
+  @Authorize(Permission.READ_BARHAL)
+  getToDetail(@Query() dto: BarhalToDetailQueryDto) {
+    return this.service.getToDetail(dto)
   }
 
   @Get('export.csv')

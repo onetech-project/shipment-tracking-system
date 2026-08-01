@@ -8,6 +8,7 @@ import { AttachTosDto } from './dto/attach-tos.dto'
 import { ListBarhalKoliDto } from './dto/list-barhal-koli.dto'
 import { AvailableToDto } from './dto/available-to.dto'
 import { BarhalDashboardQueryDto } from './dto/barhal-dashboard-query.dto'
+import { BarhalToDetailQueryDto } from './dto/barhal-to-detail-query.dto'
 import { UpdatePackingDto } from './dto/update-packing.dto'
 import { UpdateSmuDto } from './dto/update-smu.dto'
 import { BulkUpdateSmuDto } from './dto/bulk-update-smu.dto'
@@ -40,6 +41,15 @@ interface AvailableToRow {
   remarks: string | null
   date: string | null
   vendor: 'ESP'
+}
+
+interface BarhalToDetailRow {
+  date: string
+  originName: string
+  destName: string
+  toNumber: string
+  koliNumber: string | null
+  grossWeight: number | null
 }
 
 const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -594,6 +604,103 @@ export class BarhalService {
       recapBatangKayu: recapBatangKayuNormalized,
       recapPerTanggal,
       recapPerRute,
+    }
+  }
+
+  /**
+   * Per-TO detail rows for the dashboard, split by whether the TO has been packed into a Koli.
+   * DISTINCT ON (to_number) guards against the source sheet carrying more than one row per TO,
+   * which would otherwise duplicate rows and inflate the paginated total.
+   */
+  async getToDetail(dto: BarhalToDetailQueryDto): Promise<{
+    data: BarhalToDetailRow[]
+    total: number
+    page: number
+    pageSize: number
+  }> {
+    const page = dto.page ?? 1
+    const pageSize = dto.pageSize ?? 25
+
+    const params: unknown[] = []
+    const conditions: string[] = [
+      `e.remarks ILIKE '%barhal%'`,
+      `e.to_number IS NOT NULL`,
+      `e.completed_date IS NOT NULL`,
+    ]
+    if (dto.startDate && dto.endDate) {
+      params.push(dto.startDate, dto.endDate)
+      conditions.push(`e.completed_date BETWEEN $${params.length - 1} AND $${params.length}`)
+    }
+    if (dto.origin) {
+      params.push(dto.origin)
+      conditions.push(`${this.normalizedStationSql('e.origin_station')} = $${params.length}`)
+    }
+    if (dto.dest) {
+      params.push(dto.dest)
+      conditions.push(`${this.normalizedStationSql('e.dest_station')} = $${params.length}`)
+    }
+
+    const baseCte = `
+      base AS (
+        SELECT DISTINCT ON (e.to_number)
+          e.to_number,
+          e.completed_date,
+          e.gross_weight,
+          ${this.normalizedStationSql('e.origin_station')} AS origin_name,
+          ${this.normalizedStationSql('e.dest_station')} AS dest_name
+        FROM air_shipments_compileaircgk e
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY e.to_number, e.completed_date DESC
+      )
+    `
+
+    const inKoli = dto.tab === 'in-koli'
+    const tabClause = inKoli
+      ? `JOIN barhal_koli_to bkt ON bkt.to_number = b.to_number
+         JOIN barhal_koli k ON k.id = bkt.koli_id`
+      : `WHERE NOT EXISTS (SELECT 1 FROM barhal_koli_to bkt WHERE bkt.to_number = b.to_number)`
+
+    const countRow = (
+      await this.dataSource.query(
+        `WITH ${baseCte} SELECT COUNT(*)::int AS total FROM base b ${tabClause}`,
+        params,
+      )
+    )[0]
+
+    const dataParams = [...params, pageSize, (page - 1) * pageSize]
+    const rows: {
+      date: string
+      originName: string
+      destName: string
+      toNumber: string
+      koliNumber: string | null
+      grossWeight: string | null
+    }[] = await this.dataSource.query(
+      `
+      WITH ${baseCte}
+      SELECT
+        b.completed_date::text AS date,
+        b.origin_name          AS "originName",
+        b.dest_name            AS "destName",
+        b.to_number            AS "toNumber",
+        ${inKoli ? 'k.koli_number' : 'NULL::text'} AS "koliNumber",
+        b.gross_weight::numeric AS "grossWeight"
+      FROM base b
+      ${tabClause}
+      ORDER BY b.completed_date DESC, b.to_number
+      LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+      `,
+      dataParams,
+    )
+
+    return {
+      data: rows.map((row) => ({
+        ...row,
+        grossWeight: row.grossWeight != null ? Number(row.grossWeight) : null,
+      })),
+      total: countRow.total,
+      page,
+      pageSize,
     }
   }
 
