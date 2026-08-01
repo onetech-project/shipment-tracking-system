@@ -147,6 +147,24 @@ export interface BarhalDashboardStats {
   recapPerRute: BarhalRecapPerRuteItem[]
 }
 
+export type BarhalToDetailTab = 'in-koli' | 'not-in-koli'
+
+export interface BarhalToDetailItem {
+  date: string
+  originName: string
+  destName: string
+  toNumber: string
+  koliNumber: string | null
+  grossWeight: number | null
+}
+
+export interface BarhalToDetailResponse {
+  data: BarhalToDetailItem[]
+  total: number
+  page: number
+  pageSize: number
+}
+
 export interface BarhalSmuListItem {
   smuNumber: string
   date: string
