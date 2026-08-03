@@ -357,6 +357,66 @@ describe('BarhalService', () => {
       expect(perRuteSql).toContain('AS awb_count')
       expect(perRuteSql).not.toContain('attached_to')
     })
+
+    it('returns one row per calendar date when a full range is given', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 1, total_to: 1, weight_before: 10, weight_increase: 2, batang_kayu: 0 }])
+        .mockResolvedValueOnce([
+          { date: '2026-06-02', total_to: 1, awb_count: 1, total_koli: 1, weight_before: 10, chwt: 9, missing_chwt: 0, weight_increase: 2, add_revenue: 0 },
+        ])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      const result = await service.getDashboard({ startDate: '2026-06-01', endDate: '2026-06-04' })
+
+      expect(result.recapPerTanggal.map((r) => r.date)).toEqual(['2026-06-01', '2026-06-02', '2026-06-03', '2026-06-04'])
+      expect(result.recapPerTanggal[0]).toMatchObject({ totalTo: 0, totalKoli: 0, status: 'incomplete' })
+      expect(result.recapPerTanggal[1]).toMatchObject({ totalTo: 1, status: 'completed' })
+    })
+
+    it('leaves recapPerTanggal sparse when no range is given', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 1, total_to: 1, weight_before: 10, weight_increase: 2, batang_kayu: 0 }])
+        .mockResolvedValueOnce([
+          { date: '2026-06-02', total_to: 1, awb_count: 1, total_koli: 1, weight_before: 10, chwt: 9, missing_chwt: 0, weight_increase: 2, add_revenue: 0 },
+        ])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      const result = await service.getDashboard({})
+      expect(result.recapPerTanggal.map((r) => r.date)).toEqual(['2026-06-02'])
+    })
+
+    it('keeps chartByDate on dates that have data, not the filled-in ones', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 1, total_to: 1, weight_before: 10, weight_increase: 2, batang_kayu: 0 }])
+        .mockResolvedValueOnce([
+          { date: '2026-06-02', total_to: 1, awb_count: 1, total_koli: 1, weight_before: 10, chwt: 9, missing_chwt: 0, weight_increase: 2, add_revenue: 0 },
+        ])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      const result = await service.getDashboard({ startDate: '2026-06-01', endDate: '2026-06-04' })
+      expect(result.chartByDate).toEqual([{ date: '2026-06-02', weightBefore: 10, weightAfter: 12, chwt: 9 }])
+    })
+
+    it('rejects a range longer than 366 dates without running any query', async () => {
+      await expect(service.getDashboard({ startDate: '2024-01-01', endDate: '2025-01-01' })).rejects.toThrow(
+        'Date range must not exceed 366 days',
+      )
+      expect(dataSource.query).not.toHaveBeenCalled()
+    })
+
+    it('accepts a full leap year', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      const result = await service.getDashboard({ startDate: '2024-01-01', endDate: '2024-12-31' })
+      expect(result.recapPerTanggal).toHaveLength(366)
+    })
   })
 
   describe('getToDetail', () => {

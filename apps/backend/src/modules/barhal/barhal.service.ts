@@ -14,7 +14,13 @@ import { UpdateSmuDto } from './dto/update-smu.dto'
 import { BulkUpdateSmuDto } from './dto/bulk-update-smu.dto'
 import { SmuListQueryDto } from './dto/smu-list-query.dto'
 import { buildBarhalCsv, BarhalCsvRow } from './barhal-csv.builder'
-import { toRecapMetrics, RecapAggregateRow } from './barhal-recap.builder'
+import {
+  toRecapMetrics,
+  densifyPerTanggal,
+  daysInRange,
+  MAX_RECAP_DAYS,
+  RecapAggregateRow,
+} from './barhal-recap.builder'
 
 /**
  * Station names come from a manually-maintained Google Sheet, so the same real station
@@ -392,6 +398,11 @@ export class BarhalService {
   }
 
   async getDashboard(dto: BarhalDashboardQueryDto) {
+    const hasRange = Boolean(dto.startDate && dto.endDate)
+    if (hasRange && daysInRange(dto.startDate!, dto.endDate!) > MAX_RECAP_DAYS) {
+      throw new BadRequestException(`Date range must not exceed ${MAX_RECAP_DAYS} days`)
+    }
+
     const params: unknown[] = []
     const conditions: string[] = [`e.remarks ILIKE '%barhal%'`, `e.to_number IS NOT NULL`, `e.completed_date IS NOT NULL`]
     const koliConditions: string[] = []
@@ -493,8 +504,12 @@ export class BarhalService {
       params,
     )
 
-    const recapPerTanggal = perTanggalRows.map((row) => ({ date: row.date, ...toRecapMetrics(row) }))
-    const chartByDate = recapPerTanggal.map((r) => ({ date: r.date, weightBefore: r.weightBefore, weightAfter: r.weightAfter, chwt: r.chwt }))
+    const perTanggalSparse = perTanggalRows.map((row) => ({ date: row.date, ...toRecapMetrics(row) }))
+    // Built from the sparse rows on purpose: a filled-in future date would drag the chart down to 0.
+    const chartByDate = perTanggalSparse.map((r) => ({ date: r.date, weightBefore: r.weightBefore, weightAfter: r.weightAfter, chwt: r.chwt }))
+    const recapPerTanggal = hasRange
+      ? densifyPerTanggal(perTanggalSparse, dto.startDate!, dto.endDate!)
+      : perTanggalSparse
 
     const perRuteRows: (RecapAggregateRow & { originName: string; destName: string })[] = await this.dataSource.query(
       `
