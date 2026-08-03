@@ -1,7 +1,7 @@
 # Barhal Dashboard — Rekap Per Tanggal & Per Rute Lengkap
 
 **Tanggal:** 2026-08-03
-**Status:** Draft
+**Status:** Approved
 
 ## Tujuan
 
