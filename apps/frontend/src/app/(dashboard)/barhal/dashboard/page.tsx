@@ -12,11 +12,15 @@ import { BarhalWeightChart } from '@/features/barhal/components/BarhalWeightChar
 import { BarhalRecapBatangKayuTable } from '@/features/barhal/components/BarhalRecapBatangKayuTable'
 import { BarhalRecapToTable } from '@/features/barhal/components/BarhalRecapToTable'
 import { BarhalToDetailTable } from '@/features/barhal/components/BarhalToDetailTable'
+import { currentMonthRange } from '@/features/barhal/utils/monthRange'
 import { triggerBlobDownload } from '@/shared/utils/file-download.util'
 
 function BarhalDashboardContent() {
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
+  // Lazy initializer, and BarhalDashboardPage renders null while auth is loading, so this never
+  // runs during SSR and cannot cause a hydration mismatch.
+  const [defaultRange] = useState(currentMonthRange)
+  const [startDate, setStartDate] = useState(defaultRange.start)
+  const [endDate, setEndDate] = useState(defaultRange.end)
   const [origin, setOrigin] = useState('')
   const [dest, setDest] = useState('')
   const [isExporting, setIsExporting] = useState(false)
