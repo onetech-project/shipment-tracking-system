@@ -48,7 +48,12 @@ export function BarhalRecapToTable({ rows, groupColumnLabel }: BarhalRecapToTabl
             </tr>
           ) : (
             withKeys.map((row) => (
-              <tr key={row.key} className="hover:bg-accent/30">
+              <tr
+                key={row.key}
+                className={`hover:bg-accent/30 ${
+                  row.totalTo === 0 && row.totalKoli === 0 ? 'text-muted-foreground' : ''
+                }`}
+              >
                 <td className="px-3 py-2">{row.groupLabel}</td>
                 <td className="px-3 py-2">{row.totalTo}</td>
                 <td className="px-3 py-2">{row.totalKoli}</td>
