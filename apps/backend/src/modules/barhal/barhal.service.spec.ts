@@ -261,10 +261,10 @@ describe('BarhalService', () => {
       dataSource.query
         .mockResolvedValueOnce([{ koli_count: 2, total_to: 3, weight_before: 30, weight_increase: 6, batang_kayu: 10 }]) // kpi
         .mockResolvedValueOnce([
-          { date: '2026-06-01', total_to: 3, attached_to: 3, total_koli: 2, weight_before: 30, chwt: 25, missing_chwt: 0, weight_increase: 6, add_revenue: 500 },
+          { date: '2026-06-01', total_to: 3, awb_count: 2, total_koli: 2, weight_before: 30, chwt: 25, missing_chwt: 0, weight_increase: 6, add_revenue: 500 },
         ]) // recapPerTanggal
         .mockResolvedValueOnce([
-          { originName: 'Kosambi', destName: 'Badung', total_to: 3, attached_to: 2, total_koli: 2, weight_before: 30, chwt: 25, missing_chwt: 1, weight_increase: 6, add_revenue: 500 },
+          { originName: 'Kosambi', destName: 'Badung', total_to: 3, awb_count: 2, total_koli: 2, weight_before: 30, chwt: 25, missing_chwt: 1, weight_increase: 6, add_revenue: 500 },
         ]) // recapPerRute
         .mockResolvedValueOnce([
           { date: '2026-06-01', totalKoli: 2, totalP: 100, totalL: 80, totalT: 60, totalVolume: 80, totalBatangKayu: 10 },
@@ -306,12 +306,56 @@ describe('BarhalService', () => {
     it('reports variancePercent as 0 when weightBefore is 0 (no division by zero)', async () => {
       dataSource.query
         .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
-        .mockResolvedValueOnce([{ date: '2026-06-01', total_to: 0, attached_to: 0, total_koli: 0, weight_before: 0, chwt: 0, missing_chwt: 0, weight_increase: 0, add_revenue: 0 }])
+        .mockResolvedValueOnce([{ date: '2026-06-01', total_to: 0, awb_count: 0, total_koli: 0, weight_before: 0, chwt: 0, missing_chwt: 0, weight_increase: 0, add_revenue: 0 }])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
 
       const result = await service.getDashboard({})
       expect(result.recapPerTanggal[0].variancePercent).toBe(0)
+    })
+
+    it('keeps a date completed even when barhal TOs there are still unpacked', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 1, total_to: 10, weight_before: 30, weight_increase: 6, batang_kayu: 0 }])
+        .mockResolvedValueOnce([{ date: '2026-06-01', total_to: 10, awb_count: 2, total_koli: 1, weight_before: 30, chwt: 25, missing_chwt: 0, weight_increase: 6, add_revenue: 0 }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      const result = await service.getDashboard({})
+      expect(result.recapPerTanggal[0].status).toBe('completed')
+    })
+
+    it('groups per tanggal over TO dates unioned with Koli dates, ascending, keyed on awb_count', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      await service.getDashboard({})
+
+      const perTanggalSql: string = dataSource.query.mock.calls[1][0]
+      expect(perTanggalSql).toContain('SELECT to_date AS koli_date FROM scoped')
+      expect(perTanggalSql).toContain('UNION')
+      expect(perTanggalSql).toContain('AS awb_count')
+      expect(perTanggalSql).toContain('ORDER BY g.koli_date ASC')
+      expect(perTanggalSql).not.toContain('attached_to')
+    })
+
+    it('groups per rute over TO routes unioned with Koli routes, keyed on awb_count', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      await service.getDashboard({})
+
+      const perRuteSql: string = dataSource.query.mock.calls[2][0]
+      expect(perRuteSql).toContain('SELECT origin_name, dest_name FROM scoped')
+      expect(perRuteSql).toContain('UNION')
+      expect(perRuteSql).toContain('AS awb_count')
+      expect(perRuteSql).not.toContain('attached_to')
     })
   })
 

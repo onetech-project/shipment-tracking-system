@@ -14,6 +14,7 @@ import { UpdateSmuDto } from './dto/update-smu.dto'
 import { BulkUpdateSmuDto } from './dto/bulk-update-smu.dto'
 import { SmuListQueryDto } from './dto/smu-list-query.dto'
 import { buildBarhalCsv, BarhalCsvRow } from './barhal-csv.builder'
+import { toRecapMetrics, RecapAggregateRow } from './barhal-recap.builder'
 
 /**
  * Station names come from a manually-maintained Google Sheet, so the same real station
@@ -451,26 +452,22 @@ export class BarhalService {
 
     const koliScopedCte = `koli_scoped AS (SELECT * FROM barhal_koli k ${koliWhere})`
 
-    const perTanggalRows: {
-      date: string
-      total_to: number
-      attached_to: number
-      total_koli: number
-      weight_before: string
-      chwt: string
-      missing_chwt: number
-      weight_increase: string
-      add_revenue: string
-    }[] = await this.dataSource.query(
+    const perTanggalRows: (RecapAggregateRow & { date: string })[] = await this.dataSource.query(
       `
       WITH ${scopedCte},
       ${koliScopedCte},
-      groups AS (SELECT DISTINCT koli_date FROM koli_scoped)
+      groups AS (
+        SELECT to_date AS koli_date FROM scoped
+        UNION
+        SELECT koli_date FROM koli_scoped
+      )
       SELECT
         g.koli_date::text AS date,
         (SELECT COUNT(DISTINCT to_number) FROM scoped s WHERE s.to_date = g.koli_date)::int AS total_to,
-        (SELECT COUNT(DISTINCT bkt.to_number) FROM koli_scoped ks JOIN barhal_koli_to bkt ON bkt.koli_id = ks.id WHERE ks.koli_date = g.koli_date)::int AS attached_to,
         (SELECT COUNT(*) FROM koli_scoped ks WHERE ks.koli_date = g.koli_date)::int AS total_koli,
+        (SELECT COUNT(DISTINCT s.awb)
+           FROM koli_scoped ks JOIN barhal_koli_to bkt ON bkt.koli_id = ks.id JOIN scoped s ON s.to_number = bkt.to_number
+           WHERE ks.koli_date = g.koli_date AND s.awb IS NOT NULL)::int AS awb_count,
         (SELECT COALESCE(SUM(dt.gross_weight), 0)
            FROM (SELECT DISTINCT ON (bkt.to_number) bkt.to_number, s.gross_weight
                  FROM koli_scoped ks JOIN barhal_koli_to bkt ON bkt.koli_id = ks.id JOIN scoped s ON s.to_number = bkt.to_number
@@ -491,53 +488,31 @@ export class BarhalService {
         (SELECT COALESCE(SUM((ks.length_cm + ks.width_cm + ks.height_cm) * 1000), 0)
            FROM koli_scoped ks WHERE ks.koli_date = g.koli_date AND ks.length_cm IS NOT NULL AND ks.width_cm IS NOT NULL AND ks.height_cm IS NOT NULL)::numeric AS add_revenue
       FROM groups g
-      ORDER BY g.koli_date DESC
+      ORDER BY g.koli_date ASC
       `,
       params,
     )
 
-    const toRecapItem = (row: { total_to: number; attached_to: number; total_koli: number; weight_before: string; chwt: string; missing_chwt: number; weight_increase: string; add_revenue: string }) => {
-      const weightBefore = Number(row.weight_before)
-      const weightAfter = weightBefore + Number(row.weight_increase)
-      const variance = weightAfter - weightBefore
-      return {
-        totalTo: row.total_to,
-        totalKoli: row.total_koli,
-        weightBefore,
-        weightAfter,
-        chwt: Number(row.chwt),
-        variance,
-        variancePercent: weightBefore > 0 ? (variance / weightBefore) * 100 : 0,
-        addRevenue: Number(row.add_revenue),
-        status: row.total_to === row.attached_to && row.missing_chwt === 0 ? ('completed' as const) : ('incomplete' as const),
-      }
-    }
-
-    const recapPerTanggal = perTanggalRows.map((row) => ({ date: row.date, ...toRecapItem(row) }))
+    const recapPerTanggal = perTanggalRows.map((row) => ({ date: row.date, ...toRecapMetrics(row) }))
     const chartByDate = recapPerTanggal.map((r) => ({ date: r.date, weightBefore: r.weightBefore, weightAfter: r.weightAfter, chwt: r.chwt }))
 
-    const perRuteRows: {
-      originName: string
-      destName: string
-      total_to: number
-      attached_to: number
-      total_koli: number
-      weight_before: string
-      chwt: string
-      missing_chwt: number
-      weight_increase: string
-      add_revenue: string
-    }[] = await this.dataSource.query(
+    const perRuteRows: (RecapAggregateRow & { originName: string; destName: string })[] = await this.dataSource.query(
       `
       WITH ${scopedCte},
       ${koliScopedCte},
-      groups AS (SELECT DISTINCT origin_name, dest_name FROM koli_scoped)
+      groups AS (
+        SELECT origin_name, dest_name FROM scoped
+        UNION
+        SELECT origin_name, dest_name FROM koli_scoped
+      )
       SELECT
         g.origin_name AS "originName",
         g.dest_name AS "destName",
         (SELECT COUNT(DISTINCT to_number) FROM scoped s WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name)::int AS total_to,
-        (SELECT COUNT(DISTINCT bkt.to_number) FROM koli_scoped ks JOIN barhal_koli_to bkt ON bkt.koli_id = ks.id WHERE ks.origin_name = g.origin_name AND ks.dest_name = g.dest_name)::int AS attached_to,
         (SELECT COUNT(*) FROM koli_scoped ks WHERE ks.origin_name = g.origin_name AND ks.dest_name = g.dest_name)::int AS total_koli,
+        (SELECT COUNT(DISTINCT s.awb)
+           FROM koli_scoped ks JOIN barhal_koli_to bkt ON bkt.koli_id = ks.id JOIN scoped s ON s.to_number = bkt.to_number
+           WHERE ks.origin_name = g.origin_name AND ks.dest_name = g.dest_name AND s.awb IS NOT NULL)::int AS awb_count,
         (SELECT COALESCE(SUM(dt.gross_weight), 0)
            FROM (SELECT DISTINCT ON (bkt.to_number) bkt.to_number, s.gross_weight
                  FROM koli_scoped ks JOIN barhal_koli_to bkt ON bkt.koli_id = ks.id JOIN scoped s ON s.to_number = bkt.to_number
@@ -563,7 +538,7 @@ export class BarhalService {
       params,
     )
 
-    const recapPerRute = perRuteRows.map((row) => ({ originName: row.originName, destName: row.destName, ...toRecapItem(row) }))
+    const recapPerRute = perRuteRows.map((row) => ({ originName: row.originName, destName: row.destName, ...toRecapMetrics(row) }))
 
     const recapBatangKayu = await this.dataSource.query(
       `
