@@ -111,3 +111,33 @@ export function densifyPerTanggal(
   const byDate = new Map(rows.map((row) => [row.date, row]))
   return enumerateDates(start, end).map((date) => byDate.get(date) ?? { date, ...emptyRecapMetrics() })
 }
+
+export interface RouteKey {
+  originName: string
+  destName: string
+}
+
+export interface RecapPerRuteRow extends RecapMetrics, RouteKey {}
+
+/** A NUL byte cannot appear in a station name, so it is a safe composite-key separator. */
+function routeKey(route: RouteKey): string {
+  return `${route.originName}\u0000${route.destName}`
+}
+
+/**
+ * Every barhal route is listed, whether or not it saw activity in the filtered range. Routes present
+ * only in the query result (e.g. a Koli whose route no longer appears in the source sheet) are kept
+ * as well, so this is a union rather than a lookup over masterRoutes.
+ */
+export function densifyPerRute(rows: RecapPerRuteRow[], masterRoutes: RouteKey[]): RecapPerRuteRow[] {
+  const byRoute = new Map(rows.map((row) => [routeKey(row), row]))
+  for (const route of masterRoutes) {
+    const key = routeKey(route)
+    if (!byRoute.has(key)) {
+      byRoute.set(key, { originName: route.originName, destName: route.destName, ...emptyRecapMetrics() })
+    }
+  }
+  return Array.from(byRoute.values()).sort(
+    (a, b) => a.originName.localeCompare(b.originName) || a.destName.localeCompare(b.destName),
+  )
+}

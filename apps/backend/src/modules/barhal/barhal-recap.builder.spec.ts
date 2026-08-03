@@ -4,6 +4,7 @@ import {
   enumerateDates,
   daysInRange,
   densifyPerTanggal,
+  densifyPerRute,
   MAX_RECAP_DAYS,
   RecapAggregateRow,
 } from './barhal-recap.builder'
@@ -164,5 +165,53 @@ describe('densifyPerTanggal', () => {
       '2026-08-02',
       '2026-08-03',
     ])
+  })
+})
+
+describe('densifyPerRute', () => {
+  const master = [
+    { originName: 'Kosambi', destName: 'Badung' },
+    { originName: 'Kosambi', destName: 'Makassar' },
+    { originName: 'Surabaya', destName: 'Badung' },
+  ]
+
+  it('adds every master route that had no activity as a zeroed incomplete row', () => {
+    const rows = [{ originName: 'Kosambi', destName: 'Badung', ...toRecapMetrics(aggregateRow()) }]
+    const result = densifyPerRute(rows, master)
+    expect(result).toHaveLength(3)
+    expect(result[1]).toEqual({ originName: 'Kosambi', destName: 'Makassar', ...emptyRecapMetrics() })
+    expect(result[2]).toEqual({ originName: 'Surabaya', destName: 'Badung', ...emptyRecapMetrics() })
+  })
+
+  it('keeps the queried numbers for routes that are in both sets', () => {
+    const rows = [{ originName: 'Kosambi', destName: 'Badung', ...toRecapMetrics(aggregateRow()) }]
+    const result = densifyPerRute(rows, master)
+    expect(result[0]).toMatchObject({ originName: 'Kosambi', destName: 'Badung', totalTo: 3, status: 'completed' })
+  })
+
+  it('keeps a route that only exists in the query result, not in the master list', () => {
+    const rows = [{ originName: 'Denpasar', destName: 'Kosambi', ...toRecapMetrics(aggregateRow()) }]
+    const result = densifyPerRute(rows, master)
+    expect(result).toHaveLength(4)
+    expect(result.map((r) => `${r.originName}-${r.destName}`)).toContain('Denpasar-Kosambi')
+  })
+
+  it('sorts by origin then destination', () => {
+    const result = densifyPerRute([], [
+      { originName: 'Surabaya', destName: 'Badung' },
+      { originName: 'Kosambi', destName: 'Makassar' },
+      { originName: 'Kosambi', destName: 'Badung' },
+    ])
+    expect(result.map((r) => `${r.originName}-${r.destName}`)).toEqual([
+      'Kosambi-Badung',
+      'Kosambi-Makassar',
+      'Surabaya-Badung',
+    ])
+  })
+
+  it('returns only master routes when the query returned nothing', () => {
+    const result = densifyPerRute([], master)
+    expect(result).toHaveLength(3)
+    expect(result.every((r) => r.status === 'incomplete' && r.totalKoli === 0)).toBe(true)
   })
 })
