@@ -65,3 +65,49 @@ export function emptyRecapMetrics(): RecapMetrics {
     status: 'incomplete',
   }
 }
+
+/** Ceiling on how many dates one Rekap Per Tanggal may span. A full leap year (366) still passes. */
+export const MAX_RECAP_DAYS = 366
+
+const MS_PER_DAY = 86_400_000
+
+export interface RecapPerTanggalRow extends RecapMetrics {
+  date: string
+}
+
+function toUtcMillis(isoDate: string): number {
+  const [year, month, day] = isoDate.slice(0, 10).split('-').map(Number)
+  return Date.UTC(year, month - 1, day)
+}
+
+/**
+ * Inclusive YYYY-MM-DD series. Computed from UTC components rather than local-time Date
+ * arithmetic so a DST transition can never skip or repeat a day.
+ */
+export function enumerateDates(start: string, end: string): string[] {
+  const last = toUtcMillis(end)
+  const dates: string[] = []
+  for (let cursor = toUtcMillis(start); cursor <= last; cursor += MS_PER_DAY) {
+    dates.push(new Date(cursor).toISOString().slice(0, 10))
+  }
+  return dates
+}
+
+/** Inclusive day count for the range, 0 when end precedes start. */
+export function daysInRange(start: string, end: string): number {
+  const diff = toUtcMillis(end) - toUtcMillis(start)
+  return diff < 0 ? 0 : Math.floor(diff / MS_PER_DAY) + 1
+}
+
+/**
+ * One row per calendar date in the range, ascending. Dates the query returned keep their real
+ * numbers — including dates that have TOs but no Koli yet — everything else becomes a zero row.
+ */
+export function densifyPerTanggal(
+  rows: RecapPerTanggalRow[],
+  start: string,
+  end: string,
+): RecapPerTanggalRow[] {
+  const byDate = new Map(rows.map((row) => [row.date, row]))
+  return enumerateDates(start, end).map((date) => byDate.get(date) ?? { date, ...emptyRecapMetrics() })
+}
