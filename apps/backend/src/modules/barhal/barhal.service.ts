@@ -17,9 +17,11 @@ import { buildBarhalCsv, BarhalCsvRow } from './barhal-csv.builder'
 import {
   toRecapMetrics,
   densifyPerTanggal,
+  densifyPerRute,
   daysInRange,
   MAX_RECAP_DAYS,
   RecapAggregateRow,
+  RouteKey,
 } from './barhal-recap.builder'
 
 /**
@@ -553,7 +555,43 @@ export class BarhalService {
       params,
     )
 
-    const recapPerRute = perRuteRows.map((row) => ({ originName: row.originName, destName: row.destName, ...toRecapMetrics(row) }))
+    // Deliberately not date-filtered: the route list must stay the same from month to month, so a
+    // route with no shipments in the selected range still shows up as an all-zero incomplete row.
+    const routeParams: unknown[] = []
+    const routeConditions: string[] = [
+      `e.remarks ILIKE '%barhal%'`,
+      `e.to_number IS NOT NULL`,
+      `e.completed_date IS NOT NULL`,
+      `e.origin_station IS NOT NULL`,
+      `e.origin_station != ''`,
+      `e.dest_station IS NOT NULL`,
+      `e.dest_station != ''`,
+    ]
+    if (dto.origin) {
+      routeParams.push(dto.origin)
+      routeConditions.push(`${this.normalizedStationSql('e.origin_station')} = $${routeParams.length}`)
+    }
+    if (dto.dest) {
+      routeParams.push(dto.dest)
+      routeConditions.push(`${this.normalizedStationSql('e.dest_station')} = $${routeParams.length}`)
+    }
+
+    const masterRoutes: RouteKey[] = await this.dataSource.query(
+      `
+      SELECT DISTINCT
+        ${this.normalizedStationSql('e.origin_station')} AS "originName",
+        ${this.normalizedStationSql('e.dest_station')}   AS "destName"
+      FROM air_shipments_compileaircgk e
+      WHERE ${routeConditions.join(' AND ')}
+      ORDER BY 1, 2
+      `,
+      routeParams,
+    )
+
+    const recapPerRute = densifyPerRute(
+      perRuteRows.map((row) => ({ originName: row.originName, destName: row.destName, ...toRecapMetrics(row) })),
+      masterRoutes,
+    )
 
     const recapBatangKayu = await this.dataSource.query(
       `

@@ -266,6 +266,7 @@ describe('BarhalService', () => {
         .mockResolvedValueOnce([
           { originName: 'Kosambi', destName: 'Badung', total_to: 3, awb_count: 2, total_koli: 2, weight_before: 30, chwt: 25, missing_chwt: 1, weight_increase: 6, add_revenue: 500 },
         ]) // recapPerRute
+        .mockResolvedValueOnce([]) // masterRoutes
         .mockResolvedValueOnce([
           { date: '2026-06-01', totalKoli: 2, totalP: 100, totalL: 80, totalT: 60, totalVolume: 80, totalBatangKayu: 10 },
         ]) // recapBatangKayu
@@ -309,6 +310,7 @@ describe('BarhalService', () => {
         .mockResolvedValueOnce([{ date: '2026-06-01', total_to: 0, awb_count: 0, total_koli: 0, weight_before: 0, chwt: 0, missing_chwt: 0, weight_increase: 0, add_revenue: 0 }])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
 
       const result = await service.getDashboard({})
       expect(result.recapPerTanggal[0].variancePercent).toBe(0)
@@ -320,6 +322,7 @@ describe('BarhalService', () => {
         .mockResolvedValueOnce([{ date: '2026-06-01', total_to: 10, awb_count: 2, total_koli: 1, weight_before: 30, chwt: 25, missing_chwt: 0, weight_increase: 6, add_revenue: 0 }])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
 
       const result = await service.getDashboard({})
       expect(result.recapPerTanggal[0].status).toBe('completed')
@@ -328,6 +331,7 @@ describe('BarhalService', () => {
     it('groups per tanggal over TO dates unioned with Koli dates, ascending, keyed on awb_count', async () => {
       dataSource.query
         .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
+        .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
@@ -345,6 +349,7 @@ describe('BarhalService', () => {
     it('groups per rute over TO routes unioned with Koli routes, keyed on awb_count', async () => {
       dataSource.query
         .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
+        .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
@@ -366,6 +371,7 @@ describe('BarhalService', () => {
         ])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
 
       const result = await service.getDashboard({ startDate: '2026-06-01', endDate: '2026-06-04' })
 
@@ -382,6 +388,7 @@ describe('BarhalService', () => {
         ])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
 
       const result = await service.getDashboard({})
       expect(result.recapPerTanggal.map((r) => r.date)).toEqual(['2026-06-02'])
@@ -393,6 +400,7 @@ describe('BarhalService', () => {
         .mockResolvedValueOnce([
           { date: '2026-06-02', total_to: 1, awb_count: 1, total_koli: 1, weight_before: 10, chwt: 9, missing_chwt: 0, weight_increase: 2, add_revenue: 0 },
         ])
+        .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
 
@@ -413,9 +421,50 @@ describe('BarhalService', () => {
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
 
       const result = await service.getDashboard({ startDate: '2024-01-01', endDate: '2024-12-31' })
       expect(result.recapPerTanggal).toHaveLength(366)
+    })
+
+    it('lists every barhal route, zero-filling the ones with no activity in range', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 1, total_to: 1, weight_before: 10, weight_increase: 2, batang_kayu: 0 }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          { originName: 'Kosambi', destName: 'Badung', total_to: 1, awb_count: 1, total_koli: 1, weight_before: 10, chwt: 9, missing_chwt: 0, weight_increase: 2, add_revenue: 0 },
+        ])
+        .mockResolvedValueOnce([
+          { originName: 'Kosambi', destName: 'Badung' },
+          { originName: 'Kosambi', destName: 'Makassar' },
+        ])
+        .mockResolvedValueOnce([])
+
+      const result = await service.getDashboard({})
+
+      expect(result.recapPerRute.map((r) => `${r.originName}-${r.destName}`)).toEqual([
+        'Kosambi-Badung',
+        'Kosambi-Makassar',
+      ])
+      expect(result.recapPerRute[0]).toMatchObject({ totalKoli: 1, status: 'completed' })
+      expect(result.recapPerRute[1]).toMatchObject({ totalTo: 0, totalKoli: 0, chwt: 0, status: 'incomplete' })
+    })
+
+    it('queries master routes across all barhal TOs, unfiltered by date but narrowed by origin/dest', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      await service.getDashboard({ startDate: '2026-06-01', endDate: '2026-06-02', origin: 'Kosambi', dest: 'Badung' })
+
+      const [sql, sqlParams] = dataSource.query.mock.calls[3]
+      expect(sql).toContain('FROM air_shipments_compileaircgk e')
+      expect(sql).toContain("e.remarks ILIKE '%barhal%'")
+      expect(sql).not.toContain('completed_date BETWEEN')
+      expect(sqlParams).toEqual(['Kosambi', 'Badung'])
     })
   })
 
