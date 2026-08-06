@@ -1,6 +1,12 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/client'
-import { BarhalDashboardStats, BarhalToDetailResponse, BarhalToDetailTab } from '../types'
+import {
+  BarhalDashboardStats,
+  BarhalRecapPerRuteItem,
+  BarhalRecapPerTanggalItem,
+  BarhalToDetailResponse,
+  BarhalToDetailTab,
+} from '../types'
 
 export interface BarhalDashboardParams {
   startDate?: string
@@ -37,5 +43,22 @@ export function useBarhalToDetail(params: BarhalToDetailParams) {
     queryKey: ['barhal', 'to-detail', params],
     queryFn: () => apiClient.get('/barhal/to-detail', { params }).then((r) => r.data),
     staleTime: 30 * 1000,
+  })
+}
+
+export interface BarhalDrilldownParams extends BarhalDashboardParams {
+  groupBy: 'route' | 'date'
+}
+
+/**
+ * Rincian satu baris rekap. `enabled` bernilai false sampai barisnya dibuka, sehingga
+ * tidak ada request yang terkirim saat halaman dimuat.
+ */
+export function useBarhalRecapDrilldown(params: BarhalDrilldownParams, enabled: boolean) {
+  return useQuery<BarhalRecapPerTanggalItem[] | BarhalRecapPerRuteItem[]>({
+    queryKey: ['barhal', 'drilldown', params],
+    queryFn: () => apiClient.get('/barhal/dashboard/drilldown', { params }).then((r) => r.data),
+    staleTime: 30 * 1000,
+    enabled,
   })
 }

@@ -26,12 +26,13 @@ function BarhalDashboardContent() {
   const [isExporting, setIsExporting] = useState(false)
 
   const { data: stations } = useBarhalStations()
-  const { data, isLoading, isError, refetch } = useBarhalDashboardStats({
+  const filters = {
     startDate: startDate || undefined,
     endDate: endDate || undefined,
     origin: origin || undefined,
     dest: dest || undefined,
-  })
+  }
+  const { data, isLoading, isError, refetch } = useBarhalDashboardStats(filters)
 
   const handleExport = async () => {
     setIsExporting(true)
@@ -126,12 +127,22 @@ function BarhalDashboardContent() {
 
           <div>
             <p className="mb-2 text-sm font-medium">Rekap Per Tanggal</p>
-            <BarhalRecapToTable rows={data.recapPerTanggal} groupColumnLabel="Date" />
+            <BarhalRecapToTable
+              rows={data.recapPerTanggal}
+              groupColumnLabel="Date"
+              groupBy="date"
+              filters={filters}
+            />
           </div>
 
           <div>
             <p className="mb-2 text-sm font-medium">Rekap Per Rute</p>
-            <BarhalRecapToTable rows={data.recapPerRute} groupColumnLabel="Rute" />
+            <BarhalRecapToTable
+              rows={data.recapPerRute}
+              groupColumnLabel="Rute"
+              groupBy="route"
+              filters={filters}
+            />
           </div>
         </>
       )}
