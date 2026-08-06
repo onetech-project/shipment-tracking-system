@@ -14,6 +14,7 @@ import { BulkUpdateSmuDto } from './dto/bulk-update-smu.dto'
 import { ListBarhalKoliDto } from './dto/list-barhal-koli.dto'
 import { AvailableToDto } from './dto/available-to.dto'
 import { BarhalDashboardQueryDto } from './dto/barhal-dashboard-query.dto'
+import { BarhalDrilldownQueryDto } from './dto/barhal-drilldown-query.dto'
 import { SmuListQueryDto } from './dto/smu-list-query.dto'
 import { BarhalToDetailQueryDto } from './dto/barhal-to-detail-query.dto'
 
@@ -99,6 +100,12 @@ export class BarhalController {
   @Authorize(Permission.READ_BARHAL)
   getDashboard(@Query() dto: BarhalDashboardQueryDto) {
     return this.service.getDashboard(dto)
+  }
+
+  @Get('dashboard/drilldown')
+  @Authorize(Permission.READ_BARHAL)
+  getDrilldown(@Query() dto: BarhalDrilldownQueryDto) {
+    return this.service.getDrilldown(dto)
   }
 
   @Get('to-detail')

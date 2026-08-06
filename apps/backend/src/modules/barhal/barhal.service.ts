@@ -8,6 +8,7 @@ import { AttachTosDto } from './dto/attach-tos.dto'
 import { ListBarhalKoliDto } from './dto/list-barhal-koli.dto'
 import { AvailableToDto } from './dto/available-to.dto'
 import { BarhalDashboardQueryDto } from './dto/barhal-dashboard-query.dto'
+import { BarhalDrilldownQueryDto } from './dto/barhal-drilldown-query.dto'
 import { BarhalToDetailQueryDto } from './dto/barhal-to-detail-query.dto'
 import { UpdatePackingDto } from './dto/update-packing.dto'
 import { UpdateSmuDto } from './dto/update-smu.dto'
@@ -21,6 +22,8 @@ import {
   daysInRange,
   MAX_RECAP_DAYS,
   RecapAggregateRow,
+  RecapPerTanggalRow,
+  RecapPerRuteRow,
   RouteKey,
 } from './barhal-recap.builder'
 
@@ -666,6 +669,30 @@ export class BarhalService {
       recapPerTanggal,
       recapPerRute,
     }
+  }
+
+  /**
+   * Rincian satu baris rekap. Memakai SQL agregat yang sama persis dengan dashboard,
+   * sehingga angkanya pasti rekonsiliasi dengan baris induknya.
+   *
+   * Densifikasi sengaja dilewati: mengisi seluruh tanggal kalender atau seluruh rute master
+   * di dalam baris yang dibuka hanya menghasilkan puluhan baris nol. Drilldown hanya
+   * menampilkan grup yang benar-benar ada aktivitasnya.
+   */
+  async getDrilldown(dto: BarhalDrilldownQueryDto): Promise<RecapPerTanggalRow[] | RecapPerRuteRow[]> {
+    if (dto.startDate && dto.endDate && daysInRange(dto.startDate, dto.endDate) > MAX_RECAP_DAYS) {
+      throw new BadRequestException(`Date range must not exceed ${MAX_RECAP_DAYS} days`)
+    }
+
+    const { params, scopedCte, koliScopedCte } = this.buildScopeSql(dto)
+
+    if (dto.groupBy === 'route') {
+      const rows = await this.queryPerRute(scopedCte, koliScopedCte, params)
+      return rows.map((row) => ({ originName: row.originName, destName: row.destName, ...toRecapMetrics(row) }))
+    }
+
+    const rows = await this.queryPerTanggal(scopedCte, koliScopedCte, params)
+    return rows.map((row) => ({ date: row.date, ...toRecapMetrics(row) }))
   }
 
   /**

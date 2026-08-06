@@ -4,6 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm'
 import { BarhalService, normalizeStationName } from './barhal.service'
 import { BarhalKoli } from './entities/barhal-koli.entity'
 import { BarhalKoliTo } from './entities/barhal-koli-to.entity'
+import { RecapPerRuteRow } from './barhal-recap.builder'
 
 describe('normalizeStationName', () => {
   it('strips a trailing "DC" suffix and trims whitespace', () => {
@@ -465,6 +466,102 @@ describe('BarhalService', () => {
       expect(sql).toContain("e.remarks ILIKE '%barhal%'")
       expect(sql).not.toContain('completed_date BETWEEN')
       expect(sqlParams).toEqual(['Kosambi', 'Badung'])
+    })
+  })
+
+  describe('getDrilldown', () => {
+    it('groups by route for a single date, without zero-filling master routes', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { originName: 'Kosambi', destName: 'Badung', total_to: 3, awb_count: 2, total_koli: 2, weight_before: 30, chwt: 25, missing_chwt: 0, weight_increase: 6, add_revenue: 500 },
+      ])
+
+      const rows = await service.getDrilldown({ groupBy: 'route', startDate: '2026-06-01', endDate: '2026-06-01' })
+
+      expect(dataSource.query).toHaveBeenCalledTimes(1)
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({
+        originName: 'Kosambi',
+        destName: 'Badung',
+        totalTo: 3,
+        totalKoli: 2,
+        weightBefore: 30,
+        weightAfter: 36,
+        chwt: 25,
+        variance: 6,
+        addRevenue: 500,
+        status: 'completed',
+      })
+    })
+
+    it('groups by date for a single route, without zero-filling the calendar', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { date: '2026-06-03', total_to: 1, awb_count: 1, total_koli: 1, weight_before: 10, chwt: 8, missing_chwt: 0, weight_increase: 2, add_revenue: 100 },
+      ])
+
+      const rows = await service.getDrilldown({
+        groupBy: 'date',
+        startDate: '2026-06-01',
+        endDate: '2026-06-30',
+        origin: 'Kosambi',
+        dest: 'Badung',
+      })
+
+      // Rentangnya 30 hari, tapi drilldown hanya mengembalikan hari yang ada aktivitasnya.
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ date: '2026-06-03', totalTo: 1, status: 'completed' })
+    })
+
+    it('binds the date range, origin and dest as query parameters', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.getDrilldown({
+        groupBy: 'date',
+        startDate: '2026-06-01',
+        endDate: '2026-06-30',
+        origin: 'Kosambi',
+        dest: 'Badung',
+      })
+
+      const [, params] = dataSource.query.mock.calls[0]
+      expect(params).toEqual(['2026-06-01', '2026-06-30', 'Kosambi', 'Badung'])
+    })
+
+    it('returns an empty array when the group has no activity', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+      const rows = await service.getDrilldown({ groupBy: 'route', startDate: '2026-06-01', endDate: '2026-06-01' })
+      expect(rows).toEqual([])
+    })
+
+    it('rejects a range longer than 366 days without running any query', async () => {
+      await expect(
+        service.getDrilldown({ groupBy: 'route', startDate: '2026-01-01', endDate: '2027-06-01' }),
+      ).rejects.toThrow(/366/)
+      expect(dataSource.query).not.toHaveBeenCalled()
+    })
+
+    it('reconciles: per-route drilldown totals for a date match that date\'s parent row', async () => {
+      // Baris induk Rekap Per Tanggal untuk 2026-06-01.
+      dataSource.query.mockResolvedValueOnce([
+        { date: '2026-06-01', total_to: 5, awb_count: 2, total_koli: 3, weight_before: 50, chwt: 40, missing_chwt: 0, weight_increase: 10, add_revenue: 900 },
+      ])
+      const parent = await service.getDrilldown({ groupBy: 'date', startDate: '2026-06-01', endDate: '2026-06-01' })
+
+      dataSource.query.mockResolvedValueOnce([
+        { originName: 'Kosambi', destName: 'Badung', total_to: 2, awb_count: 1, total_koli: 1, weight_before: 20, chwt: 15, missing_chwt: 0, weight_increase: 4, add_revenue: 400 },
+        { originName: 'Kosambi', destName: 'Batam', total_to: 3, awb_count: 1, total_koli: 2, weight_before: 30, chwt: 25, missing_chwt: 0, weight_increase: 6, add_revenue: 500 },
+      ])
+      const children = await service.getDrilldown({ groupBy: 'route', startDate: '2026-06-01', endDate: '2026-06-01' })
+
+      // Cast diperlukan: getDrilldown mengembalikan union dua tipe array, dan `.reduce`
+      // tidak dapat dipanggil langsung di atas union seperti itu.
+      const sum = (key: 'totalTo' | 'totalKoli' | 'weightBefore' | 'chwt' | 'addRevenue') =>
+        (children as RecapPerRuteRow[]).reduce((acc, row) => acc + row[key], 0)
+
+      expect(sum('totalTo')).toBe(parent[0].totalTo)
+      expect(sum('totalKoli')).toBe(parent[0].totalKoli)
+      expect(sum('weightBefore')).toBe(parent[0].weightBefore)
+      expect(sum('chwt')).toBe(parent[0].chwt)
+      expect(sum('addRevenue')).toBe(parent[0].addRevenue)
     })
   })
 
