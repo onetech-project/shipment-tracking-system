@@ -70,6 +70,7 @@ describe('BarhalService', () => {
       await service.getAvailableTos({})
       const [sql] = dataSource.query.mock.calls[0]
       expect(sql).toMatch(/DISTINCT ON \(origin_dc, destination_dc\)/)
+      expect(sql).toMatch(/ORDER BY origin_dc, destination_dc, service/)
     })
 
     it('drops TOs whose route is missing from the master and reports how many', async () => {
@@ -106,6 +107,7 @@ describe('BarhalService', () => {
       const [sql] = dataSource.query.mock.calls[0]
       expect(sql).toMatch(/air_shipments_data/)
       expect(sql).toMatch(/rm\.origin_dc\s*=\s*c\.extra_fields->>'origin'/)
+      expect(sql).toMatch(/rm\.destination_dc\s*=\s*c\.extra_fields->>'destination'/)
       expect(stations.origins).toEqual(['Jabo', 'Surabaya'])
       expect(stations.dests).toEqual(['Batam', 'Makassar'])
     })
