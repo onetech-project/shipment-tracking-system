@@ -178,10 +178,10 @@ deterministik lewat `ORDER BY ... service` aman.
 
 ### `getAvailableTos`
 
-**INNER JOIN** ke `route_master`:
+Join ke `route_master`:
 
 ```sql
-JOIN route_master rm
+LEFT JOIN route_master rm
   ON rm.origin_dc      = c.extra_fields->>'origin'
  AND rm.destination_dc = c.extra_fields->>'destination'
 ```
@@ -189,6 +189,12 @@ JOIN route_master rm
 Baris yang dikembalikan memakai `rm.origin_station` / `rm.dest_station` sebagai `origin_station` /
 `dest_station`. Karena filter `normalizeStationName` yang sudah ada berjalan di atas nilai hasil join
 ini, syarat "filter ikut hasil join" terpenuhi tanpa mengubah logika filter itu sendiri.
+
+Join-nya **LEFT**, bukan INNER, lalu baris tanpa pasangan dibuang di aplikasi. Hasil akhir yang
+dikembalikan identik dengan INNER JOIN — TO tanpa rute master tetap tidak muncul — tetapi baris itu
+sempat terlihat sehingga bisa dihitung untuk `unmatchedRouteCount`. Angka itu mustahil didapat kalau
+barisnya sudah dibuang di tingkat SQL. `getStations` tidak memerlukan hitungan tersebut, jadi memakai
+`JOIN` biasa.
 
 ### `getStations`
 

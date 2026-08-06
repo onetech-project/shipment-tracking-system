@@ -28,51 +28,50 @@ bagian 1 spesifikasi.
 
 ---
 
-### Task 1: Pasang runner unit test frontend
+### Task 1: Rapikan runner unit test frontend
 
-Frontend punya dependency Jest terpasang dan `"types": ["node", "jest"]` di tsconfig, tetapi **tidak** punya config Jest maupun script `test`. Akibatnya `src/features/barhal/utils/monthRange.spec.ts` yang sudah ada tidak pernah dijalankan. Task 2 butuh runner ini.
+`apps/frontend/jest.config.ts` **sudah ada** dan berfungsi (preset `ts-jest`, environment jsdom) —
+jangan membuat config baru. Ada dua kekurangan yang menghalangi task berikutnya:
 
-Catatan: `jest-environment-jsdom` terpasang di versi `30.3.0` sementara `jest` di `29.7.0` — beda major dan tidak dapat diandalkan. Task ini memakai `testEnvironment: 'node'` karena seluruh test dalam rencana ini menguji fungsi murni, sehingga jsdom tidak diperlukan sama sekali. Kalau nanti ada test komponen, `jest-environment-jsdom` harus di-pin ke `^29.7.0` lebih dulu.
+1. `package.json` tidak punya script `test`, sehingga `pnpm -r run test` melewati frontend dan
+   satu-satunya cara menjalankan test adalah `pnpm exec jest` manual.
+2. `testRegex` ikut menjaring spec Playwright di `apps/frontend/e2e/`, sehingga 12 suite gagal
+   dimuat setiap kali jest dijalankan tanpa flag tambahan. Ini masalah lama yang sudah tercatat.
+
+Baseline terverifikasi: dengan `e2e/` dikecualikan, ada **3 suite / 15 test** yang lulus
+(`monthRange`, `invoicePeriod`, `useSyncNotification`). Angka itu harus tetap sama setelah task ini.
+
+Jangan mengubah `testEnvironment` maupun versi `jest-environment-jsdom`. Kombinasi yang ada sekarang
+berjalan baik; mengutak-atiknya di luar cakupan rencana ini.
 
 **Files:**
-- Create: `apps/frontend/jest.config.js`
+- Modify: `apps/frontend/jest.config.ts` (tambah `testPathIgnorePatterns`)
 - Modify: `apps/frontend/package.json:5-13` (blok `scripts`)
 
 **Interfaces:**
 - Consumes: tidak ada.
-- Produces: perintah `pnpm test` di `apps/frontend` yang menjalankan seluruh `*.spec.ts` di bawah `src/`.
+- Produces: perintah `pnpm test` di `apps/frontend` yang menjalankan seluruh `*.spec.ts` / `*.spec.tsx`
+  di bawah `src/` dan mengabaikan `e2e/`.
 
-- [ ] **Step 1: Jalankan test yang ada untuk memastikan memang belum jalan**
+- [ ] **Step 1: Buktikan kedua masalahnya nyata**
 
 Run: `cd apps/frontend && pnpm test`
-Expected: FAIL — `Command "test" not found` (membuktikan runner-nya memang belum ada).
+Expected: FAIL — `Command "test" not found`.
 
-- [ ] **Step 2: Buat config Jest**
+Run: `cd apps/frontend && pnpm exec jest --listTests`
+Expected: keluarannya memuat berkas di bawah `e2e/` (mis. `e2e/auth/login.spec.ts`) — inilah yang
+akan dikecualikan.
 
-Create `apps/frontend/jest.config.js`:
+- [ ] **Step 2: Kecualikan `e2e/` dari jest**
 
-```js
-const nextJest = require('next/jest')
+Di `apps/frontend/jest.config.ts`, tambahkan satu field pada objek `config`, tepat setelah
+`testRegex`:
 
-const createJestConfig = nextJest({ dir: './' })
-
-/** @type {import('jest').Config} */
-const config = {
-  // Seluruh unit test frontend saat ini menguji fungsi murni, jadi jsdom tidak diperlukan.
-  // Ini juga menghindari jest-environment-jsdom@30 yang tidak cocok dengan jest@29.
-  testEnvironment: 'node',
-  testMatch: ['<rootDir>/src/**/*.spec.ts', '<rootDir>/src/**/*.spec.tsx'],
-  testPathIgnorePatterns: ['<rootDir>/.next/', '<rootDir>/node_modules/', '<rootDir>/e2e/'],
-  moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/src/$1',
-    '^@shared/(.*)$': '<rootDir>/../../packages/shared/src/$1',
-  },
-}
-
-module.exports = createJestConfig(config)
+```ts
+  testRegex: '.*\\.spec\\.(ts|tsx)$',
+  // e2e/ berisi spec Playwright yang tidak dapat dimuat oleh jest.
+  testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/.next/', '<rootDir>/e2e/'],
 ```
-
-`testMatch` sengaja dibatasi ke `src/` agar Playwright di `apps/frontend/e2e/` tidak ikut terambil.
 
 - [ ] **Step 3: Tambahkan script `test`**
 
@@ -99,16 +98,18 @@ Sehingga blok `scripts` menjadi:
   },
 ```
 
-- [ ] **Step 4: Jalankan test dan pastikan spec lama sekarang hijau**
+- [ ] **Step 4: Jalankan test dan bandingkan dengan baseline**
 
 Run: `cd apps/frontend && pnpm test`
-Expected: PASS — 1 suite (`monthRange.spec.ts`), 5 test lulus.
+Expected: PASS — **3 suite / 15 test** (`monthRange.spec.ts`, `invoicePeriod.spec.ts`,
+`useSyncNotification.spec.tsx`), tanpa satu pun suite `e2e/` yang gagal dimuat. Kalau jumlahnya
+berbeda dari 3/15, hentikan dan laporkan.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add apps/frontend/jest.config.js apps/frontend/package.json
-git commit -m "test(frontend): wire up jest runner so unit specs actually execute"
+git add apps/frontend/jest.config.ts apps/frontend/package.json
+git commit -m "test(frontend): add test script and stop jest from loading playwright specs"
 ```
 
 ---
@@ -233,7 +234,7 @@ export function toDateTimeLocalInput(value: string | null | undefined): string {
 - [ ] **Step 4: Jalankan test dan pastikan lulus**
 
 Run: `cd apps/frontend && pnpm test dateFormat`
-Expected: PASS — 9 test lulus.
+Expected: PASS — 9 test dateFormat lulus.
 
 - [ ] **Step 5: Commit**
 
@@ -491,7 +492,7 @@ menjadi:
 - [ ] **Step 9: Verifikasi type-check dan test**
 
 Run: `cd apps/frontend && pnpm type-check && pnpm test`
-Expected: type-check bersih tanpa error; test PASS (14 test: 5 monthRange + 9 dateFormat).
+Expected: type-check bersih tanpa error; test PASS — 4 suite / 24 test (15 baseline + 9 dateFormat).
 
 - [ ] **Step 10: Commit**
 
@@ -1313,7 +1314,7 @@ Lalu ganti kedua pemakaian `BarhalRecapToTable` (baris 127-135) menjadi:
 - [ ] **Step 4: Verifikasi type-check dan test**
 
 Run: `cd apps/frontend && pnpm type-check && pnpm test`
-Expected: type-check bersih; test PASS (14 test).
+Expected: type-check bersih; test PASS — 4 suite / 24 test.
 
 - [ ] **Step 5: Verifikasi manual di aplikasi**
 
@@ -1726,7 +1727,7 @@ Di `Step1CreateKoli.tsx`, pada cabang pembuatan Koli baru, grid tiga kolom (Tang
 - [ ] **Step 6: Verifikasi type-check dan test**
 
 Run: `cd apps/frontend && pnpm type-check && pnpm test`
-Expected: type-check bersih; test PASS (14 test).
+Expected: type-check bersih; test PASS — 4 suite / 24 test.
 
 - [ ] **Step 7: Verifikasi manual di aplikasi**
 
@@ -1762,4 +1763,4 @@ Expected: seluruh suite hijau.
 git diff --stat main -- apps/frontend/src | grep -v "features/barhal\|app/(dashboard)/barhal"
 ```
 
-Expected: tidak ada keluaran (kecuali `jest.config.js` dan `package.json` dari Task 1).
+Expected: tidak ada keluaran (kecuali `jest.config.ts` dan `package.json` dari Task 1).
