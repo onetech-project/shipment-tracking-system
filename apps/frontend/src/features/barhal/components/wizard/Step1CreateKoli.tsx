@@ -140,6 +140,10 @@ export function Step1CreateKoli({ koli: existingKoli, onCreated }: Step1CreateKo
         </div>
       </div>
 
+      <p className="text-xs text-muted-foreground">
+        Hanya rute yang terdaftar di master air_shipments_data yang tersedia.
+      </p>
+
       <div className="space-y-1.5">
         <label className="text-sm font-medium">Komoditi</label>
         <select

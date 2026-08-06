@@ -69,9 +69,11 @@ export function Step2SelectTos({ koli, onAttached }: Step2SelectTosProps) {
   })
   const attachTos = useAttachTos(koli.id)
 
+  const toOptions = availableTos?.data ?? []
+
   const selectedRows = useMemo(
-    () => (availableTos ?? []).filter((t) => selected.includes(t.to_number)),
-    [availableTos, selected],
+    () => toOptions.filter((t) => selected.includes(t.to_number)),
+    [toOptions, selected],
   )
   const totalWeight = selectedRows.reduce((sum, t) => sum + Number(t.gross_weight ?? 0), 0)
 
@@ -130,7 +132,13 @@ export function Step2SelectTos({ koli, onAttached }: Step2SelectTosProps) {
         </select>
       </div>
 
-      <ToMultiSelect options={availableTos ?? []} selected={selected} onChange={setSelected} isLoading={isLoading} />
+      <ToMultiSelect
+        options={toOptions}
+        selected={selected}
+        onChange={setSelected}
+        isLoading={isLoading}
+        unmatchedRouteCount={availableTos?.unmatchedRouteCount}
+      />
 
       <div className="flex flex-wrap items-start gap-3 text-sm">
         <span className="shrink-0 rounded-full bg-muted px-3 py-1">Dipilih: {selected.length} TO</span>

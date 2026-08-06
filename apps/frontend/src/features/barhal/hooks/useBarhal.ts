@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/client'
 import {
-  AvailableTo,
+  AvailableToResponse,
   BarhalKoli,
   BarhalSmuListItem,
   BarhalStations,
@@ -47,7 +47,7 @@ export function useBarhalKoliDetail(id: string | null) {
 }
 
 export function useAvailableTos(params: { origin?: string; dest?: string; date?: string; search?: string; koliId?: string }) {
-  return useQuery<AvailableTo[]>({
+  return useQuery<AvailableToResponse>({
     queryKey: ['barhal', 'available-tos', params],
     queryFn: () => apiClient.get('/barhal/available-tos', { params }).then((r) => r.data),
     staleTime: 15 * 1000,

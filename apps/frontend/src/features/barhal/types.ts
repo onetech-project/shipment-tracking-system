@@ -44,6 +44,15 @@ export interface AvailableTo {
   vendor: 'ESP'
 }
 
+export interface AvailableToResponse {
+  data: AvailableTo[]
+  /**
+   * TO yang lolos pencarian tapi dibuang karena rutenya belum terdaftar di master
+   * air_shipments_data. Tidak dipersempit filter origin/dest.
+   */
+  unmatchedRouteCount: number
+}
+
 export interface CreateKoliShellPayload {
   koliDate: string
   origin: string

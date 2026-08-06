@@ -9,12 +9,14 @@ interface ToMultiSelectProps {
   selected: string[]
   onChange: (toNumbers: string[]) => void
   isLoading?: boolean
+  /** TO yang tersaring karena rutenya belum terdaftar di master air_shipments_data. */
+  unmatchedRouteCount?: number
 }
 
 const fmt = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 })
 const AVAILABLE_TOS_LIMIT = 100
 
-export function ToMultiSelect({ options, selected, onChange, isLoading }: ToMultiSelectProps) {
+export function ToMultiSelect({ options, selected, onChange, isLoading, unmatchedRouteCount }: ToMultiSelectProps) {
   const [search, setSearch] = useState('')
   const selectedSet = new Set(selected)
 
@@ -80,6 +82,11 @@ export function ToMultiSelect({ options, selected, onChange, isLoading }: ToMult
       {!isLoading && !search.trim() && options.length >= AVAILABLE_TOS_LIMIT && (
         <p className="border-t border-border px-3 py-2 text-center text-xs text-muted-foreground">
           Tidak menemukan data? Ketik nomor TO untuk pencarian.
+        </p>
+      )}
+      {!isLoading && !!unmatchedRouteCount && unmatchedRouteCount > 0 && (
+        <p className="border-t border-border px-3 py-2 text-center text-xs text-amber-600">
+          {unmatchedRouteCount} TO disembunyikan — rutenya belum terdaftar di master air_shipments_data.
         </p>
       )}
     </div>
