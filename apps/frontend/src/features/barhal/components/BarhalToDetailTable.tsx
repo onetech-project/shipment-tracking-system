@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useBarhalToDetail } from '../hooks/useBarhalDashboard'
 import { BarhalToDetailTab } from '../types'
+import { formatDate } from '../utils/dateFormat'
 
 const TABS: { key: BarhalToDetailTab; label: string }[] = [
   { key: 'in-koli', label: 'TO dalam koli' },
@@ -100,7 +101,7 @@ export function BarhalToDetailTable({ startDate, endDate, origin, dest }: Barhal
             ) : (
               data!.data.map((row) => (
                 <tr key={row.toNumber} className="hover:bg-accent/30">
-                  <td className="px-3 py-2">{row.date}</td>
+                  <td className="px-3 py-2">{formatDate(row.date)}</td>
                   <td className="px-3 py-2">{row.originName}</td>
                   <td className="px-3 py-2">{row.destName}</td>
                   <td className="px-3 py-2">{row.toNumber}</td>

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useBarhalList, useBarhalStations, useCreateKoliShell } from '../../hooks/useBarhal'
 import { BarhalKoli } from '../../types'
+import { formatDate } from '../../utils/dateFormat'
 
 interface Step1CreateKoliProps {
   koli?: BarhalKoli
@@ -60,7 +61,7 @@ export function Step1CreateKoli({ koli: existingKoli, onCreated }: Step1CreateKo
         <div className="grid grid-cols-3 gap-3">
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Tanggal</label>
-            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">{existingKoli.koli_date}</div>
+            <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">{formatDate(existingKoli.koli_date)}</div>
           </div>
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Origin</label>

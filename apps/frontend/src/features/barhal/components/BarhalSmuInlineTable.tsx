@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useUpdateSmu } from '../hooks/useBarhal'
 import { BarhalKoli } from '../types'
+import { formatDate, formatDateTime, toDateTimeLocalInput } from '../utils/dateFormat'
 
 interface BarhalSmuInlineTableProps {
   data: BarhalKoli[]
@@ -14,8 +15,10 @@ function SmuRow({ koli, onSaved }: { koli: BarhalKoli; onSaved: () => void }) {
   const [editing, setEditing] = useState(false)
   const [airlines, setAirlines] = useState(koli.airlines ?? '')
   const [flightNo, setFlightNo] = useState(koli.flight_no ?? '')
-  const [std, setStd] = useState(koli.std ? koli.std.slice(0, 16) : '')
-  const [sta, setSta] = useState(koli.sta ? koli.sta.slice(0, 16) : '')
+  // `.slice(0, 16)` dulu menghasilkan jam dinding UTC, sehingga input berselisih dengan
+  // tampilan sebesar offset zona. Keduanya kini sama-sama waktu lokal browser.
+  const [std, setStd] = useState(toDateTimeLocalInput(koli.std))
+  const [sta, setSta] = useState(toDateTimeLocalInput(koli.sta))
   const [smuNumber, setSmuNumber] = useState(koli.smu_number ?? '')
 
   const updateSmu = useUpdateSmu(koli.id)
@@ -37,7 +40,7 @@ function SmuRow({ koli, onSaved }: { koli: BarhalKoli; onSaved: () => void }) {
 
   return (
     <tr className="hover:bg-accent/30">
-      <td className="px-3 py-2">{koli.koli_date}</td>
+      <td className="px-3 py-2">{formatDate(koli.koli_date)}</td>
       <td className="px-3 py-2">{koli.dest_name}</td>
       <td className="px-3 py-2 font-medium">{koli.koli_number}</td>
       <td className="px-3 py-2">
@@ -50,14 +53,14 @@ function SmuRow({ koli, onSaved }: { koli: BarhalKoli; onSaved: () => void }) {
         {editing ? (
           <input type="datetime-local" value={std} onChange={(e) => setStd(e.target.value)} className={inputClass} />
         ) : (
-          koli.std || '-'
+          formatDateTime(koli.std)
         )}
       </td>
       <td className="px-3 py-2">
         {editing ? (
           <input type="datetime-local" value={sta} onChange={(e) => setSta(e.target.value)} className={inputClass} />
         ) : (
-          koli.sta || '-'
+          formatDateTime(koli.sta)
         )}
       </td>
       <td className="px-3 py-2">

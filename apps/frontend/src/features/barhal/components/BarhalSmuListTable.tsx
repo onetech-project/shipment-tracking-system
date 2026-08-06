@@ -2,6 +2,7 @@
 
 import { useUnassignSmu } from '../hooks/useBarhal'
 import { BarhalSmuListItem } from '../types'
+import { formatDate, formatDateTime } from '../utils/dateFormat'
 
 interface BarhalSmuListTableProps {
   data: BarhalSmuListItem[]
@@ -27,7 +28,7 @@ function SmuGroupRow({ item, onUnassigned }: { item: BarhalSmuListItem; onUnassi
 
   return (
     <tr className="hover:bg-accent/30">
-      <td className="px-3 py-2">{item.date}</td>
+      <td className="px-3 py-2">{formatDate(item.date)}</td>
       <td className="px-3 py-2">{item.originName}</td>
       <td className="px-3 py-2">{item.destName}</td>
       <td className="px-3 py-2">{item.totalKoli}</td>
@@ -35,7 +36,9 @@ function SmuGroupRow({ item, onUnassigned }: { item: BarhalSmuListItem; onUnassi
       <td className="px-3 py-2 font-medium">{item.smuNumber}</td>
       <td className="px-3 py-2">{item.airlines || '-'}</td>
       <td className="px-3 py-2">{item.flightNo || '-'}</td>
-      <td className="px-3 py-2">{item.std ? `${item.std.slice(0, 16)} / ${item.sta?.slice(0, 16) ?? '-'}` : '-'}</td>
+      <td className="px-3 py-2">
+        {item.std ? `${formatDateTime(item.std)} / ${formatDateTime(item.sta)}` : '-'}
+      </td>
       <td className="px-3 py-2">
         {item.chwt != null ? `${fmt.format(item.chwt)} kg` : (
           <span className="text-xs text-destructive">SMU Rate belum diupdate</span>

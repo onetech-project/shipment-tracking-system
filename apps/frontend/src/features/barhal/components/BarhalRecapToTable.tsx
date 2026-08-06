@@ -1,6 +1,7 @@
 'use client'
 
 import { BarhalRecapPerTanggalItem, BarhalRecapPerRuteItem } from '../types'
+import { formatDate } from '../utils/dateFormat'
 
 type RecapRow =
   | (BarhalRecapPerTanggalItem & { key: string; groupLabel: string })
@@ -15,7 +16,7 @@ const fmt = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 })
 const idr = new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 })
 
 function groupKeyAndLabel(row: BarhalRecapPerTanggalItem | BarhalRecapPerRuteItem): { key: string; groupLabel: string } {
-  if ('date' in row) return { key: row.date, groupLabel: row.date }
+  if ('date' in row) return { key: row.date, groupLabel: formatDate(row.date) }
   return { key: `${row.originName}-${row.destName}`, groupLabel: `${row.originName} → ${row.destName}` }
 }
 

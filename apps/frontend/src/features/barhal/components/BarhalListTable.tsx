@@ -4,6 +4,7 @@ import { Fragment, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useDeleteKoli } from '../hooks/useBarhal'
 import { BarhalKoli } from '../types'
+import { formatDate } from '../utils/dateFormat'
 import { isKoliIncomplete } from './wizard/BarhalKoliWizard'
 
 interface BarhalListTableProps {
@@ -101,7 +102,7 @@ function KoliRow({ koli, index, page, pageSize, isExpanded, onToggleExpanded, on
                 <tbody className="divide-y divide-border">
                   {koli.lines.map((line) => (
                     <tr key={line.id}>
-                      <td className="px-2 py-1">{koli.koli_date}</td>
+                      <td className="px-2 py-1">{formatDate(koli.koli_date)}</td>
                       <td className="px-2 py-1">{koli.origin_name}</td>
                       <td className="px-2 py-1">{koli.dest_name}</td>
                       <td className="px-2 py-1">{line.to_number}</td>

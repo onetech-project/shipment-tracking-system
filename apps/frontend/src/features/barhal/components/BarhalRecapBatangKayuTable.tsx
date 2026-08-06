@@ -1,6 +1,7 @@
 'use client'
 
 import { BarhalRecapBatangKayuItem } from '../types'
+import { formatDate } from '../utils/dateFormat'
 
 interface BarhalRecapBatangKayuTableProps {
   data: BarhalRecapBatangKayuItem[]
@@ -33,7 +34,7 @@ export function BarhalRecapBatangKayuTable({ data }: BarhalRecapBatangKayuTableP
           ) : (
             data.map((row) => (
               <tr key={row.date} className="hover:bg-accent/30">
-                <td className="px-3 py-2">{row.date}</td>
+                <td className="px-3 py-2">{formatDate(row.date)}</td>
                 <td className="px-3 py-2">{row.totalKoli}</td>
                 <td className="px-3 py-2">{fmt.format(row.totalP)}</td>
                 <td className="px-3 py-2">{fmt.format(row.totalL)}</td>

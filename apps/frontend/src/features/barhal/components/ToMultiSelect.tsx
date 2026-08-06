@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { AvailableTo } from '../types'
+import { formatDate } from '../utils/dateFormat'
 
 interface ToMultiSelectProps {
   options: AvailableTo[]
@@ -12,14 +13,6 @@ interface ToMultiSelectProps {
 
 const fmt = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 })
 const AVAILABLE_TOS_LIMIT = 100
-const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-function formatDate(isoDate: string | null | undefined): string {
-  if (!isoDate) return '—'
-  const [year, month, day] = isoDate.slice(0, 10).split('-').map(Number)
-  if (!year || !month || !day) return isoDate
-  return `${String(day).padStart(2, '0')} ${MONTH_ABBR[month - 1]} ${year}`
-}
 
 export function ToMultiSelect({ options, selected, onChange, isLoading }: ToMultiSelectProps) {
   const [search, setSearch] = useState('')
