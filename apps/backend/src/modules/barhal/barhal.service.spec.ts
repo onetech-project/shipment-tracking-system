@@ -478,6 +478,10 @@ describe('BarhalService', () => {
       const rows = await service.getDrilldown({ groupBy: 'route', startDate: '2026-06-01', endDate: '2026-06-01' })
 
       expect(dataSource.query).toHaveBeenCalledTimes(1)
+      const [sql] = dataSource.query.mock.calls[0]
+      // Distinctive projection of the shared per-rute aggregate (queryPerRute): proves the
+      // drilldown reuses the exact same SQL the dashboard uses, not a hand-rolled lookalike.
+      expect(sql).toContain('g.origin_name AS "originName"')
       expect(rows).toHaveLength(1)
       expect(rows[0]).toMatchObject({
         originName: 'Kosambi',
@@ -509,6 +513,11 @@ describe('BarhalService', () => {
       // Rentangnya 30 hari, tapi drilldown hanya mengembalikan hari yang ada aktivitasnya.
       expect(rows).toHaveLength(1)
       expect(rows[0]).toMatchObject({ date: '2026-06-03', totalTo: 1, status: 'completed' })
+
+      const [sql] = dataSource.query.mock.calls[0]
+      // Distinctive projection of the shared per-tanggal aggregate (queryPerTanggal): proves the
+      // drilldown reuses the exact same SQL the dashboard uses, not a hand-rolled lookalike.
+      expect(sql).toContain('g.koli_date::text AS date')
     })
 
     it('binds the date range, origin and dest as query parameters', async () => {
@@ -539,19 +548,54 @@ describe('BarhalService', () => {
       expect(dataSource.query).not.toHaveBeenCalled()
     })
 
-    it('reconciles: per-route drilldown totals for a date match that date\'s parent row', async () => {
-      // Baris induk Rekap Per Tanggal untuk 2026-06-01.
+    it('issues the same aggregate SQL as the dashboard, so figures reconcile with the parent row', async () => {
+      // Phase 1: drive getDashboard through its full mock sequence (kpi -> perTanggal -> perRute ->
+      // masterRoutes -> recapBatangKayu) and capture the exact SQL strings it sends for the
+      // per-tanggal and per-rute aggregates — the queries whose numbers back the parent recap rows.
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 3, total_to: 5, weight_before: 50, weight_increase: 10, batang_kayu: 0 }]) // kpi
+        .mockResolvedValueOnce([
+          { date: '2026-06-01', total_to: 5, awb_count: 2, total_koli: 3, weight_before: 50, chwt: 40, missing_chwt: 0, weight_increase: 10, add_revenue: 900 },
+        ]) // recapPerTanggal
+        .mockResolvedValueOnce([
+          { originName: 'Kosambi', destName: 'Badung', total_to: 2, awb_count: 1, total_koli: 1, weight_before: 20, chwt: 15, missing_chwt: 0, weight_increase: 4, add_revenue: 400 },
+          { originName: 'Kosambi', destName: 'Batam', total_to: 3, awb_count: 1, total_koli: 2, weight_before: 30, chwt: 25, missing_chwt: 0, weight_increase: 6, add_revenue: 500 },
+        ]) // recapPerRute
+        .mockResolvedValueOnce([]) // masterRoutes
+        .mockResolvedValueOnce([]) // recapBatangKayu
+
+      const dashboard = await service.getDashboard({ startDate: '2026-06-01', endDate: '2026-06-01' })
+
+      const dashboardPerTanggalSql: string = dataSource.query.mock.calls[1][0]
+      const dashboardPerRuteSql: string = dataSource.query.mock.calls[2][0]
+
+      // Phase 2: reset so mock.calls indices are unambiguous, then drive getDrilldown(groupBy: 'date')
+      // in isolation and capture its one and only SQL string.
+      dataSource.query.mockReset()
       dataSource.query.mockResolvedValueOnce([
         { date: '2026-06-01', total_to: 5, awb_count: 2, total_koli: 3, weight_before: 50, chwt: 40, missing_chwt: 0, weight_increase: 10, add_revenue: 900 },
       ])
       const parent = await service.getDrilldown({ groupBy: 'date', startDate: '2026-06-01', endDate: '2026-06-01' })
+      const drilldownPerTanggalSql: string = dataSource.query.mock.calls[0][0]
 
+      // The actual guarantee this test is named for: the drilldown's date-grouped query is not a
+      // parallel hand-rolled aggregate that merely happens to agree today — it is the identical
+      // SQL string getDashboard issues for its per-tanggal recap.
+      expect(drilldownPerTanggalSql).toBe(dashboardPerTanggalSql)
+
+      // Phase 3: same pairing for the per-rute grouping.
+      dataSource.query.mockReset()
       dataSource.query.mockResolvedValueOnce([
         { originName: 'Kosambi', destName: 'Badung', total_to: 2, awb_count: 1, total_koli: 1, weight_before: 20, chwt: 15, missing_chwt: 0, weight_increase: 4, add_revenue: 400 },
         { originName: 'Kosambi', destName: 'Batam', total_to: 3, awb_count: 1, total_koli: 2, weight_before: 30, chwt: 25, missing_chwt: 0, weight_increase: 6, add_revenue: 500 },
       ])
       const children = await service.getDrilldown({ groupBy: 'route', startDate: '2026-06-01', endDate: '2026-06-01' })
+      const drilldownPerRuteSql: string = dataSource.query.mock.calls[0][0]
 
+      expect(drilldownPerRuteSql).toBe(dashboardPerRuteSql)
+
+      // Metric passthrough: with the SQL identity established above, the field mapping is still
+      // worth pinning so a mapping regression is caught here too.
       // Cast diperlukan: getDrilldown mengembalikan union dua tipe array, dan `.reduce`
       // tidak dapat dipanggil langsung di atas union seperti itu.
       const sum = (key: 'totalTo' | 'totalKoli' | 'weightBefore' | 'chwt' | 'addRevenue') =>
@@ -562,6 +606,7 @@ describe('BarhalService', () => {
       expect(sum('weightBefore')).toBe(parent[0].weightBefore)
       expect(sum('chwt')).toBe(parent[0].chwt)
       expect(sum('addRevenue')).toBe(parent[0].addRevenue)
+      expect(dashboard.recapPerTanggal[0].totalTo).toBe(5)
     })
   })
 
