@@ -173,20 +173,24 @@ export function BarhalRecapToTable({ rows, groupColumnLabel, groupBy, filters }:
               return (
                 <Fragment key={key}>
                   <tr
-                    onClick={() => toggle(key)}
-                    className={`cursor-pointer hover:bg-accent/30 ${
+                    className={`hover:bg-accent/30 ${
                       row.totalTo === 0 && row.totalKoli === 0 ? 'text-muted-foreground' : ''
                     }`}
                   >
                     <td className="px-3 py-2">
-                      <span className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => toggle(key)}
+                        aria-expanded={isOpen}
+                        className="flex items-center gap-1.5 hover:underline"
+                      >
                         {isOpen ? (
                           <ChevronDown className="h-3.5 w-3.5 shrink-0" />
                         ) : (
                           <ChevronRight className="h-3.5 w-3.5 shrink-0" />
                         )}
                         {groupLabel}
-                      </span>
+                      </button>
                     </td>
                     <RecapMetricCells row={row} />
                   </tr>
