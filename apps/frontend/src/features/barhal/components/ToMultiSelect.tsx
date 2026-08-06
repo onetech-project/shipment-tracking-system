@@ -84,10 +84,15 @@ export function ToMultiSelect({ options, selected, onChange, isLoading, unmatche
           Tidak menemukan data? Ketik nomor TO untuk pencarian.
         </p>
       )}
-      {!isLoading && !!unmatchedRouteCount && unmatchedRouteCount > 0 && (
-        <p className="border-t border-border px-3 py-2 text-center text-xs text-amber-600">
-          {unmatchedRouteCount} TO disembunyikan — rutenya belum terdaftar di master air_shipments_data.
-        </p>
+      {!isLoading && !!unmatchedRouteCount && (
+        <div className="border-t border-border px-3 py-2 text-center text-xs space-y-1">
+          <p className="text-amber-600">
+            {unmatchedRouteCount} TO disembunyikan — rutenya belum terdaftar di master air_shipments_data.
+          </p>
+          <p className="text-muted-foreground">
+            Jumlah ini mencakup semua rute dan tidak mengikuti filter Origin/Destinasi.
+          </p>
+        </div>
       )}
     </div>
   )
