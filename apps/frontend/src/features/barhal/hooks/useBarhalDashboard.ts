@@ -51,14 +51,13 @@ export interface BarhalDrilldownParams extends BarhalDashboardParams {
 }
 
 /**
- * Rincian satu baris rekap. `enabled` bernilai false sampai barisnya dibuka, sehingga
+ * Rincian satu baris rekap. `DrilldownBody` hanya di-mount saat barisnya dibuka, sehingga
  * tidak ada request yang terkirim saat halaman dimuat.
  */
-export function useBarhalRecapDrilldown(params: BarhalDrilldownParams, enabled: boolean) {
+export function useBarhalRecapDrilldown(params: BarhalDrilldownParams) {
   return useQuery<BarhalRecapPerTanggalItem[] | BarhalRecapPerRuteItem[]>({
     queryKey: ['barhal', 'drilldown', params],
     queryFn: () => apiClient.get('/barhal/dashboard/drilldown', { params }).then((r) => r.data),
     staleTime: 30 * 1000,
-    enabled,
   })
 }

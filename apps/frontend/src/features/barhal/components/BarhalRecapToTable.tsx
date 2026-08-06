@@ -54,7 +54,7 @@ function RecapMetricCells({ row }: { row: RecapMetricFields }) {
 }
 
 /** Membangun parameter drilldown untuk satu baris, memakai sumbu yang berlawanan dari tabel induk. */
-function drilldownParamsFor(
+export function drilldownParamsFor(
   row: RecapItem,
   groupBy: 'date' | 'route',
   filters: BarhalDashboardParams,
@@ -78,7 +78,7 @@ function DrilldownBody({
   filters: BarhalDashboardParams
 }) {
   const params = drilldownParamsFor(row, groupBy, filters)
-  const { data, isLoading, isError, refetch } = useBarhalRecapDrilldown(params, true)
+  const { data, isLoading, isError, refetch } = useBarhalRecapDrilldown(params)
 
   if (isError) {
     return (

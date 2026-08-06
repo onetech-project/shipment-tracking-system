@@ -10,7 +10,9 @@ describe('formatDate', () => {
   })
 
   it('formats the date part of an ISO timestamp', () => {
-    expect(formatDate('2026-12-25T10:30:00.000Z')).toBe('25-Dec-2026')
+    // Dibangun dari komponen waktu lokal agar test tidak tergantung timezone runner.
+    const local = new Date(2026, 11, 25, 10, 30).toISOString()
+    expect(formatDate(local)).toBe('25-Dec-2026')
   })
 
   it('returns an em dash for empty input', () => {
