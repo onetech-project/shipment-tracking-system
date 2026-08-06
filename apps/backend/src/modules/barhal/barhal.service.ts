@@ -399,12 +399,16 @@ export class BarhalService {
     return `INITCAP(TRIM(REGEXP_REPLACE(REGEXP_REPLACE(${column}, '\\s+DC$', '', 'i'), '\\s+', ' ', 'g')))`
   }
 
-  async getDashboard(dto: BarhalDashboardQueryDto) {
-    const hasRange = Boolean(dto.startDate && dto.endDate)
-    if (hasRange && daysInRange(dto.startDate!, dto.endDate!) > MAX_RECAP_DAYS) {
-      throw new BadRequestException(`Date range must not exceed ${MAX_RECAP_DAYS} days`)
-    }
-
+  /**
+   * Membangun parameter terikat dan dua CTE cakupan yang dipakai bersama oleh dashboard
+   * dan drilldown. Tidak menjalankan query apa pun, sehingga urutan panggilan
+   * dataSource.query di getDashboard tidak berubah.
+   */
+  private buildScopeSql(dto: BarhalDashboardQueryDto): {
+    params: unknown[]
+    scopedCte: string
+    koliScopedCte: string
+  } {
     const params: unknown[] = []
     const conditions: string[] = [`e.remarks ILIKE '%barhal%'`, `e.to_number IS NOT NULL`, `e.completed_date IS NOT NULL`]
     const koliConditions: string[] = []
@@ -428,7 +432,9 @@ export class BarhalService {
     const toWhere = `WHERE ${conditions.join(' AND ')}`
     const koliWhere = koliConditions.length ? `WHERE ${koliConditions.join(' AND ')}` : ''
 
-    const scopedCte = `
+    return {
+      params,
+      scopedCte: `
       scoped AS (
         SELECT
           e.to_number,
@@ -440,32 +446,18 @@ export class BarhalService {
         FROM air_shipments_compileaircgk e
         ${toWhere}
       )
-    `
+    `,
+      koliScopedCte: `koli_scoped AS (SELECT * FROM barhal_koli k ${koliWhere})`,
+    }
+  }
 
-    const kpiRow = (
-      await this.dataSource.query(
-        `
-        WITH ${scopedCte},
-        koli_ids AS (
-          SELECT DISTINCT bkt.koli_id FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number
-        )
-        SELECT
-          (SELECT COUNT(*)::int FROM koli_ids) AS koli_count,
-          (SELECT COUNT(DISTINCT to_number)::int FROM scoped) AS total_to,
-          (SELECT COALESCE(SUM(gross_weight), 0)::numeric FROM scoped) AS weight_before,
-          (SELECT COALESCE(SUM(k.weight_after - k.weight_before), 0)::numeric
-             FROM koli_ids ki JOIN barhal_koli k ON k.id = ki.koli_id
-             WHERE k.weight_before IS NOT NULL AND k.weight_after IS NOT NULL) AS weight_increase,
-          (SELECT COALESCE(SUM(k.batang_kayu), 0)::int
-             FROM koli_ids ki JOIN barhal_koli k ON k.id = ki.koli_id) AS batang_kayu
-        `,
-        params,
-      )
-    )[0]
-
-    const koliScopedCte = `koli_scoped AS (SELECT * FROM barhal_koli k ${koliWhere})`
-
-    const perTanggalRows: (RecapAggregateRow & { date: string })[] = await this.dataSource.query(
+  /** Agregat rekap per tanggal. Dipakai bersama oleh getDashboard dan getDrilldown. */
+  private queryPerTanggal(
+    scopedCte: string,
+    koliScopedCte: string,
+    params: unknown[],
+  ): Promise<(RecapAggregateRow & { date: string })[]> {
+    return this.dataSource.query(
       `
       WITH ${scopedCte},
       ${koliScopedCte},
@@ -505,15 +497,15 @@ export class BarhalService {
       `,
       params,
     )
+  }
 
-    const perTanggalSparse = perTanggalRows.map((row) => ({ date: row.date, ...toRecapMetrics(row) }))
-    // Built from the sparse rows on purpose: a filled-in future date would drag the chart down to 0.
-    const chartByDate = perTanggalSparse.map((r) => ({ date: r.date, weightBefore: r.weightBefore, weightAfter: r.weightAfter, chwt: r.chwt }))
-    const recapPerTanggal = hasRange
-      ? densifyPerTanggal(perTanggalSparse, dto.startDate!, dto.endDate!)
-      : perTanggalSparse
-
-    const perRuteRows: (RecapAggregateRow & { originName: string; destName: string })[] = await this.dataSource.query(
+  /** Agregat rekap per rute. Dipakai bersama oleh getDashboard dan getDrilldown. */
+  private queryPerRute(
+    scopedCte: string,
+    koliScopedCte: string,
+    params: unknown[],
+  ): Promise<(RecapAggregateRow & { originName: string; destName: string })[]> {
+    return this.dataSource.query(
       `
       WITH ${scopedCte},
       ${koliScopedCte},
@@ -554,6 +546,47 @@ export class BarhalService {
       `,
       params,
     )
+  }
+
+  async getDashboard(dto: BarhalDashboardQueryDto) {
+    const hasRange = Boolean(dto.startDate && dto.endDate)
+    if (hasRange && daysInRange(dto.startDate!, dto.endDate!) > MAX_RECAP_DAYS) {
+      throw new BadRequestException(`Date range must not exceed ${MAX_RECAP_DAYS} days`)
+    }
+
+    const { params, scopedCte, koliScopedCte } = this.buildScopeSql(dto)
+
+    const kpiRow = (
+      await this.dataSource.query(
+        `
+        WITH ${scopedCte},
+        koli_ids AS (
+          SELECT DISTINCT bkt.koli_id FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number
+        )
+        SELECT
+          (SELECT COUNT(*)::int FROM koli_ids) AS koli_count,
+          (SELECT COUNT(DISTINCT to_number)::int FROM scoped) AS total_to,
+          (SELECT COALESCE(SUM(gross_weight), 0)::numeric FROM scoped) AS weight_before,
+          (SELECT COALESCE(SUM(k.weight_after - k.weight_before), 0)::numeric
+             FROM koli_ids ki JOIN barhal_koli k ON k.id = ki.koli_id
+             WHERE k.weight_before IS NOT NULL AND k.weight_after IS NOT NULL) AS weight_increase,
+          (SELECT COALESCE(SUM(k.batang_kayu), 0)::int
+             FROM koli_ids ki JOIN barhal_koli k ON k.id = ki.koli_id) AS batang_kayu
+        `,
+        params,
+      )
+    )[0]
+
+    const perTanggalRows = await this.queryPerTanggal(scopedCte, koliScopedCte, params)
+
+    const perTanggalSparse = perTanggalRows.map((row) => ({ date: row.date, ...toRecapMetrics(row) }))
+    // Built from the sparse rows on purpose: a filled-in future date would drag the chart down to 0.
+    const chartByDate = perTanggalSparse.map((r) => ({ date: r.date, weightBefore: r.weightBefore, weightAfter: r.weightAfter, chwt: r.chwt }))
+    const recapPerTanggal = hasRange
+      ? densifyPerTanggal(perTanggalSparse, dto.startDate!, dto.endDate!)
+      : perTanggalSparse
+
+    const perRuteRows = await this.queryPerRute(scopedCte, koliScopedCte, params)
 
     // Deliberately not date-filtered: the route list must stay the same from month to month, so a
     // route with no shipments in the selected range still shows up as an all-zero incomplete row.
@@ -595,6 +628,7 @@ export class BarhalService {
 
     const recapBatangKayu = await this.dataSource.query(
       `
+      WITH ${koliScopedCte}
       SELECT
         k.koli_date::text AS date,
         COUNT(*)::int AS "totalKoli",
@@ -603,8 +637,7 @@ export class BarhalService {
         COALESCE(SUM(k.height_cm), 0)::numeric AS "totalT",
         COALESCE(SUM(k.volume), 0)::numeric AS "totalVolume",
         COALESCE(SUM(k.batang_kayu), 0)::int AS "totalBatangKayu"
-      FROM barhal_koli k
-      ${koliWhere}
+      FROM koli_scoped k
       GROUP BY k.koli_date
       ORDER BY k.koli_date DESC
       `,
