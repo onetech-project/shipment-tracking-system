@@ -5,6 +5,8 @@ const config: Config = {
   testEnvironment: 'jest-environment-jsdom',
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
   testRegex: '.*\\.spec\\.(ts|tsx)$',
+  // e2e/ berisi spec Playwright yang tidak dapat dimuat oleh jest.
+  testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/.next/', '<rootDir>/e2e/'],
   transform: {
     '^.+\\.(ts|tsx)$': [
       'ts-jest',
