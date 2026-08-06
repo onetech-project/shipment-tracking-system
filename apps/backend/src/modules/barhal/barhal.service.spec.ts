@@ -43,13 +43,71 @@ describe('BarhalService', () => {
       dataSource.query.mockResolvedValueOnce([
         { to_number: 'TO1', awb: 'AWB1', gross_weight: 10, origin_station: 'Kosambi DC', dest_station: 'Badung DC', lt_number: 'LT1', remarks: 'BARHAL', date: '2026-06-01' },
       ])
-      const rows = await service.getAvailableTos({ search: 'TO1', date: '2026-06-01', origin: 'Kosambi', dest: 'Badung' })
-      expect(rows).toHaveLength(1)
-      expect(rows[0].vendor).toBe('ESP')
+      const result = await service.getAvailableTos({ search: 'TO1', date: '2026-06-01', origin: 'Kosambi', dest: 'Badung' })
+      expect(result.data).toHaveLength(1)
+      expect(result.data[0].vendor).toBe('ESP')
       const [sql, params] = dataSource.query.mock.calls[0]
       expect(sql).toMatch(/remarks ILIKE/i)
       expect(params).toContain('%barhal%')
       expect(params).toContain('%TO1%')
+    })
+
+    it('reads the route from air_shipments_data via the origin_dc/destination_dc join', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { to_number: 'TO1', awb: 'AWB1', gross_weight: 10, origin_station: 'Jabo', dest_station: 'Batam', lt_number: 'LT1', remarks: 'BARHAL', date: '2026-06-01' },
+      ])
+      const result = await service.getAvailableTos({})
+      const [sql] = dataSource.query.mock.calls[0]
+      expect(sql).toMatch(/air_shipments_data/)
+      expect(sql).toMatch(/rm\.origin_dc\s*=\s*c\.extra_fields->>'origin'/)
+      expect(sql).toMatch(/rm\.destination_dc\s*=\s*c\.extra_fields->>'destination'/)
+      expect(result.data[0].origin_station).toBe('Jabo')
+      expect(result.data[0].dest_station).toBe('Batam')
+    })
+
+    it('de-duplicates the master so an Air+Sea pair cannot multiply TO rows', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getAvailableTos({})
+      const [sql] = dataSource.query.mock.calls[0]
+      expect(sql).toMatch(/DISTINCT ON \(origin_dc, destination_dc\)/)
+    })
+
+    it('drops TOs whose route is missing from the master and reports how many', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { to_number: 'TO1', awb: 'AWB1', gross_weight: 10, origin_station: 'Jabo', dest_station: 'Batam', lt_number: 'LT1', remarks: 'BARHAL', date: '2026-06-01' },
+        { to_number: 'TO2', awb: 'AWB2', gross_weight: 5, origin_station: null, dest_station: null, lt_number: 'LT2', remarks: 'BARHAL', date: '2026-06-01' },
+        { to_number: 'TO3', awb: 'AWB3', gross_weight: 5, origin_station: null, dest_station: null, lt_number: 'LT3', remarks: 'BARHAL', date: '2026-06-01' },
+      ])
+      const result = await service.getAvailableTos({})
+      expect(result.data.map((r) => r.to_number)).toEqual(['TO1'])
+      expect(result.unmatchedRouteCount).toBe(2)
+    })
+
+    it('does not narrow unmatchedRouteCount by the origin/dest filter', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { to_number: 'TO1', awb: null, gross_weight: 1, origin_station: 'Jabo', dest_station: 'Batam', lt_number: null, remarks: 'BARHAL', date: '2026-06-01' },
+        { to_number: 'TO2', awb: null, gross_weight: 1, origin_station: 'Surabaya', dest_station: 'Makassar', lt_number: null, remarks: 'BARHAL', date: '2026-06-01' },
+        { to_number: 'TO3', awb: null, gross_weight: 1, origin_station: null, dest_station: null, lt_number: null, remarks: 'BARHAL', date: '2026-06-01' },
+      ])
+      const result = await service.getAvailableTos({ origin: 'Jabo', dest: 'Batam' })
+      expect(result.data.map((r) => r.to_number)).toEqual(['TO1'])
+      // TO3 gagal dijoin sehingga tidak punya rute untuk dibandingkan dengan filter.
+      expect(result.unmatchedRouteCount).toBe(1)
+    })
+  })
+
+  describe('getStations', () => {
+    it('sources dropdown options from the air_shipments_data master join', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { origin_station: 'Jabo', dest_station: 'Batam' },
+        { origin_station: 'Surabaya', dest_station: 'Makassar' },
+      ])
+      const stations = await service.getStations()
+      const [sql] = dataSource.query.mock.calls[0]
+      expect(sql).toMatch(/air_shipments_data/)
+      expect(sql).toMatch(/rm\.origin_dc\s*=\s*c\.extra_fields->>'origin'/)
+      expect(stations.origins).toEqual(['Jabo', 'Surabaya'])
+      expect(stations.dests).toEqual(['Batam', 'Makassar'])
     })
   })
 

@@ -73,6 +73,24 @@ function koliDatePrefix(koliDate: string): string {
 
 const UNIQUE_VIOLATION = '23505'
 
+/**
+ * Master rute: pasangan DC → nama stasiun. DISTINCT ON bersifat wajib, bukan kosmetik —
+ * air_shipments_data unik pada (service, origin_dc, destination_dc), sehingga satu pasangan
+ * DC bisa punya baris Air *dan* Sea. Tanpa ini, join akan menggandakan baris TO.
+ */
+const ROUTE_MASTER_CTE = `
+  route_master AS (
+    SELECT DISTINCT ON (origin_dc, destination_dc)
+      origin_dc,
+      destination_dc,
+      extra_fields->>'origin_station'      AS origin_station,
+      extra_fields->>'destination_station' AS dest_station
+    FROM air_shipments_data
+    WHERE origin_dc IS NOT NULL AND destination_dc IS NOT NULL
+    ORDER BY origin_dc, destination_dc, service
+  )
+`
+
 @Injectable()
 export class BarhalService {
   constructor(
@@ -84,11 +102,15 @@ export class BarhalService {
   /** Distinct normalized origin/destination names among Barhal-eligible TOs, for wizard/filter dropdowns. */
   async getStations(): Promise<{ origins: string[]; dests: string[] }> {
     const rows: { origin_station: string; dest_station: string }[] = await this.dataSource.query(`
-      SELECT DISTINCT origin_station, dest_station
-      FROM air_shipments_compileaircgk
-      WHERE remarks ILIKE '%barhal%'
-        AND origin_station IS NOT NULL AND origin_station != ''
-        AND dest_station IS NOT NULL AND dest_station != ''
+      WITH ${ROUTE_MASTER_CTE}
+      SELECT DISTINCT rm.origin_station, rm.dest_station
+      FROM air_shipments_compileaircgk c
+      JOIN route_master rm
+        ON rm.origin_dc      = c.extra_fields->>'origin'
+       AND rm.destination_dc = c.extra_fields->>'destination'
+      WHERE c.remarks ILIKE '%barhal%'
+        AND rm.origin_station IS NOT NULL AND rm.origin_station != ''
+        AND rm.dest_station IS NOT NULL AND rm.dest_station != ''
     `)
     const origins = new Set<string>()
     const dests = new Set<string>()
@@ -101,8 +123,14 @@ export class BarhalService {
     return { origins: Array.from(origins).sort(), dests: Array.from(dests).sort() }
   }
 
-  /** Barhal-only TOs (remarks ILIKE '%barhal%') not yet packed into any Koli. */
-  async getAvailableTos(dto: AvailableToDto): Promise<AvailableToRow[]> {
+  /**
+   * Barhal-only TOs (remarks ILIKE '%barhal%') not yet packed into any Koli.
+   *
+   * Rute dibaca dari master air_shipments_data lewat pasangan DC, bukan dari kolom station
+   * milik compileaircgk. LEFT JOIN dipakai agar baris yang tidak punya pasangan di master
+   * masih bisa dihitung, lalu dibuang — operator perlu tahu berapa banyak yang tersaring.
+   */
+  async getAvailableTos(dto: AvailableToDto): Promise<{ data: AvailableToRow[]; unmatchedRouteCount: number }> {
     const params: unknown[] = []
     params.push('%barhal%')
     const conditions: string[] = [`c.remarks ILIKE $${params.length}`]
@@ -124,16 +152,20 @@ export class BarhalService {
 
     const rows: AvailableToRow[] = await this.dataSource.query(
       `
+      WITH ${ROUTE_MASTER_CTE}
       SELECT
         c.to_number,
         c.awb,
         c.gross_weight,
-        c.origin_station,
-        c.dest_station,
+        rm.origin_station,
+        rm.dest_station AS dest_station,
         c.lt_number,
         c.remarks,
         c.completed_date AS date
       FROM air_shipments_compileaircgk c
+      LEFT JOIN route_master rm
+        ON rm.origin_dc      = c.extra_fields->>'origin'
+       AND rm.destination_dc = c.extra_fields->>'destination'
       WHERE c.to_number IS NOT NULL
         AND ${excludeAttachedClause}
         AND ${conditions.join(' AND ')}
@@ -142,20 +174,28 @@ export class BarhalService {
       params,
     )
 
+    // Baris tanpa pasangan di master tidak punya rute sama sekali, sehingga tidak mungkin
+    // dipersempit filter origin/dest — hitungannya karena itu diambil sebelum filter itu.
+    const matched = rows.filter((row) => row.origin_station && row.dest_station)
+    const unmatchedRouteCount = rows.length - matched.length
+
     const originFilter = dto.origin ? normalizeStationName(dto.origin) : undefined
     const destFilter = dto.dest ? normalizeStationName(dto.dest) : undefined
-    const filtered = rows.filter((row) => {
+    const filtered = matched.filter((row) => {
       if (originFilter && normalizeStationName(row.origin_station) !== originFilter) return false
       if (destFilter && normalizeStationName(row.dest_station) !== destFilter) return false
       return true
     })
     const AVAILABLE_TOS_LIMIT = 100
-    return filtered.slice(0, AVAILABLE_TOS_LIMIT).map((row) => ({
-      ...row,
-      origin_station: row.origin_station ? normalizeStationName(row.origin_station) : row.origin_station,
-      dest_station: row.dest_station ? normalizeStationName(row.dest_station) : row.dest_station,
-      vendor: 'ESP' as const,
-    }))
+    return {
+      data: filtered.slice(0, AVAILABLE_TOS_LIMIT).map((row) => ({
+        ...row,
+        origin_station: row.origin_station ? normalizeStationName(row.origin_station) : row.origin_station,
+        dest_station: row.dest_station ? normalizeStationName(row.dest_station) : row.dest_station,
+        vendor: 'ESP' as const,
+      })),
+      unmatchedRouteCount,
+    }
   }
 
   async listKoli(dto: ListBarhalKoliDto) {
