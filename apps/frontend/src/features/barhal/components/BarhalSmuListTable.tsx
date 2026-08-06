@@ -37,7 +37,7 @@ function SmuGroupRow({ item, onUnassigned }: { item: BarhalSmuListItem; onUnassi
       <td className="px-3 py-2">{item.airlines || '-'}</td>
       <td className="px-3 py-2">{item.flightNo || '-'}</td>
       <td className="px-3 py-2">
-        {item.std ? `${formatDateTime(item.std)} / ${formatDateTime(item.sta)}` : '-'}
+        {item.std ? `${formatDateTime(item.std)} / ${formatDateTime(item.sta)}` : '—'}
       </td>
       <td className="px-3 py-2">
         {item.chwt != null ? `${fmt.format(item.chwt)} kg` : (
