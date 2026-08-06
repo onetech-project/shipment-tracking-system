@@ -210,10 +210,11 @@ Agar penyebabnya tidak membingungkan operator, ada dua penanda di UI:
    *"N TO disembunyikan — rutenya belum terdaftar di master air_shipments_data."* Konsumennya hanya
    `Step2SelectTos`, jadi perubahan bentuk ini terkurung di satu tempat.
 
-   `unmatchedRouteCount` dihitung **setelah** seluruh filter lain diterapkan (search, tanggal, origin,
-   dest, sudah-masuk-Koli) tetapi **sebelum** `AVAILABLE_TOS_LIMIT` (100) dipotong. Jadi angkanya
-   menjawab "berapa TO yang seharusnya masuk daftar ini tapi tersaring karena rutenya tidak terdaftar",
-   bukan jumlah global. `data` tetap dipotong 100 seperti sekarang.
+   `unmatchedRouteCount` dihitung setelah filter tingkat SQL diterapkan (search, tanggal,
+   sudah-masuk-Koli) dan **sebelum** `AVAILABLE_TOS_LIMIT` (100) dipotong. Angka ini **tidak** ikut
+   dipersempit filter origin/dest — dan memang tidak bisa: baris yang gagal dijoin tidak punya rute
+   untuk dibandingkan. Jadi artinya "berapa TO dalam cakupan pencarian ini yang tersaring karena
+   rutenya belum terdaftar di master". `data` tetap dipotong 100 seperti sekarang.
 2. Teks bantuan statis di bawah dropdown origin/dest pada Step 1: *"Hanya rute yang terdaftar di master
    air_shipments_data yang tersedia."*
 
