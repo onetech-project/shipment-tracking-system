@@ -121,6 +121,12 @@ export interface BarhalRecapBatangKayuItem {
   totalBatangKayu: number
 }
 
+/**
+ * `none` = seluruh angka pada baris itu nol, jadi tidak ada yang bisa dinilai selesai atau belum.
+ * Baris yang punya TO atau Koli selalu dinilai, sekalipun belum ada AWB-nya.
+ */
+export type BarhalRecapStatus = 'completed' | 'incomplete' | 'none'
+
 export interface BarhalRecapPerTanggalItem {
   date: string
   totalTo: number
@@ -131,7 +137,7 @@ export interface BarhalRecapPerTanggalItem {
   variance: number
   variancePercent: number
   addRevenue: number
-  status: 'completed' | 'incomplete'
+  status: BarhalRecapStatus
 }
 
 export interface BarhalRecapPerRuteItem {
@@ -145,7 +151,7 @@ export interface BarhalRecapPerRuteItem {
   variance: number
   variancePercent: number
   addRevenue: number
-  status: 'completed' | 'incomplete'
+  status: BarhalRecapStatus
 }
 
 export interface BarhalDashboardStats {

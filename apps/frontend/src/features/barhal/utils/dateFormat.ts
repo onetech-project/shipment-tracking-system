@@ -4,7 +4,7 @@ import moment from 'moment'
  * Format tanggal & datetime untuk seluruh tabel Barhal.
  *
  * Backend mengirim dua bentuk: kolom `date` sebagai 'YYYY-MM-DD' (mis. koli_date,
- * completed_date) dan kolom `timestamptz` sebagai ISO-8601 berzona (std/sta).
+ * shipment_date) dan kolom `timestamptz` sebagai ISO-8601 berzona (std/sta).
  * Bentuk pertama diparse tanpa konversi zona; bentuk kedua ditampilkan dalam waktu
  * lokal browser.
  */

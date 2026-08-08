@@ -141,7 +141,7 @@ export class BarhalService {
     }
     if (dto.date) {
       params.push(dto.date)
-      conditions.push(`c.completed_date = $${params.length}`)
+      conditions.push(`c.shipment_date = $${params.length}`)
     }
 
     let excludeAttachedClause = 'NOT EXISTS (SELECT 1 FROM barhal_koli_to bkt WHERE bkt.to_number = c.to_number)'
@@ -161,7 +161,7 @@ export class BarhalService {
         rm.dest_station AS dest_station,
         c.lt_number,
         c.remarks,
-        c.completed_date AS date
+        c.shipment_date AS date
       FROM air_shipments_compileaircgk c
       LEFT JOIN route_master rm
         ON rm.origin_dc      = c.extra_fields->>'origin'
@@ -286,14 +286,19 @@ export class BarhalService {
     const koli = await this.koliRepo.findOne({ where: { id } })
     if (!koli) throw new NotFoundException('Koli not found')
 
+    // The remarks filter is a guard, not a convenience: getAvailableTos only ever offers barhal TOs,
+    // but this endpoint takes whatever to_numbers the client sends. It is the only write path into
+    // barhal_koli_to, so anything that slips through here becomes Koli contents and then feeds every
+    // Koli-driven figure in the module — weights, AWBs, chWt, recap status.
     const toRows: { to_number: string; awb: string | null; gross_weight: number | null }[] = dto.toNumbers.length
       ? await this.dataSource.query(
-          `SELECT to_number, awb, gross_weight FROM air_shipments_compileaircgk WHERE to_number = ANY($1)`,
-          [dto.toNumbers],
+          `SELECT to_number, awb, gross_weight FROM air_shipments_compileaircgk
+           WHERE to_number = ANY($1) AND remarks ILIKE $2`,
+          [dto.toNumbers, '%barhal%'],
         )
       : []
     if (toRows.length !== dto.toNumbers.length) {
-      throw new BadRequestException('One or more selected TOs could not be found')
+      throw new BadRequestException('One or more selected TOs could not be found, or are not Barhal TOs')
     }
 
     try {
@@ -451,15 +456,16 @@ export class BarhalService {
     params: unknown[]
     scopedCte: string
     koliScopedCte: string
+    packedCte: string
   } {
     const params: unknown[] = []
-    const conditions: string[] = [`e.remarks ILIKE '%barhal%'`, `e.to_number IS NOT NULL`, `e.completed_date IS NOT NULL`]
+    const conditions: string[] = [`e.remarks ILIKE '%barhal%'`, `e.to_number IS NOT NULL`, `e.shipment_date IS NOT NULL`]
     const koliConditions: string[] = []
     if (dto.startDate && dto.endDate) {
       params.push(dto.startDate, dto.endDate)
       const startIdx = params.length - 1
       const endIdx = params.length
-      conditions.push(`e.completed_date BETWEEN $${startIdx} AND $${endIdx}`)
+      conditions.push(`e.shipment_date BETWEEN $${startIdx} AND $${endIdx}`)
       koliConditions.push(`k.koli_date BETWEEN $${startIdx} AND $${endIdx}`)
     }
     if (dto.origin) {
@@ -483,7 +489,7 @@ export class BarhalService {
           e.to_number,
           e.gross_weight,
           e.awb,
-          e.completed_date AS to_date,
+          e.shipment_date AS to_date,
           ${this.normalizedStationSql('e.origin_station')} AS origin_name,
           ${this.normalizedStationSql('e.dest_station')} AS dest_name
         FROM air_shipments_compileaircgk e
@@ -491,6 +497,35 @@ export class BarhalService {
       )
     `,
       koliScopedCte: `koli_scoped AS (SELECT * FROM barhal_koli k ${koliWhere})`,
+      /**
+       * What is inside each in-scope Koli. Deliberately NOT read through `scoped`: a Koli routinely
+       * holds TOs dated weeks before it was packed, so re-applying the dashboard's date/station
+       * filter to a Koli's own contents would silently drop them. That is what made a drilldown
+       * disagree with the row it was opened from — the parent row saw those AWBs, the child rows,
+       * narrowed to a single date, did not. Only the Koli side is scoped, so the groups a row
+       * expands into always partition that row exactly.
+       *
+       * The LATERAL keeps one TO sheet row per to_number, the same guard the DISTINCT ON in
+       * getToDetail applies against a source sheet that repeats a TO. Its remarks filter is the one
+       * predicate that does belong here: it says what a barhal TO *is* rather than which slice of
+       * them this row covers, so it removes the same rows from a parent and its children alike.
+       * attachTos already refuses non-barhal TOs; this keeps any that predate that guard out of the
+       * figures rather than trusting the table.
+       */
+      packedCte: `
+      packed AS (
+        SELECT ks.id AS koli_id, ks.koli_date, ks.origin_name, ks.dest_name, bkt.to_number, t.awb, t.gross_weight
+        FROM koli_scoped ks
+        JOIN barhal_koli_to bkt ON bkt.koli_id = ks.id
+        LEFT JOIN LATERAL (
+          SELECT e.awb, e.gross_weight
+          FROM air_shipments_compileaircgk e
+          WHERE e.to_number = bkt.to_number AND e.remarks ILIKE '%barhal%'
+          ORDER BY e.shipment_date DESC NULLS LAST
+          LIMIT 1
+        ) t ON TRUE
+      )
+    `,
     }
   }
 
@@ -498,12 +533,14 @@ export class BarhalService {
   private queryPerTanggal(
     scopedCte: string,
     koliScopedCte: string,
+    packedCte: string,
     params: unknown[],
   ): Promise<(RecapAggregateRow & { date: string })[]> {
     return this.dataSource.query(
       `
       WITH ${scopedCte},
       ${koliScopedCte},
+      ${packedCte},
       groups AS (
         SELECT to_date AS koli_date FROM scoped
         UNION
@@ -513,22 +550,22 @@ export class BarhalService {
         g.koli_date::text AS date,
         (SELECT COUNT(DISTINCT to_number) FROM scoped s WHERE s.to_date = g.koli_date)::int AS total_to,
         (SELECT COUNT(*) FROM koli_scoped ks WHERE ks.koli_date = g.koli_date)::int AS total_koli,
-        (SELECT COUNT(DISTINCT s.awb)
-           FROM koli_scoped ks JOIN barhal_koli_to bkt ON bkt.koli_id = ks.id JOIN scoped s ON s.to_number = bkt.to_number
-           WHERE ks.koli_date = g.koli_date AND s.awb IS NOT NULL)::int AS awb_count,
+        (SELECT COUNT(DISTINCT s.to_number) FROM scoped s
+           WHERE s.to_date = g.koli_date
+             AND NOT EXISTS (SELECT 1 FROM barhal_koli_to bkt WHERE bkt.to_number = s.to_number))::int AS unpacked_to,
+        (SELECT COUNT(*) FROM koli_scoped ks
+           WHERE ks.koli_date = g.koli_date
+             AND NOT EXISTS (SELECT 1 FROM packed p WHERE p.koli_id = ks.id AND p.awb IS NOT NULL))::int AS koli_without_awb,
         (SELECT COALESCE(SUM(dt.gross_weight), 0)
-           FROM (SELECT DISTINCT ON (bkt.to_number) bkt.to_number, s.gross_weight
-                 FROM koli_scoped ks JOIN barhal_koli_to bkt ON bkt.koli_id = ks.id JOIN scoped s ON s.to_number = bkt.to_number
-                 WHERE ks.koli_date = g.koli_date) dt)::numeric AS weight_before,
+           FROM (SELECT DISTINCT ON (p.to_number) p.to_number, p.gross_weight
+                 FROM packed p WHERE p.koli_date = g.koli_date) dt)::numeric AS weight_before,
         (SELECT COALESCE(SUM(r.chwt), 0)
-           FROM (SELECT DISTINCT s.awb
-                 FROM koli_scoped ks JOIN barhal_koli_to bkt ON bkt.koli_id = ks.id JOIN scoped s ON s.to_number = bkt.to_number
-                 WHERE ks.koli_date = g.koli_date AND s.awb IS NOT NULL) awbs
+           FROM (SELECT DISTINCT p.awb
+                 FROM packed p WHERE p.koli_date = g.koli_date AND p.awb IS NOT NULL) awbs
            LEFT JOIN air_shipments_smu_rate_cgk_spx r ON r.awb = awbs.awb)::numeric AS chwt,
         (SELECT COUNT(DISTINCT awbs.awb)
-           FROM (SELECT DISTINCT s.awb
-                 FROM koli_scoped ks JOIN barhal_koli_to bkt ON bkt.koli_id = ks.id JOIN scoped s ON s.to_number = bkt.to_number
-                 WHERE ks.koli_date = g.koli_date AND s.awb IS NOT NULL) awbs
+           FROM (SELECT DISTINCT p.awb
+                 FROM packed p WHERE p.koli_date = g.koli_date AND p.awb IS NOT NULL) awbs
            LEFT JOIN air_shipments_smu_rate_cgk_spx r ON r.awb = awbs.awb
            WHERE r.chwt IS NULL)::int AS missing_chwt,
         (SELECT COALESCE(SUM(ks.weight_after - ks.weight_before), 0)
@@ -546,12 +583,14 @@ export class BarhalService {
   private queryPerRute(
     scopedCte: string,
     koliScopedCte: string,
+    packedCte: string,
     params: unknown[],
   ): Promise<(RecapAggregateRow & { originName: string; destName: string })[]> {
     return this.dataSource.query(
       `
       WITH ${scopedCte},
       ${koliScopedCte},
+      ${packedCte},
       groups AS (
         SELECT origin_name, dest_name FROM scoped
         UNION
@@ -562,22 +601,22 @@ export class BarhalService {
         g.dest_name AS "destName",
         (SELECT COUNT(DISTINCT to_number) FROM scoped s WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name)::int AS total_to,
         (SELECT COUNT(*) FROM koli_scoped ks WHERE ks.origin_name = g.origin_name AND ks.dest_name = g.dest_name)::int AS total_koli,
-        (SELECT COUNT(DISTINCT s.awb)
-           FROM koli_scoped ks JOIN barhal_koli_to bkt ON bkt.koli_id = ks.id JOIN scoped s ON s.to_number = bkt.to_number
-           WHERE ks.origin_name = g.origin_name AND ks.dest_name = g.dest_name AND s.awb IS NOT NULL)::int AS awb_count,
+        (SELECT COUNT(DISTINCT s.to_number) FROM scoped s
+           WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name
+             AND NOT EXISTS (SELECT 1 FROM barhal_koli_to bkt WHERE bkt.to_number = s.to_number))::int AS unpacked_to,
+        (SELECT COUNT(*) FROM koli_scoped ks
+           WHERE ks.origin_name = g.origin_name AND ks.dest_name = g.dest_name
+             AND NOT EXISTS (SELECT 1 FROM packed p WHERE p.koli_id = ks.id AND p.awb IS NOT NULL))::int AS koli_without_awb,
         (SELECT COALESCE(SUM(dt.gross_weight), 0)
-           FROM (SELECT DISTINCT ON (bkt.to_number) bkt.to_number, s.gross_weight
-                 FROM koli_scoped ks JOIN barhal_koli_to bkt ON bkt.koli_id = ks.id JOIN scoped s ON s.to_number = bkt.to_number
-                 WHERE ks.origin_name = g.origin_name AND ks.dest_name = g.dest_name) dt)::numeric AS weight_before,
+           FROM (SELECT DISTINCT ON (p.to_number) p.to_number, p.gross_weight
+                 FROM packed p WHERE p.origin_name = g.origin_name AND p.dest_name = g.dest_name) dt)::numeric AS weight_before,
         (SELECT COALESCE(SUM(r.chwt), 0)
-           FROM (SELECT DISTINCT s.awb
-                 FROM koli_scoped ks JOIN barhal_koli_to bkt ON bkt.koli_id = ks.id JOIN scoped s ON s.to_number = bkt.to_number
-                 WHERE ks.origin_name = g.origin_name AND ks.dest_name = g.dest_name AND s.awb IS NOT NULL) awbs
+           FROM (SELECT DISTINCT p.awb
+                 FROM packed p WHERE p.origin_name = g.origin_name AND p.dest_name = g.dest_name AND p.awb IS NOT NULL) awbs
            LEFT JOIN air_shipments_smu_rate_cgk_spx r ON r.awb = awbs.awb)::numeric AS chwt,
         (SELECT COUNT(DISTINCT awbs.awb)
-           FROM (SELECT DISTINCT s.awb
-                 FROM koli_scoped ks JOIN barhal_koli_to bkt ON bkt.koli_id = ks.id JOIN scoped s ON s.to_number = bkt.to_number
-                 WHERE ks.origin_name = g.origin_name AND ks.dest_name = g.dest_name AND s.awb IS NOT NULL) awbs
+           FROM (SELECT DISTINCT p.awb
+                 FROM packed p WHERE p.origin_name = g.origin_name AND p.dest_name = g.dest_name AND p.awb IS NOT NULL) awbs
            LEFT JOIN air_shipments_smu_rate_cgk_spx r ON r.awb = awbs.awb
            WHERE r.chwt IS NULL)::int AS missing_chwt,
         (SELECT COALESCE(SUM(ks.weight_after - ks.weight_before), 0)
@@ -597,7 +636,7 @@ export class BarhalService {
       throw new BadRequestException(`Date range must not exceed ${MAX_RECAP_DAYS} days`)
     }
 
-    const { params, scopedCte, koliScopedCte } = this.buildScopeSql(dto)
+    const { params, scopedCte, koliScopedCte, packedCte } = this.buildScopeSql(dto)
 
     const kpiRow = (
       await this.dataSource.query(
@@ -620,7 +659,7 @@ export class BarhalService {
       )
     )[0]
 
-    const perTanggalRows = await this.queryPerTanggal(scopedCte, koliScopedCte, params)
+    const perTanggalRows = await this.queryPerTanggal(scopedCte, koliScopedCte, packedCte, params)
 
     const perTanggalSparse = perTanggalRows.map((row) => ({ date: row.date, ...toRecapMetrics(row) }))
     // Built from the sparse rows on purpose: a filled-in future date would drag the chart down to 0.
@@ -629,15 +668,15 @@ export class BarhalService {
       ? densifyPerTanggal(perTanggalSparse, dto.startDate!, dto.endDate!)
       : perTanggalSparse
 
-    const perRuteRows = await this.queryPerRute(scopedCte, koliScopedCte, params)
+    const perRuteRows = await this.queryPerRute(scopedCte, koliScopedCte, packedCte, params)
 
     // Deliberately not date-filtered: the route list must stay the same from month to month, so a
-    // route with no shipments in the selected range still shows up as an all-zero incomplete row.
+    // route with no shipments in the selected range still shows up as an all-zero statusless row.
     const routeParams: unknown[] = []
     const routeConditions: string[] = [
       `e.remarks ILIKE '%barhal%'`,
       `e.to_number IS NOT NULL`,
-      `e.completed_date IS NOT NULL`,
+      `e.shipment_date IS NOT NULL`,
       `e.origin_station IS NOT NULL`,
       `e.origin_station != ''`,
       `e.dest_station IS NOT NULL`,
@@ -724,14 +763,14 @@ export class BarhalService {
       throw new BadRequestException(`Date range must not exceed ${MAX_RECAP_DAYS} days`)
     }
 
-    const { params, scopedCte, koliScopedCte } = this.buildScopeSql(dto)
+    const { params, scopedCte, koliScopedCte, packedCte } = this.buildScopeSql(dto)
 
     if (dto.groupBy === 'route') {
-      const rows = await this.queryPerRute(scopedCte, koliScopedCte, params)
+      const rows = await this.queryPerRute(scopedCte, koliScopedCte, packedCte, params)
       return rows.map((row) => ({ originName: row.originName, destName: row.destName, ...toRecapMetrics(row) }))
     }
 
-    const rows = await this.queryPerTanggal(scopedCte, koliScopedCte, params)
+    const rows = await this.queryPerTanggal(scopedCte, koliScopedCte, packedCte, params)
     return rows.map((row) => ({ date: row.date, ...toRecapMetrics(row) }))
   }
 
@@ -753,11 +792,11 @@ export class BarhalService {
     const conditions: string[] = [
       `e.remarks ILIKE '%barhal%'`,
       `e.to_number IS NOT NULL`,
-      `e.completed_date IS NOT NULL`,
+      `e.shipment_date IS NOT NULL`,
     ]
     if (dto.startDate && dto.endDate) {
       params.push(dto.startDate, dto.endDate)
-      conditions.push(`e.completed_date BETWEEN $${params.length - 1} AND $${params.length}`)
+      conditions.push(`e.shipment_date BETWEEN $${params.length - 1} AND $${params.length}`)
     }
     if (dto.origin) {
       params.push(dto.origin)
@@ -772,13 +811,13 @@ export class BarhalService {
       base AS (
         SELECT DISTINCT ON (e.to_number)
           e.to_number,
-          e.completed_date,
+          e.shipment_date,
           e.gross_weight,
           ${this.normalizedStationSql('e.origin_station')} AS origin_name,
           ${this.normalizedStationSql('e.dest_station')} AS dest_name
         FROM air_shipments_compileaircgk e
         WHERE ${conditions.join(' AND ')}
-        ORDER BY e.to_number, e.completed_date DESC
+        ORDER BY e.to_number, e.shipment_date DESC
       )
     `
 
@@ -807,7 +846,7 @@ export class BarhalService {
       `
       WITH ${baseCte}
       SELECT
-        b.completed_date::text AS date,
+        b.shipment_date::text AS date,
         b.origin_name          AS "originName",
         b.dest_name            AS "destName",
         b.to_number            AS "toNumber",
@@ -815,7 +854,7 @@ export class BarhalService {
         b.gross_weight::numeric AS "grossWeight"
       FROM base b
       ${tabClause}
-      ORDER BY b.completed_date DESC, b.to_number
+      ORDER BY b.shipment_date DESC, b.to_number
       LIMIT $${params.length + 1} OFFSET $${params.length + 2}
       `,
       dataParams,

@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { BarhalRecapPerTanggalItem, BarhalRecapPerRuteItem } from '../types'
+import { BarhalRecapPerTanggalItem, BarhalRecapPerRuteItem, BarhalRecapStatus } from '../types'
 import { BarhalDashboardParams, useBarhalRecapDrilldown } from '../hooks/useBarhalDashboard'
 import { formatDate } from '../utils/dateFormat'
 
@@ -29,6 +29,24 @@ function groupKeyAndLabel(row: RecapItem): { key: string; groupLabel: string } {
   return { key: `${row.originName}-${row.destName}`, groupLabel: `${row.originName} → ${row.destName}` }
 }
 
+/**
+ * `none` berarti barisnya nol semua — tidak ada aktivitas barhal sama sekali di tanggal/rute itu,
+ * jadi tidak ada yang bisa disebut selesai atau belum. Baris yang punya TO tapi belum ada AWB tetap
+ * "Incomplete": itu pekerjaan yang belum kelar, bukan pekerjaan yang tidak ada.
+ */
+function RecapStatusBadge({ status }: { status: BarhalRecapStatus }) {
+  if (status === 'none') return <span className="text-muted-foreground">–</span>
+  return (
+    <span
+      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+        status === 'completed' ? 'bg-green-500/15 text-green-600' : 'bg-amber-500/15 text-amber-600'
+      }`}
+    >
+      {status === 'completed' ? 'Completed' : 'Incomplete'}
+    </span>
+  )
+}
+
 function RecapMetricCells({ row }: { row: RecapMetricFields }) {
   return (
     <>
@@ -41,13 +59,7 @@ function RecapMetricCells({ row }: { row: RecapMetricFields }) {
       <td className="px-3 py-2">{fmt.format(row.variancePercent)}%</td>
       <td className="px-3 py-2">{idr.format(row.addRevenue)}</td>
       <td className="px-3 py-2">
-        <span
-          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-            row.status === 'completed' ? 'bg-green-500/15 text-green-600' : 'bg-amber-500/15 text-amber-600'
-          }`}
-        >
-          {row.status === 'completed' ? 'Completed' : 'Incomplete'}
-        </span>
+        <RecapStatusBadge status={row.status} />
       </td>
     </>
   )

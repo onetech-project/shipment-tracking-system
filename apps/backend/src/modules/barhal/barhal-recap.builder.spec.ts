@@ -13,7 +13,8 @@ function aggregateRow(overrides: Partial<RecapAggregateRow> = {}): RecapAggregat
   return {
     total_to: 3,
     total_koli: 2,
-    awb_count: 2,
+    unpacked_to: 0,
+    koli_without_awb: 0,
     missing_chwt: 0,
     weight_before: '30',
     chwt: '25',
@@ -24,21 +25,56 @@ function aggregateRow(overrides: Partial<RecapAggregateRow> = {}): RecapAggregat
 }
 
 describe('toRecapMetrics', () => {
-  it('marks a group completed when every packed AWB has a chWt', () => {
+  it('marks a group completed when nothing in it is outstanding', () => {
     expect(toRecapMetrics(aggregateRow()).status).toBe('completed')
   })
 
-  it('marks a group incomplete when no AWB has been packed into a Koli yet', () => {
-    expect(toRecapMetrics(aggregateRow({ awb_count: 0, total_koli: 0 })).status).toBe('incomplete')
+  it('marks a group incomplete when some of its TOs are not packed into a Koli yet', () => {
+    // The case that used to break the drilldown: a date whose Kolis were all finished still read
+    // "Completed" while the routes holding its unpacked TOs read "Incomplete" underneath it.
+    expect(toRecapMetrics(aggregateRow({ total_to: 10, unpacked_to: 7 })).status).toBe('incomplete')
+  })
+
+  it('marks a group incomplete when one of its Kolis has produced no AWB', () => {
+    expect(toRecapMetrics(aggregateRow({ koli_without_awb: 1 })).status).toBe('incomplete')
   })
 
   it('marks a group incomplete when a packed AWB is missing its chWt', () => {
     expect(toRecapMetrics(aggregateRow({ missing_chwt: 1 })).status).toBe('incomplete')
   })
 
-  it('ignores barhal TOs that are not packed into a Koli when deciding status', () => {
-    // 10 barhal TOs on this date but only 2 AWBs packed: chWt is the only check, so still completed
-    expect(toRecapMetrics(aggregateRow({ total_to: 10 })).status).toBe('completed')
+  it('leaves the status unset only when the group saw no activity at all', () => {
+    // Every other number is Koli-derived, so total_to and total_koli at zero means the whole row is
+    // zero — there is nothing to report on, as opposed to something reported as not yet done.
+    const empty = aggregateRow({
+      total_to: 0,
+      total_koli: 0,
+      weight_before: '0',
+      chwt: '0',
+      weight_increase: '0',
+      add_revenue: '0',
+    })
+    expect(toRecapMetrics(empty).status).toBe('none')
+  })
+
+  it('rolls up: a parent is completed only when every child that has work is completed', () => {
+    // A parent's counters are the sums of its children's, because a TO belongs to exactly one route
+    // and one date, and so does a Koli. Any child with an outstanding item therefore forces the
+    // parent incomplete — the guarantee the drilldown UI depends on.
+    const children = [
+      aggregateRow({ total_to: 4, total_koli: 1 }),
+      aggregateRow({ total_to: 6, total_koli: 0, unpacked_to: 6 }),
+    ]
+    const parent = aggregateRow({
+      total_to: 10,
+      total_koli: 1,
+      unpacked_to: children.reduce((n, c) => n + c.unpacked_to, 0),
+      koli_without_awb: children.reduce((n, c) => n + c.koli_without_awb, 0),
+      missing_chwt: children.reduce((n, c) => n + c.missing_chwt, 0),
+    })
+
+    expect(children.map((c) => toRecapMetrics(c).status)).toEqual(['completed', 'incomplete'])
+    expect(toRecapMetrics(parent).status).toBe('incomplete')
   })
 
   it('derives weightAfter and variance from the Koli weight increase', () => {
@@ -58,7 +94,7 @@ describe('toRecapMetrics', () => {
 })
 
 describe('emptyRecapMetrics', () => {
-  it('is all zeroes and incomplete', () => {
+  it('is all zeroes with no status', () => {
     expect(emptyRecapMetrics()).toEqual({
       totalTo: 0,
       totalKoli: 0,
@@ -68,7 +104,7 @@ describe('emptyRecapMetrics', () => {
       variance: 0,
       variancePercent: 0,
       addRevenue: 0,
-      status: 'incomplete',
+      status: 'none',
     })
   })
 })
@@ -123,13 +159,13 @@ describe('daysInRange', () => {
 })
 
 describe('densifyPerTanggal', () => {
-  it('fills dates with no activity with a zeroed incomplete row', () => {
+  it('fills dates with no activity with a zeroed statusless row', () => {
     const rows = [{ date: '2026-08-02', ...toRecapMetrics(aggregateRow()) }]
     const result = densifyPerTanggal(rows, '2026-08-01', '2026-08-03')
     expect(result.map((r) => r.date)).toEqual(['2026-08-01', '2026-08-02', '2026-08-03'])
     expect(result[0]).toEqual({ date: '2026-08-01', ...emptyRecapMetrics() })
     expect(result[1].status).toBe('completed')
-    expect(result[2].status).toBe('incomplete')
+    expect(result[2].status).toBe('none')
   })
 
   it('keeps a date that has TOs but no Koli instead of zeroing its totalTo', () => {
@@ -140,7 +176,7 @@ describe('densifyPerTanggal', () => {
           aggregateRow({
             total_to: 5,
             total_koli: 0,
-            awb_count: 0,
+            unpacked_to: 5,
             weight_before: '0',
             weight_increase: '0',
             chwt: '0',
@@ -152,7 +188,10 @@ describe('densifyPerTanggal', () => {
     const result = densifyPerTanggal(rows, '2026-08-01', '2026-08-02')
     expect(result[0].totalTo).toBe(5)
     expect(result[0].totalKoli).toBe(0)
+    // Unpacked TOs are still activity, so this date is judged — unlike the zero row filled in for
+    // 2026-08-02, which reports no status at all.
     expect(result[0].status).toBe('incomplete')
+    expect(result[1].status).toBe('none')
   })
 
   it('returns dates ascending regardless of input order', () => {
@@ -175,7 +214,7 @@ describe('densifyPerRute', () => {
     { originName: 'Surabaya', destName: 'Badung' },
   ]
 
-  it('adds every master route that had no activity as a zeroed incomplete row', () => {
+  it('adds every master route that had no activity as a zeroed statusless row', () => {
     const rows = [{ originName: 'Kosambi', destName: 'Badung', ...toRecapMetrics(aggregateRow()) }]
     const result = densifyPerRute(rows, master)
     expect(result).toHaveLength(3)
@@ -212,6 +251,6 @@ describe('densifyPerRute', () => {
   it('returns only master routes when the query returned nothing', () => {
     const result = densifyPerRute([], master)
     expect(result).toHaveLength(3)
-    expect(result.every((r) => r.status === 'incomplete' && r.totalKoli === 0)).toBe(true)
+    expect(result.every((r) => r.status === 'none' && r.totalKoli === 0)).toBe(true)
   })
 })

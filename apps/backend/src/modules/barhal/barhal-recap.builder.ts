@@ -8,7 +8,11 @@
 export interface RecapAggregateRow {
   total_to: number
   total_koli: number
-  awb_count: number
+  /** TOs in this group not attached to any Koli yet. */
+  unpacked_to: number
+  /** Kolis in this group whose contents yield no AWB at all — empty shells included. */
+  koli_without_awb: number
+  /** Distinct AWBs reachable from this group's Kolis that have no chWt. */
   missing_chwt: number
   weight_before: string
   chwt: string
@@ -25,16 +29,39 @@ export interface RecapMetrics {
   variance: number
   variancePercent: number
   addRevenue: number
-  status: 'completed' | 'incomplete'
+  status: RecapStatus
 }
 
 /**
- * chWt lives on the AWB, not the Koli, so a date/route counts as completed once every AWB already
- * packed into a Koli there has a chWt. Barhal TOs still waiting to be packed deliberately do NOT
- * affect the status. awb_count = 0 (nothing packed yet, or every packed TO has a null AWB) means
- * there is nothing to confirm, which is reported as incomplete.
+ * `none` is not a third kind of progress, it is the absence of anything to report — the group saw
+ * no barhal activity at all in the filtered range, so every number on the row is zero. A group that
+ * did see activity is always judged, even if none of it has reached an AWB yet.
+ */
+export type RecapStatus = 'completed' | 'incomplete' | 'none'
+
+/**
+ * Completed means nothing in the group is still outstanding: every TO is packed into a Koli, every
+ * Koli has produced an AWB, and every one of those AWBs has its chWt.
+ *
+ * Each of the three counters is a count over items the drilldown *partitions* — a TO belongs to one
+ * route and one date, so does a Koli, and an AWB is reachable only through the Kolis it sits in.
+ * That is what makes the status roll up in both directions: any child with an outstanding item has
+ * that same item inside the parent, so a "Completed" parent can no longer sit above an "Incomplete"
+ * child, and an "Incomplete" parent always has an incomplete child to point at. Judging completion
+ * on awb_count instead does NOT roll up, which is what let a fully-packed date sit above routes
+ * whose TOs had never been packed at all.
+ *
+ * total_to and total_koli alone decide whether the row is empty. Every other number is derived from
+ * the Koli — its contents (weight_before, chwt) or its own fields (weight_increase, add_revenue) —
+ * so none of them can be non-zero while total_koli is 0.
  */
 export function toRecapMetrics(row: RecapAggregateRow): RecapMetrics {
+  let status: RecapStatus = 'none'
+  if (row.total_to > 0 || row.total_koli > 0) {
+    const outstanding = row.unpacked_to > 0 || row.koli_without_awb > 0 || row.missing_chwt > 0
+    status = outstanding ? 'incomplete' : 'completed'
+  }
+
   const weightBefore = Number(row.weight_before)
   const weightAfter = weightBefore + Number(row.weight_increase)
   const variance = weightAfter - weightBefore
@@ -47,12 +74,13 @@ export function toRecapMetrics(row: RecapAggregateRow): RecapMetrics {
     variance,
     variancePercent: weightBefore > 0 ? (variance / weightBefore) * 100 : 0,
     addRevenue: Number(row.add_revenue),
-    status: row.awb_count > 0 && row.missing_chwt === 0 ? 'completed' : 'incomplete',
+    status,
   }
 }
 
 /** Row shown for a date/route with no TOs and no Koli at all in the filtered range. */
 export function emptyRecapMetrics(): RecapMetrics {
+  // All-zero by construction, which is exactly the case toRecapMetrics reports as `none`.
   return {
     totalTo: 0,
     totalKoli: 0,
@@ -62,7 +90,7 @@ export function emptyRecapMetrics(): RecapMetrics {
     variance: 0,
     variancePercent: 0,
     addRevenue: 0,
-    status: 'incomplete',
+    status: 'none',
   }
 }
 
