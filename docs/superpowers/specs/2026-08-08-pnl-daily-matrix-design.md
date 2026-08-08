@@ -89,7 +89,7 @@ identik dengan sisa modul:
 
 ```sql
 SELECT
-  <dateCol>::DATE                                                          AS d,
+  TO_CHAR(<dateCol>::DATE, 'YYYY-MM-DD')                                   AS d,
   origin_station,
   dest_station,
   COALESCE(SUM(revenue_total), 0)                                          AS revenue,
@@ -101,6 +101,10 @@ FROM v_pnl_to
 WHERE <filter> AND <dateCol> IS NOT NULL
 GROUP BY 1, 2, 3
 ```
+
+Tanggal dikembalikan lewat `TO_CHAR`, bukan `::DATE` telanjang, karena driver `pg`
+mengubah kolom `DATE` menjadi objek `Date` JavaScript sehingga tidak bisa dicocokkan
+langsung dengan daftar tanggal kalender. `getDailyMargin` sudah memakai cara yang sama.
 
 Formula margin identik dengan `getSummary` dan `getProfitByRoute`, sehingga total tiap
 kolom rekonsiliasi dengan KPI card di tab Estimated. Konsekuensinya sama pula: TO yang
