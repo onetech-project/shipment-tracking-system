@@ -122,6 +122,42 @@ export interface PnlProfitByRouteItem {
   avgMarginPerDay: number
 }
 
+export interface PnlDailyMatrixColumn {
+  origin: string
+  originLabel: string
+  dest: string
+}
+
+export interface PnlDailyMatrixCell {
+  revenue: number
+  margin: number
+  weight: number
+  incompleteTos: number
+}
+
+export interface PnlDailyMatrixRow {
+  date: string
+  cells: (PnlDailyMatrixCell | null)[]
+}
+
+export interface PnlDailyMatrixFooter {
+  totalRevenue: number
+  totalMargin: number
+  totalWeight: number
+  avgRevenuePerDay: number
+  avgMarginPerDay: number
+  marginPct: number | null
+  spacePerKg: number | null
+  incompleteTos: number
+}
+
+export interface PnlDailyMatrix {
+  columns: PnlDailyMatrixColumn[]
+  rows: PnlDailyMatrixRow[]
+  footer: PnlDailyMatrixFooter[]
+  periodDays: number
+}
+
 function filterToParams(filter: PnlFilter) {
   return filter.mode === 'cycle'
     ? { cycle: filter.cycle, basis: filter.basis }
@@ -277,6 +313,18 @@ export function usePnlProfitByRoute(filter: PnlFilter | undefined) {
     queryFn: () =>
       apiClient
         .get('/pnl/breakdown/profit-by-route', { params: filterToParams(filter!) })
+        .then((r) => r.data),
+    enabled: !!filter,
+    staleTime: 60 * 1000,
+  })
+}
+
+export function usePnlDailyMatrix(filter: PnlFilter | undefined) {
+  return useQuery<PnlDailyMatrix>({
+    queryKey: ['pnl', 'daily-matrix', filter],
+    queryFn: () =>
+      apiClient
+        .get('/pnl/breakdown/daily-matrix', { params: filterToParams(filter!) })
         .then((r) => r.data),
     enabled: !!filter,
     staleTime: 60 * 1000,
