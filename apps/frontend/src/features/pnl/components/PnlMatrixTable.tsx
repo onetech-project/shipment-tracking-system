@@ -1,0 +1,133 @@
+'use client'
+
+import { useState } from 'react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
+import { MatrixTableModel, formatDayLabel, groupOrigins } from '../utils/dailyMatrix'
+import { num, pct } from '../utils/format'
+
+interface PnlMatrixTableProps {
+  title: string
+  model: MatrixTableModel
+  defaultOpen?: boolean
+}
+
+// Alternating group tints mirror the spreadsheet: the first origin block green, the next blue.
+const GROUP_TINTS = [
+  'bg-green-100 dark:bg-green-950/40',
+  'bg-blue-100 dark:bg-blue-950/40',
+]
+
+function formatValue(value: number | null, format: 'number' | 'percent'): string {
+  if (value == null) return ''
+  return format === 'percent' ? pct(value) : num(Math.round(value))
+}
+
+// Shared by body and footer cells so a negative total is styled the same way as a negative day.
+function valueClass(value: number | null, highlightNegative: boolean): string {
+  if (value == null || value >= 0 || !highlightNegative) return ''
+  return 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-950/40'
+}
+
+export function PnlMatrixTable({ title, model, defaultOpen = true }: PnlMatrixTableProps) {
+  const [open, setOpen] = useState(defaultOpen)
+  const groups = groupOrigins(model.columns)
+
+  return (
+    <div className="rounded-lg border bg-card">
+      <button
+        className="flex w-full items-center gap-2 border-b px-4 py-3 text-left"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        {open ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        <span className="text-sm font-medium">{title}</span>
+        <span className="text-xs text-muted-foreground">
+          {model.columns.length} destinations · {model.dates.length} days
+        </span>
+      </button>
+
+      {open && (
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-xs tabular-nums">
+            <thead>
+              <tr>
+                <th
+                  rowSpan={2}
+                  className="sticky left-0 z-20 border-b border-r bg-card px-3 py-2 text-left font-medium"
+                >
+                  Tanggal
+                </th>
+                {groups.map((group, i) => (
+                  <th
+                    key={group.label}
+                    colSpan={group.span}
+                    className={`border-b border-l px-3 py-1.5 text-center font-semibold ${GROUP_TINTS[i % GROUP_TINTS.length]}`}
+                  >
+                    {group.label}
+                  </th>
+                ))}
+              </tr>
+              <tr>
+                {model.columns.map((column) => (
+                  <th
+                    key={`${column.origin}-${column.dest}`}
+                    className="whitespace-nowrap border-b border-l px-3 py-2 text-right font-medium text-muted-foreground"
+                  >
+                    {column.dest}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+
+            <tbody>
+              {model.dates.map((date, rowIndex) => (
+                <tr key={date} className={rowIndex % 2 ? 'bg-muted/30' : ''}>
+                  <td
+                    className={`sticky left-0 z-10 whitespace-nowrap border-b border-r px-3 py-1.5 ${rowIndex % 2 ? 'bg-muted/30' : 'bg-card'}`}
+                  >
+                    {formatDayLabel(date)}
+                  </td>
+                  {model.values[rowIndex].map((value, colIndex) => {
+                    const incomplete = model.incompleteTos?.[rowIndex][colIndex] ?? 0
+                    return (
+                      <td
+                        key={colIndex}
+                        title={
+                          incomplete > 0
+                            ? `${incomplete} TO belum ada cost — margin di sel ini lebih tinggi dari seharusnya`
+                            : undefined
+                        }
+                        className={`whitespace-nowrap border-b border-l px-3 py-1.5 text-right ${valueClass(value, model.highlightNegative)}`}
+                      >
+                        {formatValue(value, 'number')}
+                        {incomplete > 0 && <span className="ml-1 text-amber-600">•</span>}
+                      </td>
+                    )
+                  })}
+                </tr>
+              ))}
+            </tbody>
+
+            <tfoot>
+              {model.footerRows.map((row, i) => (
+                <tr key={row.label} className={i === 0 ? 'border-t-2 font-semibold' : 'font-semibold'}>
+                  <td className="sticky left-0 z-10 whitespace-nowrap border-b border-r bg-card px-3 py-1.5 text-right">
+                    {row.label}
+                  </td>
+                  {row.values.map((value, colIndex) => (
+                    <td
+                      key={colIndex}
+                      className={`whitespace-nowrap border-b border-l px-3 py-1.5 text-right ${valueClass(value, model.highlightNegative)}`}
+                    >
+                      {formatValue(value, row.format)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
