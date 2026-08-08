@@ -1,4 +1,64 @@
-import { calendarDatesForFilter, calendarDaysForFilter } from './pnl-filter.util'
+import { buildFilter, calendarDatesForFilter, calendarDaysForFilter } from './pnl-filter.util'
+
+describe('buildFilter', () => {
+  it('range mode includes the whole end day via a half-open upper bound', () => {
+    const { where, params } = buildFilter(undefined, undefined, '2026-05-10', '2026-05-15')
+    expect(where).toContain("< ($2::DATE + INTERVAL '1 day')")
+    expect(where).not.toMatch(/<=\s*\$2::DATE/)
+    expect(params).toEqual(['2026-05-10', '2026-05-15'])
+  })
+
+  it('range mode still emits the lower bound and the IS NOT NULL guard', () => {
+    const { where } = buildFilter(undefined, undefined, '2026-05-10', '2026-05-15')
+    expect(where).toContain('date_ata IS NOT NULL')
+    expect(where).toContain('date_ata >= $1::DATE')
+  })
+
+  it('cycle mode is unaffected: equality on cycleCol bound to a single param', () => {
+    const { where, params, cycleCol } = buildFilter('completed_time', '2026-07-1H')
+    expect(where).toBe(`${cycleCol} = $1`)
+    expect(params).toEqual(['2026-07-1H'])
+  })
+
+  it('resolves the date/cycle columns per basis, falling back to ata for unknown basis', () => {
+    expect(buildFilter('atd_origin', undefined, '2026-05-10', '2026-05-15')).toMatchObject({
+      dateCol: 'date_atd',
+      cycleCol: 'cycle_atd',
+    })
+    expect(buildFilter('completed_time', undefined, '2026-05-10', '2026-05-15')).toMatchObject({
+      dateCol: 'date_completed',
+      cycleCol: 'cycle_completed',
+    })
+    expect(buildFilter('some-unknown-basis', undefined, '2026-05-10', '2026-05-15')).toMatchObject(
+      { dateCol: 'date_ata', cycleCol: 'cycle_ata' },
+    )
+    expect(buildFilter(undefined, undefined, '2026-05-10', '2026-05-15')).toMatchObject({
+      dateCol: 'date_ata',
+      cycleCol: 'cycle_ata',
+    })
+  })
+
+  it('prefixes columns with the alias when given', () => {
+    const { where, dateCol, cycleCol } = buildFilter(
+      'ata_vendor_wh_destination',
+      undefined,
+      '2026-05-10',
+      '2026-05-15',
+      'v.',
+    )
+    expect(dateCol).toBe('v.date_ata')
+    expect(cycleCol).toBe('v.cycle_ata')
+    expect(where).toContain('v.date_ata IS NOT NULL')
+    expect(where).toContain('v.date_ata >= $1::DATE')
+    expect(where).toContain("v.date_ata < ($2::DATE + INTERVAL '1 day')")
+  })
+
+  it('yields the 1=0 no-match clause when neither cycle nor range is given', () => {
+    const { where, params } = buildFilter(undefined)
+    expect(where).toBe('1=0')
+    expect(params).toEqual([])
+  })
+})
 
 describe('calendarDatesForFilter', () => {
   it('returns days 1-15 for a 1H cycle', () => {

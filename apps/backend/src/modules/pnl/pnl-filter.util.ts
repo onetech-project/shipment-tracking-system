@@ -40,7 +40,7 @@ export function buildFilter(
     return {
       where: `${dateCol} IS NOT NULL
               AND ${dateCol} >= $1::DATE
-              AND ${dateCol} <= $2::DATE`,
+              AND ${dateCol} < ($2::DATE + INTERVAL '1 day')`,
       params: [startDate, endDate],
       cycleCol,
       dateCol,
