@@ -9,6 +9,7 @@ export interface MatrixFooterRow {
   label: string
   values: (number | null)[] // index-aligned with columns
   format: 'number' | 'percent'
+  incompleteTos?: number[] // index-aligned with columns, same convention as values
 }
 
 // Everything PnlMatrixTable needs to render, with no knowledge of revenue or margin. Both tables
@@ -63,7 +64,12 @@ export function toMarginTable(matrix: PnlDailyMatrix): MatrixTableModel {
     values: matrix.rows.map((r) => r.cells.map((c) => (c ? c.margin : null))),
     incompleteTos: matrix.rows.map((r) => r.cells.map((c) => (c ? c.incompleteTos : 0))),
     footerRows: [
-      { label: 'Total', values: matrix.footer.map((f) => f.totalMargin), format: 'number' },
+      {
+        label: 'Total',
+        values: matrix.footer.map((f) => f.totalMargin),
+        format: 'number',
+        incompleteTos: matrix.footer.map((f) => f.incompleteTos),
+      },
       { label: 'Avg / Day', values: matrix.footer.map((f) => f.avgMarginPerDay), format: 'number' },
       { label: '% Margin', values: matrix.footer.map((f) => f.marginPct), format: 'percent' },
       { label: 'Total Tonase', values: matrix.footer.map((f) => f.totalWeight), format: 'number' },

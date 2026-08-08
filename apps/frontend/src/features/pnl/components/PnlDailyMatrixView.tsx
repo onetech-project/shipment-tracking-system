@@ -1,7 +1,7 @@
 'use client'
 
 import { PnlFilter, usePnlDailyMatrix } from '../hooks/usePnl'
-import { toMarginTable, toRevenueTable } from '../utils/dailyMatrix'
+import { groupOrigins, toMarginTable, toRevenueTable } from '../utils/dailyMatrix'
 import { PnlMatrixTable } from './PnlMatrixTable'
 
 export function PnlDailyMatrixView({ filter }: { filter: PnlFilter }) {
@@ -35,10 +35,12 @@ export function PnlDailyMatrixView({ filter }: { filter: PnlFilter }) {
     )
   }
 
+  const originSuffix = groupOrigins(data.columns).map((g) => g.label).join('/')
+
   return (
     <div className="space-y-6">
-      <PnlMatrixTable title="Revenue — CGK/SUB" model={toRevenueTable(data)} />
-      <PnlMatrixTable title="Profit Margin — CGK/SUB" model={toMarginTable(data)} />
+      <PnlMatrixTable title={`Revenue — ${originSuffix}`} model={toRevenueTable(data)} />
+      <PnlMatrixTable title={`Profit Margin — ${originSuffix}`} model={toMarginTable(data)} />
     </div>
   )
 }

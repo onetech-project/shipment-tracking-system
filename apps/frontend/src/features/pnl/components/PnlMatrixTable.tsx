@@ -18,8 +18,15 @@ const GROUP_TINTS = [
 ]
 
 function formatValue(value: number | null, format: 'number' | 'percent'): string {
-  if (value == null) return ''
+  if (value == null || !Number.isFinite(value)) return ''
   return format === 'percent' ? pct(value) : num(Math.round(value))
+}
+
+// Shared by body and footer cells so an incomplete-cost warning reads identically wherever it appears.
+function incompleteTooltip(count: number): string | undefined {
+  return count > 0
+    ? `${count} TO belum ada cost — margin di sel ini lebih tinggi dari seharusnya`
+    : undefined
 }
 
 // Shared by body and footer cells so a negative total is styled the same way as a negative day.
@@ -59,7 +66,7 @@ export function PnlMatrixTable({ title, model, defaultOpen = true }: PnlMatrixTa
                 </th>
                 {groups.map((group, i) => (
                   <th
-                    key={group.label}
+                    key={`${group.label}-${i}`}
                     colSpan={group.span}
                     className={`border-b border-l px-3 py-1.5 text-center font-semibold ${GROUP_TINTS[i % GROUP_TINTS.length]}`}
                   >
@@ -92,11 +99,7 @@ export function PnlMatrixTable({ title, model, defaultOpen = true }: PnlMatrixTa
                     return (
                       <td
                         key={colIndex}
-                        title={
-                          incomplete > 0
-                            ? `${incomplete} TO belum ada cost — margin di sel ini lebih tinggi dari seharusnya`
-                            : undefined
-                        }
+                        title={incompleteTooltip(incomplete)}
                         className={`whitespace-nowrap border-b border-l px-3 py-1.5 text-right ${valueClass(value, model.highlightNegative)}`}
                       >
                         {formatValue(value, 'number')}
@@ -114,14 +117,19 @@ export function PnlMatrixTable({ title, model, defaultOpen = true }: PnlMatrixTa
                   <td className="sticky left-0 z-10 whitespace-nowrap border-b border-r bg-card px-3 py-1.5 text-right">
                     {row.label}
                   </td>
-                  {row.values.map((value, colIndex) => (
-                    <td
-                      key={colIndex}
-                      className={`whitespace-nowrap border-b border-l px-3 py-1.5 text-right ${valueClass(value, model.highlightNegative)}`}
-                    >
-                      {formatValue(value, row.format)}
-                    </td>
-                  ))}
+                  {row.values.map((value, colIndex) => {
+                    const incomplete = row.incompleteTos?.[colIndex] ?? 0
+                    return (
+                      <td
+                        key={colIndex}
+                        title={incompleteTooltip(incomplete)}
+                        className={`whitespace-nowrap border-b border-l px-3 py-1.5 text-right ${valueClass(value, model.highlightNegative)}`}
+                      >
+                        {formatValue(value, row.format)}
+                        {incomplete > 0 && <span className="ml-1 text-amber-600">•</span>}
+                      </td>
+                    )
+                  })}
                 </tr>
               ))}
             </tfoot>
