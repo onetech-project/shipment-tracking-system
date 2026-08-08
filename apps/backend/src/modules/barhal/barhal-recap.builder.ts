@@ -10,10 +10,12 @@ export interface RecapAggregateRow {
   total_koli: number
   /** TOs in this group not attached to any Koli yet. */
   unpacked_to: number
+  /** TOs in this group whose chWt is still unknown — no AWB at all, or an AWB with no chWt. */
+  to_without_chwt: number
   /** Kolis in this group whose contents yield no AWB at all — empty shells included. */
   koli_without_awb: number
   /** Distinct AWBs reachable from this group's Kolis that have no chWt. */
-  missing_chwt: number
+  koli_awb_without_chwt: number
   weight_before: string
   chwt: string
   weight_increase: string
@@ -40,16 +42,21 @@ export interface RecapMetrics {
 export type RecapStatus = 'completed' | 'incomplete' | 'none'
 
 /**
- * Completed means nothing in the group is still outstanding: every TO is packed into a Koli, every
- * Koli has produced an AWB, and every one of those AWBs has its chWt.
+ * Completed means every TO in the group is packed into a Koli and has its chWt, and every Koli in
+ * the group has produced AWBs that have theirs.
  *
- * Each of the three counters is a count over items the drilldown *partitions* — a TO belongs to one
- * route and one date, so does a Koli, and an AWB is reachable only through the Kolis it sits in.
- * That is what makes the status roll up in both directions: any child with an outstanding item has
- * that same item inside the parent, so a "Completed" parent can no longer sit above an "Incomplete"
- * child, and an "Incomplete" parent always has an incomplete child to point at. Judging completion
- * on awb_count instead does NOT roll up, which is what let a fully-packed date sit above routes
- * whose TOs had never been packed at all.
+ * The TO-side and Koli-side checks are both needed because a Koli does not have to share its
+ * group. A Koli packed on the 27th routinely holds TOs dated weeks earlier, so:
+ *  - the TO's own date/route row is the only place its chWt can be judged (to_without_chwt) — a row
+ *    showing 0 Koli can still have TOs that were packed elsewhere, and judging chWt only through
+ *    this group's Kolis reported such a row as completed while nothing about it was confirmed;
+ *  - the Koli's date/route row is the only place the Koli itself can be judged
+ *    (koli_without_awb, koli_awb_without_chwt) — that row may hold no TOs of its own at all.
+ *
+ * Every counter counts items the drilldown *partitions*: a TO belongs to exactly one date and one
+ * route, and so does a Koli. That is what makes the status roll up in both directions — any child
+ * with an outstanding item has that same item inside its parent, so a "Completed" parent can never
+ * sit above an "Incomplete" child, and an "Incomplete" parent always has a child to point at.
  *
  * total_to and total_koli alone decide whether the row is empty. Every other number is derived from
  * the Koli — its contents (weight_before, chwt) or its own fields (weight_increase, add_revenue) —
@@ -58,7 +65,11 @@ export type RecapStatus = 'completed' | 'incomplete' | 'none'
 export function toRecapMetrics(row: RecapAggregateRow): RecapMetrics {
   let status: RecapStatus = 'none'
   if (row.total_to > 0 || row.total_koli > 0) {
-    const outstanding = row.unpacked_to > 0 || row.koli_without_awb > 0 || row.missing_chwt > 0
+    const outstanding =
+      row.unpacked_to > 0 ||
+      row.to_without_chwt > 0 ||
+      row.koli_without_awb > 0 ||
+      row.koli_awb_without_chwt > 0
     status = outstanding ? 'incomplete' : 'completed'
   }
 

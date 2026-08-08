@@ -14,8 +14,9 @@ function aggregateRow(overrides: Partial<RecapAggregateRow> = {}): RecapAggregat
     total_to: 3,
     total_koli: 2,
     unpacked_to: 0,
+    to_without_chwt: 0,
     koli_without_awb: 0,
-    missing_chwt: 0,
+    koli_awb_without_chwt: 0,
     weight_before: '30',
     chwt: '25',
     weight_increase: '6',
@@ -35,12 +36,27 @@ describe('toRecapMetrics', () => {
     expect(toRecapMetrics(aggregateRow({ total_to: 10, unpacked_to: 7 })).status).toBe('incomplete')
   })
 
+  it('marks a group incomplete when one of its own TOs has no chWt, even with no Koli of its own', () => {
+    // Staging showed a route/date row with 3 TOs and 0 Koli reading "Completed": its TOs had been
+    // packed into Kolis belonging to other dates, so checking chWt only through this group's Kolis
+    // found nothing to complain about. A TO's chWt can only be judged on the TO's own row.
+    const row = aggregateRow({ total_to: 3, total_koli: 0, unpacked_to: 0, to_without_chwt: 3 })
+    expect(toRecapMetrics(row).status).toBe('incomplete')
+  })
+
   it('marks a group incomplete when one of its Kolis has produced no AWB', () => {
     expect(toRecapMetrics(aggregateRow({ koli_without_awb: 1 })).status).toBe('incomplete')
   })
 
-  it('marks a group incomplete when a packed AWB is missing its chWt', () => {
-    expect(toRecapMetrics(aggregateRow({ missing_chwt: 1 })).status).toBe('incomplete')
+  it('marks a group incomplete when an AWB in one of its Kolis is missing its chWt', () => {
+    expect(toRecapMetrics(aggregateRow({ koli_awb_without_chwt: 1 })).status).toBe('incomplete')
+  })
+
+  it('marks a group completed when its TOs are all packed with chWt, even with no Koli of its own', () => {
+    // The mirror of the case above, and the rule as stated: every TO on this date/route is in a Koli
+    // and has its chWt. That the Koli sits under another date does not make this row unfinished.
+    const row = aggregateRow({ total_to: 3, total_koli: 0, unpacked_to: 0, to_without_chwt: 0 })
+    expect(toRecapMetrics(row).status).toBe('completed')
   })
 
   it('leaves the status unset only when the group saw no activity at all', () => {
@@ -63,14 +79,17 @@ describe('toRecapMetrics', () => {
     // parent incomplete — the guarantee the drilldown UI depends on.
     const children = [
       aggregateRow({ total_to: 4, total_koli: 1 }),
-      aggregateRow({ total_to: 6, total_koli: 0, unpacked_to: 6 }),
+      aggregateRow({ total_to: 6, total_koli: 0, unpacked_to: 6, to_without_chwt: 6 }),
     ]
+    const sum = (key: 'unpacked_to' | 'to_without_chwt' | 'koli_without_awb' | 'koli_awb_without_chwt') =>
+      children.reduce((n, c) => n + c[key], 0)
     const parent = aggregateRow({
       total_to: 10,
       total_koli: 1,
-      unpacked_to: children.reduce((n, c) => n + c.unpacked_to, 0),
-      koli_without_awb: children.reduce((n, c) => n + c.koli_without_awb, 0),
-      missing_chwt: children.reduce((n, c) => n + c.missing_chwt, 0),
+      unpacked_to: sum('unpacked_to'),
+      to_without_chwt: sum('to_without_chwt'),
+      koli_without_awb: sum('koli_without_awb'),
+      koli_awb_without_chwt: sum('koli_awb_without_chwt'),
     })
 
     expect(children.map((c) => toRecapMetrics(c).status)).toEqual(['completed', 'incomplete'])
@@ -177,6 +196,7 @@ describe('densifyPerTanggal', () => {
             total_to: 5,
             total_koli: 0,
             unpacked_to: 5,
+            to_without_chwt: 5,
             weight_before: '0',
             weight_increase: '0',
             chwt: '0',

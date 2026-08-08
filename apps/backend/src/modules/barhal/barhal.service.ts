@@ -553,6 +553,10 @@ export class BarhalService {
         (SELECT COUNT(DISTINCT s.to_number) FROM scoped s
            WHERE s.to_date = g.koli_date
              AND NOT EXISTS (SELECT 1 FROM barhal_koli_to bkt WHERE bkt.to_number = s.to_number))::int AS unpacked_to,
+        (SELECT COUNT(DISTINCT s.to_number) FROM scoped s
+           WHERE s.to_date = g.koli_date
+             AND NOT EXISTS (SELECT 1 FROM air_shipments_smu_rate_cgk_spx r
+                             WHERE r.awb = s.awb AND r.chwt IS NOT NULL))::int AS to_without_chwt,
         (SELECT COUNT(*) FROM koli_scoped ks
            WHERE ks.koli_date = g.koli_date
              AND NOT EXISTS (SELECT 1 FROM packed p WHERE p.koli_id = ks.id AND p.awb IS NOT NULL))::int AS koli_without_awb,
@@ -567,7 +571,7 @@ export class BarhalService {
            FROM (SELECT DISTINCT p.awb
                  FROM packed p WHERE p.koli_date = g.koli_date AND p.awb IS NOT NULL) awbs
            LEFT JOIN air_shipments_smu_rate_cgk_spx r ON r.awb = awbs.awb
-           WHERE r.chwt IS NULL)::int AS missing_chwt,
+           WHERE r.chwt IS NULL)::int AS koli_awb_without_chwt,
         (SELECT COALESCE(SUM(ks.weight_after - ks.weight_before), 0)
            FROM koli_scoped ks WHERE ks.koli_date = g.koli_date AND ks.weight_before IS NOT NULL AND ks.weight_after IS NOT NULL)::numeric AS weight_increase,
         (SELECT COALESCE(SUM((ks.length_cm + ks.width_cm + ks.height_cm) * 1000), 0)
@@ -604,6 +608,10 @@ export class BarhalService {
         (SELECT COUNT(DISTINCT s.to_number) FROM scoped s
            WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name
              AND NOT EXISTS (SELECT 1 FROM barhal_koli_to bkt WHERE bkt.to_number = s.to_number))::int AS unpacked_to,
+        (SELECT COUNT(DISTINCT s.to_number) FROM scoped s
+           WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name
+             AND NOT EXISTS (SELECT 1 FROM air_shipments_smu_rate_cgk_spx r
+                             WHERE r.awb = s.awb AND r.chwt IS NOT NULL))::int AS to_without_chwt,
         (SELECT COUNT(*) FROM koli_scoped ks
            WHERE ks.origin_name = g.origin_name AND ks.dest_name = g.dest_name
              AND NOT EXISTS (SELECT 1 FROM packed p WHERE p.koli_id = ks.id AND p.awb IS NOT NULL))::int AS koli_without_awb,
@@ -618,7 +626,7 @@ export class BarhalService {
            FROM (SELECT DISTINCT p.awb
                  FROM packed p WHERE p.origin_name = g.origin_name AND p.dest_name = g.dest_name AND p.awb IS NOT NULL) awbs
            LEFT JOIN air_shipments_smu_rate_cgk_spx r ON r.awb = awbs.awb
-           WHERE r.chwt IS NULL)::int AS missing_chwt,
+           WHERE r.chwt IS NULL)::int AS koli_awb_without_chwt,
         (SELECT COALESCE(SUM(ks.weight_after - ks.weight_before), 0)
            FROM koli_scoped ks WHERE ks.origin_name = g.origin_name AND ks.dest_name = g.dest_name AND ks.weight_before IS NOT NULL AND ks.weight_after IS NOT NULL)::numeric AS weight_increase,
         (SELECT COALESCE(SUM((ks.length_cm + ks.width_cm + ks.height_cm) * 1000), 0)
