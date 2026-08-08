@@ -349,6 +349,8 @@ describe('PnlService', () => {
       const [factSql, factParams] = dataSource.query.mock.calls[1]
       expect(factSql).toContain("TO_CHAR(date_atd::DATE, 'YYYY-MM-DD')")
       expect(factSql).toContain('cost_to IS NULL')
+      expect(factSql).toContain('COALESCE(SUM(revenue_total), 0) - COALESCE(SUM(revenue_discount), 0)')
+      expect(factSql).toContain('- COALESCE(SUM(cost_to), 0)')
       expect(factParams).toEqual(['2026-07-01', '2026-07-03'])
     })
 
