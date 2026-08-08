@@ -220,4 +220,145 @@ describe('PnlService', () => {
       expect(result[0].chwt).toBe(7.5)
     })
   })
+
+  describe('getDailyMatrix', () => {
+    // Two Jabo destinations and one Surabaya destination; facts cover only some (date, route) pairs.
+    const columnRows = [
+      { origin_station: 'Jabo', dest_station: 'Aceh' },
+      { origin_station: 'Jabo', dest_station: 'Ambon' },
+      { origin_station: 'Surabaya', dest_station: 'Pontianak' },
+    ]
+
+    function mockQueries(factRows: Record<string, string>[]) {
+      dataSource.query
+        .mockResolvedValueOnce(columnRows)
+        .mockResolvedValueOnce(factRows)
+    }
+
+    it('labels Jabo as CGK and Surabaya as SUB, preserving query order', async () => {
+      mockQueries([])
+      const result = await service.getDailyMatrix('2026-07-1H')
+      expect(result.columns).toEqual([
+        { origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' },
+        { origin: 'Jabo', originLabel: 'CGK', dest: 'Ambon' },
+        { origin: 'Surabaya', originLabel: 'SUB', dest: 'Pontianak' },
+      ])
+    })
+
+    it('emits one row per calendar day, including days with no shipments', async () => {
+      mockQueries([])
+      const result = await service.getDailyMatrix('2026-07-1H')
+      expect(result.rows).toHaveLength(15)
+      expect(result.periodDays).toBe(15)
+      expect(result.rows[0].date).toBe('2026-07-01')
+      expect(result.rows[14].date).toBe('2026-07-15')
+      expect(result.rows[0].cells).toEqual([null, null, null])
+    })
+
+    it('places each fact in the cell matching its column index', async () => {
+      mockQueries([
+        { d: '2026-07-02', origin_station: 'Surabaya', dest_station: 'Pontianak',
+          revenue: '300', margin: '30', weight: '3', incomplete_tos: '0' },
+        { d: '2026-07-01', origin_station: 'Jabo', dest_station: 'Ambon',
+          revenue: '200', margin: '20', weight: '2', incomplete_tos: '1' },
+      ])
+      const result = await service.getDailyMatrix('2026-07-1H')
+
+      expect(result.rows[0].cells[0]).toBeNull()
+      expect(result.rows[0].cells[1]).toEqual({ revenue: 200, margin: 20, weight: 2, incompleteTos: 1 })
+      expect(result.rows[0].cells[2]).toBeNull()
+      expect(result.rows[1].cells[2]).toEqual({ revenue: 300, margin: 30, weight: 3, incompleteTos: 0 })
+    })
+
+    it('distinguishes a zero-valued cell from an absent one', async () => {
+      mockQueries([
+        { d: '2026-07-01', origin_station: 'Jabo', dest_station: 'Aceh',
+          revenue: '0', margin: '0', weight: '0', incomplete_tos: '0' },
+      ])
+      const result = await service.getDailyMatrix('2026-07-1H')
+      expect(result.rows[0].cells[0]).toEqual({ revenue: 0, margin: 0, weight: 0, incompleteTos: 0 })
+      expect(result.rows[0].cells[1]).toBeNull()
+    })
+
+    it('computes footer totals, averages, margin pct and space per kg per column', async () => {
+      mockQueries([
+        { d: '2026-07-01', origin_station: 'Jabo', dest_station: 'Aceh',
+          revenue: '600', margin: '60', weight: '10', incomplete_tos: '1' },
+        { d: '2026-07-02', origin_station: 'Jabo', dest_station: 'Aceh',
+          revenue: '400', margin: '40', weight: '10', incomplete_tos: '2' },
+      ])
+      const result = await service.getDailyMatrix('2026-07-1H')
+
+      expect(result.footer[0]).toEqual({
+        totalRevenue: 1000,
+        totalMargin: 100,
+        totalWeight: 20,
+        avgRevenuePerDay: 1000 / 15,
+        avgMarginPerDay: 100 / 15,
+        marginPct: 10,      // 100 / 1000 × 100
+        spacePerKg: 5,      // 100 / 20
+        incompleteTos: 3,
+      })
+    })
+
+    it('returns null rather than Infinity or NaN when a divisor is zero', async () => {
+      mockQueries([
+        { d: '2026-07-01', origin_station: 'Jabo', dest_station: 'Aceh',
+          revenue: '0', margin: '-50', weight: '0', incomplete_tos: '0' },
+      ])
+      const result = await service.getDailyMatrix('2026-07-1H')
+      expect(result.footer[0].marginPct).toBeNull()
+      expect(result.footer[0].spacePerKg).toBeNull()
+      expect(result.footer[0].totalMargin).toBe(-50)
+    })
+
+    it('keeps a column with no data at all, with zeroed footer', async () => {
+      mockQueries([])
+      const result = await service.getDailyMatrix('2026-07-1H')
+      expect(result.footer).toHaveLength(3)
+      expect(result.footer[2]).toEqual({
+        totalRevenue: 0, totalMargin: 0, totalWeight: 0,
+        avgRevenuePerDay: 0, avgMarginPerDay: 0,
+        marginPct: null, spacePerKg: null, incompleteTos: 0,
+      })
+    })
+
+    it('ignores a fact whose route is not among the columns', async () => {
+      mockQueries([
+        { d: '2026-07-01', origin_station: 'Jabo', dest_station: 'Nowhere',
+          revenue: '999', margin: '999', weight: '9', incomplete_tos: '0' },
+      ])
+      const result = await service.getDailyMatrix('2026-07-1H')
+      expect(result.rows[0].cells).toEqual([null, null, null])
+      expect(result.footer[0].totalRevenue).toBe(0)
+    })
+
+    it('ignores a fact whose date falls outside the calendar rows', async () => {
+      mockQueries([
+        { d: '2026-07-20', origin_station: 'Jabo', dest_station: 'Aceh',
+          revenue: '999', margin: '999', weight: '9', incomplete_tos: '0' },
+      ])
+      const result = await service.getDailyMatrix('2026-07-1H')
+      expect(result.rows.every((r) => r.cells.every((c) => c === null))).toBe(true)
+    })
+
+    it('selects the date as text and filters on the chosen basis in range mode', async () => {
+      mockQueries([])
+      await service.getDailyMatrix(undefined, '2026-07-01', '2026-07-03', 'atd_origin')
+
+      const [factSql, factParams] = dataSource.query.mock.calls[1]
+      expect(factSql).toContain("TO_CHAR(date_atd::DATE, 'YYYY-MM-DD')")
+      expect(factSql).toContain('cost_to IS NULL')
+      expect(factParams).toEqual(['2026-07-01', '2026-07-03'])
+    })
+
+    it('reads the column list independently of the period filter', async () => {
+      mockQueries([])
+      await service.getDailyMatrix('2026-07-1H')
+
+      const [columnSql, columnParams] = dataSource.query.mock.calls[0]
+      expect(columnSql).toContain('SELECT DISTINCT origin_station, dest_station')
+      expect(columnParams).toBeUndefined()
+    })
+  })
 })

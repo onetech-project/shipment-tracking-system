@@ -6,6 +6,7 @@ import {
   resolveBasis,
   buildFilter,
   calendarDaysForFilter,
+  calendarDatesForFilter,
 } from './pnl-filter.util'
 
 export interface PnlSummary {
@@ -134,6 +135,49 @@ export interface PnlProfitByRouteItem {
   avgCostPerKg: number
   avgMarginPerKg: number
   avgMarginPerDay: number
+}
+
+export interface PnlDailyMatrixColumn {
+  origin: string // raw v_pnl_to value, e.g. 'Jabo'
+  originLabel: string // display label, e.g. 'CGK'
+  dest: string
+}
+
+export interface PnlDailyMatrixCell {
+  revenue: number
+  margin: number
+  weight: number
+  incompleteTos: number // TOs whose cost could not be computed; margin here is optimistic
+}
+
+export interface PnlDailyMatrixRow {
+  date: string // YYYY-MM-DD
+  cells: (PnlDailyMatrixCell | null)[] // index-aligned with columns; null = no shipment at all
+}
+
+export interface PnlDailyMatrixFooter {
+  totalRevenue: number
+  totalMargin: number
+  totalWeight: number
+  avgRevenuePerDay: number
+  avgMarginPerDay: number
+  marginPct: number | null // null when totalRevenue is 0
+  spacePerKg: number | null // null when totalWeight is 0
+  incompleteTos: number
+}
+
+export interface PnlDailyMatrix {
+  columns: PnlDailyMatrixColumn[]
+  rows: PnlDailyMatrixRow[]
+  footer: PnlDailyMatrixFooter[] // index-aligned with columns
+  periodDays: number
+}
+
+// The spreadsheet this report mirrors labels origins by airport code. Unknown origins fall back
+// to their raw value so a newly opened station is visible rather than silently blank.
+const ORIGIN_LABELS: Record<string, string> = {
+  Jabo: 'CGK',
+  Surabaya: 'SUB',
 }
 
 @Injectable()
@@ -702,5 +746,99 @@ export class PnlService {
         avgMarginPerDay: totalMargin / days,
       }
     })
+  }
+
+  // Daily pivot behind the "Daily Report" tab: one row per calendar day, one column per
+  // origin→destination pair. Columns come from the whole view rather than the selected period so
+  // the layout stays stable as the user moves between cycles. All footer arithmetic lives here so
+  // the numbers have a single testable definition.
+  async getDailyMatrix(
+    cyclePeriod?: string,
+    startDate?: string,
+    endDate?: string,
+    basis?: string,
+  ): Promise<PnlDailyMatrix> {
+    const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const dates = calendarDatesForFilter(cyclePeriod, startDate, endDate)
+    const periodDays = Math.max(1, dates.length)
+
+    const [columnRows, factRows] = await Promise.all([
+      this.dataSource.query(`
+        SELECT DISTINCT origin_station, dest_station
+        FROM v_pnl_to
+        WHERE origin_station IS NOT NULL AND dest_station IS NOT NULL
+        ORDER BY 1, 2
+      `),
+      this.dataSource.query(
+        `
+        SELECT
+          TO_CHAR(${dateCol}::DATE, 'YYYY-MM-DD')                                AS d,
+          origin_station,
+          dest_station,
+          COALESCE(SUM(revenue_total), 0)                                        AS revenue,
+          COALESCE(SUM(revenue_total), 0) - COALESCE(SUM(revenue_discount), 0)
+            - COALESCE(SUM(cost_to), 0)                                          AS margin,
+          COALESCE(SUM(gross_weight), 0)                                         AS weight,
+          COUNT(*) FILTER (WHERE cost_to IS NULL)::int                           AS incomplete_tos
+        FROM v_pnl_to
+        WHERE ${where}
+          AND ${dateCol} IS NOT NULL
+        GROUP BY 1, 2, 3
+        `,
+        params,
+      ),
+    ])
+
+    const columns: PnlDailyMatrixColumn[] = (columnRows as Record<string, string>[]).map((r) => ({
+      origin: r.origin_station,
+      originLabel: ORIGIN_LABELS[r.origin_station] ?? r.origin_station,
+      dest: r.dest_station,
+    }))
+    const columnIndex = new Map(columns.map((c, i) => [`${c.origin}|${c.dest}`, i]))
+
+    const rows: PnlDailyMatrixRow[] = dates.map((date) => ({
+      date,
+      cells: columns.map(() => null),
+    }))
+    const rowIndex = new Map(rows.map((r, i) => [r.date, i]))
+
+    for (const fact of factRows as Record<string, string>[]) {
+      const ci = columnIndex.get(`${fact.origin_station}|${fact.dest_station}`)
+      const ri = rowIndex.get(fact.d)
+      if (ci === undefined || ri === undefined) continue
+      rows[ri].cells[ci] = {
+        revenue: Number(fact.revenue),
+        margin: Number(fact.margin),
+        weight: Number(fact.weight),
+        incompleteTos: Number(fact.incomplete_tos),
+      }
+    }
+
+    const footer: PnlDailyMatrixFooter[] = columns.map((_, ci) => {
+      let totalRevenue = 0
+      let totalMargin = 0
+      let totalWeight = 0
+      let incompleteTos = 0
+      for (const row of rows) {
+        const cell = row.cells[ci]
+        if (!cell) continue
+        totalRevenue += cell.revenue
+        totalMargin += cell.margin
+        totalWeight += cell.weight
+        incompleteTos += cell.incompleteTos
+      }
+      return {
+        totalRevenue,
+        totalMargin,
+        totalWeight,
+        avgRevenuePerDay: totalRevenue / periodDays,
+        avgMarginPerDay: totalMargin / periodDays,
+        marginPct: totalRevenue > 0 ? (totalMargin / totalRevenue) * 100 : null,
+        spacePerKg: totalWeight > 0 ? totalMargin / totalWeight : null,
+        incompleteTos,
+      }
+    })
+
+    return { columns, rows, footer, periodDays }
   }
 }
