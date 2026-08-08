@@ -20,7 +20,7 @@
 - Dates crossing the SQL boundary are strings in `YYYY-MM-DD` form, produced by `TO_CHAR(... , 'YYYY-MM-DD')`. Never a bare `::DATE`, because the `pg` driver converts `DATE` columns into JavaScript `Date` objects.
 - Division by zero yields `null`, never `Infinity` or `NaN`.
 - Origin labels: `Jabo` displays as `CGK`, `Surabaya` displays as `SUB`. Any other origin value displays as itself.
-- Run Jest with `--runInBand`. The default worker count exhausts memory on this machine.
+- Run Jest with `NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest <pattern> --runInBand`. The default worker count exhausts memory on this machine, and `--runInBand` alone still aborts with "FATAL ERROR: Ineffective mark-compacts near heap limit" — the heap bump is required too. The per-step commands below omit it; prefer this form.
 - Every task ends with a commit. Do not push.
 
 ---
