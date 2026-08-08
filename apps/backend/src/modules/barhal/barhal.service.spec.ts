@@ -339,14 +339,39 @@ describe('BarhalService', () => {
   })
 
   describe('getDashboard', () => {
+    it('builds the kpi cards from the same two scopes the recap uses', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      await service.getDashboard({ startDate: '2026-08-01', endDate: '2026-08-31' })
+      const kpiSql: string = dataSource.query.mock.calls[0][0]
+
+      // The regression: the cards reached Kolis through the TOs in range (DISTINCT bkt.koli_id over
+      // `scoped`), which is a different set of Kolis than koli_scoped. A month whose Kolis all held
+      // TOs dated earlier therefore showed Total Koli 0 and 0 kg above a table full of those Kolis.
+      expect(kpiSql).not.toContain('koli_ids')
+      expect(kpiSql).toContain('(SELECT COUNT(*)::int FROM koli_scoped) AS koli_count')
+      expect(kpiSql).toContain('FROM koli_scoped ks) AS batang_kayu')
+      // Weight before is the Koli-contents figure the recap column shows, not the gross weight of
+      // every barhal TO in range — those two never agreed either.
+      expect(kpiSql).toContain('FROM packed p) dt) AS weight_before')
+      expect(kpiSql).toContain('FROM koli_scoped ks\n             WHERE ks.weight_before IS NOT NULL')
+      // Total TO stays TO-scoped: it is the sum of the recap's own Total TO column.
+      expect(kpiSql).toContain('(SELECT COUNT(DISTINCT to_number)::int FROM scoped) AS total_to')
+    })
+
     it('returns TO-POV kpi/chartByDate/recapBatangKayu/recapPerTanggal/recapPerRute', async () => {
       dataSource.query
         .mockResolvedValueOnce([{ koli_count: 2, total_to: 3, weight_before: 30, weight_increase: 6, batang_kayu: 10 }]) // kpi
         .mockResolvedValueOnce([
-          { date: '2026-06-01', total_to: 3, unpacked_to: 0, koli_without_awb: 0, total_koli: 2, weight_before: 30, chwt: 25, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 6, add_revenue: 500 },
+          { date: '2026-06-01', total_to: 3, unpacked_to: 0, koli_without_awb: 0, koli_without_matching_to: 0, total_koli: 2, weight_before: 30, chwt: 25, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 6, add_revenue: 500 },
         ]) // recapPerTanggal
         .mockResolvedValueOnce([
-          { originName: 'Kosambi', destName: 'Badung', total_to: 3, unpacked_to: 0, koli_without_awb: 0, total_koli: 2, weight_before: 30, chwt: 25, to_without_chwt: 0, koli_awb_without_chwt: 1, weight_increase: 6, add_revenue: 500 },
+          { originName: 'Kosambi', destName: 'Badung', total_to: 3, unpacked_to: 0, koli_without_awb: 0, koli_without_matching_to: 0, total_koli: 2, weight_before: 30, chwt: 25, to_without_chwt: 0, koli_awb_without_chwt: 1, weight_increase: 6, add_revenue: 500 },
         ]) // recapPerRute
         .mockResolvedValueOnce([]) // masterRoutes
         .mockResolvedValueOnce([
@@ -389,7 +414,7 @@ describe('BarhalService', () => {
     it('reports variancePercent as 0 when weightBefore is 0 (no division by zero)', async () => {
       dataSource.query
         .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
-        .mockResolvedValueOnce([{ date: '2026-06-01', total_to: 0, unpacked_to: 0, koli_without_awb: 0, total_koli: 0, weight_before: 0, chwt: 0, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 0, add_revenue: 0 }])
+        .mockResolvedValueOnce([{ date: '2026-06-01', total_to: 0, unpacked_to: 0, koli_without_awb: 0, koli_without_matching_to: 0, total_koli: 0, weight_before: 0, chwt: 0, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 0, add_revenue: 0 }])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
@@ -404,7 +429,7 @@ describe('BarhalService', () => {
       // parent above them is exactly the contradiction the roll-up rule exists to prevent.
       dataSource.query
         .mockResolvedValueOnce([{ koli_count: 1, total_to: 10, weight_before: 30, weight_increase: 6, batang_kayu: 0 }])
-        .mockResolvedValueOnce([{ date: '2026-06-01', total_to: 10, unpacked_to: 8, koli_without_awb: 0, total_koli: 1, weight_before: 30, chwt: 25, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 6, add_revenue: 0 }])
+        .mockResolvedValueOnce([{ date: '2026-06-01', total_to: 10, unpacked_to: 8, koli_without_awb: 0, koli_without_matching_to: 0, total_koli: 1, weight_before: 30, chwt: 25, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 6, add_revenue: 0 }])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
@@ -456,7 +481,7 @@ describe('BarhalService', () => {
       dataSource.query
         .mockResolvedValueOnce([{ koli_count: 1, total_to: 1, weight_before: 10, weight_increase: 2, batang_kayu: 0 }])
         .mockResolvedValueOnce([
-          { date: '2026-06-02', total_to: 1, unpacked_to: 0, koli_without_awb: 0, total_koli: 1, weight_before: 10, chwt: 9, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 2, add_revenue: 0 },
+          { date: '2026-06-02', total_to: 1, unpacked_to: 0, koli_without_awb: 0, koli_without_matching_to: 0, total_koli: 1, weight_before: 10, chwt: 9, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 2, add_revenue: 0 },
         ])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
@@ -473,7 +498,7 @@ describe('BarhalService', () => {
       dataSource.query
         .mockResolvedValueOnce([{ koli_count: 1, total_to: 1, weight_before: 10, weight_increase: 2, batang_kayu: 0 }])
         .mockResolvedValueOnce([
-          { date: '2026-06-02', total_to: 1, unpacked_to: 0, koli_without_awb: 0, total_koli: 1, weight_before: 10, chwt: 9, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 2, add_revenue: 0 },
+          { date: '2026-06-02', total_to: 1, unpacked_to: 0, koli_without_awb: 0, koli_without_matching_to: 0, total_koli: 1, weight_before: 10, chwt: 9, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 2, add_revenue: 0 },
         ])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
@@ -487,7 +512,7 @@ describe('BarhalService', () => {
       dataSource.query
         .mockResolvedValueOnce([{ koli_count: 1, total_to: 1, weight_before: 10, weight_increase: 2, batang_kayu: 0 }])
         .mockResolvedValueOnce([
-          { date: '2026-06-02', total_to: 1, unpacked_to: 0, koli_without_awb: 0, total_koli: 1, weight_before: 10, chwt: 9, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 2, add_revenue: 0 },
+          { date: '2026-06-02', total_to: 1, unpacked_to: 0, koli_without_awb: 0, koli_without_matching_to: 0, total_koli: 1, weight_before: 10, chwt: 9, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 2, add_revenue: 0 },
         ])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
@@ -521,7 +546,7 @@ describe('BarhalService', () => {
         .mockResolvedValueOnce([{ koli_count: 1, total_to: 1, weight_before: 10, weight_increase: 2, batang_kayu: 0 }])
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([
-          { originName: 'Kosambi', destName: 'Badung', total_to: 1, unpacked_to: 0, koli_without_awb: 0, total_koli: 1, weight_before: 10, chwt: 9, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 2, add_revenue: 0 },
+          { originName: 'Kosambi', destName: 'Badung', total_to: 1, unpacked_to: 0, koli_without_awb: 0, koli_without_matching_to: 0, total_koli: 1, weight_before: 10, chwt: 9, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 2, add_revenue: 0 },
         ])
         .mockResolvedValueOnce([
           { originName: 'Kosambi', destName: 'Badung' },
@@ -604,7 +629,7 @@ describe('BarhalService', () => {
   describe('getDrilldown', () => {
     it('groups by route for a single date, without zero-filling master routes', async () => {
       dataSource.query.mockResolvedValueOnce([
-        { originName: 'Kosambi', destName: 'Badung', total_to: 3, unpacked_to: 0, koli_without_awb: 0, total_koli: 2, weight_before: 30, chwt: 25, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 6, add_revenue: 500 },
+        { originName: 'Kosambi', destName: 'Badung', total_to: 3, unpacked_to: 0, koli_without_awb: 0, koli_without_matching_to: 0, total_koli: 2, weight_before: 30, chwt: 25, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 6, add_revenue: 500 },
       ])
 
       const rows = await service.getDrilldown({ groupBy: 'route', startDate: '2026-06-01', endDate: '2026-06-01' })
@@ -631,7 +656,7 @@ describe('BarhalService', () => {
 
     it('groups by date for a single route, without zero-filling the calendar', async () => {
       dataSource.query.mockResolvedValueOnce([
-        { date: '2026-06-03', total_to: 1, unpacked_to: 0, koli_without_awb: 0, total_koli: 1, weight_before: 10, chwt: 8, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 2, add_revenue: 100 },
+        { date: '2026-06-03', total_to: 1, unpacked_to: 0, koli_without_awb: 0, koli_without_matching_to: 0, total_koli: 1, weight_before: 10, chwt: 8, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 2, add_revenue: 100 },
       ])
 
       const rows = await service.getDrilldown({
@@ -685,22 +710,27 @@ describe('BarhalService', () => {
       // child rows did not, and the two statuses disagreed.
       expect(sql).not.toContain('JOIN scoped s ON s.to_number = bkt.to_number')
 
-      // A Koli's contents are whatever barhal_koli_to says they are; the lookup back into the TO
-      // sheet carries no date or station predicate of its own, so the drilldown axis cannot shrink
-      // them. Only the Koli side is narrowed, and the Koli groups partition their parent exactly.
+      // A Koli's contents are whatever barhal_koli_to says they are, and the drilldown axis must not
+      // be able to shrink them — only the Koli side (koli_scoped) is narrowed, which is what makes
+      // the Koli groups partition their parent exactly. Every axis value reaches the SQL as a bound
+      // parameter, so "this CTE contains no placeholder" is the whole invariant in one assertion.
       const packedCte = sql.slice(sql.indexOf('packed AS ('), sql.indexOf('groups AS ('))
       expect(packedCte).toContain('JOIN barhal_koli_to bkt ON bkt.koli_id = ks.id')
-      expect(packedCte).not.toMatch(/shipment_date BETWEEN/)
-      expect(packedCte).not.toMatch(/origin_station|dest_station/)
+      expect(packedCte).not.toMatch(/\$\d/)
 
-      // remarks is the exception, and it is a different kind of predicate: it says what a barhal TO
-      // *is* rather than which slice of them this row covers, so it removes the same rows from
-      // parent and child alike and cannot skew the partition.
+      // The station columns appear here only as a projection feeding matches_koli, which compares a
+      // TO against its own Koli (ks) and never against the group being aggregated — that is what
+      // keeps the counter identical for a given Koli in both recap tables.
+      expect(packedCte).toContain('t.to_date = ks.koli_date')
+      expect(packedCte).toContain('t.origin_name = ks.origin_name')
+
+      // remarks is the one filter that belongs here: it says what a barhal TO *is* rather than which
+      // slice of them this row covers, so it removes the same rows from parent and child alike.
       expect(packedCte).toMatch(/remarks ILIKE '%barhal%'/i)
 
-      // Every Koli-derived figure reads from it: koli_without_awb, weight_before, chwt, and
-      // koli_awb_without_chwt.
-      expect(sql.match(/FROM packed p/g)).toHaveLength(4)
+      // Every Koli-derived figure reads from it: koli_without_awb, koli_without_matching_to,
+      // weight_before, chwt, and koli_awb_without_chwt.
+      expect(sql.match(/FROM packed p/g)).toHaveLength(5)
     })
 
     it('rejects a range longer than 366 days without running any query', async () => {
@@ -717,11 +747,11 @@ describe('BarhalService', () => {
       dataSource.query
         .mockResolvedValueOnce([{ koli_count: 3, total_to: 5, weight_before: 50, weight_increase: 10, batang_kayu: 0 }]) // kpi
         .mockResolvedValueOnce([
-          { date: '2026-06-01', total_to: 5, unpacked_to: 0, koli_without_awb: 0, total_koli: 3, weight_before: 50, chwt: 40, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 10, add_revenue: 900 },
+          { date: '2026-06-01', total_to: 5, unpacked_to: 0, koli_without_awb: 0, koli_without_matching_to: 0, total_koli: 3, weight_before: 50, chwt: 40, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 10, add_revenue: 900 },
         ]) // recapPerTanggal
         .mockResolvedValueOnce([
-          { originName: 'Kosambi', destName: 'Badung', total_to: 2, unpacked_to: 0, koli_without_awb: 0, total_koli: 1, weight_before: 20, chwt: 15, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 4, add_revenue: 400 },
-          { originName: 'Kosambi', destName: 'Batam', total_to: 3, unpacked_to: 0, koli_without_awb: 0, total_koli: 2, weight_before: 30, chwt: 25, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 6, add_revenue: 500 },
+          { originName: 'Kosambi', destName: 'Badung', total_to: 2, unpacked_to: 0, koli_without_awb: 0, koli_without_matching_to: 0, total_koli: 1, weight_before: 20, chwt: 15, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 4, add_revenue: 400 },
+          { originName: 'Kosambi', destName: 'Batam', total_to: 3, unpacked_to: 0, koli_without_awb: 0, koli_without_matching_to: 0, total_koli: 2, weight_before: 30, chwt: 25, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 6, add_revenue: 500 },
         ]) // recapPerRute
         .mockResolvedValueOnce([]) // masterRoutes
         .mockResolvedValueOnce([]) // recapBatangKayu
@@ -735,7 +765,7 @@ describe('BarhalService', () => {
       // in isolation and capture its one and only SQL string.
       dataSource.query.mockReset()
       dataSource.query.mockResolvedValueOnce([
-        { date: '2026-06-01', total_to: 5, unpacked_to: 0, koli_without_awb: 0, total_koli: 3, weight_before: 50, chwt: 40, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 10, add_revenue: 900 },
+        { date: '2026-06-01', total_to: 5, unpacked_to: 0, koli_without_awb: 0, koli_without_matching_to: 0, total_koli: 3, weight_before: 50, chwt: 40, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 10, add_revenue: 900 },
       ])
       const parent = await service.getDrilldown({ groupBy: 'date', startDate: '2026-06-01', endDate: '2026-06-01' })
       const drilldownPerTanggalSql: string = dataSource.query.mock.calls[0][0]
@@ -748,8 +778,8 @@ describe('BarhalService', () => {
       // Phase 3: same pairing for the per-rute grouping.
       dataSource.query.mockReset()
       dataSource.query.mockResolvedValueOnce([
-        { originName: 'Kosambi', destName: 'Badung', total_to: 2, unpacked_to: 0, koli_without_awb: 0, total_koli: 1, weight_before: 20, chwt: 15, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 4, add_revenue: 400 },
-        { originName: 'Kosambi', destName: 'Batam', total_to: 3, unpacked_to: 0, koli_without_awb: 0, total_koli: 2, weight_before: 30, chwt: 25, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 6, add_revenue: 500 },
+        { originName: 'Kosambi', destName: 'Badung', total_to: 2, unpacked_to: 0, koli_without_awb: 0, koli_without_matching_to: 0, total_koli: 1, weight_before: 20, chwt: 15, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 4, add_revenue: 400 },
+        { originName: 'Kosambi', destName: 'Batam', total_to: 3, unpacked_to: 0, koli_without_awb: 0, koli_without_matching_to: 0, total_koli: 2, weight_before: 30, chwt: 25, to_without_chwt: 0, koli_awb_without_chwt: 0, weight_increase: 6, add_revenue: 500 },
       ])
       const children = await service.getDrilldown({ groupBy: 'route', startDate: '2026-06-01', endDate: '2026-06-01' })
       const drilldownPerRuteSql: string = dataSource.query.mock.calls[0][0]

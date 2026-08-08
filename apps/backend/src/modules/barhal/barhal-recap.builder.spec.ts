@@ -16,6 +16,7 @@ function aggregateRow(overrides: Partial<RecapAggregateRow> = {}): RecapAggregat
     unpacked_to: 0,
     to_without_chwt: 0,
     koli_without_awb: 0,
+    koli_without_matching_to: 0,
     koli_awb_without_chwt: 0,
     weight_before: '30',
     chwt: '25',
@@ -23,6 +24,21 @@ function aggregateRow(overrides: Partial<RecapAggregateRow> = {}): RecapAggregat
     add_revenue: '500',
     ...overrides,
   }
+}
+
+/** Every outstanding-work counter is a count over items the drilldown partitions, so a parent's is
+ *  the sum of its children's. Building the parent this way is the point of the roll-up tests. */
+function sumCounters(children: RecapAggregateRow[]) {
+  const keys = [
+    'unpacked_to',
+    'to_without_chwt',
+    'koli_without_awb',
+    'koli_without_matching_to',
+    'koli_awb_without_chwt',
+  ] as const
+  return Object.fromEntries(
+    keys.map((key) => [key, children.reduce((total, child) => total + child[key], 0)]),
+  ) as Pick<RecapAggregateRow, (typeof keys)[number]>
 }
 
 describe('toRecapMetrics', () => {
@@ -50,6 +66,14 @@ describe('toRecapMetrics', () => {
 
   it('marks a group incomplete when an AWB in one of its Kolis is missing its chWt', () => {
     expect(toRecapMetrics(aggregateRow({ koli_awb_without_chwt: 1 })).status).toBe('incomplete')
+  })
+
+  it('marks a group incomplete when a Koli here holds no TO of this date and route', () => {
+    // Staging showed "0 TO / 1 Koli / 12,7 kg" reading Completed: with no TO on the row every
+    // TO-side check passes vacuously, and its one Koli — packed here but holding TOs booked months
+    // earlier — was otherwise settled. This is the counter such a row is judged on.
+    const row = aggregateRow({ total_to: 0, total_koli: 1, koli_without_matching_to: 1 })
+    expect(toRecapMetrics(row).status).toBe('incomplete')
   })
 
   it('marks a group completed when its TOs are all packed with chWt, even with no Koli of its own', () => {
@@ -81,16 +105,21 @@ describe('toRecapMetrics', () => {
       aggregateRow({ total_to: 4, total_koli: 1 }),
       aggregateRow({ total_to: 6, total_koli: 0, unpacked_to: 6, to_without_chwt: 6 }),
     ]
-    const sum = (key: 'unpacked_to' | 'to_without_chwt' | 'koli_without_awb' | 'koli_awb_without_chwt') =>
-      children.reduce((n, c) => n + c[key], 0)
-    const parent = aggregateRow({
-      total_to: 10,
-      total_koli: 1,
-      unpacked_to: sum('unpacked_to'),
-      to_without_chwt: sum('to_without_chwt'),
-      koli_without_awb: sum('koli_without_awb'),
-      koli_awb_without_chwt: sum('koli_awb_without_chwt'),
-    })
+    const parent = aggregateRow({ total_to: 10, total_koli: 1, ...sumCounters(children) })
+
+    expect(children.map((c) => toRecapMetrics(c).status)).toEqual(['completed', 'incomplete'])
+    expect(toRecapMetrics(parent).status).toBe('incomplete')
+  })
+
+  it('rolls up a Koli-side finding too, not just an unpacked TO', () => {
+    // The shape that made the plain "no TO means not completed" rule unsafe: the date has TOs on one
+    // route, all finished, and a Koli on a second route whose contents belong elsewhere. Only a
+    // counter that is a property of the Koli itself puts that finding into the parent as well.
+    const children = [
+      aggregateRow({ total_to: 10, total_koli: 0 }),
+      aggregateRow({ total_to: 0, total_koli: 1, koli_without_matching_to: 1 }),
+    ]
+    const parent = aggregateRow({ total_to: 10, total_koli: 1, ...sumCounters(children) })
 
     expect(children.map((c) => toRecapMetrics(c).status)).toEqual(['completed', 'incomplete'])
     expect(toRecapMetrics(parent).status).toBe('incomplete')

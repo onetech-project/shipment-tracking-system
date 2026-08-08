@@ -14,6 +14,12 @@ export interface RecapAggregateRow {
   to_without_chwt: number
   /** Kolis in this group whose contents yield no AWB at all — empty shells included. */
   koli_without_awb: number
+  /**
+   * Kolis in this group holding no TO that belongs to the Koli's own date and route. Such a Koli was
+   * packed here but everything inside it is booked under some other date/route, so this row has no
+   * TO of its own to vouch for it.
+   */
+  koli_without_matching_to: number
   /** Distinct AWBs reachable from this group's Kolis that have no chWt. */
   koli_awb_without_chwt: number
   weight_before: string
@@ -51,7 +57,10 @@ export type RecapStatus = 'completed' | 'incomplete' | 'none'
  *    showing 0 Koli can still have TOs that were packed elsewhere, and judging chWt only through
  *    this group's Kolis reported such a row as completed while nothing about it was confirmed;
  *  - the Koli's date/route row is the only place the Koli itself can be judged
- *    (koli_without_awb, koli_awb_without_chwt) — that row may hold no TOs of its own at all.
+ *    (koli_without_awb, koli_awb_without_chwt, koli_without_matching_to) — that row may hold no TOs
+ *    of its own at all, which is what let a row reading "0 TO / 1 Koli" call itself completed: with
+ *    no TO on the row, every TO-side check passes vacuously. koli_without_matching_to is what such
+ *    a row is judged on instead.
  *
  * Every counter counts items the drilldown *partitions*: a TO belongs to exactly one date and one
  * route, and so does a Koli. That is what makes the status roll up in both directions — any child
@@ -69,6 +78,7 @@ export function toRecapMetrics(row: RecapAggregateRow): RecapMetrics {
       row.unpacked_to > 0 ||
       row.to_without_chwt > 0 ||
       row.koli_without_awb > 0 ||
+      row.koli_without_matching_to > 0 ||
       row.koli_awb_without_chwt > 0
     status = outstanding ? 'incomplete' : 'completed'
   }

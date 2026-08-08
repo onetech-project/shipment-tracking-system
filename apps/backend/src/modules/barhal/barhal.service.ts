@@ -511,14 +511,30 @@ export class BarhalService {
        * them this row covers, so it removes the same rows from a parent and its children alike.
        * attachTos already refuses non-barhal TOs; this keeps any that predate that guard out of the
        * figures rather than trusting the table.
+       *
+       * `matches_koli` says whether a content TO actually belongs to the Koli's own date AND route.
+       * It is deliberately a property of the Koli alone, comparing the TO against `ks`, never against
+       * the group being aggregated: both recap tables ask the identical question about a given Koli,
+       * which is what lets the resulting counter roll up in either direction. Keying it off the group
+       * axis instead would have the per-tanggal and per-rute rows asking different things about the
+       * same Koli, and a parent could go Completed over an Incomplete child again.
        */
       packedCte: `
       packed AS (
-        SELECT ks.id AS koli_id, ks.koli_date, ks.origin_name, ks.dest_name, bkt.to_number, t.awb, t.gross_weight
+        SELECT
+          ks.id AS koli_id, ks.koli_date, ks.origin_name, ks.dest_name,
+          bkt.to_number, t.awb, t.gross_weight,
+          (t.to_date = ks.koli_date AND t.origin_name = ks.origin_name AND t.dest_name = ks.dest_name)
+            AS matches_koli
         FROM koli_scoped ks
         JOIN barhal_koli_to bkt ON bkt.koli_id = ks.id
         LEFT JOIN LATERAL (
-          SELECT e.awb, e.gross_weight
+          SELECT
+            e.awb,
+            e.gross_weight,
+            e.shipment_date AS to_date,
+            ${this.normalizedStationSql('e.origin_station')} AS origin_name,
+            ${this.normalizedStationSql('e.dest_station')} AS dest_name
           FROM air_shipments_compileaircgk e
           WHERE e.to_number = bkt.to_number AND e.remarks ILIKE '%barhal%'
           ORDER BY e.shipment_date DESC NULLS LAST
@@ -560,6 +576,9 @@ export class BarhalService {
         (SELECT COUNT(*) FROM koli_scoped ks
            WHERE ks.koli_date = g.koli_date
              AND NOT EXISTS (SELECT 1 FROM packed p WHERE p.koli_id = ks.id AND p.awb IS NOT NULL))::int AS koli_without_awb,
+        (SELECT COUNT(*) FROM koli_scoped ks
+           WHERE ks.koli_date = g.koli_date
+             AND NOT EXISTS (SELECT 1 FROM packed p WHERE p.koli_id = ks.id AND p.matches_koli))::int AS koli_without_matching_to,
         (SELECT COALESCE(SUM(dt.gross_weight), 0)
            FROM (SELECT DISTINCT ON (p.to_number) p.to_number, p.gross_weight
                  FROM packed p WHERE p.koli_date = g.koli_date) dt)::numeric AS weight_before,
@@ -615,6 +634,9 @@ export class BarhalService {
         (SELECT COUNT(*) FROM koli_scoped ks
            WHERE ks.origin_name = g.origin_name AND ks.dest_name = g.dest_name
              AND NOT EXISTS (SELECT 1 FROM packed p WHERE p.koli_id = ks.id AND p.awb IS NOT NULL))::int AS koli_without_awb,
+        (SELECT COUNT(*) FROM koli_scoped ks
+           WHERE ks.origin_name = g.origin_name AND ks.dest_name = g.dest_name
+             AND NOT EXISTS (SELECT 1 FROM packed p WHERE p.koli_id = ks.id AND p.matches_koli))::int AS koli_without_matching_to,
         (SELECT COALESCE(SUM(dt.gross_weight), 0)
            FROM (SELECT DISTINCT ON (p.to_number) p.to_number, p.gross_weight
                  FROM packed p WHERE p.origin_name = g.origin_name AND p.dest_name = g.dest_name) dt)::numeric AS weight_before,
@@ -646,22 +668,28 @@ export class BarhalService {
 
     const { params, scopedCte, koliScopedCte, packedCte } = this.buildScopeSql(dto)
 
+    // The KPI cards are the recap's column totals, so they read the same two scopes the recap does:
+    // TO figures from `scoped`, Koli figures from `koli_scoped` and its contents in `packed`.
+    //
+    // They used to reach Kolis through the TOs in range instead — DISTINCT bkt.koli_id over `scoped`
+    // — which is a different set of Kolis than the recap's. A Koli packed this month routinely holds
+    // TOs dated months earlier, so a range whose Kolis all held older TOs produced Total Koli 0 and
+    // 0 kg on the cards while the table below them listed those Kolis with real weights.
     const kpiRow = (
       await this.dataSource.query(
         `
         WITH ${scopedCte},
-        koli_ids AS (
-          SELECT DISTINCT bkt.koli_id FROM scoped s JOIN barhal_koli_to bkt ON bkt.to_number = s.to_number
-        )
+        ${koliScopedCte},
+        ${packedCte}
         SELECT
-          (SELECT COUNT(*)::int FROM koli_ids) AS koli_count,
+          (SELECT COUNT(*)::int FROM koli_scoped) AS koli_count,
           (SELECT COUNT(DISTINCT to_number)::int FROM scoped) AS total_to,
-          (SELECT COALESCE(SUM(gross_weight), 0)::numeric FROM scoped) AS weight_before,
-          (SELECT COALESCE(SUM(k.weight_after - k.weight_before), 0)::numeric
-             FROM koli_ids ki JOIN barhal_koli k ON k.id = ki.koli_id
-             WHERE k.weight_before IS NOT NULL AND k.weight_after IS NOT NULL) AS weight_increase,
-          (SELECT COALESCE(SUM(k.batang_kayu), 0)::int
-             FROM koli_ids ki JOIN barhal_koli k ON k.id = ki.koli_id) AS batang_kayu
+          (SELECT COALESCE(SUM(dt.gross_weight), 0)::numeric
+             FROM (SELECT DISTINCT ON (p.to_number) p.to_number, p.gross_weight FROM packed p) dt) AS weight_before,
+          (SELECT COALESCE(SUM(ks.weight_after - ks.weight_before), 0)::numeric
+             FROM koli_scoped ks
+             WHERE ks.weight_before IS NOT NULL AND ks.weight_after IS NOT NULL) AS weight_increase,
+          (SELECT COALESCE(SUM(ks.batang_kayu), 0)::int FROM koli_scoped ks) AS batang_kayu
         `,
         params,
       )
