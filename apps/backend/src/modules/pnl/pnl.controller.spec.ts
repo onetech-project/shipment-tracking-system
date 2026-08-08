@@ -10,6 +10,7 @@ const mockService = {
   getTrend: jest.fn(),
   getAwbDrilldown: jest.fn(),
   getDataQuality: jest.fn(),
+  getDailyMatrix: jest.fn(),
 }
 
 describe('PnlController', () => {
@@ -54,5 +55,12 @@ describe('PnlController', () => {
     mockService.getDataQuality.mockResolvedValueOnce({ data: [], total: 0 })
     await controller.getDataQuality(2, 25)
     expect(mockService.getDataQuality).toHaveBeenCalledWith(2, 25)
+  })
+
+  it('getDailyMatrix forwards cycle, range and basis to the service', async () => {
+    mockService.getDailyMatrix.mockResolvedValueOnce({ columns: [], rows: [], footer: [], periodDays: 15 })
+    const result = await controller.getDailyMatrix('2026-07-1H', undefined, undefined, 'atd_origin')
+    expect(mockService.getDailyMatrix).toHaveBeenCalledWith('2026-07-1H', undefined, undefined, 'atd_origin')
+    expect(result.periodDays).toBe(15)
   })
 })

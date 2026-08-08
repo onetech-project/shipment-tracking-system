@@ -142,4 +142,14 @@ export class PnlController {
   ) {
     return this.pnlService.getProfitByRoute(cycle, start, end, basis)
   }
+
+  @Get('breakdown/daily-matrix')
+  getDailyMatrix(
+    @Query('cycle') cycle?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+    @Query('basis') basis?: string,
+  ) {
+    return this.pnlService.getDailyMatrix(cycle, start, end, basis)
+  }
 }
