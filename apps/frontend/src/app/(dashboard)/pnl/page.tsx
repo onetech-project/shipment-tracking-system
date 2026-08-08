@@ -11,6 +11,7 @@ import { PnlBreakdownPanel } from '@/features/pnl/components/PnlBreakdownPanel'
 import { PnlAwbDrilldown } from '@/features/pnl/components/PnlAwbDrilldown'
 import { PnlDataQuality } from '@/features/pnl/components/PnlDataQuality'
 import { PnlFormulaPanel } from '@/features/pnl/components/PnlFormulaPanel'
+import { PnlDailyMatrixView } from '@/features/pnl/components/PnlDailyMatrixView'
 import { SettlementView } from '@/features/pnl-settlement/components/SettlementView'
 
 function PnlSkeleton() {
@@ -49,6 +50,14 @@ const BASIS_OPTIONS: { value: DateBasis; label: string }[] = [
   { value: 'completed_time', label: 'Completed time' },
 ]
 
+type PnlView = 'estimate' | 'actual' | 'daily'
+
+const VIEW_SUBTITLE: Record<PnlView, string> = {
+  estimate: 'Estimated P&L based on arrival date — not yet billed',
+  actual: 'Actual revenue from settled invoices vs estimate',
+  daily: 'Daily revenue and profit margin per origin and destination',
+}
+
 function PnlPageContent() {
   const [dateBasis, setDateBasis] = useState<DateBasis>(DEFAULT_DATE_BASIS)
   const { data: cycles, isLoading: isLoadingCycles, isError: isCyclesError, refetch: refetchCycles } = usePnlCycles(dateBasis)
@@ -58,7 +67,7 @@ function PnlPageContent() {
   const [endDate, setEndDate] = useState('')
   const [activeKpi, setActiveKpi] = useState<PnlKpiKey | null>(null)
   const [showDq, setShowDq] = useState(false)
-  const [view, setView] = useState<'estimate' | 'actual'>('estimate')
+  const [view, setView] = useState<PnlView>('estimate')
 
   useEffect(() => {
     if (cycles && cycles.length > 0 && (!cycle || !cycles.includes(cycle))) {
@@ -98,11 +107,7 @@ function PnlPageContent() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">P&amp;L Analysis</h1>
-          <p className="text-muted-foreground text-sm">
-            {view === 'estimate'
-              ? 'Estimated P&L based on arrival date — not yet billed'
-              : 'Actual revenue from settled invoices vs estimate'}
-          </p>
+          <p className="text-muted-foreground text-sm">{VIEW_SUBTITLE[view]}</p>
           <div className="mt-2 flex w-fit rounded-md border text-sm overflow-hidden">
             <button
               className={`px-3 py-1.5 ${view === 'estimate' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
@@ -115,6 +120,12 @@ function PnlPageContent() {
               onClick={() => setView('actual')}
             >
               Actual vs Estimate
+            </button>
+            <button
+              className={`px-3 py-1.5 border-l ${view === 'daily' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+              onClick={() => setView('daily')}
+            >
+              Daily Report
             </button>
           </div>
         </div>
@@ -213,6 +224,8 @@ function PnlPageContent() {
         </div>
       ) : view === 'actual' ? (
         <SettlementView filter={filter} />
+      ) : view === 'daily' ? (
+        filter && <PnlDailyMatrixView filter={filter} />
       ) : (
         <>
           <PnlFormulaPanel />
