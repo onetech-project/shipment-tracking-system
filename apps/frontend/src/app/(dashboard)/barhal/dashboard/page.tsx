@@ -13,7 +13,7 @@ import { BarhalRecapBatangKayuTable } from '@/features/barhal/components/BarhalR
 import { BarhalRecapToTable } from '@/features/barhal/components/BarhalRecapToTable'
 import { BarhalToDetailTable } from '@/features/barhal/components/BarhalToDetailTable'
 import { currentMonthRange } from '@/features/barhal/utils/monthRange'
-import { earliestStartFor, latestEndFor, withEndDate, withStartDate } from '@/features/barhal/utils/dateRange'
+import { MAX_RANGE_DAYS, withEndDate, withStartDate } from '@/features/barhal/utils/dateRange'
 import { triggerBlobDownload } from '@/shared/utils/file-download.util'
 
 function BarhalDashboardContent() {
@@ -86,11 +86,14 @@ function BarhalDashboardContent() {
       <BarhalTabNav active="dashboard" />
 
       <div className="flex flex-wrap items-center gap-2">
+        {/*
+          Deliberately no min/max on either input: bounding one side would stop the operator from
+          moving it at all, when what they mean by picking a far-away date is that the *other* side
+          should follow. Jumping start from 1 Aug to 1 May must land on 1–31 May, not be refused.
+        */}
         <input
           type="date"
           value={startDate}
-          max={endDate || undefined}
-          min={endDate ? earliestStartFor(endDate) : undefined}
           onChange={(e) => handleStartChange(e.target.value)}
           className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
         />
@@ -98,11 +101,10 @@ function BarhalDashboardContent() {
         <input
           type="date"
           value={endDate}
-          min={startDate || undefined}
-          max={startDate ? latestEndFor(startDate) : undefined}
           onChange={(e) => handleEndChange(e.target.value)}
           className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
         />
+        <span className="text-xs text-muted-foreground">maks. {MAX_RANGE_DAYS} hari</span>
         <select
           value={origin}
           onChange={(e) => setOrigin(e.target.value)}

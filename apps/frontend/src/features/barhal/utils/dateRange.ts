@@ -1,15 +1,17 @@
 /**
  * Keeps the Barhal dashboard's start/end pair valid as the operator edits either side.
  *
- * Two rules, both enforced here rather than only through the inputs' `min`/`max` attributes —
- * those constrain the native picker but not a typed or pasted date:
+ * Two rules:
  *  - end never precedes start;
  *  - the span never exceeds MAX_RANGE_DAYS, which mirrors the backend's MAX_RECAP_DAYS. Exceeding
  *    it server-side is a 400, so clamping here is what keeps the dashboard from asking for a range
  *    it will only be refused.
  *
  * Editing one side moves the other, never the side just touched: the operator's most recent choice
- * is the one they meant.
+ * is the one they meant. Jumping start from 1 Aug back to 1 May therefore lands on 1–31 May rather
+ * than being refused — which is also why the inputs carry no `min`/`max` bounds. Bounding a side
+ * would block the very move the operator is making, and the rules are enforced here instead so a
+ * typed or pasted date is covered too.
  */
 
 const MS_PER_DAY = 86_400_000

@@ -45,6 +45,12 @@ describe('withStartDate', () => {
     expect(withStartDate('2026-08-01', '2026-12-31')).toEqual({ start: '2026-08-01', end: '2026-08-31' })
   })
 
+  it('lets the operator jump months back, dragging the end along', () => {
+    // Filter sits on 1–31 Aug and the operator picks 1 May as the new start. That must be allowed,
+    // with the end following to 31 May — not refused for being far from the current end.
+    expect(withStartDate('2026-05-01', '2026-08-31')).toEqual({ start: '2026-05-01', end: '2026-05-31' })
+  })
+
   it('never moves the side the operator just picked', () => {
     expect(withStartDate('2026-08-25', '2026-08-10').start).toBe('2026-08-25')
     expect(withStartDate('2026-08-01', '2026-12-31').start).toBe('2026-08-01')
