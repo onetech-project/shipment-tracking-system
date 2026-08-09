@@ -95,7 +95,7 @@ export function Step2SelectTos({ koli, onAttached }: Step2SelectTosProps) {
       <div className="grid grid-cols-4 gap-3">
         <input
           type="text"
-          placeholder="Cari TO / LT..."
+          placeholder="Cari No. TO / LT / AWB…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
@@ -138,6 +138,7 @@ export function Step2SelectTos({ koli, onAttached }: Step2SelectTosProps) {
         onChange={setSelected}
         isLoading={isLoading}
         unmatchedRouteCount={availableTos?.unmatchedRouteCount}
+        hasSearch={Boolean(search.trim())}
       />
 
       <div className="flex flex-wrap items-start gap-3 text-sm">

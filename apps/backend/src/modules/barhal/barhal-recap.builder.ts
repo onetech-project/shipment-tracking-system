@@ -117,8 +117,12 @@ export function emptyRecapMetrics(): RecapMetrics {
   }
 }
 
-/** Ceiling on how many dates one Rekap Per Tanggal may span. A full leap year (366) still passes. */
-export const MAX_RECAP_DAYS = 366
+/**
+ * Ceiling on how many dates one Rekap Per Tanggal may span: one calendar month. 31 rather than 30
+ * so that picking a whole month never trips the limit — that is the dashboard's own default range
+ * (`currentMonthRange` on the frontend), and a 31-day month must keep working.
+ */
+export const MAX_RECAP_DAYS = 31
 
 const MS_PER_DAY = 86_400_000
 

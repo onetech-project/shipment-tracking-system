@@ -52,6 +52,18 @@ describe('BarhalService', () => {
       expect(params).toContain('%TO1%')
     })
 
+    it('searches AWB alongside TO and LT, so the picker needs no second client-side search', async () => {
+      // The picker only ever holds AVAILABLE_TOS_LIMIT rows, so an AWB filter applied after that
+      // cut cannot reach a TO the limit already excluded — it has to be part of this query.
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getAvailableTos({ search: 'AWB1' })
+      const [sql, params] = dataSource.query.mock.calls[0]
+      const searchIdx = (params as unknown[]).indexOf('%AWB1%') + 1
+      expect(sql).toContain(
+        `(c.to_number ILIKE $${searchIdx} OR c.lt_number ILIKE $${searchIdx} OR c.awb ILIKE $${searchIdx})`,
+      )
+    })
+
     it('reads the route from air_shipments_data via the origin_dc/destination_dc join', async () => {
       dataSource.query.mockResolvedValueOnce([
         { to_number: 'TO1', awb: 'AWB1', gross_weight: 10, origin_station: 'Jabo', dest_station: 'Batam', lt_number: 'LT1', remarks: 'BARHAL', date: '2026-06-01' },
@@ -528,14 +540,14 @@ describe('BarhalService', () => {
       expect(result.chartByDate).toEqual([{ date: '2026-06-02', weightBefore: 10, weightAfter: 12, chwt: 9 }])
     })
 
-    it('rejects a range longer than 366 dates without running any query', async () => {
-      await expect(service.getDashboard({ startDate: '2024-01-01', endDate: '2025-01-01' })).rejects.toThrow(
-        'Date range must not exceed 366 days',
+    it('rejects a range longer than a month without running any query', async () => {
+      await expect(service.getDashboard({ startDate: '2026-08-01', endDate: '2026-09-01' })).rejects.toThrow(
+        'Date range must not exceed 31 days',
       )
       expect(dataSource.query).not.toHaveBeenCalled()
     })
 
-    it('accepts a full leap year', async () => {
+    it('accepts a whole 31-day month, which is the dashboard default range', async () => {
       dataSource.query
         .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
         .mockResolvedValueOnce([])
@@ -543,8 +555,8 @@ describe('BarhalService', () => {
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
 
-      const result = await service.getDashboard({ startDate: '2024-01-01', endDate: '2024-12-31' })
-      expect(result.recapPerTanggal).toHaveLength(366)
+      const result = await service.getDashboard({ startDate: '2026-08-01', endDate: '2026-08-31' })
+      expect(result.recapPerTanggal).toHaveLength(31)
     })
 
     it('lists every barhal route, zero-filling the ones with no activity in range', async () => {
@@ -824,10 +836,10 @@ describe('BarhalService', () => {
       expect(sql.match(/FROM packed p/g)).toHaveLength(2)
     })
 
-    it('rejects a range longer than 366 days without running any query', async () => {
+    it('rejects a range longer than a month without running any query', async () => {
       await expect(
-        service.getDrilldown({ groupBy: 'route', startDate: '2026-01-01', endDate: '2027-06-01' }),
-      ).rejects.toThrow(/366/)
+        service.getDrilldown({ groupBy: 'route', startDate: '2026-08-01', endDate: '2026-09-01' }),
+      ).rejects.toThrow(/31/)
       expect(dataSource.query).not.toHaveBeenCalled()
     })
 

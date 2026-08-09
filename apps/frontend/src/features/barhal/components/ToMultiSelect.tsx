@@ -1,6 +1,5 @@
 'use client'
 
-import { useState } from 'react'
 import { AvailableTo } from '../types'
 import { formatDate } from '../utils/dateFormat'
 
@@ -11,22 +10,23 @@ interface ToMultiSelectProps {
   isLoading?: boolean
   /** TO yang tersaring karena rutenya belum terdaftar di master air_shipments_data. */
   unmatchedRouteCount?: number
+  /**
+   * Apakah pencarian di atas sedang terisi. Hanya dipakai untuk menyembunyikan petunjuk "ketik
+   * untuk mencari" — petunjuk itu tidak ada gunanya kalau operator sudah mengetik sesuatu.
+   */
+  hasSearch?: boolean
 }
 
 const fmt = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 })
 const AVAILABLE_TOS_LIMIT = 100
 
-export function ToMultiSelect({ options, selected, onChange, isLoading, unmatchedRouteCount }: ToMultiSelectProps) {
-  const [search, setSearch] = useState('')
+/**
+ * Daftar TO ini sengaja tidak punya kolom pencarian sendiri. Pencariannya ada satu, di panel filter
+ * Step 2, dan dijalankan di server — daftar ini hanya memuat AVAILABLE_TOS_LIMIT baris, sehingga
+ * penyaringan di sisi klien tidak akan pernah menemukan TO yang sudah terpotong oleh limit itu.
+ */
+export function ToMultiSelect({ options, selected, onChange, isLoading, unmatchedRouteCount, hasSearch }: ToMultiSelectProps) {
   const selectedSet = new Set(selected)
-
-  const filtered = search.trim()
-    ? options.filter(
-        (o) =>
-          o.to_number.toLowerCase().includes(search.trim().toLowerCase()) ||
-          (o.awb ?? '').toLowerCase().includes(search.trim().toLowerCase()),
-      )
-    : options
 
   const toggle = (toNumber: string) => {
     onChange(selectedSet.has(toNumber) ? selected.filter((t) => t !== toNumber) : [...selected, toNumber])
@@ -34,21 +34,13 @@ export function ToMultiSelect({ options, selected, onChange, isLoading, unmatche
 
   return (
     <div className="rounded-lg border border-border">
-      <div className="border-b border-border px-2 py-2">
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Cari No. TO / AWB…"
-          className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
-        />
-      </div>
       <div className="max-h-64 overflow-auto">
         {isLoading ? (
           <p className="px-3 py-4 text-center text-xs text-muted-foreground">Loading…</p>
-        ) : filtered.length === 0 ? (
+        ) : options.length === 0 ? (
           <p className="px-3 py-4 text-center text-xs text-muted-foreground">Tidak ada TO tersedia.</p>
         ) : (
-          filtered.map((to) => (
+          options.map((to) => (
             <label
               key={to.to_number}
               className="flex cursor-pointer flex-col gap-1 border-b border-border/50 px-3 py-2 text-xs last:border-b-0 hover:bg-accent/30"
@@ -79,9 +71,9 @@ export function ToMultiSelect({ options, selected, onChange, isLoading, unmatche
           ))
         )}
       </div>
-      {!isLoading && !search.trim() && options.length >= AVAILABLE_TOS_LIMIT && (
+      {!isLoading && !hasSearch && options.length >= AVAILABLE_TOS_LIMIT && (
         <p className="border-t border-border px-3 py-2 text-center text-xs text-muted-foreground">
-          Tidak menemukan data? Ketik nomor TO untuk pencarian.
+          Tidak menemukan data? Ketik No. TO / LT / AWB di kolom pencarian di atas.
         </p>
       )}
       {!isLoading && !!unmatchedRouteCount && (

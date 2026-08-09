@@ -161,7 +161,11 @@ export class BarhalService {
 
     if (dto.search) {
       params.push(`%${dto.search}%`)
-      conditions.push(`(c.to_number ILIKE $${params.length} OR c.lt_number ILIKE $${params.length})`)
+      // AWB is matched here rather than client-side: the picker only ever holds AVAILABLE_TOS_LIMIT
+      // rows, so a filter applied after that cut cannot reach a TO the limit already excluded.
+      conditions.push(
+        `(c.to_number ILIKE $${params.length} OR c.lt_number ILIKE $${params.length} OR c.awb ILIKE $${params.length})`,
+      )
     }
     if (dto.date) {
       params.push(dto.date)

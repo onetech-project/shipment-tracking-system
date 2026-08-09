@@ -13,6 +13,7 @@ import { BarhalRecapBatangKayuTable } from '@/features/barhal/components/BarhalR
 import { BarhalRecapToTable } from '@/features/barhal/components/BarhalRecapToTable'
 import { BarhalToDetailTable } from '@/features/barhal/components/BarhalToDetailTable'
 import { currentMonthRange } from '@/features/barhal/utils/monthRange'
+import { earliestStartFor, latestEndFor, withEndDate, withStartDate } from '@/features/barhal/utils/dateRange'
 import { triggerBlobDownload } from '@/shared/utils/file-download.util'
 
 function BarhalDashboardContent() {
@@ -24,6 +25,20 @@ function BarhalDashboardContent() {
   const [origin, setOrigin] = useState('')
   const [dest, setDest] = useState('')
   const [isExporting, setIsExporting] = useState(false)
+
+  // Editing either side pulls the other along so the pair stays a valid, at-most-one-month range.
+  // The `min`/`max` attributes below cover the native picker; these cover a typed or pasted date,
+  // which the picker's bounds do not stop.
+  const handleStartChange = (value: string) => {
+    const range = withStartDate(value, endDate)
+    setStartDate(range.start)
+    setEndDate(range.end)
+  }
+  const handleEndChange = (value: string) => {
+    const range = withEndDate(value, startDate)
+    setStartDate(range.start)
+    setEndDate(range.end)
+  }
 
   const { data: stations } = useBarhalStations()
   const filters = {
@@ -74,14 +89,18 @@ function BarhalDashboardContent() {
         <input
           type="date"
           value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
+          max={endDate || undefined}
+          min={endDate ? earliestStartFor(endDate) : undefined}
+          onChange={(e) => handleStartChange(e.target.value)}
           className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
         />
         <span className="text-xs text-muted-foreground">to</span>
         <input
           type="date"
           value={endDate}
-          onChange={(e) => setEndDate(e.target.value)}
+          min={startDate || undefined}
+          max={startDate ? latestEndFor(startDate) : undefined}
+          onChange={(e) => handleEndChange(e.target.value)}
           className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
         />
         <select

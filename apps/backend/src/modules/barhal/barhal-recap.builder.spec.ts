@@ -235,10 +235,14 @@ describe('daysInRange', () => {
     expect(daysInRange('2026-08-03', '2026-08-03')).toBe(1)
   })
 
-  it('lets a full leap year through the MAX_RECAP_DAYS ceiling', () => {
-    expect(daysInRange('2024-01-01', '2024-12-31')).toBe(366)
-    expect(daysInRange('2024-01-01', '2024-12-31')).toBeLessThanOrEqual(MAX_RECAP_DAYS)
-    expect(daysInRange('2024-01-01', '2025-01-01')).toBeGreaterThan(MAX_RECAP_DAYS)
+  it('lets a whole 31-day month through the MAX_RECAP_DAYS ceiling but not a day more', () => {
+    expect(daysInRange('2026-08-01', '2026-08-31')).toBe(31)
+    expect(daysInRange('2026-08-01', '2026-08-31')).toBeLessThanOrEqual(MAX_RECAP_DAYS)
+    expect(daysInRange('2026-08-01', '2026-09-01')).toBeGreaterThan(MAX_RECAP_DAYS)
+  })
+
+  it('lets a short month through as well', () => {
+    expect(daysInRange('2026-02-01', '2026-02-28')).toBeLessThanOrEqual(MAX_RECAP_DAYS)
   })
 
   it('returns 0 when end precedes start', () => {
