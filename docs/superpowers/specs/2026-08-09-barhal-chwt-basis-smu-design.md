@@ -68,10 +68,12 @@ konstanta SQL-nya diangkat ke satu string modul-level yang dipakai ketiga jalur.
 
 ### `buildScopeSql`
 
-- `packedCte` menambahkan `ks.smu_number` ke daftar kolomnya.
 - `t.awb` dilepas dari `packedCte` dan `e.awb` dilepas dari `scopedCte` — keduanya menjadi
   kolom mati setelah perubahan ini. LATERAL-nya tetap dibutuhkan untuk `gross_weight` dan
   `matches_koli`.
+- `packedCte` **tidak** perlu membawa `ks.smu_number`: chWt dan kedua counter SMU membaca
+  `koli_scoped` langsung, sedangkan `to_without_chwt` membaca `barhal_koli` global. Menambahkannya
+  hanya akan menjadi kolom mati baru, persis alasan `t.awb` dilepas.
 
 ### `queryPerTanggal` dan `queryPerRute`
 
@@ -151,12 +153,14 @@ Menjadi lookup langsung, menggantikan subquery yang menjumlahkan AWB distinct da
 yang berbagi No. SMU:
 
 ```sql
-(SELECT sc.chwt FROM smu_chwt sc WHERE sc.awb = k.smu_number)::numeric AS chwt
+(SELECT sc.chwt FROM smu_chwt sc WHERE sc.awb = BTRIM(k.smu_number))::numeric AS chwt
 ```
 
-Filter dan `GROUP BY`-nya ikut memakai bentuk yang sama dengan query lain, yaitu
-`NULLIF(BTRIM(k.smu_number), '') IS NOT NULL` menggantikan `k.smu_number IS NOT NULL`, agar Koli
-ber-SMU spasi kosong tidak muncul sebagai grup SMU tersendiri.
+Filternya memakai `NULLIF(BTRIM(k.smu_number), '') IS NOT NULL` menggantikan
+`k.smu_number IS NOT NULL`, agar Koli ber-SMU spasi kosong tidak muncul sebagai grup SMU
+tersendiri. `GROUP BY k.smu_number` tetap apa adanya — nilainya masih diperlukan utuh untuk kolom
+`smuNumber`, dan korelasi chWt-nya yang di-`BTRIM` supaya No. SMU berspasi tetap menemukan baris
+Reservasi yang sama dengan yang ditemukan recap.
 
 Komentar asumsi 4-baris di `barhal.service.ts:421-425` dihapus bersama subquery lamanya —
 satu SMU kini memetakan ke tepat satu baris Reservasi, sehingga penjumlahan lintas tanggal/tujuan

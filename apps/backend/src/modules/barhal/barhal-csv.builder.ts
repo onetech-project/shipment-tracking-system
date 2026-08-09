@@ -12,6 +12,13 @@ export interface BarhalCsvRow {
   totalTo: number
   weightBefore: number | string | null
   weightAfter: number | string | null
+  /**
+   * chWt of this Koli's own No. SMU, from Reservasi. It is a property of the SMU rather than of the
+   * Koli, so several Koli sharing one SMU each carry that SMU's full chWt — summing this column raw
+   * therefore counts a shared SMU once per row and can exceed the dashboard recap's chWt total,
+   * which counts each distinct SMU once. 0 means the Koli has no SMU yet, or its SMU is not in
+   * Reservasi.
+   */
   chwt: number | string | null
 }
 

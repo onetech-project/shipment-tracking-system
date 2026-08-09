@@ -91,6 +91,30 @@ const ROUTE_MASTER_CTE = `
   )
 `
 
+/**
+ * Satu baris Reservasi per AWB, dan No. SMU sebuah Koli adalah AWB itu sendiri — `awb` satu-satunya
+ * kolom identitas di tabel Reservasi. Unique key air_shipments_smu_rate_cgk_spx sudah dilebarkan
+ * dari [awb] menjadi [awb, account, via, dest], sehingga satu AWB boleh punya baris rate yang bersih
+ * plus baris parsial; menjumlahkan chwt lewat join `r.awb = ...` karena itu menggandakan angkanya.
+ * Pemilihan barisnya disamakan dengan cara v_pnl_to memilih satu booking per AWB
+ * (20260711000001-pnl-dedup-booking-per-awb.ts) agar chWt Barhal dan PnL tidak saling berbeda.
+ *
+ * Dipakai bersama oleh recap (lewat buildScopeSql), exportCsv, dan getSmuList. Dua yang terakhir
+ * tidak memanggil buildScopeSql, jadi definisinya tinggal di konstanta ini supaya tunggal.
+ */
+const SMU_CHWT_CTE = `
+  smu_chwt AS (
+    SELECT DISTINCT ON (awb) awb, chwt
+    FROM air_shipments_smu_rate_cgk_spx
+    ORDER BY awb,
+      -- utamakan baris yang join key-nya lengkap (baris rate yang benar-benar terpakai)
+      (NULLIF(BTRIM(account), '') IS NOT NULL
+       AND NULLIF(BTRIM(via),  '') IS NOT NULL
+       AND NULLIF(BTRIM(dest), '') IS NOT NULL) DESC,
+      updated_at DESC NULLS LAST
+  )
+`
+
 @Injectable()
 export class BarhalService {
   constructor(
@@ -390,7 +414,9 @@ export class BarhalService {
 
   async getSmuList(dto: SmuListQueryDto) {
     const params: unknown[] = []
-    const conditions: string[] = [`k.smu_number IS NOT NULL`]
+    // Bentuk NULLIF(BTRIM(...)) yang sama dipakai di seluruh modul: Koli yang No. SMU-nya hanya
+    // spasi tidak boleh muncul sebagai grup SMU tersendiri.
+    const conditions: string[] = [`NULLIF(BTRIM(k.smu_number), '') IS NOT NULL`]
     if (dto.date) {
       params.push(dto.date)
       conditions.push(`k.koli_date = $${params.length}`)
@@ -407,6 +433,7 @@ export class BarhalService {
 
     const rows = await this.dataSource.query(
       `
+      WITH ${SMU_CHWT_CTE}
       SELECT
         k.smu_number AS "smuNumber",
         MIN(k.koli_date)::text AS date,
@@ -418,20 +445,7 @@ export class BarhalService {
         MIN(k.flight_no) AS "flightNo",
         MIN(k.std)::text AS std,
         MIN(k.sta)::text AS sta,
-        (
-          -- Assumption: SMU numbers are expected to be date/dest-specific in real usage.
-          -- This chWt sum is NOT re-scoped by the outer query's date/origin/dest filters;
-          -- it matches solely on smu_number, so if two Koli ever shared an SMU number
-          -- across different dates/destinations, the sum would span all of them.
-          SELECT SUM(r.chwt)
-          FROM (
-            SELECT DISTINCT bkt.awb
-            FROM barhal_koli bk
-            JOIN barhal_koli_to bkt ON bkt.koli_id = bk.id
-            WHERE bk.smu_number = k.smu_number AND bkt.awb IS NOT NULL
-          ) awbs
-          LEFT JOIN air_shipments_smu_rate_cgk_spx r ON r.awb = awbs.awb
-        )::numeric AS chwt
+        (SELECT sc.chwt FROM smu_chwt sc WHERE sc.awb = BTRIM(k.smu_number))::numeric AS chwt
       FROM barhal_koli k
       ${where}
       GROUP BY k.smu_number
@@ -457,6 +471,7 @@ export class BarhalService {
     scopedCte: string
     koliScopedCte: string
     packedCte: string
+    smuChwtCte: string
   } {
     const params: unknown[] = []
     const conditions: string[] = [`e.remarks ILIKE '%barhal%'`, `e.to_number IS NOT NULL`, `e.shipment_date IS NOT NULL`]
@@ -488,7 +503,6 @@ export class BarhalService {
         SELECT
           e.to_number,
           e.gross_weight,
-          e.awb,
           e.shipment_date AS to_date,
           ${this.normalizedStationSql('e.origin_station')} AS origin_name,
           ${this.normalizedStationSql('e.dest_station')} AS dest_name
@@ -501,7 +515,7 @@ export class BarhalService {
        * What is inside each in-scope Koli. Deliberately NOT read through `scoped`: a Koli routinely
        * holds TOs dated weeks before it was packed, so re-applying the dashboard's date/station
        * filter to a Koli's own contents would silently drop them. That is what made a drilldown
-       * disagree with the row it was opened from — the parent row saw those AWBs, the child rows,
+       * disagree with the row it was opened from — the parent row saw those TOs, the child rows,
        * narrowed to a single date, did not. Only the Koli side is scoped, so the groups a row
        * expands into always partition that row exactly.
        *
@@ -523,14 +537,13 @@ export class BarhalService {
       packed AS (
         SELECT
           ks.id AS koli_id, ks.koli_date, ks.origin_name, ks.dest_name,
-          bkt.to_number, t.awb, t.gross_weight,
+          bkt.to_number, t.gross_weight,
           (t.to_date = ks.koli_date AND t.origin_name = ks.origin_name AND t.dest_name = ks.dest_name)
             AS matches_koli
         FROM koli_scoped ks
         JOIN barhal_koli_to bkt ON bkt.koli_id = ks.id
         LEFT JOIN LATERAL (
           SELECT
-            e.awb,
             e.gross_weight,
             e.shipment_date AS to_date,
             ${this.normalizedStationSql('e.origin_station')} AS origin_name,
@@ -542,14 +555,32 @@ export class BarhalService {
         ) t ON TRUE
       )
     `,
+      smuChwtCte: SMU_CHWT_CTE,
     }
   }
 
-  /** Agregat rekap per tanggal. Dipakai bersama oleh getDashboard dan getDrilldown. */
+  /**
+   * Agregat rekap per tanggal. Dipakai bersama oleh getDashboard dan getDrilldown.
+   *
+   * chWt bersumber dari No. SMU milik Koli, bukan dari AWB milik TO. `barhal_koli_to.awb` sudah
+   * terisi sejak TO dipilih, sehingga chWt sempat muncul sebelum operator mengisi No. SMU sama
+   * sekali. Koli yang No. SMU-nya kosong karena itu tidak menyumbang chWt, dan penjumlahannya
+   * dilakukan atas No. SMU distinct dalam grup — satu SMU yang dipakai beberapa Koli hanya
+   * dihitung sekali, sama seperti satu SMU hanya memetakan ke satu baris Reservasi lewat smu_chwt.
+   *
+   * `to_without_chwt` sengaja mencari Koli lewat barhal_koli_to + barhal_koli global, bukan lewat
+   * `packed` yang sudah ter-scope Koli. Alasannya sama dengan yang dijelaskan di toRecapMetrics:
+   * counter ini harus tetap menjadi properti TO itu sendiri agar status dapat roll-up dua arah;
+   * membacanya lewat `packed` membuat baris induk bisa kembali Completed di atas anak yang
+   * Incomplete. Polanya identik dengan `unpacked_to`. Konsekuensinya `to_without_chwt` kini
+   * mencakup `unpacked_to` — TO yang belum dipacking pasti belum punya Koli ber-SMU — dan kedua
+   * counter tetap dipisah karena tidak ada biayanya dan keduanya menjawab pertanyaan yang berbeda.
+   */
   private queryPerTanggal(
     scopedCte: string,
     koliScopedCte: string,
     packedCte: string,
+    smuChwtCte: string,
     params: unknown[],
   ): Promise<(RecapAggregateRow & { date: string })[]> {
     return this.dataSource.query(
@@ -557,6 +588,7 @@ export class BarhalService {
       WITH ${scopedCte},
       ${koliScopedCte},
       ${packedCte},
+      ${smuChwtCte},
       groups AS (
         SELECT to_date AS koli_date FROM scoped
         UNION
@@ -571,26 +603,32 @@ export class BarhalService {
              AND NOT EXISTS (SELECT 1 FROM barhal_koli_to bkt WHERE bkt.to_number = s.to_number))::int AS unpacked_to,
         (SELECT COUNT(DISTINCT s.to_number) FROM scoped s
            WHERE s.to_date = g.koli_date
-             AND NOT EXISTS (SELECT 1 FROM air_shipments_smu_rate_cgk_spx r
-                             WHERE r.awb = s.awb AND r.chwt IS NOT NULL))::int AS to_without_chwt,
+             AND NOT EXISTS (
+               SELECT 1
+                 FROM barhal_koli_to bkt
+                 JOIN barhal_koli bk ON bk.id = bkt.koli_id
+                 JOIN smu_chwt sc ON sc.awb = NULLIF(BTRIM(bk.smu_number), '')
+                WHERE bkt.to_number = s.to_number AND sc.chwt IS NOT NULL))::int AS to_without_chwt,
         (SELECT COUNT(*) FROM koli_scoped ks
            WHERE ks.koli_date = g.koli_date
-             AND NOT EXISTS (SELECT 1 FROM packed p WHERE p.koli_id = ks.id AND p.awb IS NOT NULL))::int AS koli_without_awb,
+             AND NULLIF(BTRIM(ks.smu_number), '') IS NULL)::int AS koli_without_smu,
         (SELECT COUNT(*) FROM koli_scoped ks
            WHERE ks.koli_date = g.koli_date
              AND NOT EXISTS (SELECT 1 FROM packed p WHERE p.koli_id = ks.id AND p.matches_koli))::int AS koli_without_matching_to,
         (SELECT COALESCE(SUM(dt.gross_weight), 0)
            FROM (SELECT DISTINCT ON (p.to_number) p.to_number, p.gross_weight
                  FROM packed p WHERE p.koli_date = g.koli_date) dt)::numeric AS weight_before,
-        (SELECT COALESCE(SUM(r.chwt), 0)
-           FROM (SELECT DISTINCT p.awb
-                 FROM packed p WHERE p.koli_date = g.koli_date AND p.awb IS NOT NULL) awbs
-           LEFT JOIN air_shipments_smu_rate_cgk_spx r ON r.awb = awbs.awb)::numeric AS chwt,
-        (SELECT COUNT(DISTINCT awbs.awb)
-           FROM (SELECT DISTINCT p.awb
-                 FROM packed p WHERE p.koli_date = g.koli_date AND p.awb IS NOT NULL) awbs
-           LEFT JOIN air_shipments_smu_rate_cgk_spx r ON r.awb = awbs.awb
-           WHERE r.chwt IS NULL)::int AS koli_awb_without_chwt,
+        (SELECT COALESCE(SUM(sc.chwt), 0)
+           FROM (SELECT DISTINCT NULLIF(BTRIM(ks.smu_number), '') AS smu_number
+                   FROM koli_scoped ks
+                  WHERE ks.koli_date = g.koli_date AND NULLIF(BTRIM(ks.smu_number), '') IS NOT NULL) smus
+           LEFT JOIN smu_chwt sc ON sc.awb = smus.smu_number)::numeric AS chwt,
+        (SELECT COUNT(*)
+           FROM (SELECT DISTINCT NULLIF(BTRIM(ks.smu_number), '') AS smu_number
+                   FROM koli_scoped ks
+                  WHERE ks.koli_date = g.koli_date AND NULLIF(BTRIM(ks.smu_number), '') IS NOT NULL) smus
+           LEFT JOIN smu_chwt sc ON sc.awb = smus.smu_number
+          WHERE sc.chwt IS NULL)::int AS koli_smu_without_chwt,
         (SELECT COALESCE(SUM(ks.weight_after - ks.weight_before), 0)
            FROM koli_scoped ks WHERE ks.koli_date = g.koli_date AND ks.weight_before IS NOT NULL AND ks.weight_after IS NOT NULL)::numeric AS weight_increase,
         (SELECT COALESCE(SUM((ks.length_cm + ks.width_cm + ks.height_cm) * 1000), 0)
@@ -602,11 +640,16 @@ export class BarhalService {
     )
   }
 
-  /** Agregat rekap per rute. Dipakai bersama oleh getDashboard dan getDrilldown. */
+  /**
+   * Agregat rekap per rute. Dipakai bersama oleh getDashboard dan getDrilldown. Ekspresi chWt dan
+   * ketiga counter SMU-nya identik dengan queryPerTanggal — hanya predikat grupnya yang berbeda —
+   * sehingga penjelasannya ada di doc comment queryPerTanggal.
+   */
   private queryPerRute(
     scopedCte: string,
     koliScopedCte: string,
     packedCte: string,
+    smuChwtCte: string,
     params: unknown[],
   ): Promise<(RecapAggregateRow & { originName: string; destName: string })[]> {
     return this.dataSource.query(
@@ -614,6 +657,7 @@ export class BarhalService {
       WITH ${scopedCte},
       ${koliScopedCte},
       ${packedCte},
+      ${smuChwtCte},
       groups AS (
         SELECT origin_name, dest_name FROM scoped
         UNION
@@ -629,26 +673,34 @@ export class BarhalService {
              AND NOT EXISTS (SELECT 1 FROM barhal_koli_to bkt WHERE bkt.to_number = s.to_number))::int AS unpacked_to,
         (SELECT COUNT(DISTINCT s.to_number) FROM scoped s
            WHERE s.origin_name = g.origin_name AND s.dest_name = g.dest_name
-             AND NOT EXISTS (SELECT 1 FROM air_shipments_smu_rate_cgk_spx r
-                             WHERE r.awb = s.awb AND r.chwt IS NOT NULL))::int AS to_without_chwt,
+             AND NOT EXISTS (
+               SELECT 1
+                 FROM barhal_koli_to bkt
+                 JOIN barhal_koli bk ON bk.id = bkt.koli_id
+                 JOIN smu_chwt sc ON sc.awb = NULLIF(BTRIM(bk.smu_number), '')
+                WHERE bkt.to_number = s.to_number AND sc.chwt IS NOT NULL))::int AS to_without_chwt,
         (SELECT COUNT(*) FROM koli_scoped ks
            WHERE ks.origin_name = g.origin_name AND ks.dest_name = g.dest_name
-             AND NOT EXISTS (SELECT 1 FROM packed p WHERE p.koli_id = ks.id AND p.awb IS NOT NULL))::int AS koli_without_awb,
+             AND NULLIF(BTRIM(ks.smu_number), '') IS NULL)::int AS koli_without_smu,
         (SELECT COUNT(*) FROM koli_scoped ks
            WHERE ks.origin_name = g.origin_name AND ks.dest_name = g.dest_name
              AND NOT EXISTS (SELECT 1 FROM packed p WHERE p.koli_id = ks.id AND p.matches_koli))::int AS koli_without_matching_to,
         (SELECT COALESCE(SUM(dt.gross_weight), 0)
            FROM (SELECT DISTINCT ON (p.to_number) p.to_number, p.gross_weight
                  FROM packed p WHERE p.origin_name = g.origin_name AND p.dest_name = g.dest_name) dt)::numeric AS weight_before,
-        (SELECT COALESCE(SUM(r.chwt), 0)
-           FROM (SELECT DISTINCT p.awb
-                 FROM packed p WHERE p.origin_name = g.origin_name AND p.dest_name = g.dest_name AND p.awb IS NOT NULL) awbs
-           LEFT JOIN air_shipments_smu_rate_cgk_spx r ON r.awb = awbs.awb)::numeric AS chwt,
-        (SELECT COUNT(DISTINCT awbs.awb)
-           FROM (SELECT DISTINCT p.awb
-                 FROM packed p WHERE p.origin_name = g.origin_name AND p.dest_name = g.dest_name AND p.awb IS NOT NULL) awbs
-           LEFT JOIN air_shipments_smu_rate_cgk_spx r ON r.awb = awbs.awb
-           WHERE r.chwt IS NULL)::int AS koli_awb_without_chwt,
+        (SELECT COALESCE(SUM(sc.chwt), 0)
+           FROM (SELECT DISTINCT NULLIF(BTRIM(ks.smu_number), '') AS smu_number
+                   FROM koli_scoped ks
+                  WHERE ks.origin_name = g.origin_name AND ks.dest_name = g.dest_name
+                    AND NULLIF(BTRIM(ks.smu_number), '') IS NOT NULL) smus
+           LEFT JOIN smu_chwt sc ON sc.awb = smus.smu_number)::numeric AS chwt,
+        (SELECT COUNT(*)
+           FROM (SELECT DISTINCT NULLIF(BTRIM(ks.smu_number), '') AS smu_number
+                   FROM koli_scoped ks
+                  WHERE ks.origin_name = g.origin_name AND ks.dest_name = g.dest_name
+                    AND NULLIF(BTRIM(ks.smu_number), '') IS NOT NULL) smus
+           LEFT JOIN smu_chwt sc ON sc.awb = smus.smu_number
+          WHERE sc.chwt IS NULL)::int AS koli_smu_without_chwt,
         (SELECT COALESCE(SUM(ks.weight_after - ks.weight_before), 0)
            FROM koli_scoped ks WHERE ks.origin_name = g.origin_name AND ks.dest_name = g.dest_name AND ks.weight_before IS NOT NULL AND ks.weight_after IS NOT NULL)::numeric AS weight_increase,
         (SELECT COALESCE(SUM((ks.length_cm + ks.width_cm + ks.height_cm) * 1000), 0)
@@ -666,7 +718,7 @@ export class BarhalService {
       throw new BadRequestException(`Date range must not exceed ${MAX_RECAP_DAYS} days`)
     }
 
-    const { params, scopedCte, koliScopedCte, packedCte } = this.buildScopeSql(dto)
+    const { params, scopedCte, koliScopedCte, packedCte, smuChwtCte } = this.buildScopeSql(dto)
 
     // The KPI cards are the recap's column totals, so they read the same two scopes the recap does:
     // TO figures from `scoped`, Koli figures from `koli_scoped` and its contents in `packed`.
@@ -695,7 +747,7 @@ export class BarhalService {
       )
     )[0]
 
-    const perTanggalRows = await this.queryPerTanggal(scopedCte, koliScopedCte, packedCte, params)
+    const perTanggalRows = await this.queryPerTanggal(scopedCte, koliScopedCte, packedCte, smuChwtCte, params)
 
     const perTanggalSparse = perTanggalRows.map((row) => ({ date: row.date, ...toRecapMetrics(row) }))
     // Built from the sparse rows on purpose: a filled-in future date would drag the chart down to 0.
@@ -704,7 +756,7 @@ export class BarhalService {
       ? densifyPerTanggal(perTanggalSparse, dto.startDate!, dto.endDate!)
       : perTanggalSparse
 
-    const perRuteRows = await this.queryPerRute(scopedCte, koliScopedCte, packedCte, params)
+    const perRuteRows = await this.queryPerRute(scopedCte, koliScopedCte, packedCte, smuChwtCte, params)
 
     // Deliberately not date-filtered: the route list must stay the same from month to month, so a
     // route with no shipments in the selected range still shows up as an all-zero statusless row.
@@ -799,14 +851,14 @@ export class BarhalService {
       throw new BadRequestException(`Date range must not exceed ${MAX_RECAP_DAYS} days`)
     }
 
-    const { params, scopedCte, koliScopedCte, packedCte } = this.buildScopeSql(dto)
+    const { params, scopedCte, koliScopedCte, packedCte, smuChwtCte } = this.buildScopeSql(dto)
 
     if (dto.groupBy === 'route') {
-      const rows = await this.queryPerRute(scopedCte, koliScopedCte, packedCte, params)
+      const rows = await this.queryPerRute(scopedCte, koliScopedCte, packedCte, smuChwtCte, params)
       return rows.map((row) => ({ originName: row.originName, destName: row.destName, ...toRecapMetrics(row) }))
     }
 
-    const rows = await this.queryPerTanggal(scopedCte, koliScopedCte, packedCte, params)
+    const rows = await this.queryPerTanggal(scopedCte, koliScopedCte, packedCte, smuChwtCte, params)
     return rows.map((row) => ({ date: row.date, ...toRecapMetrics(row) }))
   }
 
@@ -926,6 +978,7 @@ export class BarhalService {
 
     const rows: BarhalCsvRow[] = await this.dataSource.query(
       `
+      WITH ${SMU_CHWT_CTE}
       SELECT
         k.koli_number   AS "koliNumber",
         k.koli_date     AS "koliDate",
@@ -934,11 +987,11 @@ export class BarhalService {
         k.total_to      AS "totalTo",
         k.weight_before::numeric AS "weightBefore",
         k.weight_after::numeric  AS "weightAfter",
-        COALESCE((
-          SELECT SUM(s.chwt) FROM barhal_koli_to bkt
-          LEFT JOIN air_shipments_smu_rate_cgk_spx s ON s.awb = bkt.awb
-          WHERE bkt.koli_id = k.id
-        ), 0)::numeric AS "chwt"
+        -- Baris CSV adalah per Koli, sedangkan chWt adalah properti No. SMU: satu SMU yang dipakai
+        -- beberapa Koli menampilkan chWt penuh di setiap barisnya, sehingga total kolom ini bisa
+        -- lebih besar dari total di recap. Lihat catatan di barhal-csv.builder.ts.
+        COALESCE((SELECT sc.chwt FROM smu_chwt sc
+                   WHERE sc.awb = NULLIF(BTRIM(k.smu_number), '')), 0)::numeric AS "chwt"
       FROM barhal_koli k
       ${where}
       ORDER BY k.koli_date DESC, k.koli_number DESC

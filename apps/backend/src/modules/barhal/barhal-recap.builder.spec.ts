@@ -15,9 +15,9 @@ function aggregateRow(overrides: Partial<RecapAggregateRow> = {}): RecapAggregat
     total_koli: 2,
     unpacked_to: 0,
     to_without_chwt: 0,
-    koli_without_awb: 0,
+    koli_without_smu: 0,
     koli_without_matching_to: 0,
-    koli_awb_without_chwt: 0,
+    koli_smu_without_chwt: 0,
     weight_before: '30',
     chwt: '25',
     weight_increase: '6',
@@ -32,9 +32,9 @@ function sumCounters(children: RecapAggregateRow[]) {
   const keys = [
     'unpacked_to',
     'to_without_chwt',
-    'koli_without_awb',
+    'koli_without_smu',
     'koli_without_matching_to',
-    'koli_awb_without_chwt',
+    'koli_smu_without_chwt',
   ] as const
   return Object.fromEntries(
     keys.map((key) => [key, children.reduce((total, child) => total + child[key], 0)]),
@@ -60,12 +60,52 @@ describe('toRecapMetrics', () => {
     expect(toRecapMetrics(row).status).toBe('incomplete')
   })
 
-  it('marks a group incomplete when one of its Kolis has produced no AWB', () => {
-    expect(toRecapMetrics(aggregateRow({ koli_without_awb: 1 })).status).toBe('incomplete')
+  it('marks a group incomplete when one of its Kolis has no No. SMU yet', () => {
+    expect(toRecapMetrics(aggregateRow({ koli_without_smu: 1 })).status).toBe('incomplete')
   })
 
-  it('marks a group incomplete when an AWB in one of its Kolis is missing its chWt', () => {
-    expect(toRecapMetrics(aggregateRow({ koli_awb_without_chwt: 1 })).status).toBe('incomplete')
+  it('marks a group incomplete when a No. SMU in one of its Kolis is missing its chWt', () => {
+    expect(toRecapMetrics(aggregateRow({ koli_smu_without_chwt: 1 })).status).toBe('incomplete')
+  })
+
+  it('reports 0 kg and Incomplete for a Koli whose TOs have an AWB but whose No. SMU is blank', () => {
+    // The case the operator reported: picking a TO copies its AWB into barhal_koli_to, and chWt used
+    // to appear from that AWB alone — before the SMU existed. chWt now only reaches the row through
+    // the Koli's No. SMU, so an SMU-less Koli reads 0 kg with Incomplete saying what is still missing.
+    const row = aggregateRow({
+      total_to: 2,
+      total_koli: 1,
+      unpacked_to: 0,
+      to_without_chwt: 2,
+      koli_without_smu: 1,
+      chwt: '0',
+    })
+    const metrics = toRecapMetrics(row)
+    expect(metrics.chwt).toBe(0)
+    expect(metrics.status).toBe('incomplete')
+  })
+
+  it('reports the chWt and Completed once the Koli No. SMU is found in Reservasi', () => {
+    // The mirror of the case above: the same Koli after updateSmu, with its SMU present in Reservasi.
+    const row = aggregateRow({ total_to: 2, total_koli: 1, chwt: '18.5' })
+    const metrics = toRecapMetrics(row)
+    expect(metrics.chwt).toBe(18.5)
+    expect(metrics.status).toBe('completed')
+  })
+
+  it('reports 0 kg and Incomplete for a No. SMU that is not in Reservasi at all', () => {
+    // An SMU typed into Barhal that Reservasi has never seen yields no chWt row, which is a different
+    // outstanding item from "no SMU yet" but reads the same to the operator: nothing confirmed.
+    const row = aggregateRow({
+      total_to: 2,
+      total_koli: 1,
+      to_without_chwt: 2,
+      koli_smu_without_chwt: 1,
+      chwt: '0',
+    })
+    const metrics = toRecapMetrics(row)
+    expect(metrics.chwt).toBe(0)
+    expect(metrics.status).toBe('incomplete')
   })
 
   it('marks a group incomplete when a Koli here holds no TO of this date and route', () => {

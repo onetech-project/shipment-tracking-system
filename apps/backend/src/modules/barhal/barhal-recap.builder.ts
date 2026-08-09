@@ -10,18 +10,18 @@ export interface RecapAggregateRow {
   total_koli: number
   /** TOs in this group not attached to any Koli yet. */
   unpacked_to: number
-  /** TOs in this group whose chWt is still unknown — no AWB at all, or an AWB with no chWt. */
+  /** TOs in this group whose chWt is still unknown — not in a Koli with a No. SMU that has chWt. */
   to_without_chwt: number
-  /** Kolis in this group whose contents yield no AWB at all — empty shells included. */
-  koli_without_awb: number
+  /** Kolis in this group with no No. SMU filled in yet — empty shells included. */
+  koli_without_smu: number
   /**
    * Kolis in this group holding no TO that belongs to the Koli's own date and route. Such a Koli was
    * packed here but everything inside it is booked under some other date/route, so this row has no
    * TO of its own to vouch for it.
    */
   koli_without_matching_to: number
-  /** Distinct AWBs reachable from this group's Kolis that have no chWt. */
-  koli_awb_without_chwt: number
+  /** Distinct No. SMU in this group not found in Reservasi, or found there with no chWt. */
+  koli_smu_without_chwt: number
   weight_before: string
   chwt: string
   weight_increase: string
@@ -48,8 +48,10 @@ export interface RecapMetrics {
 export type RecapStatus = 'completed' | 'incomplete' | 'none'
 
 /**
- * Completed means every TO in the group is packed into a Koli and has its chWt, and every Koli in
- * the group has produced AWBs that have theirs.
+ * Completed means every TO in the group sits in a Koli whose No. SMU carries a chWt, and every Koli
+ * in the group has a No. SMU that carries one. chWt reaches a row through the SMU only: a Koli whose
+ * No. SMU is still blank contributes nothing to the chWt column and keeps its row Incomplete, which
+ * is what tells the operator the SMU is the step still missing.
  *
  * The TO-side and Koli-side checks are both needed because a Koli does not have to share its
  * group. A Koli packed on the 27th routinely holds TOs dated weeks earlier, so:
@@ -57,7 +59,7 @@ export type RecapStatus = 'completed' | 'incomplete' | 'none'
  *    showing 0 Koli can still have TOs that were packed elsewhere, and judging chWt only through
  *    this group's Kolis reported such a row as completed while nothing about it was confirmed;
  *  - the Koli's date/route row is the only place the Koli itself can be judged
- *    (koli_without_awb, koli_awb_without_chwt, koli_without_matching_to) — that row may hold no TOs
+ *    (koli_without_smu, koli_smu_without_chwt, koli_without_matching_to) — that row may hold no TOs
  *    of its own at all, which is what let a row reading "0 TO / 1 Koli" call itself completed: with
  *    no TO on the row, every TO-side check passes vacuously. koli_without_matching_to is what such
  *    a row is judged on instead.
@@ -68,8 +70,8 @@ export type RecapStatus = 'completed' | 'incomplete' | 'none'
  * sit above an "Incomplete" child, and an "Incomplete" parent always has a child to point at.
  *
  * total_to and total_koli alone decide whether the row is empty. Every other number is derived from
- * the Koli — its contents (weight_before, chwt) or its own fields (weight_increase, add_revenue) —
- * so none of them can be non-zero while total_koli is 0.
+ * the Koli — its contents (weight_before) or its own fields (chwt through No. SMU, weight_increase,
+ * add_revenue) — so none of them can be non-zero while total_koli is 0.
  */
 export function toRecapMetrics(row: RecapAggregateRow): RecapMetrics {
   let status: RecapStatus = 'none'
@@ -77,9 +79,9 @@ export function toRecapMetrics(row: RecapAggregateRow): RecapMetrics {
     const outstanding =
       row.unpacked_to > 0 ||
       row.to_without_chwt > 0 ||
-      row.koli_without_awb > 0 ||
+      row.koli_without_smu > 0 ||
       row.koli_without_matching_to > 0 ||
-      row.koli_awb_without_chwt > 0
+      row.koli_smu_without_chwt > 0
     status = outstanding ? 'incomplete' : 'completed'
   }
 
