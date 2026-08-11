@@ -192,7 +192,12 @@ export function densifyPerRute(rows: RecapPerRuteRow[], masterRoutes: RouteKey[]
       byRoute.set(key, { originName: route.originName, destName: route.destName, ...emptyRecapMetrics() })
     }
   }
+  // Names are coalesced rather than assumed: a group whose route could not be resolved is a data
+  // fault the dashboard has to survive, and comparing it raw threw a TypeError out of the comparator
+  // that failed the whole endpoint with a 500 instead of showing the routes that were fine.
   return Array.from(byRoute.values()).sort(
-    (a, b) => a.originName.localeCompare(b.originName) || a.destName.localeCompare(b.destName),
+    (a, b) =>
+      (a.originName ?? '').localeCompare(b.originName ?? '') ||
+      (a.destName ?? '').localeCompare(b.destName ?? ''),
   )
 }

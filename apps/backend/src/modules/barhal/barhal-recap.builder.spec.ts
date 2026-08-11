@@ -346,4 +346,20 @@ describe('densifyPerRute', () => {
     expect(result).toHaveLength(3)
     expect(result.every((r) => r.status === 'none' && r.totalKoli === 0)).toBe(true)
   })
+
+  // A route that came back without a name is a data fault, and the dashboard has to keep reporting
+  // the routes that are fine while it happens: sorting such a row used to throw a TypeError out of
+  // the comparator, which took the whole endpoint down with a 500 instead of one odd-looking row.
+  it('keeps sorting when a query row has no route name at all', () => {
+    const nameless = {
+      originName: null as unknown as string,
+      destName: null as unknown as string,
+      ...toRecapMetrics(aggregateRow()),
+    }
+    // Postgres orders NULLs last, so the nameless group arrives behind the named ones.
+    const named = { originName: 'Kosambi', destName: 'Badung', ...toRecapMetrics(aggregateRow()) }
+    const result = densifyPerRute([named, nameless], master)
+    expect(result).toHaveLength(4)
+    expect(result).toContainEqual(nameless)
+  })
 })

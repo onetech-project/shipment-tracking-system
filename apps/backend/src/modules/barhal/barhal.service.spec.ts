@@ -599,6 +599,32 @@ describe('BarhalService', () => {
       expect(sqlParams).toEqual(['Kosambi', 'Badung'])
     })
 
+    // The picker and the station dropdowns already read a TO route from the air_shipments_data
+    // master through its DC pair; the recap read compileaircgk's own station columns instead. Those
+    // are generated from sheet keys that can simply be absent, and when they were the recap grouped
+    // every TO under a (NULL, NULL) route whose figures then all came back 0 — `=` never matches
+    // NULL, so the group could not even find its own rows.
+    it('reads a TO route from the air_shipments_data master, never from the compile sheet own station columns', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      await service.getDashboard({ startDate: '2026-08-01', endDate: '2026-08-02', origin: 'Kosambi', dest: 'Badung' })
+
+      // kpi, per-tanggal, per-rute and the master route list: every query that resolves a TO route.
+      for (const call of dataSource.query.mock.calls.slice(0, 4)) {
+        const sql = call[0] as string
+        expect(sql).toContain('route_master AS (')
+        expect(sql).toContain("rm.origin_dc      = e.extra_fields->>'origin'")
+        expect(sql).toContain("rm.destination_dc = e.extra_fields->>'destination'")
+        expect(sql).not.toContain('e.origin_station')
+        expect(sql).not.toContain('e.dest_station')
+      }
+    })
+
     it('dates a TO by shipment_date, never by completed_date', async () => {
       dataSource.query
         .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
@@ -981,6 +1007,23 @@ describe('BarhalService', () => {
       expect(countParams).toEqual(['2026-07-01', '2026-07-31', 'Makassar', 'Kosambi'])
       expect(countSql).toMatch(/shipment_date BETWEEN \$1 AND \$2/i)
       expect(countSql).not.toMatch(/Makassar/)
+    })
+
+    // Same route source as the recap it sits under, for the same reason: the compile sheet's own
+    // station columns can be absent, and then this table listed "null → null" TOs that no origin or
+    // dest filter could ever reach.
+    it('reads the route from the air_shipments_data master, never from the compile sheet own station columns', async () => {
+      dataSource.query.mockResolvedValueOnce([{ total: 0 }]).mockResolvedValueOnce([])
+
+      await service.getToDetail({ tab: 'in-koli', origin: 'Makassar', dest: 'Kosambi', page: 1, pageSize: 25 })
+
+      for (const call of dataSource.query.mock.calls) {
+        const sql = call[0] as string
+        expect(sql).toContain('route_master AS (')
+        expect(sql).toContain("rm.origin_dc      = e.extra_fields->>'origin'")
+        expect(sql).not.toContain('e.origin_station')
+        expect(sql).not.toContain('e.dest_station')
+      }
     })
 
     it('translates page and pageSize into LIMIT and OFFSET', async () => {

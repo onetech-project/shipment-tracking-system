@@ -77,6 +77,11 @@ const UNIQUE_VIOLATION = '23505'
  * Master rute: pasangan DC → nama stasiun. DISTINCT ON bersifat wajib, bukan kosmetik —
  * air_shipments_data unik pada (service, origin_dc, destination_dc), sehingga satu pasangan
  * DC bisa punya baris Air *dan* Sea. Tanpa ini, join akan menggandakan baris TO.
+ *
+ * Baris master yang nama stasiunnya kosong dibuang di sini, bukan di setiap pemakai: pasangan DC
+ * tanpa nama tidak bisa dipakai sebagai rute oleh siapa pun. Karena filternya berada di dalam CTE,
+ * DISTINCT ON juga jadi bisa memilih baris service lain yang namanya terisi untuk pasangan DC yang
+ * sama, alih-alih memakai baris kosong lalu menganggap rutenya tidak ada.
  */
 const ROUTE_MASTER_CTE = `
   route_master AS (
@@ -87,9 +92,27 @@ const ROUTE_MASTER_CTE = `
       extra_fields->>'destination_station' AS dest_station
     FROM air_shipments_data
     WHERE origin_dc IS NOT NULL AND destination_dc IS NOT NULL
+      AND NULLIF(BTRIM(extra_fields->>'origin_station'), '') IS NOT NULL
+      AND NULLIF(BTRIM(extra_fields->>'destination_station'), '') IS NOT NULL
     ORDER BY origin_dc, destination_dc, service
   )
 `
+
+/**
+ * Rute sebuah TO dibaca dari master lewat pasangan DC-nya, sama seperti picker TO dan dropdown
+ * stasiun. Kolom station milik compileaircgk sendiri sengaja tidak dipakai: keduanya generated
+ * column atas key sheet (`origin_station`/`destination_station`) yang bisa saja tidak terkirim,
+ * dan saat itu terjadi seluruh TO jatuh ke satu grup rute (NULL, NULL) yang angkanya nol semua —
+ * `=` tidak pernah cocok dengan NULL, sehingga grup itu tak menemukan barisnya sendiri.
+ *
+ * JOIN-nya inner, persis seperti picker yang membuang TO tanpa pasangan master: TO yang rutenya
+ * tidak dapat dipetakan tidak akan pernah bisa dipacking, sehingga menghitungnya di rekap hanya
+ * membuat harinya Incomplete selamanya tanpa ada yang bisa dikerjakan operator.
+ */
+const TO_ROUTE_JOIN = `
+      JOIN route_master rm
+        ON rm.origin_dc      = e.extra_fields->>'origin'
+       AND rm.destination_dc = e.extra_fields->>'destination'`
 
 /**
  * Satu baris Reservasi per AWB, dan No. SMU sebuah Koli adalah AWB itu sendiri — `awb` satu-satunya
@@ -472,6 +495,7 @@ export class BarhalService {
    */
   private buildScopeSql(dto: BarhalDashboardQueryDto): {
     params: unknown[]
+    routeMasterCte: string
     scopedCte: string
     koliScopedCte: string
     packedCte: string
@@ -489,12 +513,12 @@ export class BarhalService {
     }
     if (dto.origin) {
       params.push(dto.origin)
-      conditions.push(`${this.normalizedStationSql('e.origin_station')} = $${params.length}`)
+      conditions.push(`${this.normalizedStationSql('rm.origin_station')} = $${params.length}`)
       koliConditions.push(`k.origin_name = $${params.length}`)
     }
     if (dto.dest) {
       params.push(dto.dest)
-      conditions.push(`${this.normalizedStationSql('e.dest_station')} = $${params.length}`)
+      conditions.push(`${this.normalizedStationSql('rm.dest_station')} = $${params.length}`)
       koliConditions.push(`k.dest_name = $${params.length}`)
     }
     const toWhere = `WHERE ${conditions.join(' AND ')}`
@@ -502,15 +526,17 @@ export class BarhalService {
 
     return {
       params,
+      routeMasterCte: ROUTE_MASTER_CTE,
       scopedCte: `
       scoped AS (
         SELECT
           e.to_number,
           e.gross_weight,
           e.shipment_date AS to_date,
-          ${this.normalizedStationSql('e.origin_station')} AS origin_name,
-          ${this.normalizedStationSql('e.dest_station')} AS dest_name
+          ${this.normalizedStationSql('rm.origin_station')} AS origin_name,
+          ${this.normalizedStationSql('rm.dest_station')} AS dest_name
         FROM air_shipments_compileaircgk e
+        ${TO_ROUTE_JOIN}
         ${toWhere}
       )
     `,
@@ -550,9 +576,10 @@ export class BarhalService {
           SELECT
             e.gross_weight,
             e.shipment_date AS to_date,
-            ${this.normalizedStationSql('e.origin_station')} AS origin_name,
-            ${this.normalizedStationSql('e.dest_station')} AS dest_name
+            ${this.normalizedStationSql('rm.origin_station')} AS origin_name,
+            ${this.normalizedStationSql('rm.dest_station')} AS dest_name
           FROM air_shipments_compileaircgk e
+          ${TO_ROUTE_JOIN}
           WHERE e.to_number = bkt.to_number AND e.remarks ILIKE '%barhal%'
           ORDER BY e.shipment_date DESC NULLS LAST
           LIMIT 1
@@ -581,18 +608,12 @@ export class BarhalService {
    * counter tetap dipisah karena tidak ada biayanya dan keduanya menjawab pertanyaan yang berbeda.
    */
   private queryPerTanggal(
-    scopedCte: string,
-    koliScopedCte: string,
-    packedCte: string,
-    smuChwtCte: string,
+    recapCtes: string,
     params: unknown[],
   ): Promise<(RecapAggregateRow & { date: string })[]> {
     return this.dataSource.query(
       `
-      WITH ${scopedCte},
-      ${koliScopedCte},
-      ${packedCte},
-      ${smuChwtCte},
+      WITH ${recapCtes},
       groups AS (
         SELECT to_date AS koli_date FROM scoped
         UNION
@@ -650,18 +671,12 @@ export class BarhalService {
    * sehingga penjelasannya ada di doc comment queryPerTanggal.
    */
   private queryPerRute(
-    scopedCte: string,
-    koliScopedCte: string,
-    packedCte: string,
-    smuChwtCte: string,
+    recapCtes: string,
     params: unknown[],
   ): Promise<(RecapAggregateRow & { originName: string; destName: string })[]> {
     return this.dataSource.query(
       `
-      WITH ${scopedCte},
-      ${koliScopedCte},
-      ${packedCte},
-      ${smuChwtCte},
+      WITH ${recapCtes},
       groups AS (
         SELECT origin_name, dest_name FROM scoped
         UNION
@@ -722,7 +737,8 @@ export class BarhalService {
       throw new BadRequestException(`Date range must not exceed ${MAX_RECAP_DAYS} days`)
     }
 
-    const { params, scopedCte, koliScopedCte, packedCte, smuChwtCte } = this.buildScopeSql(dto)
+    const { params, routeMasterCte, scopedCte, koliScopedCte, packedCte, smuChwtCte } = this.buildScopeSql(dto)
+    const recapCtes = [routeMasterCte, scopedCte, koliScopedCte, packedCte, smuChwtCte].join(',')
 
     // The KPI cards are the recap's column totals, so they read the same two scopes the recap does:
     // TO figures from `scoped`, Koli figures from `koli_scoped` and its contents in `packed`.
@@ -734,7 +750,8 @@ export class BarhalService {
     const kpiRow = (
       await this.dataSource.query(
         `
-        WITH ${scopedCte},
+        WITH ${routeMasterCte},
+        ${scopedCte},
         ${koliScopedCte},
         ${packedCte}
         SELECT
@@ -751,7 +768,7 @@ export class BarhalService {
       )
     )[0]
 
-    const perTanggalRows = await this.queryPerTanggal(scopedCte, koliScopedCte, packedCte, smuChwtCte, params)
+    const perTanggalRows = await this.queryPerTanggal(recapCtes, params)
 
     const perTanggalSparse = perTanggalRows.map((row) => ({ date: row.date, ...toRecapMetrics(row) }))
     // Built from the sparse rows on purpose: a filled-in future date would drag the chart down to 0.
@@ -760,7 +777,7 @@ export class BarhalService {
       ? densifyPerTanggal(perTanggalSparse, dto.startDate!, dto.endDate!)
       : perTanggalSparse
 
-    const perRuteRows = await this.queryPerRute(scopedCte, koliScopedCte, packedCte, smuChwtCte, params)
+    const perRuteRows = await this.queryPerRute(recapCtes, params)
 
     // Deliberately not date-filtered: the route list must stay the same from month to month, so a
     // route with no shipments in the selected range still shows up as an all-zero statusless row.
@@ -769,26 +786,26 @@ export class BarhalService {
       `e.remarks ILIKE '%barhal%'`,
       `e.to_number IS NOT NULL`,
       `e.shipment_date IS NOT NULL`,
-      `e.origin_station IS NOT NULL`,
-      `e.origin_station != ''`,
-      `e.dest_station IS NOT NULL`,
-      `e.dest_station != ''`,
     ]
     if (dto.origin) {
       routeParams.push(dto.origin)
-      routeConditions.push(`${this.normalizedStationSql('e.origin_station')} = $${routeParams.length}`)
+      routeConditions.push(`${this.normalizedStationSql('rm.origin_station')} = $${routeParams.length}`)
     }
     if (dto.dest) {
       routeParams.push(dto.dest)
-      routeConditions.push(`${this.normalizedStationSql('e.dest_station')} = $${routeParams.length}`)
+      routeConditions.push(`${this.normalizedStationSql('rm.dest_station')} = $${routeParams.length}`)
     }
 
+    // Rutenya dibaca lewat join master yang sama dengan `scoped`, sehingga daftar rute ini dan
+    // grup yang dihasilkan agregat selalu berasal dari satu sumber nama stasiun.
     const masterRoutes: RouteKey[] = await this.dataSource.query(
       `
+      WITH ${routeMasterCte}
       SELECT DISTINCT
-        ${this.normalizedStationSql('e.origin_station')} AS "originName",
-        ${this.normalizedStationSql('e.dest_station')}   AS "destName"
+        ${this.normalizedStationSql('rm.origin_station')} AS "originName",
+        ${this.normalizedStationSql('rm.dest_station')}   AS "destName"
       FROM air_shipments_compileaircgk e
+      ${TO_ROUTE_JOIN}
       WHERE ${routeConditions.join(' AND ')}
       ORDER BY 1, 2
       `,
@@ -855,14 +872,15 @@ export class BarhalService {
       throw new BadRequestException(`Date range must not exceed ${MAX_RECAP_DAYS} days`)
     }
 
-    const { params, scopedCte, koliScopedCte, packedCte, smuChwtCte } = this.buildScopeSql(dto)
+    const { params, routeMasterCte, scopedCte, koliScopedCte, packedCte, smuChwtCte } = this.buildScopeSql(dto)
+    const recapCtes = [routeMasterCte, scopedCte, koliScopedCte, packedCte, smuChwtCte].join(',')
 
     if (dto.groupBy === 'route') {
-      const rows = await this.queryPerRute(scopedCte, koliScopedCte, packedCte, smuChwtCte, params)
+      const rows = await this.queryPerRute(recapCtes, params)
       return rows.map((row) => ({ originName: row.originName, destName: row.destName, ...toRecapMetrics(row) }))
     }
 
-    const rows = await this.queryPerTanggal(scopedCte, koliScopedCte, packedCte, smuChwtCte, params)
+    const rows = await this.queryPerTanggal(recapCtes, params)
     return rows.map((row) => ({ date: row.date, ...toRecapMetrics(row) }))
   }
 
@@ -892,22 +910,26 @@ export class BarhalService {
     }
     if (dto.origin) {
       params.push(dto.origin)
-      conditions.push(`${this.normalizedStationSql('e.origin_station')} = $${params.length}`)
+      conditions.push(`${this.normalizedStationSql('rm.origin_station')} = $${params.length}`)
     }
     if (dto.dest) {
       params.push(dto.dest)
-      conditions.push(`${this.normalizedStationSql('e.dest_station')} = $${params.length}`)
+      conditions.push(`${this.normalizedStationSql('rm.dest_station')} = $${params.length}`)
     }
 
-    const baseCte = `
+    // Rute dibaca dari master lewat pasangan DC, sama seperti rekap di atasnya: kolom station
+    // milik compileaircgk bisa kosong, dan saat itu terjadi tabel ini menampilkan TO "null → null"
+    // yang tidak bisa dijangkau filter origin/dest mana pun.
+    const baseCte = `${ROUTE_MASTER_CTE},
       base AS (
         SELECT DISTINCT ON (e.to_number)
           e.to_number,
           e.shipment_date,
           e.gross_weight,
-          ${this.normalizedStationSql('e.origin_station')} AS origin_name,
-          ${this.normalizedStationSql('e.dest_station')} AS dest_name
+          ${this.normalizedStationSql('rm.origin_station')} AS origin_name,
+          ${this.normalizedStationSql('rm.dest_station')} AS dest_name
         FROM air_shipments_compileaircgk e
+        ${TO_ROUTE_JOIN}
         WHERE ${conditions.join(' AND ')}
         ORDER BY e.to_number, e.shipment_date DESC
       )
