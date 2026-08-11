@@ -79,6 +79,10 @@ export enum Permission {
   // Airline tracking source registry (carrier_code → endpoint config). Reads reuse
   // READ_SLA; this guards create/update/delete of airline endpoint configs.
   UPDATE_AIRLINE_TRACKING_SOURCE = 'update.airline_tracking_source',
+
+  // Barhal (wood-packing / Koli tracking)
+  READ_BARHAL = 'read.barhal',
+  CREATE_BARHAL = 'create.barhal',
 }
 
 // ── Auth Response DTOs ────────────────────────────────────────────────────────

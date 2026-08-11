@@ -19,6 +19,7 @@ import {
   TrendingUp,
   ShieldAlert,
   Menu,
+  Package,
 } from 'lucide-react'
 
 interface NavLinkProps {
@@ -129,6 +130,15 @@ export function Sidebar({ onNavClick, collapsed = false, onToggleCollapse }: Sid
                 href="/air-shipments/google-sheet-config"
                 icon={<ClipboardList size={16} />}
                 label="Google Sheet Config"
+                onClick={onNavClick}
+                collapsed={collapsed}
+              />
+            )}
+            {hasPermission('read.barhal') && (
+              <NavLink
+                href="/barhal"
+                icon={<Package size={16} />}
+                label="Barhal"
                 onClick={onNavClick}
                 collapsed={collapsed}
               />

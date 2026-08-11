@@ -1,0 +1,999 @@
+import { Test } from '@nestjs/testing'
+import { DataSource } from 'typeorm'
+import { getRepositoryToken } from '@nestjs/typeorm'
+import { BarhalService, normalizeStationName } from './barhal.service'
+import { BarhalKoli } from './entities/barhal-koli.entity'
+import { BarhalKoliTo } from './entities/barhal-koli-to.entity'
+import { RecapPerRuteRow } from './barhal-recap.builder'
+
+describe('normalizeStationName', () => {
+  it('strips a trailing "DC" suffix and trims whitespace', () => {
+    expect(normalizeStationName('Kosambi DC')).toBe('Kosambi')
+    expect(normalizeStationName('Badung  DC ')).toBe('Badung')
+    expect(normalizeStationName('Denpasar')).toBe('Denpasar')
+    expect(normalizeStationName(null)).toBe('')
+  })
+
+  it('normalizes casing so inconsistently-typed sheet data matches', () => {
+    expect(normalizeStationName('MAKASSAR')).toBe('Makassar')
+    expect(normalizeStationName('makassar dc')).toBe('Makassar')
+    expect(normalizeStationName('JAKARTA')).toBe(normalizeStationName('jakarta'))
+  })
+})
+
+describe('BarhalService', () => {
+  let service: BarhalService
+  let dataSource: { query: jest.Mock }
+
+  beforeEach(async () => {
+    dataSource = { query: jest.fn() }
+    const module = await Test.createTestingModule({
+      providers: [
+        BarhalService,
+        { provide: DataSource, useValue: dataSource },
+        { provide: getRepositoryToken(BarhalKoli), useValue: {} },
+        { provide: getRepositoryToken(BarhalKoliTo), useValue: {} },
+      ],
+    }).compile()
+    service = module.get(BarhalService)
+  })
+
+  describe('getAvailableTos', () => {
+    it('filters to Barhal-only TOs and applies search/date/origin/dest params', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { to_number: 'TO1', awb: 'AWB1', gross_weight: 10, origin_station: 'Kosambi DC', dest_station: 'Badung DC', lt_number: 'LT1', remarks: 'BARHAL', date: '2026-06-01' },
+      ])
+      const result = await service.getAvailableTos({ search: 'TO1', date: '2026-06-01', origin: 'Kosambi', dest: 'Badung' })
+      expect(result.data).toHaveLength(1)
+      expect(result.data[0].vendor).toBe('ESP')
+      const [sql, params] = dataSource.query.mock.calls[0]
+      expect(sql).toMatch(/remarks ILIKE/i)
+      expect(params).toContain('%barhal%')
+      expect(params).toContain('%TO1%')
+    })
+
+    it('searches AWB alongside TO and LT, so the picker needs no second client-side search', async () => {
+      // The picker only ever holds AVAILABLE_TOS_LIMIT rows, so an AWB filter applied after that
+      // cut cannot reach a TO the limit already excluded — it has to be part of this query.
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getAvailableTos({ search: 'AWB1' })
+      const [sql, params] = dataSource.query.mock.calls[0]
+      const searchIdx = (params as unknown[]).indexOf('%AWB1%') + 1
+      expect(sql).toContain(
+        `(c.to_number ILIKE $${searchIdx} OR c.lt_number ILIKE $${searchIdx} OR c.awb ILIKE $${searchIdx})`,
+      )
+    })
+
+    it('reads the route from air_shipments_data via the origin_dc/destination_dc join', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { to_number: 'TO1', awb: 'AWB1', gross_weight: 10, origin_station: 'Jabo', dest_station: 'Batam', lt_number: 'LT1', remarks: 'BARHAL', date: '2026-06-01' },
+      ])
+      const result = await service.getAvailableTos({})
+      const [sql] = dataSource.query.mock.calls[0]
+      expect(sql).toMatch(/air_shipments_data/)
+      expect(sql).toMatch(/rm\.origin_dc\s*=\s*c\.extra_fields->>'origin'/)
+      expect(sql).toMatch(/rm\.destination_dc\s*=\s*c\.extra_fields->>'destination'/)
+      expect(result.data[0].origin_station).toBe('Jabo')
+      expect(result.data[0].dest_station).toBe('Batam')
+    })
+
+    it('de-duplicates the master so an Air+Sea pair cannot multiply TO rows', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getAvailableTos({})
+      const [sql] = dataSource.query.mock.calls[0]
+      expect(sql).toMatch(/DISTINCT ON \(origin_dc, destination_dc\)/)
+      expect(sql).toMatch(/ORDER BY origin_dc, destination_dc, service/)
+    })
+
+    it('drops TOs whose route is missing from the master and reports how many', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { to_number: 'TO1', awb: 'AWB1', gross_weight: 10, origin_station: 'Jabo', dest_station: 'Batam', lt_number: 'LT1', remarks: 'BARHAL', date: '2026-06-01' },
+        { to_number: 'TO2', awb: 'AWB2', gross_weight: 5, origin_station: null, dest_station: null, lt_number: 'LT2', remarks: 'BARHAL', date: '2026-06-01' },
+        { to_number: 'TO3', awb: 'AWB3', gross_weight: 5, origin_station: null, dest_station: null, lt_number: 'LT3', remarks: 'BARHAL', date: '2026-06-01' },
+      ])
+      const result = await service.getAvailableTos({})
+      expect(result.data.map((r) => r.to_number)).toEqual(['TO1'])
+      expect(result.unmatchedRouteCount).toBe(2)
+    })
+
+    it('does not narrow unmatchedRouteCount by the origin/dest filter', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { to_number: 'TO1', awb: null, gross_weight: 1, origin_station: 'Jabo', dest_station: 'Batam', lt_number: null, remarks: 'BARHAL', date: '2026-06-01' },
+        { to_number: 'TO2', awb: null, gross_weight: 1, origin_station: 'Surabaya', dest_station: 'Makassar', lt_number: null, remarks: 'BARHAL', date: '2026-06-01' },
+        { to_number: 'TO3', awb: null, gross_weight: 1, origin_station: null, dest_station: null, lt_number: null, remarks: 'BARHAL', date: '2026-06-01' },
+      ])
+      const result = await service.getAvailableTos({ origin: 'Jabo', dest: 'Batam' })
+      expect(result.data.map((r) => r.to_number)).toEqual(['TO1'])
+      // TO3 gagal dijoin sehingga tidak punya rute untuk dibandingkan dengan filter.
+      expect(result.unmatchedRouteCount).toBe(1)
+    })
+  })
+
+  describe('getStations', () => {
+    it('sources dropdown options from the air_shipments_data master join', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { origin_station: 'Jabo', dest_station: 'Batam' },
+        { origin_station: 'Surabaya', dest_station: 'Makassar' },
+      ])
+      const stations = await service.getStations()
+      const [sql] = dataSource.query.mock.calls[0]
+      expect(sql).toMatch(/air_shipments_data/)
+      expect(sql).toMatch(/rm\.origin_dc\s*=\s*c\.extra_fields->>'origin'/)
+      expect(sql).toMatch(/rm\.destination_dc\s*=\s*c\.extra_fields->>'destination'/)
+      expect(sql).toMatch(/remarks ILIKE '%barhal%'/i)
+      expect(stations.origins).toEqual(['Jabo', 'Surabaya'])
+      expect(stations.dests).toEqual(['Batam', 'Makassar'])
+    })
+  })
+
+  describe('createKoliShell', () => {
+    it('generates a koli_number from date/origin/dest and creates an empty shell', async () => {
+      dataSource.query
+        .mockResolvedValueOnce(undefined) // pg_advisory_xact_lock
+        .mockResolvedValueOnce([{ count: 0 }]) // sequence count
+      const manager = { query: dataSource.query, create: jest.fn((_, v) => v), save: jest.fn((v) => Promise.resolve(v)) }
+      ;(service as any).dataSource.transaction = jest.fn((cb: any) => cb(manager))
+      const koli = await service.createKoliShell({ koliDate: '2026-06-01', origin: 'Kosambi DC', dest: 'Badung DC', komoditi: 'HP' })
+      expect(koli.koli_number).toBe('1Jun-Kosambi-Badung-Barhal1')
+      expect(koli.origin_name).toBe('Kosambi')
+      expect(koli.dest_name).toBe('Badung')
+      expect(koli.total_to).toBe(0)
+      expect(koli.weight_before).toBeNull()
+    })
+  })
+
+  describe('attachTos', () => {
+    it('sums gross_weight into weight_before and sets total_to, reloading with lines relation', async () => {
+      const reloaded = { id: 'k1', weight_before: 15, total_to: 2, lines: [{ to_number: 'TO1' }, { to_number: 'TO2' }] }
+      const koliRepo = {
+        findOne: jest.fn().mockResolvedValueOnce({ id: 'k1' }).mockResolvedValueOnce(reloaded),
+        save: jest.fn((v) => Promise.resolve(v)),
+      }
+      ;(service as any).koliRepo = koliRepo
+      dataSource.query.mockResolvedValueOnce([
+        { to_number: 'TO1', awb: 'AWB1', gross_weight: 10 },
+        { to_number: 'TO2', awb: 'AWB2', gross_weight: 5 },
+      ])
+      const lineRepo = { create: jest.fn((v) => v), save: jest.fn().mockResolvedValue(undefined), delete: jest.fn().mockResolvedValue(undefined) }
+      ;(service as any).lineRepo = lineRepo
+      const koli = await service.attachTos('k1', { toNumbers: ['TO1', 'TO2'] })
+      expect(lineRepo.delete).toHaveBeenCalledWith({ koli_id: 'k1' })
+      expect(koli).toBe(reloaded)
+      expect(koliRepo.findOne).toHaveBeenLastCalledWith({ where: { id: 'k1' }, relations: ['lines'] })
+    })
+
+    it('refuses to attach a TO that is not a Barhal TO', async () => {
+      const koliRepo = { findOne: jest.fn().mockResolvedValueOnce({ id: 'k1' }), save: jest.fn() }
+      ;(service as any).koliRepo = koliRepo
+      const lineRepo = { create: jest.fn(), save: jest.fn(), delete: jest.fn() }
+      ;(service as any).lineRepo = lineRepo
+      // TO2 exists in the sheet but its remarks do not say barhal, so the filtered lookup returns
+      // one row for two requested TOs.
+      dataSource.query.mockResolvedValueOnce([{ to_number: 'TO1', awb: 'AWB1', gross_weight: 10 }])
+
+      await expect(service.attachTos('k1', { toNumbers: ['TO1', 'TO2'] })).rejects.toThrow(/Barhal/i)
+
+      const [sql, params] = dataSource.query.mock.calls[0]
+      // The picker only ever offers barhal TOs, but the endpoint takes whatever to_numbers the
+      // client sends — this is the one write path through which a non-barhal TO could enter
+      // barhal_koli_to and then surface across every Koli-driven figure in the module.
+      expect(sql).toMatch(/remarks ILIKE/i)
+      expect(params).toContain('%barhal%')
+      expect(lineRepo.delete).not.toHaveBeenCalled()
+    })
+
+    it('detaches all TOs when toNumbers is empty, without querying air_shipments_compileaircgk', async () => {
+      const reloaded = { id: 'k1', weight_before: 0, total_to: 0, lines: [] }
+      const koliRepo = {
+        findOne: jest.fn().mockResolvedValueOnce({ id: 'k1' }).mockResolvedValueOnce(reloaded),
+        save: jest.fn((v) => Promise.resolve(v)),
+      }
+      ;(service as any).koliRepo = koliRepo
+      const lineRepo = { create: jest.fn((v) => v), save: jest.fn().mockResolvedValue(undefined), delete: jest.fn().mockResolvedValue(undefined) }
+      ;(service as any).lineRepo = lineRepo
+      const koli = await service.attachTos('k1', { toNumbers: [] })
+      expect(dataSource.query).not.toHaveBeenCalled()
+      expect(lineRepo.delete).toHaveBeenCalledWith({ koli_id: 'k1' })
+      expect(lineRepo.save).not.toHaveBeenCalled()
+      expect(koli.total_to).toBe(0)
+    })
+  })
+
+  describe('updatePacking', () => {
+    it('computes volume as (L*W*H)/6000 and stores weightAfter/batangKayu', async () => {
+      const koliRepo = {
+        findOne: jest.fn().mockResolvedValue({ id: 'k1', weight_before: 100 }),
+        save: jest.fn((v) => Promise.resolve(v)),
+      }
+      ;(service as any).koliRepo = koliRepo
+      const koli = await service.updatePacking('k1', { weightAfter: 120, lengthCm: 60, widthCm: 50, heightCm: 40, batangKayu: 8 })
+      expect(koli.weight_after).toBe(120)
+      expect(koli.volume).toBeCloseTo(20)
+      expect(koli.batang_kayu).toBe(8)
+    })
+  })
+
+  describe('updateSmu', () => {
+    it('does not overwrite existing fields left blank', async () => {
+      const koliRepo = {
+        findOne: jest.fn().mockResolvedValue({ id: 'k1', smu_number: 'SMU-OLD', airlines: 'Garuda' }),
+        save: jest.fn((v) => Promise.resolve(v)),
+      }
+      ;(service as any).koliRepo = koliRepo
+      const koli = await service.updateSmu('k1', { flightNo: 'GA123' })
+      expect(koli.smu_number).toBe('SMU-OLD')
+      expect(koli.airlines).toBe('Garuda')
+      expect(koli.flight_no).toBe('GA123')
+    })
+  })
+
+  describe('bulkUpdateSmu', () => {
+    it('updates every koli matching date+dest, skipping blank fields', async () => {
+      const koliRepo = {
+        find: jest.fn().mockResolvedValue([
+          { id: 'k1', smu_number: 'OLD' },
+          { id: 'k2', smu_number: null },
+        ]),
+        save: jest.fn((v) => Promise.resolve(v)),
+      }
+      ;(service as any).koliRepo = koliRepo
+      const manager = { save: jest.fn((_, v) => Promise.resolve(v)) }
+      ;(service as any).dataSource.transaction = jest.fn((cb: any) => cb(manager))
+      const result = await service.bulkUpdateSmu({ koliDate: '2026-06-01', dest: 'Badung', airlines: 'Garuda' })
+      expect(result.updated).toBe(2)
+      expect(manager.save).toHaveBeenCalledTimes(2)
+      expect(koliRepo.save).not.toHaveBeenCalled()
+      expect(koliRepo.find).toHaveBeenCalledWith({ where: { koli_date: '2026-06-01', dest_name: 'Badung' } })
+    })
+  })
+
+  describe('deleteKoli', () => {
+    it('deletes an existing koli', async () => {
+      const koliRepo = { findOne: jest.fn().mockResolvedValue({ id: 'k1' }), delete: jest.fn().mockResolvedValue(undefined) }
+      ;(service as any).koliRepo = koliRepo
+      await service.deleteKoli('k1')
+      expect(koliRepo.delete).toHaveBeenCalledWith({ id: 'k1' })
+    })
+
+    it('throws NotFoundException when koli does not exist', async () => {
+      const koliRepo = { findOne: jest.fn().mockResolvedValue(null), delete: jest.fn() }
+      ;(service as any).koliRepo = koliRepo
+      await expect(service.deleteKoli('missing')).rejects.toThrow('Koli not found')
+      expect(koliRepo.delete).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('unassignSmu', () => {
+    it('clears SMU/flight fields from every koli sharing smuNumber', async () => {
+      const koliRepo = {
+        find: jest.fn().mockResolvedValue([
+          { id: 'k1', smu_number: 'SMU-1', airlines: 'Garuda', flight_no: 'GA123', std: new Date(), sta: new Date() },
+          { id: 'k2', smu_number: 'SMU-1', airlines: 'Garuda', flight_no: 'GA123', std: new Date(), sta: new Date() },
+        ]),
+      }
+      ;(service as any).koliRepo = koliRepo
+      const manager = { save: jest.fn((_, v) => Promise.resolve(v)) }
+      ;(service as any).dataSource.transaction = jest.fn((cb: any) => cb(manager))
+      const result = await service.unassignSmu('SMU-1')
+      expect(result.updated).toBe(2)
+      expect(manager.save).toHaveBeenCalledTimes(2)
+      const [, savedKoli] = manager.save.mock.calls[0]
+      expect(savedKoli.smu_number).toBeNull()
+      expect(savedKoli.airlines).toBeNull()
+      expect(savedKoli.flight_no).toBeNull()
+      expect(savedKoli.std).toBeNull()
+      expect(savedKoli.sta).toBeNull()
+    })
+
+    it('throws NotFoundException when no koli has that smuNumber', async () => {
+      const koliRepo = { find: jest.fn().mockResolvedValue([]) }
+      ;(service as any).koliRepo = koliRepo
+      await expect(service.unassignSmu('MISSING')).rejects.toThrow('SMU not found')
+    })
+  })
+
+  describe('getSmuList', () => {
+    it('groups Koli by smu_number and reads chWt straight off that SMU, applying date/origin/dest filters', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        {
+          smuNumber: 'SMU-1',
+          date: '2026-06-01',
+          originName: 'Kosambi',
+          destName: 'Badung',
+          totalKoli: 2,
+          totalTo: 3,
+          airlines: 'Garuda',
+          flightNo: 'GA123',
+          std: '2026-06-01T10:00:00.000Z',
+          sta: '2026-06-01T12:00:00.000Z',
+          chwt: 42,
+        },
+      ])
+      const rows = await service.getSmuList({ date: '2026-06-01', origin: 'Kosambi', dest: 'Badung' })
+      expect(rows).toHaveLength(1)
+      expect(rows[0].smuNumber).toBe('SMU-1')
+      expect(rows[0].chwt).toBe(42)
+      const [sql, params] = dataSource.query.mock.calls[0]
+      expect(sql).toContain("NULLIF(BTRIM(k.smu_number), '') IS NOT NULL")
+      expect(sql).toMatch(/GROUP BY k\.smu_number/)
+      // One SMU maps to exactly one Reservasi row, so this is a lookup — not a sum over the AWBs of
+      // every Koli sharing the SMU, which could span dates and destinations the filter excluded.
+      // BTRIM here for the same reason every other query trims: a Koli whose SMU was typed with
+      // stray spaces must resolve to the same Reservasi row the recap resolves it to.
+      expect(sql).toContain('(SELECT sc.chwt FROM smu_chwt sc WHERE sc.awb = BTRIM(k.smu_number))')
+      expect(sql).not.toContain('bkt.awb')
+      expect(params).toEqual(['2026-06-01', 'Kosambi', 'Badung'])
+    })
+
+    it('surfaces chwt as null when the SMU is not in Reservasi at all', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { smuNumber: 'SMU-2', date: '2026-06-02', originName: 'A', destName: 'B', totalKoli: 1, totalTo: 1, airlines: null, flightNo: null, std: null, sta: null, chwt: null },
+      ])
+      const rows = await service.getSmuList({})
+      expect(rows[0].chwt).toBeNull()
+    })
+
+    it('coerces numeric chwt from string to JS number when Postgres returns NUMERIC-as-string', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        {
+          smuNumber: 'SMU-3',
+          date: '2026-06-03',
+          originName: 'Jakarta',
+          destName: 'Surabaya',
+          totalKoli: 1,
+          totalTo: 2,
+          airlines: 'Batik',
+          flightNo: 'BT456',
+          std: '2026-06-03T08:00:00.000Z',
+          sta: '2026-06-03T10:30:00.000Z',
+          chwt: '42.50',
+        },
+      ])
+      const rows = await service.getSmuList({})
+      expect(rows).toHaveLength(1)
+      expect(rows[0].chwt).toBe(42.5)
+      expect(typeof rows[0].chwt).toBe('number')
+    })
+  })
+
+  describe('getDashboard', () => {
+    it('builds the kpi cards from the same two scopes the recap uses', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      await service.getDashboard({ startDate: '2026-08-01', endDate: '2026-08-31' })
+      const kpiSql: string = dataSource.query.mock.calls[0][0]
+
+      // The regression: the cards reached Kolis through the TOs in range (DISTINCT bkt.koli_id over
+      // `scoped`), which is a different set of Kolis than koli_scoped. A month whose Kolis all held
+      // TOs dated earlier therefore showed Total Koli 0 and 0 kg above a table full of those Kolis.
+      expect(kpiSql).not.toContain('koli_ids')
+      expect(kpiSql).toContain('(SELECT COUNT(*)::int FROM koli_scoped) AS koli_count')
+      expect(kpiSql).toContain('FROM koli_scoped ks) AS batang_kayu')
+      // Weight before is the Koli-contents figure the recap column shows, not the gross weight of
+      // every barhal TO in range — those two never agreed either.
+      expect(kpiSql).toContain('FROM packed p) dt) AS weight_before')
+      expect(kpiSql).toContain('FROM koli_scoped ks\n             WHERE ks.weight_before IS NOT NULL')
+      // Total TO stays TO-scoped: it is the sum of the recap's own Total TO column.
+      expect(kpiSql).toContain('(SELECT COUNT(DISTINCT to_number)::int FROM scoped) AS total_to')
+    })
+
+    it('returns TO-POV kpi/chartByDate/recapBatangKayu/recapPerTanggal/recapPerRute', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 2, total_to: 3, weight_before: 30, weight_increase: 6, batang_kayu: 10 }]) // kpi
+        .mockResolvedValueOnce([
+          { date: '2026-06-01', total_to: 3, unpacked_to: 0, koli_without_smu: 0, koli_without_matching_to: 0, total_koli: 2, weight_before: 30, chwt: 25, to_without_chwt: 0, koli_smu_without_chwt: 0, weight_increase: 6, add_revenue: 500 },
+        ]) // recapPerTanggal
+        .mockResolvedValueOnce([
+          { originName: 'Kosambi', destName: 'Badung', total_to: 3, unpacked_to: 0, koli_without_smu: 0, koli_without_matching_to: 0, total_koli: 2, weight_before: 30, chwt: 25, to_without_chwt: 0, koli_smu_without_chwt: 1, weight_increase: 6, add_revenue: 500 },
+        ]) // recapPerRute
+        .mockResolvedValueOnce([]) // masterRoutes
+        .mockResolvedValueOnce([
+          { date: '2026-06-01', totalKoli: 2, totalP: 100, totalL: 80, totalT: 60, totalVolume: 80, totalBatangKayu: 10 },
+        ]) // recapBatangKayu
+
+      const result = await service.getDashboard({})
+
+      expect(result.kpi).toEqual({
+        totalKoli: 2,
+        totalTo: 3,
+        totalWeightBefore: 30,
+        totalWeightAfter: 36,
+        totalVariance: 6,
+        totalBatangKayu: 10,
+      })
+      expect(result.chartByDate).toEqual([{ date: '2026-06-01', weightBefore: 30, weightAfter: 36, chwt: 25 }])
+      expect(result.recapPerTanggal[0]).toMatchObject({
+        date: '2026-06-01',
+        totalTo: 3,
+        totalKoli: 2,
+        weightBefore: 30,
+        weightAfter: 36,
+        chwt: 25,
+        variance: 6,
+        addRevenue: 500,
+        status: 'completed',
+      })
+      expect(result.recapPerTanggal[0].variancePercent).toBeCloseTo(20)
+      expect(result.recapPerRute[0]).toMatchObject({
+        originName: 'Kosambi',
+        destName: 'Badung',
+        status: 'incomplete',
+      })
+      expect(result.recapBatangKayu).toEqual([
+        { date: '2026-06-01', totalKoli: 2, totalP: 100, totalL: 80, totalT: 60, totalVolume: 80, totalBatangKayu: 10 },
+      ])
+    })
+
+    it('reports variancePercent as 0 when weightBefore is 0 (no division by zero)', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
+        .mockResolvedValueOnce([{ date: '2026-06-01', total_to: 0, unpacked_to: 0, koli_without_smu: 0, koli_without_matching_to: 0, total_koli: 0, weight_before: 0, chwt: 0, to_without_chwt: 0, koli_smu_without_chwt: 0, weight_increase: 0, add_revenue: 0 }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      const result = await service.getDashboard({})
+      expect(result.recapPerTanggal[0].variancePercent).toBe(0)
+    })
+
+    it('marks a date incomplete while barhal TOs there are still unpacked', async () => {
+      // Its one Koli is finished, but 8 of the date's 10 TOs have never been packed. Those TOs sit
+      // under specific routes in the drilldown, where they show as "Incomplete"; a "Completed"
+      // parent above them is exactly the contradiction the roll-up rule exists to prevent.
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 1, total_to: 10, weight_before: 30, weight_increase: 6, batang_kayu: 0 }])
+        .mockResolvedValueOnce([{ date: '2026-06-01', total_to: 10, unpacked_to: 8, koli_without_smu: 0, koli_without_matching_to: 0, total_koli: 1, weight_before: 30, chwt: 25, to_without_chwt: 0, koli_smu_without_chwt: 0, weight_increase: 6, add_revenue: 0 }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      const result = await service.getDashboard({})
+      expect(result.recapPerTanggal[0].status).toBe('incomplete')
+    })
+
+    it('groups per tanggal over TO dates unioned with Koli dates, ascending', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      await service.getDashboard({})
+
+      const perTanggalSql: string = dataSource.query.mock.calls[1][0]
+      expect(perTanggalSql).toContain('SELECT to_date AS koli_date FROM scoped')
+      expect(perTanggalSql).toContain('UNION')
+      expect(perTanggalSql).toContain('AS unpacked_to')
+      expect(perTanggalSql).toContain('AS to_without_chwt')
+      expect(perTanggalSql).toContain('AS koli_without_smu')
+      expect(perTanggalSql).toContain('ORDER BY g.koli_date ASC')
+      expect(perTanggalSql).not.toContain('attached_to')
+    })
+
+    it('groups per rute over TO routes unioned with Koli routes', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      await service.getDashboard({})
+
+      const perRuteSql: string = dataSource.query.mock.calls[2][0]
+      expect(perRuteSql).toContain('SELECT origin_name, dest_name FROM scoped')
+      expect(perRuteSql).toContain('UNION')
+      expect(perRuteSql).toContain('AS unpacked_to')
+      expect(perRuteSql).toContain('AS to_without_chwt')
+      expect(perRuteSql).toContain('AS koli_without_smu')
+      expect(perRuteSql).not.toContain('attached_to')
+    })
+
+    it('returns one row per calendar date when a full range is given', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 1, total_to: 1, weight_before: 10, weight_increase: 2, batang_kayu: 0 }])
+        .mockResolvedValueOnce([
+          { date: '2026-06-02', total_to: 1, unpacked_to: 0, koli_without_smu: 0, koli_without_matching_to: 0, total_koli: 1, weight_before: 10, chwt: 9, to_without_chwt: 0, koli_smu_without_chwt: 0, weight_increase: 2, add_revenue: 0 },
+        ])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      const result = await service.getDashboard({ startDate: '2026-06-01', endDate: '2026-06-04' })
+
+      expect(result.recapPerTanggal.map((r) => r.date)).toEqual(['2026-06-01', '2026-06-02', '2026-06-03', '2026-06-04'])
+      expect(result.recapPerTanggal[0]).toMatchObject({ totalTo: 0, totalKoli: 0, status: 'none' })
+      expect(result.recapPerTanggal[1]).toMatchObject({ totalTo: 1, status: 'completed' })
+    })
+
+    it('leaves recapPerTanggal sparse when no range is given', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 1, total_to: 1, weight_before: 10, weight_increase: 2, batang_kayu: 0 }])
+        .mockResolvedValueOnce([
+          { date: '2026-06-02', total_to: 1, unpacked_to: 0, koli_without_smu: 0, koli_without_matching_to: 0, total_koli: 1, weight_before: 10, chwt: 9, to_without_chwt: 0, koli_smu_without_chwt: 0, weight_increase: 2, add_revenue: 0 },
+        ])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      const result = await service.getDashboard({})
+      expect(result.recapPerTanggal.map((r) => r.date)).toEqual(['2026-06-02'])
+    })
+
+    it('keeps chartByDate on dates that have data, not the filled-in ones', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 1, total_to: 1, weight_before: 10, weight_increase: 2, batang_kayu: 0 }])
+        .mockResolvedValueOnce([
+          { date: '2026-06-02', total_to: 1, unpacked_to: 0, koli_without_smu: 0, koli_without_matching_to: 0, total_koli: 1, weight_before: 10, chwt: 9, to_without_chwt: 0, koli_smu_without_chwt: 0, weight_increase: 2, add_revenue: 0 },
+        ])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      const result = await service.getDashboard({ startDate: '2026-06-01', endDate: '2026-06-04' })
+      expect(result.chartByDate).toEqual([{ date: '2026-06-02', weightBefore: 10, weightAfter: 12, chwt: 9 }])
+    })
+
+    it('rejects a range longer than a month without running any query', async () => {
+      await expect(service.getDashboard({ startDate: '2026-08-01', endDate: '2026-09-01' })).rejects.toThrow(
+        'Date range must not exceed 31 days',
+      )
+      expect(dataSource.query).not.toHaveBeenCalled()
+    })
+
+    it('accepts a whole 31-day month, which is the dashboard default range', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      const result = await service.getDashboard({ startDate: '2026-08-01', endDate: '2026-08-31' })
+      expect(result.recapPerTanggal).toHaveLength(31)
+    })
+
+    it('lists every barhal route, zero-filling the ones with no activity in range', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 1, total_to: 1, weight_before: 10, weight_increase: 2, batang_kayu: 0 }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          { originName: 'Kosambi', destName: 'Badung', total_to: 1, unpacked_to: 0, koli_without_smu: 0, koli_without_matching_to: 0, total_koli: 1, weight_before: 10, chwt: 9, to_without_chwt: 0, koli_smu_without_chwt: 0, weight_increase: 2, add_revenue: 0 },
+        ])
+        .mockResolvedValueOnce([
+          { originName: 'Kosambi', destName: 'Badung' },
+          { originName: 'Kosambi', destName: 'Makassar' },
+        ])
+        .mockResolvedValueOnce([])
+
+      const result = await service.getDashboard({})
+
+      expect(result.recapPerRute.map((r) => `${r.originName}-${r.destName}`)).toEqual([
+        'Kosambi-Badung',
+        'Kosambi-Makassar',
+      ])
+      expect(result.recapPerRute[0]).toMatchObject({ totalKoli: 1, status: 'completed' })
+      expect(result.recapPerRute[1]).toMatchObject({ totalTo: 0, totalKoli: 0, chwt: 0, status: 'none' })
+    })
+
+    it('queries master routes across all barhal TOs, unfiltered by date but narrowed by origin/dest', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      await service.getDashboard({ startDate: '2026-06-01', endDate: '2026-06-02', origin: 'Kosambi', dest: 'Badung' })
+
+      const [sql, sqlParams] = dataSource.query.mock.calls[3]
+      expect(sql).toContain('FROM air_shipments_compileaircgk e')
+      expect(sql).toContain("e.remarks ILIKE '%barhal%'")
+      expect(sql).not.toContain('shipment_date BETWEEN')
+      expect(sqlParams).toEqual(['Kosambi', 'Badung'])
+    })
+
+    it('dates a TO by shipment_date, never by completed_date', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      await service.getDashboard({ startDate: '2026-06-01', endDate: '2026-06-02' })
+      const perTanggalSql: string = dataSource.query.mock.calls[1][0]
+
+      // completed_date is derived from the sheet's completed_time, which is when a TO finished
+      // moving — days after the TO itself, and blank on roughly 41% of barhal rows, so keying on it
+      // both mis-dated the recap and hid those TOs behind its IS NOT NULL guard. shipment_date comes
+      // from the sheet's own `date` and matches the date encoded in the TO number.
+      expect(perTanggalSql).toContain('e.shipment_date AS to_date')
+      expect(perTanggalSql).toContain('e.shipment_date BETWEEN $1 AND $2')
+      expect(perTanggalSql).not.toContain('completed_date')
+      // Every TO the recap counts is a barhal TO — the scope CTE that feeds total_to says so.
+      expect(perTanggalSql).toContain("e.remarks ILIKE '%barhal%'")
+    })
+
+    it('judges a TO chWt on the row the TO belongs to, not through that row Kolis', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      await service.getDashboard({ startDate: '2026-06-01', endDate: '2026-06-02' })
+
+      for (const sql of [dataSource.query.mock.calls[1][0], dataSource.query.mock.calls[2][0]] as string[]) {
+        const subquery = sql.slice(sql.indexOf('AS unpacked_to'), sql.indexOf('AS to_without_chwt'))
+        // to_without_chwt walks the group's own TOs (scoped) out to whichever Koli holds them,
+        // through barhal_koli_to + barhal_koli globally rather than through the Koli-scoped `packed`.
+        // Routing it through `packed` instead is what made a row with TOs but no Koli of its own read
+        // "Completed": its TOs sat in Kolis under other dates, so this row's Kolis had nothing to
+        // report and the check passed vacuously.
+        expect(subquery).toContain('FROM scoped s')
+        expect(subquery).toContain('JOIN barhal_koli bk ON bk.id = bkt.koli_id')
+        expect(subquery).toContain("JOIN smu_chwt sc ON sc.awb = NULLIF(BTRIM(bk.smu_number), '')")
+        expect(subquery).not.toContain('FROM packed p')
+      }
+    })
+
+    it('sums chWt over the distinct No. SMU of a group, so two Koli sharing one SMU count it once', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      await service.getDashboard({ startDate: '2026-06-01', endDate: '2026-06-02' })
+
+      for (const sql of [dataSource.query.mock.calls[1][0], dataSource.query.mock.calls[2][0]] as string[]) {
+        const chwtSubquery = sql.slice(sql.indexOf('AS weight_before'), sql.indexOf('AS chwt'))
+        // chWt is a property of the SMU, not of the Koli. A whole date's Koli routinely go out on one
+        // SMU, so summing per Koli would multiply that SMU's chWt by however many Koli it covers.
+        expect(chwtSubquery).toContain("SELECT DISTINCT NULLIF(BTRIM(ks.smu_number), '') AS smu_number")
+        expect(chwtSubquery).toContain('LEFT JOIN smu_chwt sc ON sc.awb = smus.smu_number')
+        // And the AWB the TO sheet already carries is no longer a source of any figure — reading it
+        // is what made chWt appear before the operator had entered the SMU at all.
+        expect(chwtSubquery).not.toContain('p.awb')
+        expect(chwtSubquery).not.toContain('bkt.awb')
+      }
+    })
+
+    it('collapses Reservasi to one row per AWB, so a duplicated rate row cannot double chWt', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      await service.getDashboard({ startDate: '2026-06-01', endDate: '2026-06-02' })
+
+      for (const sql of [dataSource.query.mock.calls[1][0], dataSource.query.mock.calls[2][0]] as string[]) {
+        // The rate table's unique key is [awb, account, via, dest], so one AWB may carry a clean rate
+        // row plus partial ones — a plain join on awb sums them all. Row choice mirrors how v_pnl_to
+        // picks its booking, so Barhal and PnL cannot disagree about the same AWB.
+        const smuChwtCte = sql.slice(sql.indexOf('smu_chwt AS ('), sql.indexOf('groups AS ('))
+        expect(smuChwtCte).toContain('SELECT DISTINCT ON (awb) awb, chwt')
+        expect(smuChwtCte).toContain("(NULLIF(BTRIM(account), '') IS NOT NULL")
+        expect(smuChwtCte).toContain('updated_at DESC NULLS LAST')
+        // Nothing reaches the rate table except through that CTE.
+        expect(sql.match(/air_shipments_smu_rate_cgk_spx/g)).toHaveLength(1)
+      }
+    })
+
+    it('treats a blank or whitespace-only No. SMU exactly like a missing one', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 0, total_to: 0, weight_before: 0, weight_increase: 0, batang_kayu: 0 }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      await service.getDashboard({ startDate: '2026-06-01', endDate: '2026-06-02' })
+
+      for (const sql of [dataSource.query.mock.calls[1][0], dataSource.query.mock.calls[2][0]] as string[]) {
+        // An SMU field holding only spaces is an SMU the operator has not filled in. Every predicate
+        // goes through NULLIF(BTRIM(...)) so such a Koli is counted as outstanding rather than
+        // silently joined against an empty string in Reservasi.
+        expect(sql).toContain("NULLIF(BTRIM(ks.smu_number), '') IS NULL)::int AS koli_without_smu")
+        expect(sql).toContain("NULLIF(BTRIM(ks.smu_number), '') IS NOT NULL")
+        expect(sql).not.toContain('ks.smu_number IS NULL')
+        expect(sql).not.toContain('ks.smu_number IS NOT NULL')
+      }
+    })
+  })
+
+  describe('exportCsv', () => {
+    it('reads each Koli chWt from its own No. SMU, not from the AWBs of its TOs', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.exportCsv({ startDate: '2026-06-01', endDate: '2026-06-30' })
+
+      const [sql] = dataSource.query.mock.calls[0]
+      expect(sql).toContain("WHERE sc.awb = NULLIF(BTRIM(k.smu_number), '')")
+      expect(sql).toContain('smu_chwt AS (')
+      // A Koli with no SMU yet exports 0, keeping the column numeric for spreadsheets.
+      expect(sql).toContain('COALESCE((SELECT sc.chwt FROM smu_chwt sc')
+      expect(sql).not.toContain('bkt.awb')
+    })
+  })
+
+  describe('getDrilldown', () => {
+    it('groups by route for a single date, without zero-filling master routes', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { originName: 'Kosambi', destName: 'Badung', total_to: 3, unpacked_to: 0, koli_without_smu: 0, koli_without_matching_to: 0, total_koli: 2, weight_before: 30, chwt: 25, to_without_chwt: 0, koli_smu_without_chwt: 0, weight_increase: 6, add_revenue: 500 },
+      ])
+
+      const rows = await service.getDrilldown({ groupBy: 'route', startDate: '2026-06-01', endDate: '2026-06-01' })
+
+      expect(dataSource.query).toHaveBeenCalledTimes(1)
+      const [sql] = dataSource.query.mock.calls[0]
+      // Distinctive projection of the shared per-rute aggregate (queryPerRute): proves the
+      // drilldown reuses the exact same SQL the dashboard uses, not a hand-rolled lookalike.
+      expect(sql).toContain('g.origin_name AS "originName"')
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({
+        originName: 'Kosambi',
+        destName: 'Badung',
+        totalTo: 3,
+        totalKoli: 2,
+        weightBefore: 30,
+        weightAfter: 36,
+        chwt: 25,
+        variance: 6,
+        addRevenue: 500,
+        status: 'completed',
+      })
+    })
+
+    it('groups by date for a single route, without zero-filling the calendar', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { date: '2026-06-03', total_to: 1, unpacked_to: 0, koli_without_smu: 0, koli_without_matching_to: 0, total_koli: 1, weight_before: 10, chwt: 8, to_without_chwt: 0, koli_smu_without_chwt: 0, weight_increase: 2, add_revenue: 100 },
+      ])
+
+      const rows = await service.getDrilldown({
+        groupBy: 'date',
+        startDate: '2026-06-01',
+        endDate: '2026-06-30',
+        origin: 'Kosambi',
+        dest: 'Badung',
+      })
+
+      // Rentangnya 30 hari, tapi drilldown hanya mengembalikan hari yang ada aktivitasnya.
+      expect(rows).toHaveLength(1)
+      expect(rows[0]).toMatchObject({ date: '2026-06-03', totalTo: 1, status: 'completed' })
+
+      const [sql] = dataSource.query.mock.calls[0]
+      // Distinctive projection of the shared per-tanggal aggregate (queryPerTanggal): proves the
+      // drilldown reuses the exact same SQL the dashboard uses, not a hand-rolled lookalike.
+      expect(sql).toContain('g.koli_date::text AS date')
+    })
+
+    it('binds the date range, origin and dest as query parameters', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.getDrilldown({
+        groupBy: 'date',
+        startDate: '2026-06-01',
+        endDate: '2026-06-30',
+        origin: 'Kosambi',
+        dest: 'Badung',
+      })
+
+      const [, params] = dataSource.query.mock.calls[0]
+      expect(params).toEqual(['2026-06-01', '2026-06-30', 'Kosambi', 'Badung'])
+    })
+
+    it('returns an empty array when the group has no activity', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+      const rows = await service.getDrilldown({ groupBy: 'route', startDate: '2026-06-01', endDate: '2026-06-01' })
+      expect(rows).toEqual([])
+    })
+
+    it('scopes Koli contents by the Koli alone, so a child row reconciles with its parent row', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getDrilldown({ groupBy: 'route', startDate: '2026-06-01', endDate: '2026-06-01' })
+      const sql: string = dataSource.query.mock.calls[0][0]
+
+      // The regression this guards. A drilldown reuses buildScopeSql with the parent row's own axis
+      // pushed in, so `scoped` narrows to that single date (or route). Reading a Koli's contents
+      // through `scoped` therefore dropped every TO completed outside the drilled-into date — and a
+      // Koli routinely holds TOs completed weeks earlier. The parent row counted those AWBs, the
+      // child rows did not, and the two statuses disagreed.
+      expect(sql).not.toContain('JOIN scoped s ON s.to_number = bkt.to_number')
+
+      // A Koli's contents are whatever barhal_koli_to says they are, and the drilldown axis must not
+      // be able to shrink them — only the Koli side (koli_scoped) is narrowed, which is what makes
+      // the Koli groups partition their parent exactly. Every axis value reaches the SQL as a bound
+      // parameter, so "this CTE contains no placeholder" is the whole invariant in one assertion.
+      const packedCte = sql.slice(sql.indexOf('packed AS ('), sql.indexOf('smu_chwt AS ('))
+      expect(packedCte).toContain('JOIN barhal_koli_to bkt ON bkt.koli_id = ks.id')
+      expect(packedCte).not.toMatch(/\$\d/)
+
+      // The station columns appear here only as a projection feeding matches_koli, which compares a
+      // TO against its own Koli (ks) and never against the group being aggregated — that is what
+      // keeps the counter identical for a given Koli in both recap tables.
+      expect(packedCte).toContain('t.to_date = ks.koli_date')
+      expect(packedCte).toContain('t.origin_name = ks.origin_name')
+
+      // remarks is the one filter that belongs here: it says what a barhal TO *is* rather than which
+      // slice of them this row covers, so it removes the same rows from parent and child alike.
+      expect(packedCte).toMatch(/remarks ILIKE '%barhal%'/i)
+
+      // The two figures that still need a Koli's *contents*: koli_without_matching_to and
+      // weight_before. Everything SMU-derived reads barhal_koli's own smu_number instead, so it
+      // never goes through `packed` at all.
+      expect(sql.match(/FROM packed p/g)).toHaveLength(2)
+    })
+
+    it('rejects a range longer than a month without running any query', async () => {
+      await expect(
+        service.getDrilldown({ groupBy: 'route', startDate: '2026-08-01', endDate: '2026-09-01' }),
+      ).rejects.toThrow(/31/)
+      expect(dataSource.query).not.toHaveBeenCalled()
+    })
+
+    it('issues the same aggregate SQL as the dashboard, so figures reconcile with the parent row', async () => {
+      // Phase 1: drive getDashboard through its full mock sequence (kpi -> perTanggal -> perRute ->
+      // masterRoutes -> recapBatangKayu) and capture the exact SQL strings it sends for the
+      // per-tanggal and per-rute aggregates — the queries whose numbers back the parent recap rows.
+      dataSource.query
+        .mockResolvedValueOnce([{ koli_count: 3, total_to: 5, weight_before: 50, weight_increase: 10, batang_kayu: 0 }]) // kpi
+        .mockResolvedValueOnce([
+          { date: '2026-06-01', total_to: 5, unpacked_to: 0, koli_without_smu: 0, koli_without_matching_to: 0, total_koli: 3, weight_before: 50, chwt: 40, to_without_chwt: 0, koli_smu_without_chwt: 0, weight_increase: 10, add_revenue: 900 },
+        ]) // recapPerTanggal
+        .mockResolvedValueOnce([
+          { originName: 'Kosambi', destName: 'Badung', total_to: 2, unpacked_to: 0, koli_without_smu: 0, koli_without_matching_to: 0, total_koli: 1, weight_before: 20, chwt: 15, to_without_chwt: 0, koli_smu_without_chwt: 0, weight_increase: 4, add_revenue: 400 },
+          { originName: 'Kosambi', destName: 'Batam', total_to: 3, unpacked_to: 0, koli_without_smu: 0, koli_without_matching_to: 0, total_koli: 2, weight_before: 30, chwt: 25, to_without_chwt: 0, koli_smu_without_chwt: 0, weight_increase: 6, add_revenue: 500 },
+        ]) // recapPerRute
+        .mockResolvedValueOnce([]) // masterRoutes
+        .mockResolvedValueOnce([]) // recapBatangKayu
+
+      const dashboard = await service.getDashboard({ startDate: '2026-06-01', endDate: '2026-06-01' })
+
+      const dashboardPerTanggalSql: string = dataSource.query.mock.calls[1][0]
+      const dashboardPerRuteSql: string = dataSource.query.mock.calls[2][0]
+
+      // Phase 2: reset so mock.calls indices are unambiguous, then drive getDrilldown(groupBy: 'date')
+      // in isolation and capture its one and only SQL string.
+      dataSource.query.mockReset()
+      dataSource.query.mockResolvedValueOnce([
+        { date: '2026-06-01', total_to: 5, unpacked_to: 0, koli_without_smu: 0, koli_without_matching_to: 0, total_koli: 3, weight_before: 50, chwt: 40, to_without_chwt: 0, koli_smu_without_chwt: 0, weight_increase: 10, add_revenue: 900 },
+      ])
+      const parent = await service.getDrilldown({ groupBy: 'date', startDate: '2026-06-01', endDate: '2026-06-01' })
+      const drilldownPerTanggalSql: string = dataSource.query.mock.calls[0][0]
+
+      // The actual guarantee this test is named for: the drilldown's date-grouped query is not a
+      // parallel hand-rolled aggregate that merely happens to agree today — it is the identical
+      // SQL string getDashboard issues for its per-tanggal recap.
+      expect(drilldownPerTanggalSql).toBe(dashboardPerTanggalSql)
+
+      // Phase 3: same pairing for the per-rute grouping.
+      dataSource.query.mockReset()
+      dataSource.query.mockResolvedValueOnce([
+        { originName: 'Kosambi', destName: 'Badung', total_to: 2, unpacked_to: 0, koli_without_smu: 0, koli_without_matching_to: 0, total_koli: 1, weight_before: 20, chwt: 15, to_without_chwt: 0, koli_smu_without_chwt: 0, weight_increase: 4, add_revenue: 400 },
+        { originName: 'Kosambi', destName: 'Batam', total_to: 3, unpacked_to: 0, koli_without_smu: 0, koli_without_matching_to: 0, total_koli: 2, weight_before: 30, chwt: 25, to_without_chwt: 0, koli_smu_without_chwt: 0, weight_increase: 6, add_revenue: 500 },
+      ])
+      const children = await service.getDrilldown({ groupBy: 'route', startDate: '2026-06-01', endDate: '2026-06-01' })
+      const drilldownPerRuteSql: string = dataSource.query.mock.calls[0][0]
+
+      expect(drilldownPerRuteSql).toBe(dashboardPerRuteSql)
+
+      // Metric passthrough: with the SQL identity established above, the field mapping is still
+      // worth pinning so a mapping regression is caught here too.
+      // Cast diperlukan: getDrilldown mengembalikan union dua tipe array, dan `.reduce`
+      // tidak dapat dipanggil langsung di atas union seperti itu.
+      const sum = (key: 'totalTo' | 'totalKoli' | 'weightBefore' | 'chwt' | 'addRevenue') =>
+        (children as RecapPerRuteRow[]).reduce((acc, row) => acc + row[key], 0)
+
+      expect(sum('totalTo')).toBe(parent[0].totalTo)
+      expect(sum('totalKoli')).toBe(parent[0].totalKoli)
+      expect(sum('weightBefore')).toBe(parent[0].weightBefore)
+      expect(sum('chwt')).toBe(parent[0].chwt)
+      expect(sum('addRevenue')).toBe(parent[0].addRevenue)
+      expect(dashboard.recapPerTanggal[0].totalTo).toBe(5)
+    })
+  })
+
+  describe('getToDetail', () => {
+    it('joins barhal_koli_to and returns koliNumber for the in-koli tab', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ total: 1 }])
+        .mockResolvedValueOnce([
+          {
+            date: '2026-07-26',
+            originName: 'Makassar',
+            destName: 'Kosambi',
+            toNumber: 'TO1',
+            koliNumber: '26Jul-Makassar-Kosambi-Barhal1',
+            grossWeight: '12.5',
+          },
+        ])
+
+      const result = await service.getToDetail({ tab: 'in-koli', page: 1, pageSize: 25 })
+
+      expect(result.total).toBe(1)
+      expect(result.data).toEqual([
+        {
+          date: '2026-07-26',
+          originName: 'Makassar',
+          destName: 'Kosambi',
+          toNumber: 'TO1',
+          koliNumber: '26Jul-Makassar-Kosambi-Barhal1',
+          grossWeight: 12.5,
+        },
+      ])
+
+      const [countSql] = dataSource.query.mock.calls[0]
+      const [dataSql] = dataSource.query.mock.calls[1]
+      expect(countSql).toMatch(/JOIN barhal_koli_to/i)
+      expect(dataSql).toMatch(/JOIN barhal_koli k ON k\.id = bkt\.koli_id/i)
+      expect(dataSql).toMatch(/remarks ILIKE '%barhal%'/i)
+    })
+
+    it('uses NOT EXISTS and yields a null koliNumber for the not-in-koli tab', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ total: 1 }])
+        .mockResolvedValueOnce([
+          {
+            date: '2026-07-26',
+            originName: 'Makassar',
+            destName: 'Kosambi',
+            toNumber: 'TO9',
+            koliNumber: null,
+            grossWeight: null,
+          },
+        ])
+
+      const result = await service.getToDetail({ tab: 'not-in-koli', page: 1, pageSize: 25 })
+
+      expect(result.data[0].koliNumber).toBeNull()
+      expect(result.data[0].grossWeight).toBeNull()
+      const [dataSql] = dataSource.query.mock.calls[1]
+      expect(dataSql).toMatch(/NOT EXISTS/i)
+      expect(dataSql).not.toMatch(/JOIN barhal_koli_to/i)
+    })
+
+    it('binds date range, origin and dest as parameters', async () => {
+      dataSource.query.mockResolvedValueOnce([{ total: 0 }]).mockResolvedValueOnce([])
+
+      await service.getToDetail({
+        tab: 'in-koli',
+        startDate: '2026-07-01',
+        endDate: '2026-07-31',
+        origin: 'Makassar',
+        dest: 'Kosambi',
+        page: 1,
+        pageSize: 25,
+      })
+
+      const [countSql, countParams] = dataSource.query.mock.calls[0]
+      expect(countParams).toEqual(['2026-07-01', '2026-07-31', 'Makassar', 'Kosambi'])
+      expect(countSql).toMatch(/shipment_date BETWEEN \$1 AND \$2/i)
+      expect(countSql).not.toMatch(/Makassar/)
+    })
+
+    it('translates page and pageSize into LIMIT and OFFSET', async () => {
+      dataSource.query.mockResolvedValueOnce([{ total: 60 }]).mockResolvedValueOnce([])
+
+      const result = await service.getToDetail({ tab: 'in-koli', page: 3, pageSize: 20 })
+
+      const [dataSql, dataParams] = dataSource.query.mock.calls[1]
+      expect(dataSql).toMatch(/LIMIT \$1 OFFSET \$2/i)
+      expect(dataParams).toEqual([20, 40])
+      expect(result.page).toBe(3)
+      expect(result.pageSize).toBe(20)
+      expect(result.total).toBe(60)
+    })
+  })
+})
