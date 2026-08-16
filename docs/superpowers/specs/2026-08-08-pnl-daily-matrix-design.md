@@ -60,8 +60,11 @@ Excel menyusul, builder-nya memakai perhitungan yang sama tanpa duplikasi.
   spreadsheet.
 - Baris tanggal lengkap secara kalender. Tanggal tanpa shipment tetap muncul sebagai baris
   kosong, supaya Avg/Day = Total ÷ jumlah hari periode tetap konsisten.
-- Sel tanpa data sama sekali dirender kosong; sel yang ada shipment tapi bernilai nol
-  dirender `0`. Ini sesuai spreadsheet, yang membedakan keduanya.
+- Sel tanpa data sama sekali dirender `—`; sel yang ada shipment tapi bernilai nol dirender `0`.
+  Keduanya memang dibedakan seperti di spreadsheet. (Semula sel tanpa data dibiarkan kosong;
+  diubah jadi `—` pada 2026-08-16 atas permintaan user — sel kosong dan nol terbaca sama sekilas,
+  dan setelah sel bisa diklik, sel kosong tidak punya sasaran yang terlihat. Sama dengan cara
+  `num()`/`pct()` dan AWB Drilldown merender nilai yang tidak ada.)
 - Total Tonase memakai `gross_weight` (berat aktual per TO), bukan chargeable weight.
 - Label header: `Jabo` ditampilkan sebagai **CGK**, `Surabaya` sebagai **SUB**.
 - Tidak ada kolom total per baris (per tanggal), mengikuti spreadsheet.

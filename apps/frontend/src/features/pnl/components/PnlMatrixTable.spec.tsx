@@ -40,11 +40,23 @@ function footerRow(container: HTMLElement, rowIndex: number): HTMLTableCellEleme
 }
 
 describe('PnlMatrixTable', () => {
-  it('renders a null cell as empty while a 0 cell in the same row renders 0', () => {
+  // A blank cell and a genuinely zero cell used to look identical at a glance. The em-dash marks
+  // "nothing shipped this route that day" as a deliberate reading, matching how num()/pct() and the
+  // AWB drilldown already render a missing value.
+  it('renders a null cell as an em-dash while a 0 cell in the same row renders 0', () => {
     const { container } = render(<PnlMatrixTable title="t" model={baseModel()} />)
     const [nullCell, zeroCell] = bodyCells(container)
-    expect(nullCell.textContent).toBe('')
+    expect(nullCell.textContent).toBe('—')
     expect(zeroCell.textContent).toBe('0')
+  })
+
+  it('marks a null footer value the same way', () => {
+    const model = baseModel({
+      footerRows: [{ label: '% Margin', values: [null, 12], format: 'percent' }],
+    })
+    const { container } = render(<PnlMatrixTable title="t" model={model} />)
+    const [nullFooterCell] = footerRow(container, 0)
+    expect(nullFooterCell.textContent).toBe('—')
   })
 
   it('applies negative styling when highlightNegative is true', () => {

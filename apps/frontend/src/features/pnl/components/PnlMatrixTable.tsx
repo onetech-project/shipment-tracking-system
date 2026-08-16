@@ -21,8 +21,11 @@ const GROUP_TINTS = [
   'bg-blue-100 dark:bg-blue-950/40',
 ]
 
+// A missing value is marked, not left blank: an empty cell and a real 0 read the same at a glance,
+// and every clickable cell needs something to aim at. Matches num()/pct() and the AWB drilldown,
+// which already render a missing value as an em-dash.
 function formatValue(value: number | null, format: 'number' | 'percent'): string {
-  if (value == null || !Number.isFinite(value)) return ''
+  if (value == null || !Number.isFinite(value)) return '—'
   return format === 'percent' ? pct(value) : num(Math.round(value))
 }
 
