@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { DataSource, Repository } from 'typeorm'
+import { DataSource, EntityManager, Repository } from 'typeorm'
 import { originLabel } from '../../common/utils/origin-labels.util'
 import { RouteGroupEntity } from './entities/route-group.entity'
 import { RouteGroupRouteEntity } from './entities/route-group-route.entity'
@@ -23,6 +23,9 @@ export interface RouteGroup {
   description: string | null
   routes: RouteGroupRoute[]
 }
+
+const UNIQUE_VIOLATION = '23505'
+const NAME_UNIQUE_CONSTRAINT = 'uq_route_groups_name'
 
 @Injectable()
 export class RouteGroupsService {
@@ -101,11 +104,25 @@ export class RouteGroupsService {
     await this.assertRoutesExist(dto.routes)
     await this.assertNameFree(dto.name)
 
-    const group = await this.groupRepo.save(
-      this.groupRepo.create({ name: dto.name, description: dto.description ?? null }),
-    )
-    await this.replaceRoutes(group.id, dto.routes)
-    return this.findOneOrThrow(group.id)
+    let groupId: string
+    try {
+      groupId = await this.dataSource.transaction(async (manager) => {
+        const groupRepo = manager.getRepository(RouteGroupEntity)
+        const group = await groupRepo.save(
+          groupRepo.create({
+            name: dto.name,
+            description: this.normalizeDescription(dto.description),
+          }),
+        )
+        await this.replaceRoutes(manager, group.id, dto.routes)
+        return group.id
+      })
+    } catch (err: unknown) {
+      this.throwIfNameUniqueViolation(err, dto.name)
+      throw err
+    }
+
+    return this.findOneOrThrow(groupId)
   }
 
   async update(id: string, dto: UpdateRouteGroupDto): Promise<RouteGroup> {
@@ -115,11 +132,23 @@ export class RouteGroupsService {
     if (dto.routes) await this.assertRoutesExist(dto.routes)
     if (dto.name && dto.name !== existing.name) await this.assertNameFree(dto.name)
 
-    await this.groupRepo.update(id, {
-      ...(dto.name ? { name: dto.name } : {}),
-      ...(dto.description !== undefined ? { description: dto.description ?? null } : {}),
-    })
-    if (dto.routes) await this.replaceRoutes(id, dto.routes)
+    try {
+      await this.dataSource.transaction(async (manager) => {
+        const patch: Partial<Pick<RouteGroupEntity, 'name' | 'description'>> = {}
+        if (dto.name) patch.name = dto.name
+        if (dto.description !== undefined) {
+          patch.description = this.normalizeDescription(dto.description)
+        }
+        if (Object.keys(patch).length > 0) {
+          await manager.getRepository(RouteGroupEntity).update(id, patch)
+        }
+        if (dto.routes) await this.replaceRoutes(manager, id, dto.routes)
+      })
+    } catch (err: unknown) {
+      this.throwIfNameUniqueViolation(err, dto.name ?? existing.name)
+      throw err
+    }
+
     return this.findOneOrThrow(id)
   }
 
@@ -153,17 +182,54 @@ export class RouteGroupsService {
     }
   }
 
+  // Deletes and re-inserts within the caller's transaction so a group write and its route rows
+  // commit or roll back together. Routes are de-duplicated first: the composite primary key on
+  // route_group_routes means sending the same pair twice would otherwise throw partway through the
+  // insert, after the delete has already committed, leaving the group routeless.
   private async replaceRoutes(
+    manager: EntityManager,
     groupId: string,
     routes: { origin: string; dest: string }[],
   ): Promise<void> {
-    await this.routeRepo.delete({ routeGroupId: groupId })
-    await this.routeRepo.insert(
-      routes.map((r) => ({
+    const routeRepo = manager.getRepository(RouteGroupRouteEntity)
+    const unique = this.dedupeRoutes(routes)
+
+    await routeRepo.delete({ routeGroupId: groupId })
+    await routeRepo.insert(
+      unique.map((r) => ({
         routeGroupId: groupId,
         originStation: r.origin,
         destStation: r.dest,
       })),
     )
+  }
+
+  private dedupeRoutes<T extends { origin: string; dest: string }>(routes: T[]): T[] {
+    const seen = new Set<string>()
+    const result: T[] = []
+    for (const route of routes) {
+      const key = `${route.origin}|${route.dest}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      result.push(route)
+    }
+    return result
+  }
+
+  // '' and whitespace-only are folded into null so the column has one empty state instead of two.
+  private normalizeDescription(description?: string | null): string | null {
+    if (description == null) return null
+    const trimmed = description.trim()
+    return trimmed === '' ? null : trimmed
+  }
+
+  // The check-then-act in assertNameFree still leaves a race between two concurrent creates/renames;
+  // this catches the loser's constraint violation and reshapes it into the same ConflictException the
+  // pre-check produces, so both paths look identical to the caller instead of surfacing a raw 500.
+  private throwIfNameUniqueViolation(err: unknown, name: string): void {
+    const pgErr = err as { code?: string; constraint?: string }
+    if (pgErr?.code === UNIQUE_VIOLATION && pgErr?.constraint === NAME_UNIQUE_CONSTRAINT) {
+      throw new ConflictException(`A route group named "${name}" already exists`)
+    }
   }
 }

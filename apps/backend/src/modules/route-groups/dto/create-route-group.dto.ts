@@ -29,7 +29,7 @@ export class CreateRouteGroupDto {
 
   @IsOptional()
   @IsString()
-  description?: string
+  description?: string | null
 
   // A group with no routes would produce a permanently empty column in the comparison table.
   @IsArray()
