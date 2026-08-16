@@ -57,7 +57,7 @@ type FilterMode = 'cycle' | 'range'
 // Order is deliberate — the default basis comes first. Labels come from BASIS_LABELS so the
 // drilldown's date column header can never disagree with this dropdown.
 const BASIS_OPTIONS: { value: DateBasis; label: string }[] = (
-  ['ata_vendor_wh_destination', 'atd_origin', 'completed_time'] as DateBasis[]
+  ['ata_vendor_wh_destination', 'atd_origin', 'completed_time'] satisfies DateBasis[]
 ).map((value) => ({ value, label: BASIS_LABELS[value] }))
 
 type PnlView = 'estimate' | 'actual' | 'daily'
