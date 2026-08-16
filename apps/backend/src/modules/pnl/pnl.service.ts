@@ -8,6 +8,7 @@ import {
   calendarDaysForFilter,
   calendarDatesForFilter,
 } from './pnl-filter.util'
+import { originLabel } from '../../common/utils/origin-labels.util'
 
 export interface PnlSummary {
   label: string
@@ -194,13 +195,6 @@ export interface PnlDailyMatrix {
   periodDays: number
 }
 
-// The spreadsheet this report mirrors labels origins by airport code. Unknown origins fall back
-// to their raw value so a newly opened station is visible rather than silently blank.
-const ORIGIN_LABELS: Record<string, string> = {
-  Jabo: 'CGK',
-  Surabaya: 'SUB',
-}
-
 @Injectable()
 export class PnlService {
   constructor(private readonly dataSource: DataSource) {}
@@ -227,7 +221,7 @@ export class PnlService {
     `)
     return (rows as Record<string, string>[]).map((r) => ({
       origin: r.origin_station,
-      originLabel: ORIGIN_LABELS[r.origin_station] ?? r.origin_station,
+      originLabel: originLabel(r.origin_station),
       dest: r.dest_station,
     }))
   }
