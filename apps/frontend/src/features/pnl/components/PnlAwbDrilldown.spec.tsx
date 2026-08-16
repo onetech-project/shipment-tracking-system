@@ -112,6 +112,40 @@ describe('PnlAwbDrilldown route columns', () => {
   })
 })
 
+describe('PnlAwbDrilldown overhang note', () => {
+  beforeEach(() => jest.clearAllMocks())
+
+  const overhangText =
+    '2 AWB di halaman ini punya TO di luar filter — umumnya tanggal ATA yang berbeda. Angka barisnya mencakup seluruh TO milik AWB itu, jadi totalnya bisa lebih besar dari cell yang diklik.'
+
+  it('shows the note with the varying-row count when a route filter is active', () => {
+    mockRows([
+      row({ awb: '1', dateVaries: true }),
+      row({ awb: '2', destVaries: true }),
+      row({ awb: '3' }),
+    ])
+    render(
+      <PnlAwbDrilldown filter={filter} route={{ origin: 'Jabo' }} onRouteChange={jest.fn()} />,
+    )
+    expect(screen.getByText(overhangText)).toBeInTheDocument()
+  })
+
+  it('does not show the note when no route filter is active, even with varying rows', () => {
+    mockRows([row({ awb: '1', dateVaries: true }), row({ awb: '2', destVaries: true })])
+    render(<PnlAwbDrilldown filter={filter} route={{}} onRouteChange={jest.fn()} />)
+    expect(screen.queryByText(overhangText)).not.toBeInTheDocument()
+    expect(screen.queryByText(/punya TO di luar filter/)).not.toBeInTheDocument()
+  })
+
+  it('does not show the note when a filter is active but no row varies', () => {
+    mockRows([row({ awb: '1' }), row({ awb: '2' })])
+    render(
+      <PnlAwbDrilldown filter={filter} route={{ origin: 'Jabo' }} onRouteChange={jest.fn()} />,
+    )
+    expect(screen.queryByText(/punya TO di luar filter/)).not.toBeInTheDocument()
+  })
+})
+
 describe('PnlAwbDrilldown filter section', () => {
   beforeEach(() => {
     jest.clearAllMocks()

@@ -124,6 +124,9 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
   ).sort()
   const bounds = periodBounds(filter)
   const hasRoute = Boolean(route.origin || route.dest || route.dateFrom || route.dateTo)
+  const overhangCount = (data?.data ?? []).filter(
+    (row) => row.originVaries || row.destVaries || row.dateVaries,
+  ).length
 
   // Empty string means "no filter": the hook drops empty fields before building the request.
   function setField(field: keyof PnlRouteFilter, value: string) {
@@ -156,6 +159,13 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
       <div className="border-b px-4 py-3">
         <p className="text-sm font-medium">AWB Drilldown — {title}</p>
         {data && <p className="text-xs text-muted-foreground">{data.total} AWBs</p>}
+        {hasRoute && overhangCount > 0 && (
+          <p className="mt-1 text-xs text-amber-600">
+            {overhangCount} AWB di halaman ini punya TO di luar filter — umumnya tanggal ATA yang
+            berbeda. Angka barisnya mencakup seluruh TO milik AWB itu, jadi totalnya bisa lebih
+            besar dari cell yang diklik.
+          </p>
+        )}
       </div>
       <div className="flex flex-wrap items-end gap-3 border-b px-4 py-3">
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
