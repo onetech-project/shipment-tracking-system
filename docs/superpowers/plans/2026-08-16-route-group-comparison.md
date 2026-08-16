@@ -18,8 +18,12 @@
 - Dates cross the wire as `YYYY-MM-DD` strings produced by `TO_CHAR(...)`, never as bare `::DATE` — the `pg` driver turns a `DATE` column into a JS `Date` object which cannot be matched against the calendar date list.
 - Cost component sums MUST carry `FILTER (WHERE v.cost_to IS NOT NULL)`. `cost_to` is NULL whenever a rate lookup failed; without the filter the four detail rows exceed the cell they expand from.
 - Permission names must match `^(read|create|update|delete)\.[a-z][a-z0-9_]*$` — enforced by a DB check constraint.
-- Backend tests: `cd apps/backend && pnpm test -- <pattern>`. Frontend tests: `cd apps/frontend && pnpm test -- <pattern>`.
-- Running the **full** backend suite needs both a heap bump and serial execution: `cd apps/backend && NODE_OPTIONS=--max-old-space-size=4096 pnpm test -- --runInBand`. Single-file runs do not need this.
+- **Every** Jest run on this machine needs a heap bump and serial execution, focused runs included — without them the worker is OOM-killed:
+  - Backend: `cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest <pattern> --runInBand`
+  - Frontend: `cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest <pattern> --runInBand`
+- **The type gate is `pnpm exec tsc --noEmit`, not lint.** `next lint` reports a pre-existing error in `src/features/roles/components/role-permissions-panel.tsx` (`no-assign-module-variable`) that predates this work — do not fix it, and do not use lint as a pass/fail gate.
+- An `rtk` hook rewrites Jest output to a `PASS (n) FAIL (n)` summary; the full output is in `~/.local/share/rtk/tee/*.log` if you need to read a failure.
+- Local database: `postgres://postgres:postgres@localhost:5432/app` (`PGPASSWORD=postgres psql -h localhost -U postgres -d app`).
 - Empty cell renders `—`, a real zero renders `0`. Never blank.
 - Commit after every task. Conventional commit prefixes (`feat:`, `test:`, `refactor:`).
 
@@ -190,7 +194,7 @@ There is no seed migration: the permissions module seeds the `permissions` table
 - [ ] **Step 6: Verify the shared package still type-checks**
 
 ```bash
-cd /home/faris/code/esp/esp-dashboard/packages/shared && pnpm type-check
+cd /home/faris/code/esp/esp-dashboard/packages/shared && pnpm exec tsc --noEmit
 ```
 
 Expected: no output, exit code 0.
@@ -245,7 +249,7 @@ describe('originLabel', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-cd apps/backend && pnpm test -- origin-labels.util.spec
+cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest origin-labels.util.spec --runInBand
 ```
 
 Expected: FAIL — `Cannot find module './origin-labels.util'`.
@@ -276,7 +280,7 @@ export function originLabel(origin: string): string {
 - [ ] **Step 4: Run test to verify it passes**
 
 ```bash
-cd apps/backend && pnpm test -- origin-labels.util.spec
+cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest origin-labels.util.spec --runInBand
 ```
 
 Expected: PASS, 3 tests.
@@ -315,7 +319,7 @@ with:
 - [ ] **Step 6: Verify the PnL suite still passes**
 
 ```bash
-cd apps/backend && pnpm test -- pnl.service.spec
+cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest pnl.service.spec --runInBand
 ```
 
 Expected: PASS, no failures. This is a refactor — no behaviour changed.
@@ -412,7 +416,7 @@ describe('RouteGroupsService', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-cd apps/backend && pnpm test -- route-groups.service.spec
+cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest route-groups.service.spec --runInBand
 ```
 
 Expected: FAIL — `Cannot find module './route-groups.service'`.
@@ -546,7 +550,7 @@ export class RouteGroupsService {
 - [ ] **Step 5: Run test to verify it passes**
 
 ```bash
-cd apps/backend && pnpm test -- route-groups.service.spec
+cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest route-groups.service.spec --runInBand
 ```
 
 Expected: PASS, 2 tests.
@@ -770,7 +774,7 @@ Append to the `describe('RouteGroupsService', ...)` block in `route-groups.servi
 - [ ] **Step 3: Run tests to verify they fail**
 
 ```bash
-cd apps/backend && pnpm test -- route-groups.service.spec
+cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest route-groups.service.spec --runInBand
 ```
 
 Expected: FAIL — `service.findAll is not a function` and similar for `create`, `update`, `remove`.
@@ -938,7 +942,7 @@ The provider list needs no change — it already passes both mocks by reference.
 - [ ] **Step 6: Run tests to verify they pass**
 
 ```bash
-cd apps/backend && pnpm test -- route-groups.service.spec
+cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest route-groups.service.spec --runInBand
 ```
 
 Expected: PASS, 8 tests.
@@ -1035,7 +1039,7 @@ describe('RouteGroupsController', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-cd apps/backend && pnpm test -- route-groups.controller.spec
+cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest route-groups.controller.spec --runInBand
 ```
 
 Expected: FAIL — `Cannot find module './route-groups.controller'`.
@@ -1141,7 +1145,7 @@ and add `RouteGroupsModule,` to the `imports` array, next to the other feature m
 - [ ] **Step 6: Run tests to verify they pass**
 
 ```bash
-cd apps/backend && pnpm test -- route-groups
+cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest route-groups --runInBand
 ```
 
 Expected: PASS — 8 service tests plus 5 controller tests.
@@ -1369,7 +1373,7 @@ Append to `apps/backend/src/modules/pnl/pnl.service.spec.ts`, inside the top-lev
 - [ ] **Step 2: Run tests to verify they fail**
 
 ```bash
-cd apps/backend && pnpm test -- pnl.service.spec -t getGroupComparison
+cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest pnl.service.spec -t getGroupComparison --runInBand
 ```
 
 Expected: FAIL — `service.getGroupComparison is not a function`.
@@ -1564,7 +1568,7 @@ Add to `PnlService`, after `getDailyMatrix`:
 - [ ] **Step 5: Run tests to verify they pass**
 
 ```bash
-cd apps/backend && pnpm test -- pnl.service.spec -t getGroupComparison
+cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest pnl.service.spec -t getGroupComparison --runInBand
 ```
 
 Expected: PASS, 8 tests.
@@ -1649,7 +1653,7 @@ Then append inside the existing top-level `describe('PnlController', ...)`:
 - [ ] **Step 8: Run the whole PnL suite**
 
 ```bash
-cd apps/backend && pnpm test -- pnl
+cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest pnl --runInBand
 ```
 
 Expected: PASS — all existing PnL tests plus the 10 new ones.
@@ -1867,7 +1871,7 @@ export function usePnlGroupComparison(filter: PnlFilter | undefined, groupIds: s
 - [ ] **Step 4: Verify the frontend type-checks**
 
 ```bash
-cd apps/frontend && pnpm type-check
+cd apps/frontend && pnpm exec tsc --noEmit
 ```
 
 Expected: no output, exit code 0.
@@ -1970,7 +1974,7 @@ it('marks a route that has never carried a shipment', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-cd apps/frontend && pnpm test -- RoutePicker.spec
+cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest RoutePicker.spec --runInBand
 ```
 
 Expected: FAIL — `Cannot find module './RoutePicker'`.
@@ -2060,7 +2064,7 @@ export function RoutePicker({ routes, value, onChange }: RoutePickerProps) {
 - [ ] **Step 4: Run test to verify it passes**
 
 ```bash
-cd apps/frontend && pnpm test -- RoutePicker.spec
+cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest RoutePicker.spec --runInBand
 ```
 
 Expected: PASS, 5 tests.
@@ -2405,10 +2409,10 @@ In `apps/frontend/src/components/layout/sidebar.tsx`, add `Route` to the `lucide
 - [ ] **Step 5: Verify the frontend type-checks and lints**
 
 ```bash
-cd apps/frontend && pnpm type-check && pnpm lint
+cd apps/frontend && pnpm exec tsc --noEmit
 ```
 
-Expected: type-check silent, lint reports no errors.
+Expected: no output, exit code 0.
 
 - [ ] **Step 6: Grant yourself the permissions and check the page by hand**
 
@@ -2601,7 +2605,7 @@ describe('overlappingRoutes', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-cd apps/frontend && pnpm test -- groupComparison.spec
+cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest groupComparison.spec --runInBand
 ```
 
 Expected: FAIL — `Cannot find module './groupComparison'`.
@@ -2717,7 +2721,7 @@ export function overlappingRoutes(
 - [ ] **Step 4: Run test to verify it passes**
 
 ```bash
-cd apps/frontend && pnpm test -- groupComparison.spec
+cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest groupComparison.spec --runInBand
 ```
 
 Expected: PASS, 10 tests.
@@ -2899,7 +2903,7 @@ it('expands the Total footer row but not Avg / Day', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-cd apps/frontend && pnpm test -- PnlGroupComparisonTable.spec
+cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest PnlGroupComparisonTable.spec --runInBand
 ```
 
 Expected: FAIL — `Cannot find module './PnlGroupComparisonTable'`.
@@ -3135,7 +3139,7 @@ export function PnlGroupComparisonTable({ model }: PnlGroupComparisonTableProps)
 - [ ] **Step 4: Run test to verify it passes**
 
 ```bash
-cd apps/frontend && pnpm test -- PnlGroupComparisonTable.spec
+cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest PnlGroupComparisonTable.spec --runInBand
 ```
 
 Expected: PASS, 8 tests.
@@ -3256,7 +3260,7 @@ it('tells the user when no groups exist yet', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-cd apps/frontend && pnpm test -- PnlGroupComparisonView.spec
+cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest PnlGroupComparisonView.spec --runInBand
 ```
 
 Expected: FAIL — `Cannot find module './PnlGroupComparisonView'`.
@@ -3369,7 +3373,7 @@ export function PnlGroupComparisonView({ filter }: PnlGroupComparisonViewProps) 
 - [ ] **Step 4: Run test to verify it passes**
 
 ```bash
-cd apps/frontend && pnpm test -- PnlGroupComparisonView.spec
+cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest PnlGroupComparisonView.spec --runInBand
 ```
 
 Expected: PASS, 5 tests.
@@ -3417,10 +3421,10 @@ Add a branch in the render chain, after the `view === 'daily'` branch (line 256-
 - [ ] **Step 6: Run the whole frontend suite**
 
 ```bash
-cd apps/frontend && pnpm test && pnpm type-check && pnpm lint
+cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest --runInBand && pnpm exec tsc --noEmit
 ```
 
-Expected: all tests pass; type-check silent; lint clean.
+Expected: all tests pass; type-check silent.
 
 - [ ] **Step 7: Check the tab by hand**
 
@@ -3454,7 +3458,7 @@ git commit -m "feat(pnl): add the Group Comparison tab"
 - [ ] **Step 1: Run the full backend suite**
 
 ```bash
-cd apps/backend && NODE_OPTIONS=--max-old-space-size=4096 pnpm test -- --runInBand
+cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest --runInBand
 ```
 
 Expected: all suites pass. The heap bump and `--runInBand` are both required — `--runInBand` alone still core-dumps on this suite.
@@ -3462,7 +3466,7 @@ Expected: all suites pass. The heap bump and `--runInBand` are both required —
 - [ ] **Step 2: Run the full frontend suite**
 
 ```bash
-cd apps/frontend && pnpm test
+cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest --runInBand
 ```
 
 Expected: all suites pass.
