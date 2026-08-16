@@ -14,7 +14,12 @@ interface PnlGroupComparisonViewProps {
 export function PnlGroupComparisonView({ filter }: PnlGroupComparisonViewProps) {
   // Selection order is the column order, so the array is appended to rather than re-sorted.
   const [selectedIds, setSelectedIds] = useState<string[]>([])
-  const { data: groups, isLoading: isLoadingGroups } = useRouteGroups()
+  const {
+    data: groups,
+    isLoading: isLoadingGroups,
+    isError: isGroupsError,
+    refetch: refetchGroups,
+  } = useRouteGroups()
   const { data, isLoading, isError, refetch } = usePnlGroupComparison(filter, selectedIds)
 
   const toggle = (id: string) =>
@@ -25,6 +30,21 @@ export function PnlGroupComparisonView({ filter }: PnlGroupComparisonViewProps) 
 
   if (isLoadingGroups) {
     return <div className="h-24 animate-pulse rounded-lg border bg-card" />
+  }
+
+  // Distinct from the "no groups exist" empty state below: GET /route-groups is guarded by
+  // read.route_group, so a user without that permission gets a 403 here, not an empty list. Before
+  // this check existed, groups stayed undefined and the empty-state branch below claimed "no groups
+  // exist yet — go create one," linking to a page that immediately bounces such a user back out.
+  if (isGroupsError) {
+    return (
+      <div className="rounded-lg border bg-card p-8 text-center">
+        <p className="text-sm text-muted-foreground">Failed to load Route Groups.</p>
+        <button onClick={() => refetchGroups()} className="mt-2 text-sm text-primary underline">
+          Retry
+        </button>
+      </div>
+    )
   }
 
   if ((groups ?? []).length === 0) {
@@ -91,7 +111,16 @@ export function PnlGroupComparisonView({ filter }: PnlGroupComparisonViewProps) 
           </button>
         </div>
       ) : data ? (
-        <PnlGroupComparisonTable model={toComparisonTable(data)} />
+        <div className="space-y-2">
+          {/* Revenue is SUM(revenue_total), gross — revenue_discount is never subtracted. That is
+              intentional, but Revenue sits right next to Cost, so without this note the obvious
+              (wrong) mental move is to subtract one column from the other. */}
+          <p className="text-xs text-muted-foreground">
+            Kolom Revenue di sini bruto (belum dikurangi discount), berbeda dari Margin di tab Daily
+            Report. Revenue dan Cost tidak dimaksudkan untuk dikurangkan satu sama lain.
+          </p>
+          <PnlGroupComparisonTable model={toComparisonTable(data)} />
+        </div>
       ) : null}
     </div>
   )

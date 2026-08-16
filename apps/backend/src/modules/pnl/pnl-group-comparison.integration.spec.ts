@@ -22,6 +22,10 @@ import { randomUUID } from 'crypto'
 import { DataSource, QueryRunner } from 'typeorm'
 import { PnlService } from './pnl.service'
 
+// Set explicitly (vs. falling back to the local dev default below) signals a caller who expects a
+// real database — CI, a deploy check, someone debugging a connection. Skipping quietly in that case
+// would hide a real failure behind a green-looking (skipped) file.
+const DATABASE_URL_EXPLICIT = !!process.env.DATABASE_URL
 const CONNECTION_URL = process.env.DATABASE_URL ?? 'postgres://postgres:postgres@localhost:5432/app'
 
 function isDbReachable(url: string): boolean {
@@ -41,6 +45,21 @@ const DB_AVAILABLE = isDbReachable(CONNECTION_URL)
 
 describe('PnlService.getGroupComparison (integration)', () => {
   if (!DB_AVAILABLE) {
+    if (DATABASE_URL_EXPLICIT) {
+      // Fail loudly, not skip: DATABASE_URL was set explicitly, so the caller expects a database.
+      // pg_isready failing here could mean Postgres really is down, or it could mean this host just
+      // doesn't have the postgresql-client package installed while a real database sits reachable —
+      // either way that's a real problem the caller needs to see, not a silent skip that leaves this
+      // the only SQL-level regression test on the branch quietly not running.
+      it('FAILS LOUDLY — DATABASE_URL is set but pg_isready could not reach Postgres', () => {
+        throw new Error(
+          `DATABASE_URL=${CONNECTION_URL} is set, but pg_isready could not reach Postgres at it ` +
+            `(or the pg_isready binary itself is missing from this host — install postgresql-client ` +
+            `to find out which). Fix connectivity, or unset DATABASE_URL to allow this suite to skip.`,
+        )
+      })
+      return
+    }
     // Loud on purpose: a skipped file must not read like a passed one in scrollback.
     // eslint-disable-next-line no-console
     console.warn(

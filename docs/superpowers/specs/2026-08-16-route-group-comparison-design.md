@@ -323,7 +323,10 @@ interface PnlGroupComparison {
 }
 ```
 
-Pembagi nol menghasilkan `null`, bukan `Infinity` atau `NaN`.
+`periodDays` memakai `Math.max(1, dates.length)`, sama seperti `calendarDaysForFilter` dan
+`getDailyMatrix`, jadi pembaginya tidak pernah nol. `avgRevenuePerDay` dan `avgCostPerDay` karena itu
+selalu berupa angka valid — bukan `null`, `Infinity`, atau `NaN` — dan tipe `PnlGroupComparisonFooter`
+mencerminkan itu (non-nullable), bukan `number | null`.
 
 `PnlService.getGroupComparison(filter, groupIds)` membaca `route_group_routes` lewat join di
 atas, bukan lewat `RouteGroupsService` — tidak ada ketergantungan antar modul, dan nama group
@@ -435,7 +438,8 @@ Dikerjakan dengan TDD: test lebih dulu, lalu implementasi.
 - **keempat komponen cost menjumlah tepat ke `cost`** — regression guard untuk klausa `FILTER`;
 - TO pada rute yang masuk dua group terhitung di kedua kolom;
 - matematika footer: `avgRevenuePerDay`, `avgCostPerDay`, dan total tiap komponen;
-- pembagi nol menghasilkan `null`, bukan `Infinity` atau `NaN`;
+- `periodDays` memakai `Math.max(1, dates.length)`, jadi rata-rata per hari selalu angka valid —
+  tidak pernah `null`, `Infinity`, atau `NaN`;
 - `groupIds` kosong mengembalikan hasil kosong tanpa menyentuh database.
 
 **`route-groups.service.spec.ts`:**

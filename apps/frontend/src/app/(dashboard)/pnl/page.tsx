@@ -71,6 +71,7 @@ const VIEW_SUBTITLE: Record<PnlView, string> = {
 }
 
 function PnlPageContent() {
+  const { hasPermission } = usePermissions()
   const [dateBasis, setDateBasis] = useState<DateBasis>(DEFAULT_DATE_BASIS)
   const { data: cycles, isLoading: isLoadingCycles, isError: isCyclesError, refetch: refetchCycles } = usePnlCycles(dateBasis)
   const [mode, setMode] = useState<FilterMode>('cycle')
@@ -94,6 +95,16 @@ function PnlPageContent() {
   useEffect(() => {
     setDrilldownRoute({})
   }, [dateBasis, mode, cycle, startDate, endDate])
+
+  // The Group Comparison tab button below is gated on read.route_group, but view state is not
+  // otherwise constrained — this is a defensive backstop so a user who can't see the tab can never
+  // stay parked on its view (e.g. if a future change ever set `view` from somewhere other than the
+  // button, such as a persisted or URL-driven value).
+  useEffect(() => {
+    if (view === 'groups' && !hasPermission('read.route_group')) {
+      setView('estimate')
+    }
+  }, [view, hasPermission])
 
   // Changing the date basis re-derives the cycle list; drop the stale selection so the effect
   // above repicks the newest available cycle for the new basis.
@@ -158,12 +169,14 @@ function PnlPageContent() {
             >
               Daily Report
             </button>
-            <button
-              className={`px-3 py-1.5 border-l ${view === 'groups' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-              onClick={() => setView('groups')}
-            >
-              Group Comparison
-            </button>
+            {hasPermission('read.route_group') && (
+              <button
+                className={`px-3 py-1.5 border-l ${view === 'groups' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+                onClick={() => setView('groups')}
+              >
+                Group Comparison
+              </button>
+            )}
           </div>
         </div>
 
@@ -264,7 +277,7 @@ function PnlPageContent() {
       ) : view === 'daily' ? (
         filter && <PnlDailyMatrixView filter={filter} onCellClick={handleCellClick} />
       ) : view === 'groups' ? (
-        filter && <PnlGroupComparisonView filter={filter} />
+        filter && hasPermission('read.route_group') && <PnlGroupComparisonView filter={filter} />
       ) : (
         <>
           <PnlFormulaPanel />

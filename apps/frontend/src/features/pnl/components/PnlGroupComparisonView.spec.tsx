@@ -84,6 +84,24 @@ it('tells the user when no groups exist yet', () => {
   expect(screen.getByText(/belum ada route group/i)).toBeInTheDocument()
 })
 
+// Finding 1: GET /route-groups is guarded by read.route_group, so a user without it gets a 403,
+// not an empty list. Before this branch existed, `data` stayed undefined and fell into the
+// "no groups exist yet" empty state above — a false claim, next to a dead link into a page that
+// immediately redirects such a user back to /dashboard.
+it('tells the user loading Route Groups failed, distinct from the empty-groups message', () => {
+  ;(useRouteGroups as jest.Mock).mockReturnValue({
+    data: undefined,
+    isLoading: false,
+    isError: true,
+    refetch: jest.fn(),
+  })
+  render(<PnlGroupComparisonView filter={filter} />)
+
+  expect(screen.queryByText(/belum ada route group/i)).not.toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: /buat satu dulu/i })).not.toBeInTheDocument()
+  expect(screen.getByText(/failed to load route groups/i)).toBeInTheDocument()
+})
+
 // A realistic backend payload: two columns, two date rows (one row has a null cell for a group
 // with no shipments that day), and a footer with both a Total and an Avg / Day entry. This is the
 // only test that lets data flow through toComparisonTable into the real PnlGroupComparisonTable —
@@ -190,6 +208,24 @@ it('renders the comparison table from a real payload via toComparisonTable', () 
   expect(within(table).getByText('Total')).toBeInTheDocument()
   expect(within(table).getByText('Avg / Day')).toBeInTheDocument()
   expect(screen.getByText('1.750.000')).toBeInTheDocument() // g1 avgRevenuePerDay
+})
+
+// Finding 2: Revenue here is SUM(revenue_total), gross — revenue_discount is never subtracted —
+// while Daily Report's Margin does subtract it. Revenue sits right beside Cost in this table, so
+// without a caption the obvious (wrong) reading is to subtract one column from the other.
+it('captions the table to say Revenue is gross and not meant to be subtracted from Cost', () => {
+  ;(usePnlGroupComparison as jest.Mock).mockReturnValue({
+    data: comparisonData,
+    isLoading: false,
+    isError: false,
+    refetch: jest.fn(),
+  })
+  render(<PnlGroupComparisonView filter={filter} />)
+
+  fireEvent.click(screen.getByLabelText(/Kalimantan/))
+
+  expect(screen.getByText(/bruto/i)).toBeInTheDocument()
+  expect(screen.getByText(/tidak dimaksudkan untuk dikurangkan/i)).toBeInTheDocument()
 })
 
 it('sends selected group ids to usePnlGroupComparison in click order, moving a reselected group to the end', () => {

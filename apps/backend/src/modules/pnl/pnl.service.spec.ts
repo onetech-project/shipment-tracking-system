@@ -660,10 +660,14 @@ describe('PnlService', () => {
     })
 
     it('aligns cells with columns and leaves untouched pairs null', async () => {
+      // The column query's DB row order (G2 then G1) deliberately differs from the requested order
+      // (G1 then G2): `columns` must follow groupIds, not whatever order the DB happened to return.
+      // Swapping `ids.map(id => byId.get(id))` for `[...byId.values()]` in getGroupComparison makes
+      // this assertion fail (columns come back G2, G1) — verified by hand, then reverted.
       mockQueries(
         [
-          { id: G1, name: 'Kalimantan', route_count: '3' },
           { id: G2, name: 'Sumatera', route_count: '2' },
+          { id: G1, name: 'Kalimantan', route_count: '3' },
         ],
         [fact({ d: '2026-05-01', gid: G2, revenue: '500', cost: '400' })],
       )
