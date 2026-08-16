@@ -22,6 +22,7 @@ import { PnlAwbDrilldown } from '@/features/pnl/components/PnlAwbDrilldown'
 import { PnlDataQuality } from '@/features/pnl/components/PnlDataQuality'
 import { PnlFormulaPanel } from '@/features/pnl/components/PnlFormulaPanel'
 import { PnlDailyMatrixView } from '@/features/pnl/components/PnlDailyMatrixView'
+import { PnlGroupComparisonView } from '@/features/pnl/components/PnlGroupComparisonView'
 import { SettlementView } from '@/features/pnl-settlement/components/SettlementView'
 
 function PnlSkeleton() {
@@ -60,12 +61,13 @@ const BASIS_OPTIONS: { value: DateBasis; label: string }[] = (
   ['ata_vendor_wh_destination', 'atd_origin', 'completed_time'] satisfies DateBasis[]
 ).map((value) => ({ value, label: BASIS_LABELS[value] }))
 
-type PnlView = 'estimate' | 'actual' | 'daily'
+type PnlView = 'estimate' | 'actual' | 'daily' | 'groups'
 
 const VIEW_SUBTITLE: Record<PnlView, string> = {
   estimate: 'Estimated P&L based on arrival date — not yet billed',
   actual: 'Actual revenue from settled invoices vs estimate',
   daily: 'Daily revenue and profit margin per origin and destination',
+  groups: 'Revenue and cost per date, compared across route groups',
 }
 
 function PnlPageContent() {
@@ -155,6 +157,12 @@ function PnlPageContent() {
               onClick={() => setView('daily')}
             >
               Daily Report
+            </button>
+            <button
+              className={`px-3 py-1.5 border-l ${view === 'groups' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+              onClick={() => setView('groups')}
+            >
+              Group Comparison
             </button>
           </div>
         </div>
@@ -255,6 +263,8 @@ function PnlPageContent() {
         <SettlementView filter={filter} />
       ) : view === 'daily' ? (
         filter && <PnlDailyMatrixView filter={filter} onCellClick={handleCellClick} />
+      ) : view === 'groups' ? (
+        filter && <PnlGroupComparisonView filter={filter} />
       ) : (
         <>
           <PnlFormulaPanel />
