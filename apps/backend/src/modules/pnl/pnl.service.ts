@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { BadRequestException, Injectable } from '@nestjs/common'
 import { DataSource } from 'typeorm'
 import {
   DateBasis,
@@ -204,8 +204,12 @@ export interface PnlGroupComparisonColumn {
 export interface PnlGroupComparisonCell {
   revenue: number
   cost: number
-  // The four components are prorated to TO level and, thanks to the FILTER clauses in the query,
-  // always sum exactly to `cost`. Anything else means the filters were dropped.
+  // The four components are prorated to TO level, each behind the same FILTER (WHERE cost_to IS
+  // NOT NULL) clause as `cost`, so they sum exactly to `cost`. Measured against the live view
+  // today, the SMU and SG Out filters happen to be no-ops (every null-cost row already has a null
+  // cost_smu_awb, and cost_sg_out_awb * weight_share sums to 0 across those rows) — RA and SG In
+  // are the two that currently change value when the filter is applied. All four are kept
+  // filtered anyway for defensive correctness; this is not a claim that all four carry weight now.
   costSmu: number
   costRa: number
   costSgOut: number
@@ -236,6 +240,11 @@ export interface PnlGroupComparison {
   footer: PnlGroupComparisonFooter[] // index-aligned with columns
   periodDays: number
 }
+
+// Matches any UUID version/variant. group ids come off the query string as plain strings, and
+// `$1::uuid[]` throws a raw Postgres error (not a 400) on anything malformed, so this is checked
+// up front.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 @Injectable()
 export class PnlService {
@@ -969,6 +978,15 @@ export class PnlService {
       return { columns: [], rows: [], footer: [], periodDays }
     }
 
+    // De-duplicate while preserving the caller's selection order: columnIndex below is keyed by
+    // id, so a repeated id would otherwise silently overwrite an earlier column, leaving it
+    // permanently null.
+    const ids = [...new Set(groupIds)]
+    const invalidId = ids.find((id) => !UUID_RE.test(id))
+    if (invalidId) {
+      throw new BadRequestException(`Invalid group id: ${invalidId}`)
+    }
+
     const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate, 'v.')
 
     const columnRows = await this.dataSource.query(
@@ -979,7 +997,7 @@ export class PnlService {
       WHERE g.id = ANY($1::uuid[])
       GROUP BY g.id, g.name
       `,
-      [groupIds],
+      [ids],
     )
 
     // Ordered by the caller's selection, not by name: the table columns should appear in the order
@@ -990,14 +1008,14 @@ export class PnlService {
         { id: r.id, name: r.name, routeCount: Number(r.route_count) },
       ]),
     )
-    const columns: PnlGroupComparisonColumn[] = groupIds
+    const columns: PnlGroupComparisonColumn[] = ids
       .map((id) => byId.get(id))
       .filter((c): c is PnlGroupComparisonColumn => c !== undefined)
 
     const factRows = await this.dataSource.query(
       `
       SELECT
-        TO_CHAR(v.${dateCol}::DATE, 'YYYY-MM-DD')                    AS d,
+        TO_CHAR(${dateCol}::DATE, 'YYYY-MM-DD')                      AS d,
         r.route_group_id                                             AS gid,
         COALESCE(SUM(v.revenue_total), 0)                            AS revenue,
         COALESCE(SUM(v.cost_to), 0)                                  AS cost,
@@ -1015,11 +1033,11 @@ export class PnlService {
         ON r.origin_station = v.origin_station
        AND r.dest_station   = v.dest_station
       WHERE ${where}
-        AND v.${dateCol} IS NOT NULL
+        AND ${dateCol} IS NOT NULL
         AND r.route_group_id = ANY($${params.length + 1}::uuid[])
       GROUP BY 1, 2
       `,
-      [...params, groupIds],
+      [...params, ids],
     )
 
     const columnIndex = new Map(columns.map((c, i) => [c.id, i]))
