@@ -221,6 +221,33 @@ describe('PnlService', () => {
     })
   })
 
+  describe('getStations', () => {
+    it('labels known origins and falls back to the raw value for unknown ones', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { origin_station: 'Jabo', dest_station: 'Aceh' },
+        { origin_station: 'Surabaya', dest_station: 'Pontianak' },
+        { origin_station: 'Medan', dest_station: 'Batam' },
+      ])
+
+      const result = await service.getStations()
+
+      expect(result).toEqual([
+        { origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' },
+        { origin: 'Surabaya', originLabel: 'SUB', dest: 'Pontianak' },
+        { origin: 'Medan', originLabel: 'Medan', dest: 'Batam' },
+      ])
+    })
+
+    it('reads the whole view rather than a period', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getStations()
+      const [sql, params] = dataSource.query.mock.calls[0]
+      expect(sql).toContain('SELECT DISTINCT origin_station, dest_station')
+      expect(sql).not.toContain('cycle_ata')
+      expect(params).toBeUndefined()
+    })
+  })
+
   describe('getDailyMatrix', () => {
     // Two Jabo destinations and one Surabaya destination; facts cover only some (date, route) pairs.
     const columnRows = [

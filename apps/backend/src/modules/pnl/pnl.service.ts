@@ -137,11 +137,14 @@ export interface PnlProfitByRouteItem {
   avgMarginPerDay: number
 }
 
-export interface PnlDailyMatrixColumn {
+export interface PnlStation {
   origin: string // raw v_pnl_to value, e.g. 'Jabo'
   originLabel: string // display label, e.g. 'CGK'
   dest: string
 }
+
+// A daily matrix column is exactly one station pair, so the two share a definition.
+export type PnlDailyMatrixColumn = PnlStation
 
 export interface PnlDailyMatrixCell {
   revenue: number
@@ -193,6 +196,22 @@ export class PnlService {
       ORDER BY cycle_period DESC
     `)
     return rows.map((r: { cycle_period: string }) => r.cycle_period)
+  }
+
+  // Distinct origin→destination pairs across the whole view, not just the selected period, so the
+  // daily matrix columns and the drilldown route dropdowns stay stable as the user changes cycle.
+  async getStations(): Promise<PnlStation[]> {
+    const rows = await this.dataSource.query(`
+      SELECT DISTINCT origin_station, dest_station
+      FROM v_pnl_to
+      WHERE origin_station IS NOT NULL AND dest_station IS NOT NULL
+      ORDER BY 1, 2
+    `)
+    return (rows as Record<string, string>[]).map((r) => ({
+      origin: r.origin_station,
+      originLabel: ORIGIN_LABELS[r.origin_station] ?? r.origin_station,
+      dest: r.dest_station,
+    }))
   }
 
   async getSummary(
@@ -762,13 +781,8 @@ export class PnlService {
     const dates = calendarDatesForFilter(cyclePeriod, startDate, endDate)
     const periodDays = Math.max(1, dates.length)
 
-    const [columnRows, factRows] = await Promise.all([
-      this.dataSource.query(`
-        SELECT DISTINCT origin_station, dest_station
-        FROM v_pnl_to
-        WHERE origin_station IS NOT NULL AND dest_station IS NOT NULL
-        ORDER BY 1, 2
-      `),
+    const [columns, factRows] = await Promise.all([
+      this.getStations(),
       this.dataSource.query(
         `
         SELECT
@@ -789,11 +803,6 @@ export class PnlService {
       ),
     ])
 
-    const columns: PnlDailyMatrixColumn[] = (columnRows as Record<string, string>[]).map((r) => ({
-      origin: r.origin_station,
-      originLabel: ORIGIN_LABELS[r.origin_station] ?? r.origin_station,
-      dest: r.dest_station,
-    }))
     const columnIndex = new Map(columns.map((c, i) => [`${c.origin}|${c.dest}`, i]))
 
     const rows: PnlDailyMatrixRow[] = dates.map((date) => ({

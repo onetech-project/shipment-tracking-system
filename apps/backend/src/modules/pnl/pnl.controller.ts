@@ -17,6 +17,11 @@ export class PnlController {
     return this.pnlService.getCycles(basis)
   }
 
+  @Get('stations')
+  getStations() {
+    return this.pnlService.getStations()
+  }
+
   @Get('summary')
   getSummary(
     @Query('cycle') cycle?: string,

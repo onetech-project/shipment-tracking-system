@@ -6,6 +6,7 @@ import { ALLOW_ALL_GUARD } from '../../test/test-helpers'
 
 const mockService = {
   getCycles: jest.fn(),
+  getStations: jest.fn(),
   getSummary: jest.fn(),
   getTrend: jest.fn(),
   getAwbDrilldown: jest.fn(),
@@ -31,6 +32,15 @@ describe('PnlController', () => {
   it('getCycles delegates to service', async () => {
     mockService.getCycles.mockResolvedValueOnce(['2026-04-2H'])
     expect(await controller.getCycles()).toEqual(['2026-04-2H'])
+  })
+
+  it('getStations delegates to service', async () => {
+    mockService.getStations.mockResolvedValueOnce([
+      { origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' },
+    ])
+    expect(await controller.getStations()).toEqual([
+      { origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' },
+    ])
   })
 
   it('getSummary passes cycle + basis query params', async () => {
