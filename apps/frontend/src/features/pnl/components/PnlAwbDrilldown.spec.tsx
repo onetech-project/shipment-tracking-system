@@ -14,7 +14,6 @@ jest.mock('../hooks/usePnl', () => {
     ...actual,
     usePnlAwbDrilldown: jest.fn(),
     usePnlAwbTos: jest.fn(() => ({ data: [], isLoading: false })),
-    usePnlStations: jest.fn(() => ({ data: [] })),
   }
 })
 
@@ -75,13 +74,33 @@ describe('PnlAwbDrilldown route columns', () => {
     expect(screen.getByRole('columnheader', { name: 'ATD origin' })).toBeInTheDocument()
   })
 
-  it('marks a field whose TOs disagree and leaves uniform fields unmarked', () => {
-    mockRows([row({ destVaries: true })])
-    const { container } = render(<PnlAwbDrilldown filter={filter} />)
-    const marks = container.querySelectorAll('[data-testid="varies-mark"]')
-    expect(marks).toHaveLength(1)
-    expect(marks[0].getAttribute('title')).toContain('berbeda')
-  })
+  it.each([
+    { originVaries: true, destVaries: false, dateVaries: false, marked: 'origin' },
+    { originVaries: false, destVaries: true, dateVaries: false, marked: 'dest' },
+    { originVaries: false, destVaries: false, dateVaries: true, marked: 'date' },
+  ] as const)(
+    'marks only the $marked cell when only $marked varies',
+    ({ originVaries, destVaries, dateVaries, marked }) => {
+      mockRows([row({ originVaries, destVaries, dateVaries })])
+      const { container } = render(<PnlAwbDrilldown filter={filter} />)
+      const cells = Array.from(container.querySelectorAll('tbody tr td'))
+      // Expander, AWB, then origin / dest / date, in that order.
+      const [originCell, destCell, dateCell] = [cells[2], cells[3], cells[4]]
+      const cellsByField = { origin: originCell, dest: destCell, date: dateCell }
+
+      const allMarks = container.querySelectorAll('[data-testid="varies-mark"]')
+      expect(allMarks).toHaveLength(1)
+      expect(allMarks[0].getAttribute('title')).toContain('berbeda')
+
+      const markedCell = cellsByField[marked]
+      expect(markedCell.querySelector('[data-testid="varies-mark"]')).not.toBeNull()
+
+      for (const [field, cell] of Object.entries(cellsByField)) {
+        if (field === marked) continue
+        expect(cell.querySelector('[data-testid="varies-mark"]')).toBeNull()
+      }
+    },
+  )
 
   it('renders a dash when the AWB has no origin, dest or date', () => {
     mockRows([row({ origin: null, dest: null, date: null })])
