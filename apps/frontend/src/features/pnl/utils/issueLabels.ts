@@ -1,5 +1,7 @@
 // Human labels for the canonical v_pnl_to.issue values (root cause of a missing cost / margin).
-// All of these are fixed by correcting the SOURCE Google Sheets, then re-syncing.
+// Most of these are fixed by correcting the SOURCE Google Sheets, then re-syncing.
+// station_mapping_missing is the exception: it is fixed by adding the DC pair to the
+// air_shipments_data master table, not by editing a sheet.
 export const ISSUE_LABELS: Record<string, string> = {
   no_booking: 'No booking row (AWB missing in SMU rate sheet)',
   smu_rate_missing: 'SMU rate missing for route',

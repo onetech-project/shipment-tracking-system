@@ -190,9 +190,11 @@ export function PnlFormulaPanel() {
               <div className="rounded border p-3 space-y-1.5">
                 <p className="font-medium">SG Incoming Cost (per TO)</p>
                 <p className="text-muted-foreground">
-                  Join: <Sheet name="Compile Air CGK" /> <Col name="origin_station" /> ×{' '}
-                  <Col name="destination_station" /> → <Sheet name="SG Incoming" /> <Col name="origin" /> ×{' '}
-                  <Col name="destination" />
+                  Route: <Col name="origin_station" /> × <Col name="destination_station" /> resolved from the
+                  DC-pair master <Col name="air_shipments_data" /> by matching the TO&apos;s origin/destination DC,
+                  falling back to <Sheet name="Compile Air CGK" />&apos;s own <Col name="origin_station" /> /{' '}
+                  <Col name="destination_station" /> columns when the pair isn&apos;t in the master. Join: that
+                  route → <Sheet name="SG Incoming" /> <Col name="origin" /> × <Col name="destination" />
                 </p>
                 <p className="font-mono text-foreground/80">
                   weight_share × (AWB_chargeable_weight × <Col name="sg_inc" /> + admin)
@@ -202,6 +204,8 @@ export function PnlFormulaPanel() {
                   chargeable weight plus a flat admin (5,000 for CGK/Jabo, 0 for Surabaya), prorated to each TO by
                   weight share so the admin is counted once per AWB. Shown as NULL when no matching route in{' '}
                   <Sheet name="SG Incoming" />, but Total Cost treats a missing route as 0 so it is not nullified.
+                  If neither the master nor the sheet has a station, the TO carries no route and is flagged{' '}
+                  <Col name="station_mapping_missing" />.
                 </p>
               </div>
 
