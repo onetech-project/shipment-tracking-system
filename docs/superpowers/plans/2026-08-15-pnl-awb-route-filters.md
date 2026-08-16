@@ -17,8 +17,11 @@
 - When no route field is supplied, the drilldown SQL must be byte-identical in behaviour to today's: no `EXISTS` clause is assembled at all.
 - Origin is displayed as its raw value (`Jabo` / `Surabaya`) everywhere in the drilldown. Only the Daily Report keeps showing `CGK` / `SUB`.
 - Date range bounds are inclusive of the last day: always `< dateTo::DATE + INTERVAL '1 day'`, matching `buildFilter`.
-- Backend tests: run focused as `pnpm --filter backend exec jest <pattern> --runInBand`. The full backend suite needs the heap bump: `cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm test -- --runInBand`. Bare `pnpm test` and bare `--runInBand` both die on this machine.
-- Frontend tests: `pnpm --filter frontend exec jest <pattern> --runInBand`.
+- **Jest on this machine always needs the heap bump — focused runs included.** Without it the run aborts with "FATAL ERROR: Ineffective mark-compacts near heap limit". Wherever a step below prints a bare `pnpm --filter … exec jest …`, run it in this form instead:
+  - Backend: `cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest <pattern> --runInBand`
+  - Frontend: `cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest <pattern> --runInBand`
+  - Full backend suite: `cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm test -- --runInBand`
+- An `rtk` hook rewrites jest output into a "PASS (n) FAIL (n)" summary; full output lands in `~/.local/share/rtk/tee/*.log` when a failure needs reading.
 - Commit after every task.
 
 ## File Structure
