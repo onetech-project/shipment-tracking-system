@@ -58,7 +58,10 @@ describe('PnlController', () => {
   it('getAwbDrilldown defaults page=1 limit=50 and forwards basis', async () => {
     mockService.getAwbDrilldown.mockResolvedValueOnce({ data: [], total: 0 })
     await controller.getAwbDrilldown(1, 50, '2026-04-2H', undefined, undefined, 'ata_vendor_wh_destination')
-    expect(mockService.getAwbDrilldown).toHaveBeenCalledWith(1, 50, '2026-04-2H', undefined, undefined, 'ata_vendor_wh_destination')
+    expect(mockService.getAwbDrilldown).toHaveBeenCalledWith(
+      1, 50, '2026-04-2H', undefined, undefined, 'ata_vendor_wh_destination',
+      { origin: undefined, dest: undefined, dateFrom: undefined, dateTo: undefined },
+    )
   })
 
   it('getDataQuality passes page/limit', async () => {
@@ -72,5 +75,26 @@ describe('PnlController', () => {
     const result = await controller.getDailyMatrix('2026-07-1H', undefined, undefined, 'atd_origin')
     expect(mockService.getDailyMatrix).toHaveBeenCalledWith('2026-07-1H', undefined, undefined, 'atd_origin')
     expect(result.periodDays).toBe(15)
+  })
+
+  it('getAwbDrilldown forwards the route query params as one object', async () => {
+    mockService.getAwbDrilldown.mockResolvedValueOnce({ data: [], total: 0 })
+    await controller.getAwbDrilldown(
+      1, 50, '2026-04-2H', undefined, undefined, 'ata_vendor_wh_destination',
+      'Jabo', 'Tanjung Pinang', '2026-05-01', '2026-05-01',
+    )
+    expect(mockService.getAwbDrilldown).toHaveBeenCalledWith(
+      1, 50, '2026-04-2H', undefined, undefined, 'ata_vendor_wh_destination',
+      { origin: 'Jabo', dest: 'Tanjung Pinang', dateFrom: '2026-05-01', dateTo: '2026-05-01' },
+    )
+  })
+
+  it('getAwbDrilldown passes undefined route fields through untouched', async () => {
+    mockService.getAwbDrilldown.mockResolvedValueOnce({ data: [], total: 0 })
+    await controller.getAwbDrilldown(1, 50, '2026-04-2H')
+    expect(mockService.getAwbDrilldown).toHaveBeenCalledWith(
+      1, 50, '2026-04-2H', undefined, undefined, undefined,
+      { origin: undefined, dest: undefined, dateFrom: undefined, dateTo: undefined },
+    )
   })
 })

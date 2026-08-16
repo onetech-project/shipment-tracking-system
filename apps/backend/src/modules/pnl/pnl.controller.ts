@@ -50,8 +50,17 @@ export class PnlController {
     @Query('start') start?: string,
     @Query('end') end?: string,
     @Query('basis') basis?: string,
+    @Query('origin') origin?: string,
+    @Query('dest') dest?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
   ) {
-    return this.pnlService.getAwbDrilldown(page, limit, cycle, start, end, basis)
+    return this.pnlService.getAwbDrilldown(page, limit, cycle, start, end, basis, {
+      origin,
+      dest,
+      dateFrom,
+      dateTo,
+    })
   }
 
   @Get('awb-tos')
