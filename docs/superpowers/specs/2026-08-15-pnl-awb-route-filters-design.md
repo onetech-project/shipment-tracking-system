@@ -52,10 +52,32 @@ margin AWB campur menjadi rugi semu.
 
 Karena itu filter rute menentukan **AWB mana yang tampil**, bukan TO mana yang dijumlahkan:
 sebuah AWB tampil bila punya minimal satu TO yang cocok, dan angkanya tetap dihitung dari
-seluruh TO milik AWB itu. Konsekuensi yang diterima: untuk AWB campur, total revenue baris
-bisa sedikit lebih besar dari nilai cell Daily Report yang diklik — dan baris tersebut memang
-membawa penanda campur. Bila satu AWB selalu satu rute dan satu tanggal, hasilnya identik
+seluruh TO milik AWB itu. Bila satu AWB selalu satu rute dan satu tanggal, hasilnya identik
 dengan filter TO langsung.
+
+**Besar konsekuensinya, diukur di database asli (cycle 2026-05-1H, basis ATA).** Rancangan ini
+awalnya menyebut selisihnya "sedikit"; pengukuran menunjukkan angka itu terlalu kecil, jadi
+dicatat apa adanya di sini:
+
+| Sumber selisih | Sebaran |
+| --- | --- |
+| Origin berbeda dalam satu AWB | 0 dari 1.285 AWB |
+| Destination berbeda dalam satu AWB | 3 dari 1.285 AWB (anomali data sumber) |
+| Tanggal ATA berbeda dalam satu AWB | 50 dari 1.285 AWB (3,9%) |
+
+Akibatnya 46 dari 229 cell (20%) menghasilkan drilldown dengan revenue lebih besar dari cell
+yang diklik; terparah +51.952.499 (+135%), yaitu cell Jabo → Tanjung Pinang 2026-05-09 senilai
+3.268.725 yang membuka drilldown 7.689.081 — seluruhnya dari satu AWB yang TO-nya melewati
+batas tengah malam.
+
+Aturan "1 AWB = 1 rute" jadi terbukti: penyebab dominan adalah **tanggal**, bukan rute. TO dalam
+satu penerbangan tiba di gudang vendor pada jam berbeda dan bisa jatuh di dua tanggal. Tiga AWB
+dengan destination ganda (Denpasar+Palangka Raya, Balikpapan+Banjarmasin, Gorontalo+Pontianak)
+tidak masuk akal secara operasional dan pantas diperbaiki di sheet sumber.
+
+Karena selisihnya tidak kecil, selain penanda campur per baris, drilldown menampilkan catatan
+ringkas saat filter rute aktif: berapa AWB di halaman itu yang punya TO di luar filter, dan
+bahwa angka barisnya mencakup seluruh TO milik AWB tersebut.
 
 ### 3. Klik cell hanya memfilter AWB Drilldown
 
