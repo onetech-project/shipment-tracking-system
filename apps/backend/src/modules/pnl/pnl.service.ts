@@ -32,6 +32,12 @@ export interface PnlAwbRow {
   awb: string
   vendor: string | null
   airline: string | null
+  origin: string | null // dominant origin_station across the AWB's TOs
+  dest: string | null
+  date: string | null // YYYY-MM-DD on the active date basis
+  originVaries: boolean // TOs of this AWB disagree on origin
+  destVaries: boolean
+  dateVaries: boolean
   toCount: number
   sumGw: number
   chwt: number | null
@@ -308,7 +314,7 @@ export class PnlService {
     basis?: string,
     route?: PnlRouteFilter,
   ): Promise<{ data: PnlAwbRow[]; total: number }> {
-    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate, 'v.')
+    const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate, 'v.')
     // Same clause against the subquery alias. It reuses $1/$2, so no params are bound twice.
     const inner = buildFilter(basis, cyclePeriod, startDate, endDate, 'm.')
 
@@ -349,6 +355,12 @@ export class PnlService {
           awb,
           vendor,
           airline,
+          MODE() WITHIN GROUP (ORDER BY origin_station)                        AS origin,
+          MODE() WITHIN GROUP (ORDER BY dest_station)                          AS dest,
+          TO_CHAR(MODE() WITHIN GROUP (ORDER BY ${dateCol}::DATE), 'YYYY-MM-DD') AS route_date,
+          COUNT(DISTINCT origin_station) > 1                                   AS origin_varies,
+          COUNT(DISTINCT dest_station)   > 1                                   AS dest_varies,
+          COUNT(DISTINCT ${dateCol}::DATE) > 1                                 AS date_varies,
           COUNT(*)::int                           AS to_count,
           SUM(gross_weight)                       AS sum_gw,
           MAX(chwt_awb)                           AS chwt,
@@ -390,6 +402,12 @@ export class PnlService {
         awb: r.awb as string,
         vendor: r.vendor as string | null,
         airline: r.airline as string | null,
+        origin: (r.origin as string | null) ?? null,
+        dest: (r.dest as string | null) ?? null,
+        date: (r.route_date as string | null) ?? null,
+        originVaries: r.origin_varies === true || r.origin_varies === 't',
+        destVaries: r.dest_varies === true || r.dest_varies === 't',
+        dateVaries: r.date_varies === true || r.date_varies === 't',
         toCount: Number(r.to_count),
         sumGw: Number(r.sum_gw),
         chwt: r.chwt != null ? Number(r.chwt) : null,

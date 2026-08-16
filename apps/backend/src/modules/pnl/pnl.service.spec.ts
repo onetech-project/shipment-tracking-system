@@ -288,6 +288,94 @@ describe('PnlService', () => {
       // No LIMIT/OFFSET params on the count query.
       expect(countParams).toEqual(['2026-04-2H', 'Jabo'])
     })
+
+    it('reports the dominant origin, dest and date, flagging none as varying when uniform', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([
+          {
+            awb: '888-4', vendor: 'ESP', airline: 'Citilink CGK',
+            to_count: '2', sum_gw: '20', chwt: '25', total_revenue: '200', total_discount: '3',
+            cost_smu: '10', cost_ra: '5', cost_sg_out: '5', cost_sg_in: '1',
+            total_cost: '21', gross_profit: '176', has_null_cost: false, issue_rank: null,
+            origin: 'Jabo', dest: 'Tanjung Pinang', route_date: '2026-05-01',
+            origin_varies: false, dest_varies: false, date_varies: false,
+          },
+        ])
+        .mockResolvedValueOnce([{ total: '1' }])
+
+      const { data } = await service.getAwbDrilldown(1, 50, '2026-04-2H')
+
+      expect(data[0].origin).toBe('Jabo')
+      expect(data[0].dest).toBe('Tanjung Pinang')
+      expect(data[0].date).toBe('2026-05-01')
+      expect(data[0].originVaries).toBe(false)
+      expect(data[0].destVaries).toBe(false)
+      expect(data[0].dateVaries).toBe(false)
+    })
+
+    it('flags an AWB whose TOs disagree, accepting Postgres text booleans', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([
+          {
+            awb: '888-5', vendor: 'ESP', airline: 'Citilink CGK',
+            to_count: '2', sum_gw: '20', chwt: null, total_revenue: '200', total_discount: '3',
+            cost_smu: '10', cost_ra: '5', cost_sg_out: '5', cost_sg_in: '1',
+            total_cost: '21', gross_profit: '176', has_null_cost: false, issue_rank: null,
+            origin: 'Jabo', dest: 'Aceh', route_date: '2026-05-01',
+            origin_varies: false, dest_varies: 't', date_varies: true,
+          },
+        ])
+        .mockResolvedValueOnce([{ total: '1' }])
+
+      const { data } = await service.getAwbDrilldown(1, 50, '2026-04-2H')
+
+      expect(data[0].destVaries).toBe(true)
+      expect(data[0].dateVaries).toBe(true)
+      expect(data[0].originVaries).toBe(false)
+    })
+
+    it('maps a missing route or date to null rather than a blank string', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([
+          {
+            awb: '888-6', vendor: null, airline: null,
+            to_count: '1', sum_gw: '10', chwt: null, total_revenue: '100', total_discount: '1.5',
+            cost_smu: null, cost_ra: null, cost_sg_out: null, cost_sg_in: null,
+            total_cost: null, gross_profit: '0', has_null_cost: true, issue_rank: '1',
+            origin: null, dest: null, route_date: null,
+            origin_varies: false, dest_varies: false, date_varies: false,
+          },
+        ])
+        .mockResolvedValueOnce([{ total: '1' }])
+
+      const { data } = await service.getAwbDrilldown(1, 50, '2026-04-2H')
+
+      expect(data[0].origin).toBeNull()
+      expect(data[0].dest).toBeNull()
+      expect(data[0].date).toBeNull()
+    })
+
+    it('selects the dominant values with MODE against the basis date column', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ total: '0' }])
+
+      await service.getAwbDrilldown(1, 50, '2026-04-2H', undefined, undefined, 'atd_origin')
+
+      const [sql] = dataSource.query.mock.calls[0]
+      expect(sql).toContain('MODE() WITHIN GROUP (ORDER BY origin_station)')
+      expect(sql).toContain('MODE() WITHIN GROUP (ORDER BY v.date_atd::DATE)')
+      expect(sql).toContain('COUNT(DISTINCT v.date_atd::DATE) > 1')
+      // Tie each expression to its alias, not just presence anywhere in the SQL, so a mutation
+      // that swaps the origin/dest expressions (or compares a *_varies flag against the wrong
+      // column) fails here even though the substrings above would still be found.
+      const normalizedSql = sql.replace(/\s+/g, ' ')
+      expect(normalizedSql).toContain('MODE() WITHIN GROUP (ORDER BY origin_station) AS origin')
+      expect(normalizedSql).toContain('MODE() WITHIN GROUP (ORDER BY dest_station) AS dest')
+      expect(normalizedSql).toContain('COUNT(DISTINCT origin_station) > 1 AS origin_varies')
+      expect(normalizedSql).toContain('COUNT(DISTINCT dest_station) > 1 AS dest_varies')
+      expect(normalizedSql).toContain('COUNT(DISTINCT v.date_atd::DATE) > 1 AS date_varies')
+    })
   })
 
   describe('getAwbTos', () => {
