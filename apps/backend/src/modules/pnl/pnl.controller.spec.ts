@@ -81,11 +81,11 @@ describe('PnlController', () => {
     mockService.getAwbDrilldown.mockResolvedValueOnce({ data: [], total: 0 })
     await controller.getAwbDrilldown(
       1, 50, '2026-04-2H', undefined, undefined, 'ata_vendor_wh_destination',
-      'Jabo', 'Tanjung Pinang', '2026-05-01', '2026-05-01',
+      'Jabo', 'Tanjung Pinang', '2026-05-01', '2026-05-31',
     )
     expect(mockService.getAwbDrilldown).toHaveBeenCalledWith(
       1, 50, '2026-04-2H', undefined, undefined, 'ata_vendor_wh_destination',
-      { origin: 'Jabo', dest: 'Tanjung Pinang', dateFrom: '2026-05-01', dateTo: '2026-05-01' },
+      { origin: 'Jabo', dest: 'Tanjung Pinang', dateFrom: '2026-05-01', dateTo: '2026-05-31' },
     )
   })
 
