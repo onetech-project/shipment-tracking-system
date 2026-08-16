@@ -145,9 +145,13 @@ station mentah sementara bagian lain memakai hasil lookup.
 
 ```sql
 compile AS (
-  SELECT c.*,
-    COALESCE(sm.origin_station, NULLIF(BTRIM(c.origin_station), '')) AS origin_station_resolved,
-    COALESCE(sm.dest_station,   NULLIF(BTRIM(c.dest_station),   '')) AS dest_station_resolved
+  SELECT
+    c.id, c.awb, c.to_number, c.gross_weight, c.amount_revenue, c.packing_kayu,
+    c.completed_time, c.cycle_period, c.cycle_completed, c.cycle_ata, c.cycle_atd,
+    c.date_completed, c.date_ata, c.date_atd,
+    c.lt_number, c.actual_revenue, c.actual_cost, c.settled_at, c.invoice_period_label,
+    COALESCE(sm.origin_station, NULLIF(BTRIM(c.origin_station), '')) AS origin_station,
+    COALESCE(sm.dest_station,   NULLIF(BTRIM(c.dest_station),   '')) AS dest_station
   FROM air_shipments_compileaircgk c
   LEFT JOIN station_map sm
     ON sm.origin_dc      = BTRIM(c.extra_fields->>'origin')
@@ -155,10 +159,13 @@ compile AS (
 )
 ```
 
-Nama kolom diberi akhiran `_resolved` supaya `c.*` tetap boleh membawa kolom generated aslinya
-tanpa tabrakan nama; seluruh pemakaian di dalam view kemudian menunjuk kolom `_resolved`, dan
-`base` mengekspornya kembali sebagai `origin_station` / `dest_station` sehingga bentuk output view
-tidak berubah sama sekali.
+Kolomnya didaftar satu per satu, bukan `c.*`, dan hasil resolusi memakai **nama aslinya**.
+Ini disengaja: dengan begitu kolom generated yang mentah tidak lagi bisa dijangkau dari dalam
+view sama sekali, sehingga mustahil ada bagian yang tanpa sengaja membaca station mentah. Efek
+sampingnya menyenangkan — `awb_totals` dan `base` cukup berganti sumber dari
+`air_shipments_compileaircgk` menjadi `compile`, dan seluruh isi keduanya tidak perlu disentuh,
+karena `c.origin_station` di dalamnya otomatis menunjuk nilai yang sudah diresolusi. Bentuk output
+view juga tidak berubah sama sekali.
 
 ### Dampak pada biaya, bukan hanya tampilan
 
@@ -174,16 +181,37 @@ Pada data lokal yang bersih tidak ada satu angka pun yang bergeser, karena looku
 identik di 67.190 baris. Verifikasi "tidak boleh berubah" di bawah karena itu tetap berlaku
 sebagai jaring pengaman.
 
-**Rantai `issue`** ditambah satu cabang di urutan paling akhir:
+**Rantai `issue`** ditambah satu cabang, ditempatkan **sebelum** `sg_in_rate_missing`:
 
 ```sql
 WHEN origin_station IS NULL OR dest_station IS NULL THEN 'station_mapping_missing'
+WHEN sg_inc          IS NULL THEN 'sg_in_rate_missing'
 ```
+
+Urutannya penting dan tidak boleh dibalik. Station yang kosong membuat join
+`air_shipments_sg_incoming` gagal, sehingga `sg_inc` ikut NULL. Bila cabang station ditaruh
+paling akhir, `sg_in_rate_missing` selalu menyala lebih dulu dan cabang station tidak pernah
+tercapai — panel Data Quality akan menyuruh orang memperbaiki tarif SG Incoming padahal akar
+masalahnya pemetaan DC yang belum terdaftar. Rantai ini memang disusun akar-masalah-dulu, dan
+station adalah akar dari kegagalan SG Incoming itu.
 
 ### Backend
 
-`apps/backend/src/modules/pnl/pnl.service.ts`: `ISSUE_RANK` bertambah
-`station_mapping_missing: 7`. Tidak ada perubahan query — semuanya membaca kolom yang sama.
+`apps/backend/src/modules/pnl/pnl.service.ts` punya **dua** tempat yang memetakan issue ke
+peringkat keparahan, dan keduanya harus ikut berubah agar urutannya tetap sama dengan `CASE` di
+view:
+
+1. konstanta `ISSUE_RANK`;
+2. ekspresi `MIN(CASE issue ... END) AS issue_rank` di dalam query `getAwbDrilldown`.
+
+Peringkat barunya: `no_booking` 1, `smu_rate_missing` 2, `ra_rate_missing` 3,
+`sgout_name_missing` 4, `revenue_missing` 5, `station_mapping_missing` 6, `sg_in_rate_missing` 7.
+`sg_in_rate_missing` bergeser dari 6 ke 7. Peringkat hanya dipakai untuk memilih issue paling
+parah saat satu AWB punya beberapa, tidak pernah disimpan, jadi pergeseran ini aman. Bila salah
+satu dari dua tempat itu terlewat, baris yang satu-satunya masalahnya adalah station akan
+menghasilkan `issue_rank` NULL dan badge-nya hilang dari AWB Drilldown.
+
+Tidak ada perubahan pada query Data Quality — keduanya membaca kolom `issue` apa adanya.
 
 ### Frontend
 
