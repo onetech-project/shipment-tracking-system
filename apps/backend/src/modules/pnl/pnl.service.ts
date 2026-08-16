@@ -98,7 +98,10 @@ const ISSUE_RANK: Record<string, number> = {
   ra_rate_missing: 3,
   sgout_name_missing: 4,
   revenue_missing: 5,
-  sg_in_rate_missing: 6,
+  // A blank station breaks the SG Incoming join, so it ranks as the cause of the rate miss below
+  // it. This order must match the CASE chain in the v_pnl_to definition.
+  station_mapping_missing: 6,
+  sg_in_rate_missing: 7,
 }
 const ISSUE_BY_RANK: Record<number, string> = Object.fromEntries(
   Object.entries(ISSUE_RANK).map(([k, v]) => [v, k]),
@@ -376,7 +379,8 @@ export class PnlService {
           MIN(CASE issue
                 WHEN 'no_booking' THEN 1 WHEN 'smu_rate_missing' THEN 2
                 WHEN 'ra_rate_missing' THEN 3 WHEN 'sgout_name_missing' THEN 4
-                WHEN 'revenue_missing' THEN 5 WHEN 'sg_in_rate_missing' THEN 6
+                WHEN 'revenue_missing' THEN 5 WHEN 'station_mapping_missing' THEN 6
+                WHEN 'sg_in_rate_missing' THEN 7
               END)                                  AS issue_rank
         FROM v_pnl_to v
         WHERE ${where}

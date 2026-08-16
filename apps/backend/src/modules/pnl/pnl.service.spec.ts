@@ -391,6 +391,48 @@ describe('PnlService', () => {
       expect(normalizedSql).toContain('COUNT(DISTINCT dest_station) > 1 AS dest_varies')
       expect(normalizedSql).toContain('COUNT(DISTINCT v.date_atd::DATE) > 1 AS date_varies')
     })
+
+    it('maps issue_rank 6 to the station mapping gap and 7 to the SG In rate', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([
+          {
+            awb: '888-7', vendor: 'ESP', airline: 'Citilink CGK',
+            to_count: '1', sum_gw: '10', chwt: null, total_revenue: '100', total_discount: '1.5',
+            cost_smu: '10', cost_ra: '5', cost_sg_out: '5', cost_sg_in: null,
+            total_cost: null, gross_profit: '0', has_null_cost: true, issue_rank: '6',
+            origin: null, dest: null, route_date: '2026-06-01',
+            origin_varies: false, dest_varies: false, date_varies: false,
+          },
+          {
+            awb: '888-8', vendor: 'ESP', airline: 'Citilink CGK',
+            to_count: '1', sum_gw: '10', chwt: null, total_revenue: '100', total_discount: '1.5',
+            cost_smu: '10', cost_ra: '5', cost_sg_out: '5', cost_sg_in: null,
+            total_cost: null, gross_profit: '0', has_null_cost: true, issue_rank: '7',
+            origin: 'Jabo', dest: 'Aceh', route_date: '2026-06-01',
+            origin_varies: false, dest_varies: false, date_varies: false,
+          },
+        ])
+        .mockResolvedValueOnce([{ total: '2' }])
+
+      const { data } = await service.getAwbDrilldown(1, 50, '2026-06-1H')
+
+      expect(data[0].issue).toBe('station_mapping_missing')
+      expect(data[1].issue).toBe('sg_in_rate_missing')
+    })
+
+    it('ranks the station gap ahead of the SG In rate it causes', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ total: '0' }])
+
+      await service.getAwbDrilldown(1, 50, '2026-06-1H')
+
+      const [sql] = dataSource.query.mock.calls[0]
+      const normalized = sql.replace(/\s+/g, ' ')
+      // A blank station is what breaks the SG Incoming join, so it must rank as the root cause.
+      expect(normalized).toContain("WHEN 'station_mapping_missing' THEN 6")
+      expect(normalized).toContain("WHEN 'sg_in_rate_missing' THEN 7")
+    })
   })
 
   describe('getAwbTos', () => {
