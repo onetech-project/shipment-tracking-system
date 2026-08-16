@@ -166,18 +166,56 @@ describe('PnlAwbDrilldown filter section', () => {
     expect(reported.origin).toBeUndefined()
   })
 
+  it('keeps a destination that still applies when the origin is widened back to Semua', () => {
+    const onRouteChange = jest.fn()
+    render(
+      <PnlAwbDrilldown
+        filter={filter}
+        route={{ origin: 'Jabo', dest: 'Aceh' }}
+        onRouteChange={onRouteChange}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('Origin'), { target: { value: '' } })
+    expect(onRouteChange).toHaveBeenCalledWith({ origin: undefined, dest: 'Aceh' })
+  })
+
+  it('passes the route filter through to the drilldown hook', () => {
+    render(<PnlAwbDrilldown filter={filter} route={{ origin: 'Jabo' }} onRouteChange={jest.fn()} />)
+    expect(hooks.usePnlAwbDrilldown).toHaveBeenCalledWith(filter, 1, { origin: 'Jabo' })
+  })
+
   it('reports date changes', () => {
     const onRouteChange = jest.fn()
     render(<PnlAwbDrilldown filter={filter} route={{ origin: 'Jabo' }} onRouteChange={onRouteChange} />)
     fireEvent.change(screen.getByLabelText('Dari'), { target: { value: '2026-05-03' } })
     expect(onRouteChange).toHaveBeenCalledWith({ origin: 'Jabo', dateFrom: '2026-05-03' })
+
+    fireEvent.change(screen.getByLabelText('Sampai'), { target: { value: '2026-05-10' } })
+    expect(onRouteChange).toHaveBeenCalledWith({ origin: 'Jabo', dateTo: '2026-05-10' })
   })
 
   it('bounds the date inputs to the active cycle', () => {
     render(<PnlAwbDrilldown filter={filter} route={{}} onRouteChange={jest.fn()} />)
     const from = screen.getByLabelText('Dari') as HTMLInputElement
+    const to = screen.getByLabelText('Sampai') as HTMLInputElement
     expect(from.min).toBe('2026-05-01')
     expect(from.max).toBe('2026-05-15')
+    expect(to.min).toBe('2026-05-01')
+    expect(to.max).toBe('2026-05-15')
+  })
+
+  it('caps Dari at Sampai and floors Sampai at Dari when both are set', () => {
+    render(
+      <PnlAwbDrilldown
+        filter={filter}
+        route={{ dateFrom: '2026-05-05', dateTo: '2026-05-10' }}
+        onRouteChange={jest.fn()}
+      />,
+    )
+    const from = screen.getByLabelText('Dari') as HTMLInputElement
+    const to = screen.getByLabelText('Sampai') as HTMLInputElement
+    expect(from.max).toBe('2026-05-10')
+    expect(to.min).toBe('2026-05-05')
   })
 
   it('shows Reset only while a filter is active, and clears everything', () => {

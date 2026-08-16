@@ -114,7 +114,7 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
   const totalPages = data ? Math.ceil(data.total / 50) : 0
   const title = filter.mode === 'cycle' ? filter.cycle : `${filter.start} → ${filter.end}`
 
-  const origins = Array.from(new Set((stations ?? []).map((s) => s.origin)))
+  const origins = Array.from(new Set((stations ?? []).map((s) => s.origin))).sort()
   const dests = Array.from(
     new Set(
       (stations ?? [])
@@ -129,7 +129,9 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
   function setField(field: keyof PnlRouteFilter, value: string) {
     const next: PnlRouteFilter = { ...route, [field]: value || undefined }
     // A destination that does not belong to the newly chosen origin would return nothing at all.
-    if (field === 'origin' && next.dest) {
+    // Only prune when origin is being narrowed to a specific value — clearing it back to "Semua"
+    // widens the filter, so any destination the user already picked still applies fine.
+    if (field === 'origin' && value && next.dest) {
       const stillValid = (stations ?? []).some((s) => s.origin === value && s.dest === next.dest)
       if (!stillValid) next.dest = undefined
     }
@@ -193,7 +195,7 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
             aria-label="Dari"
             className="rounded-md border bg-background px-2 py-1.5 text-sm text-foreground"
             min={bounds.min}
-            max={bounds.max}
+            max={route.dateTo || bounds.max}
             value={route.dateFrom ?? ''}
             onChange={(e) => setField('dateFrom', e.target.value)}
           />
@@ -205,7 +207,7 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
             type="date"
             aria-label="Sampai"
             className="rounded-md border bg-background px-2 py-1.5 text-sm text-foreground"
-            min={bounds.min}
+            min={route.dateFrom || bounds.min}
             max={bounds.max}
             value={route.dateTo ?? ''}
             onChange={(e) => setField('dateTo', e.target.value)}
@@ -214,6 +216,7 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
 
         {hasRoute && (
           <button
+            type="button"
             className="pb-1.5 text-xs text-muted-foreground underline hover:text-foreground"
             onClick={() => onRouteChange({})}
           >
