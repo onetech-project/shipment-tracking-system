@@ -129,20 +129,50 @@ sedangkan join memakai `BTRIM`. Bila kelak masuk nilai `'Kosambi DC '` dengan sp
 tetap lolos tetapi join akan menggandakan baris. Satu baris SQL untuk mencegah revenue berlipat
 diam-diam pada dashboard keuangan.
 
-**Di CTE `base`**, dua kolom rute berubah:
+**Station diresolusi sekali, di CTE paling awal.** `origin_station` bukan hanya kolom tampilan —
+ia dipakai di empat tempat di dalam view, dan tiga di antaranya menghitung biaya:
+
+| Lokasi | Peran |
+| --- | --- |
+| `awb_totals` | `MAX(origin_station)` per AWB, diteruskan ke `awb_cost` |
+| `awb_cost` | `CASE WHEN origin_station = 'Surabaya' THEN 0` pada **cost RA** dan **cost SG Out** |
+| `base` | join `sgi.origin = c.origin_station AND sgi.destination = c.dest_station` → tarif **SG Incoming** |
+| `base` | `CASE WHEN c.origin_station = 'Surabaya' THEN 0 ELSE 5000` → **admin SG In** |
+
+Karena itu resolusi dilakukan satu kali di CTE `compile`, dan `awb_totals` maupun `base` membaca
+dari CTE itu — bukan lagi langsung dari tabel. Dengan begitu tidak mungkin ada bagian yang memakai
+station mentah sementara bagian lain memakai hasil lookup.
 
 ```sql
-COALESCE(sm.origin_station, NULLIF(BTRIM(c.origin_station), '')) AS origin_station,
-COALESCE(sm.dest_station,   NULLIF(BTRIM(c.dest_station),   '')) AS dest_station,
+compile AS (
+  SELECT c.*,
+    COALESCE(sm.origin_station, NULLIF(BTRIM(c.origin_station), '')) AS origin_station_resolved,
+    COALESCE(sm.dest_station,   NULLIF(BTRIM(c.dest_station),   '')) AS dest_station_resolved
+  FROM air_shipments_compileaircgk c
+  LEFT JOIN station_map sm
+    ON sm.origin_dc      = BTRIM(c.extra_fields->>'origin')
+   AND sm.destination_dc = BTRIM(c.extra_fields->>'destination')
+)
 ```
 
-dengan join:
+Nama kolom diberi akhiran `_resolved` supaya `c.*` tetap boleh membawa kolom generated aslinya
+tanpa tabrakan nama; seluruh pemakaian di dalam view kemudian menunjuk kolom `_resolved`, dan
+`base` mengekspornya kembali sebagai `origin_station` / `dest_station` sehingga bentuk output view
+tidak berubah sama sekali.
 
-```sql
-LEFT JOIN station_map sm
-  ON sm.origin_dc      = BTRIM(c.extra_fields->>'origin')
- AND sm.destination_dc = BTRIM(c.extra_fields->>'destination')
-```
+### Dampak pada biaya, bukan hanya tampilan
+
+Untuk baris yang station-nya kosong di production, keadaan sekarang bukan hanya "rute tidak
+muncul": join SG Incoming gagal sehingga `cost_sg_in_to` NULL dan barisnya bertanda
+`sg_in_rate_missing`, dan cabang Surabaya pada RA serta SG Out tidak pernah aktif sehingga
+pengiriman asal Surabaya dibebani biaya yang seharusnya nol. Setelah lookup diterapkan ke seluruh
+konsumen, biaya-biaya itu ikut terkoreksi — **margin Juni–Agustus akan berubah**, ke arah yang
+benar. Ini konsekuensi yang diinginkan, bukan efek samping, tetapi tim keuangan perlu diberi tahu
+bahwa angka bulan-bulan tersebut bergerak setelah deploy.
+
+Pada data lokal yang bersih tidak ada satu angka pun yang bergeser, karena lookup dan sheet
+identik di 67.190 baris. Verifikasi "tidak boleh berubah" di bawah karena itu tetap berlaku
+sebagai jaring pengaman.
 
 **Rantai `issue`** ditambah satu cabang di urutan paling akhir:
 
@@ -180,7 +210,12 @@ sebelum migration sebagai pembanding:
 - khusus rute CGK → Tanjung Pinang, jumlah baris harus tetap, bukan berlipat;
 - `SUM(revenue_total)`, `SUM(gross_weight)`, dan `COUNT(DISTINCT awb)` per pasangan
   `(origin_station, dest_station)` — harus sama persis;
-- jumlah baris dengan `issue = 'station_mapping_missing'` harus 0 pada data lokal yang bersih.
+- jumlah baris dengan `issue = 'station_mapping_missing'` harus 0 pada data lokal yang bersih;
+- `SUM(cost_smu_awb)`, `SUM(cost_ra_awb)`, `SUM(cost_sg_out_awb)`, dan `SUM(cost_sg_in_to)` harus
+  identik — ini yang membuktikan pemindahan `awb_totals` dan join SG Incoming ke kolom `_resolved`
+  tidak menggeser biaya apa pun;
+- daftar kolom view (`information_schema.columns`) harus identik nama dan urutannya, membuktikan
+  akhiran `_resolved` tidak bocor ke output.
 
 **Skenario kotor.** Karena data lokal tidak punya baris tanpa station, buat fixture sementara
 di dalam transaksi yang di-rollback: kosongkan `origin_station` / `destination_station` pada
