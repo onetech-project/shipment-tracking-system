@@ -26,8 +26,12 @@ export default function RouteGroupsPage() {
   const router = useRouter()
   const [modal, setModal] = useState<Modal>(null)
 
-  const { data: groups, isLoading } = useRouteGroups()
-  const { data: routes } = useAvailableRoutes()
+  const canRead = !loading && !!user && hasPermission('read.route_group')
+  const { data: groups, isLoading } = useRouteGroups({ enabled: canRead })
+  // Disabling Create/Edit while routes are still loading (rather than threading a loading state
+  // into RoutePicker) keeps RoutePicker's controlled-component contract untouched: the modal that
+  // would show its "No routes available." empty state during the fetch simply can't open yet.
+  const { data: routes, isLoading: isRoutesLoading } = useAvailableRoutes()
   const createGroup = useCreateRouteGroup()
   const updateGroup = useUpdateRouteGroup()
   const deleteGroup = useDeleteRouteGroup()
@@ -48,7 +52,14 @@ export default function RouteGroupsPage() {
     setModal(null)
   }
 
-  if (loading || isLoading) return <p className="text-muted-foreground">Loading...</p>
+  // Mirrors the pnl page's shape: the useEffect above handles the redirect, but without these
+  // early returns React can commit and paint a tick before the effect fires, flashing the whole
+  // table at an unpermitted user. The backend still enforces this on GET /route-groups, so this
+  // guard is only about page chrome and a pointless request, not data exposure.
+  if (loading || !user) return null
+  if (!hasPermission('read.route_group')) return null
+
+  if (isLoading) return <p className="text-muted-foreground">Loading...</p>
 
   return (
     <div>
@@ -56,7 +67,9 @@ export default function RouteGroupsPage() {
         title="Route Group"
         action={
           hasPermission('create.route_group') ? (
-            <Button onClick={() => setModal({ type: 'create' })}>+ New Group</Button>
+            <Button onClick={() => setModal({ type: 'create' })} disabled={isRoutesLoading}>
+              + New Group
+            </Button>
           ) : undefined
         }
       />
@@ -82,7 +95,12 @@ export default function RouteGroupsPage() {
                 <td className="px-4 py-3">
                   <div className="flex gap-1">
                     {hasPermission('update.route_group') && (
-                      <Button size="sm" variant="outline" onClick={() => setModal({ type: 'edit', group })}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={isRoutesLoading}
+                        onClick={() => setModal({ type: 'edit', group })}
+                      >
                         Edit
                       </Button>
                     )}

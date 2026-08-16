@@ -2,11 +2,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/client'
 import { AvailableRoute, RouteGroup, RouteGroupPayload } from '../types'
 
-export function useRouteGroups() {
+export function useRouteGroups(options?: { enabled?: boolean }) {
   return useQuery<RouteGroup[]>({
     queryKey: ['route-groups'],
     queryFn: () => apiClient.get('/route-groups').then((r) => r.data),
     staleTime: 60 * 1000,
+    enabled: options?.enabled,
   })
 }
 
