@@ -223,8 +223,9 @@ export function usePnlDailyMargin(filter: PnlFilter | undefined) {
 }
 
 // Only non-empty fields are sent, so an untouched filter produces the exact request shape the
-// endpoint saw before route filtering existed.
-function routeToParams(route: PnlRouteFilter | undefined) {
+// endpoint saw before route filtering existed. Exported so its HTTP param names are pinned by a
+// direct test rather than only indirectly through a mocked hook.
+export function routeToParams(route: PnlRouteFilter | undefined) {
   if (!route) return {}
   return {
     ...(route.origin ? { origin: route.origin } : {}),
