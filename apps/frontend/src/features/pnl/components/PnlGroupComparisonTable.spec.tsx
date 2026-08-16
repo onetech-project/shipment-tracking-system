@@ -19,15 +19,19 @@ function baseModel(overrides: Partial<ComparisonTableModel> = {}): ComparisonTab
     columns,
     rows: [
       {
+        // Revenue/cost stay null for g2 here so the em-dash coverage below is untouched, but the
+        // cost *components* are non-null and distinct per group — this is the date the expand
+        // tests use, and a regression that only rendered the clicked group's values must be
+        // visible even though the top-level g2 cost cell itself is blank.
         date: '2026-05-01',
         revenue: [1000, null],
         cost: [800, null],
         incompleteTos: [0, 0],
         components: {
-          costSmu: [500, null],
-          costRa: [100, null],
-          costSgOut: [150, null],
-          costSgIn: [50, null],
+          costSmu: [500, 260],
+          costRa: [100, 140],
+          costSgOut: [150, 180],
+          costSgIn: [50, 70],
         },
       },
       {
@@ -95,10 +99,40 @@ it('expands a clicked cost cell into the four components for every group', () =>
 
   const smuRow = screen.getByTestId('detail-2026-05-01-costSmu')
   expect(within(smuRow).getByText('SMU')).toBeInTheDocument()
+  // Both groups' values, asserted individually — a regression that only rendered the clicked
+  // group's value (e.g. components[key][0] for every column) would still pass a check for group 1
+  // alone, since 500 is correct there too.
   expect(within(smuRow).getByText('500')).toBeInTheDocument()
-  expect(screen.getByTestId('detail-2026-05-01-costRa')).toBeInTheDocument()
-  expect(screen.getByTestId('detail-2026-05-01-costSgOut')).toBeInTheDocument()
-  expect(screen.getByTestId('detail-2026-05-01-costSgIn')).toBeInTheDocument()
+  expect(within(smuRow).getByText('260')).toBeInTheDocument()
+
+  const raRow = screen.getByTestId('detail-2026-05-01-costRa')
+  expect(within(raRow).getByText('100')).toBeInTheDocument()
+  expect(within(raRow).getByText('140')).toBeInTheDocument()
+
+  const sgOutRow = screen.getByTestId('detail-2026-05-01-costSgOut')
+  expect(within(sgOutRow).getByText('150')).toBeInTheDocument()
+  expect(within(sgOutRow).getByText('180')).toBeInTheDocument()
+
+  const sgInRow = screen.getByTestId('detail-2026-05-01-costSgIn')
+  expect(within(sgInRow).getByText('50')).toBeInTheDocument()
+  expect(within(sgInRow).getByText('70')).toBeInTheDocument()
+})
+
+it('leaves the Revenue-block cells of an expanded detail row empty', () => {
+  render(<PnlGroupComparisonTable model={baseModel()} />)
+
+  fireEvent.click(screen.getByTestId('cost-2026-05-01-g1'))
+
+  for (const key of ['costSmu', 'costRa', 'costSgOut', 'costSgIn']) {
+    const row = screen.getByTestId(`detail-2026-05-01-${key}`)
+    const cells = row.querySelectorAll('td')
+    // label, 2 blank Revenue-block cells, 2 filled Cost-block cells
+    expect(cells).toHaveLength(5)
+    expect(cells[1]).toHaveTextContent('')
+    expect(cells[2]).toHaveTextContent('')
+    expect(cells[3]).not.toHaveTextContent('')
+    expect(cells[4]).not.toHaveTextContent('')
+  }
 })
 
 it('collapses again on a second click', () => {
@@ -110,14 +144,22 @@ it('collapses again on a second click', () => {
   expect(screen.queryByTestId('detail-2026-05-01-costSmu')).not.toBeInTheDocument()
 })
 
-it('keeps several dates open at once', () => {
+it('keeps several dates open at once, each showing its own values', () => {
   render(<PnlGroupComparisonTable model={baseModel()} />)
 
   fireEvent.click(screen.getByTestId('cost-2026-05-01-g1'))
   fireEvent.click(screen.getByTestId('cost-2026-05-02-g2'))
 
-  expect(screen.getByTestId('detail-2026-05-01-costSmu')).toBeInTheDocument()
-  expect(screen.getByTestId('detail-2026-05-02-costSmu')).toBeInTheDocument()
+  // Each open date's detail row must carry that date's own components, not the other date's —
+  // a regression that rendered detail rows from a fixed row (e.g. always rows[0]) would still
+  // satisfy plain testid-existence checks for both dates.
+  const firstSmuRow = screen.getByTestId('detail-2026-05-01-costSmu')
+  expect(within(firstSmuRow).getByText('500')).toBeInTheDocument()
+  expect(within(firstSmuRow).getByText('260')).toBeInTheDocument()
+
+  const secondSmuRow = screen.getByTestId('detail-2026-05-02-costSmu')
+  expect(within(secondSmuRow).getByText('900')).toBeInTheDocument()
+  expect(within(secondSmuRow).getByText('0')).toBeInTheDocument()
 })
 
 // Only cost decomposes, so only cost cells are actionable.
