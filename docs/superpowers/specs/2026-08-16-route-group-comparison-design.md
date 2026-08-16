@@ -208,7 +208,9 @@ tidak memasukkan rute yang pasti menghasilkan kolom kosong tanpa sadar.
 
 `originLabel` memakai `ORIGIN_LABELS` yang sudah ada, dengan fallback ke nilai asli untuk
 origin yang belum dipetakan. Konstanta itu saat ini tinggal di `pnl.service.ts`; dipindahkan
-ke `packages/shared` agar kedua modul memakai satu definisi tanpa saling impor.
+ke `apps/backend/src/common/utils/origin-labels.util.ts` agar kedua modul memakai satu definisi
+tanpa saling impor. Bukan ke `packages/shared`, karena frontend tidak pernah membutuhkannya —
+backend selalu mengirim `originLabel` yang sudah jadi.
 
 Validasi: nama wajib dan unik (pelanggaran unique constraint dipetakan menjadi 409), minimal
 satu rute, dan setiap rute yang dikirim harus ada di daftar `available-routes`.
