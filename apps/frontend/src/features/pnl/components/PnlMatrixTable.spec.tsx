@@ -128,6 +128,31 @@ describe('PnlMatrixTable cell clicks', () => {
     expect(firstBodyCell.querySelector('button')).toBeNull()
   })
 
+  it('keeps the incomplete-cost warning reachable on a clickable flagged cell', () => {
+    const model = baseModel({
+      values: [[100, 200]],
+      incompleteTos: [[0, 3]],
+    })
+    const { container } = render(
+      <PnlMatrixTable title="t" model={model} onCellClick={jest.fn()} />,
+    )
+    const buttons = container.querySelectorAll<HTMLButtonElement>('tbody button')
+    expect(buttons[1].title).toContain(INCOMPLETE_TOOLTIP(3))
+  })
+
+  it('does not mention incomplete costs on a clickable cell without them', () => {
+    const model = baseModel({
+      values: [[100, 200]],
+      incompleteTos: [[0, 0]],
+    })
+    const { container } = render(
+      <PnlMatrixTable title="t" model={model} onCellClick={jest.fn()} />,
+    )
+    const buttons = container.querySelectorAll<HTMLButtonElement>('tbody button')
+    expect(buttons[0].title).not.toContain('TO belum ada cost')
+    expect(buttons[1].title).not.toContain('TO belum ada cost')
+  })
+
   it('reports each row own date, not the first date in the model', () => {
     const onCellClick = jest.fn()
     const model = baseModel({

@@ -33,6 +33,14 @@ function incompleteTooltip(count: number): string | undefined {
     : undefined
 }
 
+// The button fills the whole cell, so its title is the only tooltip the hovering user ever reaches —
+// the incomplete-cost warning must be merged into it, not left on the (now-covered) <td>.
+function cellButtonTitle(incomplete: number): string {
+  const clickHint = 'Lihat AWB rute dan tanggal ini'
+  const tooltip = incompleteTooltip(incomplete)
+  return tooltip ? `${clickHint} — ${tooltip}` : clickHint
+}
+
 // Shared by body and footer cells so a negative total is styled the same way as a negative day.
 function valueClass(value: number | null, highlightNegative: boolean): string {
   if (value == null || value >= 0 || !highlightNegative) return ''
@@ -115,7 +123,7 @@ export function PnlMatrixTable({ title, model, defaultOpen = true, onCellClick }
                         {onCellClick ? (
                           <button
                             type="button"
-                            title="Lihat AWB rute dan tanggal ini"
+                            title={cellButtonTitle(incomplete)}
                             className="w-full px-3 py-1.5 text-right hover:bg-primary/10"
                             onClick={() => onCellClick(model.columns[colIndex], date)}
                           >
