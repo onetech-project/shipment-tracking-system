@@ -71,6 +71,18 @@ describe('PnlService', () => {
     })
   })
 
+  describe('getStations', () => {
+    it('orders by origin then destination so contiguous rows share an origin', async () => {
+      // groupOrigins (frontend dailyMatrix.ts) builds the Daily Report's origin header spans by
+      // merging CONSECUTIVE rows that share an origin label. Without this ORDER BY, station pairs
+      // for the same origin can come back interleaved and the header spans fracture silently.
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getStations()
+      const sql = dataSource.query.mock.calls[0][0]
+      expect(sql).toContain('ORDER BY 1, 2')
+    })
+  })
+
   describe('date basis filtering', () => {
     it('getSummary filters on the basis cycle column (cycle mode)', async () => {
       dataSource.query.mockResolvedValueOnce([{
