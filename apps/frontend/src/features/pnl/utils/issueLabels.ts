@@ -7,6 +7,7 @@ export const ISSUE_LABELS: Record<string, string> = {
   sgout_name_missing: 'SG Outgoing name not matched',
   revenue_missing: 'Revenue missing',
   sg_in_rate_missing: 'SG Incoming rate missing',
+  station_mapping_missing: 'Station mapping missing (DC pair not in air_shipments_data)',
   // legacy values (pre-component view) — kept so older payloads still render
   smu_lookup_failed: 'SMU rate not found',
   ra_lookup_failed: 'RA rate not found',
