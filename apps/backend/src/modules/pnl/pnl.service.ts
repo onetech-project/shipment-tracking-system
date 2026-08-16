@@ -48,6 +48,15 @@ export interface PnlAwbRow {
   issue: string | null
 }
 
+// Optional narrowing for the AWB drilldown. Every field is independent; supplying none leaves the
+// query exactly as it was before route filtering existed.
+export interface PnlRouteFilter {
+  origin?: string
+  dest?: string
+  dateFrom?: string // YYYY-MM-DD
+  dateTo?: string // YYYY-MM-DD, inclusive
+}
+
 export interface PnlToRow {
   toNumber: string
   grossWeight: number
@@ -297,12 +306,41 @@ export class PnlService {
     startDate?: string,
     endDate?: string,
     basis?: string,
+    route?: PnlRouteFilter,
   ): Promise<{ data: PnlAwbRow[]; total: number }> {
-    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate, 'v.')
+    // Same clause against the subquery alias. It reuses $1/$2, so no params are bound twice.
+    const inner = buildFilter(basis, cyclePeriod, startDate, endDate, 'm.')
+
+    // The route filter decides which AWBs are listed, not which TOs are summed: cost columns are
+    // MAX(cost_*_awb) over the whole AWB, so dropping TOs here would understate revenue against a
+    // full-AWB cost and invent losses. An AWB qualifies when any one of its TOs matches.
+    const routeParams: unknown[] = []
+    const routeConds: string[] = []
+    const bind = (value: unknown): string => {
+      routeParams.push(value)
+      return `$${params.length + routeParams.length}`
+    }
+    if (route?.origin) routeConds.push(`m.origin_station = ${bind(route.origin)}`)
+    if (route?.dest) routeConds.push(`m.dest_station = ${bind(route.dest)}`)
+    if (route?.dateFrom) routeConds.push(`${inner.dateCol} >= ${bind(route.dateFrom)}::DATE`)
+    if (route?.dateTo) {
+      routeConds.push(`${inner.dateCol} < ${bind(route.dateTo)}::DATE + INTERVAL '1 day'`)
+    }
+    const routeWhere = routeConds.length
+      ? `AND EXISTS (
+           SELECT 1 FROM v_pnl_to m
+           WHERE m.awb = v.awb
+             AND ${inner.where}
+             AND ${routeConds.join(' AND ')}
+         )`
+      : ''
+
     const offset = (page - 1) * limit
-    const dataParams = [...params, limit, offset]
-    const countParams = [...params]
-    const p = params.length
+    const filterParams = [...params, ...routeParams]
+    const dataParams = [...filterParams, limit, offset]
+    const countParams = [...filterParams]
+    const p = filterParams.length
 
     const [rows, countRows] = await Promise.all([
       this.dataSource.query(
@@ -328,8 +366,9 @@ export class PnlService {
                 WHEN 'ra_rate_missing' THEN 3 WHEN 'sgout_name_missing' THEN 4
                 WHEN 'revenue_missing' THEN 5 WHEN 'sg_in_rate_missing' THEN 6
               END)                                  AS issue_rank
-        FROM v_pnl_to
+        FROM v_pnl_to v
         WHERE ${where}
+        ${routeWhere}
         GROUP BY awb, vendor, airline
         ORDER BY SUM(revenue_total) DESC NULLS LAST
         LIMIT $${p + 1} OFFSET $${p + 2}
@@ -337,7 +376,7 @@ export class PnlService {
         dataParams,
       ),
       this.dataSource.query(
-        `SELECT COUNT(DISTINCT awb)::int AS total FROM v_pnl_to WHERE ${where}`,
+        `SELECT COUNT(DISTINCT awb)::int AS total FROM v_pnl_to v WHERE ${where} ${routeWhere}`,
         countParams,
       ),
     ])

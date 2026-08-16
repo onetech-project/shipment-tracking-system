@@ -201,6 +201,71 @@ describe('PnlService', () => {
       const { data } = await service.getAwbDrilldown(1, 50)
       expect(data[0].chwt).toBeNull()
     })
+
+    // The route filter picks which AWBs appear; it must never shrink the set of TOs aggregated for
+    // a chosen AWB, because cost columns are MAX(cost_*_awb) over the whole AWB.
+    function mockEmptyPage() {
+      dataSource.query
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ total: '0' }])
+    }
+
+    it('assembles no EXISTS clause when no route field is given', async () => {
+      mockEmptyPage()
+      await service.getAwbDrilldown(1, 50, '2026-04-2H')
+      const [sql, params] = dataSource.query.mock.calls[0]
+      expect(sql).not.toContain('EXISTS')
+      expect(params).toEqual(['2026-04-2H', 50, 0])
+    })
+
+    it('filters by origin through an EXISTS semi-join on the same AWB', async () => {
+      mockEmptyPage()
+      await service.getAwbDrilldown(1, 50, '2026-04-2H', undefined, undefined, undefined, {
+        origin: 'Jabo',
+      })
+      const [sql, params] = dataSource.query.mock.calls[0]
+      expect(sql).toContain('EXISTS (')
+      expect(sql).toContain('m.awb = v.awb')
+      expect(sql).toContain('m.origin_station = $2')
+      // The period filter is re-applied inside the subquery, reusing $1 rather than rebinding it.
+      expect(sql).toContain('m.cycle_ata = $1')
+      expect(params).toEqual(['2026-04-2H', 'Jabo', 50, 0])
+    })
+
+    it('filters by destination and date range together, ending exclusive on the next day', async () => {
+      mockEmptyPage()
+      await service.getAwbDrilldown(1, 50, '2026-04-2H', undefined, undefined, undefined, {
+        dest: 'Tanjung Pinang',
+        dateFrom: '2026-05-01',
+        dateTo: '2026-05-01',
+      })
+      const [sql, params] = dataSource.query.mock.calls[0]
+      expect(sql).toContain('m.dest_station = $2')
+      expect(sql).toContain('m.date_ata >= $3::DATE')
+      expect(sql).toContain("m.date_ata < $4::DATE + INTERVAL '1 day'")
+      expect(params).toEqual(['2026-04-2H', 'Tanjung Pinang', '2026-05-01', '2026-05-01', 50, 0])
+    })
+
+    it('uses the date column of the selected basis inside the subquery', async () => {
+      mockEmptyPage()
+      await service.getAwbDrilldown(1, 50, '2026-04-2H', undefined, undefined, 'atd_origin', {
+        dateFrom: '2026-05-01',
+      })
+      const [sql] = dataSource.query.mock.calls[0]
+      expect(sql).toContain('m.date_atd >= $2::DATE')
+    })
+
+    it('applies the identical WHERE clause to the count query so paging matches', async () => {
+      mockEmptyPage()
+      await service.getAwbDrilldown(2, 50, '2026-04-2H', undefined, undefined, undefined, {
+        origin: 'Jabo',
+      })
+      const [countSql, countParams] = dataSource.query.mock.calls[1]
+      expect(countSql).toContain('COUNT(DISTINCT awb)')
+      expect(countSql).toContain('m.origin_station = $2')
+      // No LIMIT/OFFSET params on the count query.
+      expect(countParams).toEqual(['2026-04-2H', 'Jabo'])
+    })
   })
 
   describe('getAwbTos', () => {
