@@ -195,6 +195,48 @@ export interface PnlDailyMatrix {
   periodDays: number
 }
 
+export interface PnlGroupComparisonColumn {
+  id: string
+  name: string
+  routeCount: number
+}
+
+export interface PnlGroupComparisonCell {
+  revenue: number
+  cost: number
+  // The four components are prorated to TO level and, thanks to the FILTER clauses in the query,
+  // always sum exactly to `cost`. Anything else means the filters were dropped.
+  costSmu: number
+  costRa: number
+  costSgOut: number
+  costSgIn: number
+  incompleteTos: number // TOs with no computable cost; `cost` here is understated
+}
+
+export interface PnlGroupComparisonRow {
+  date: string // YYYY-MM-DD
+  cells: (PnlGroupComparisonCell | null)[] // index-aligned with columns; null = no shipment at all
+}
+
+export interface PnlGroupComparisonFooter {
+  totalRevenue: number
+  totalCost: number
+  totalCostSmu: number
+  totalCostRa: number
+  totalCostSgOut: number
+  totalCostSgIn: number
+  avgRevenuePerDay: number
+  avgCostPerDay: number
+  incompleteTos: number
+}
+
+export interface PnlGroupComparison {
+  columns: PnlGroupComparisonColumn[]
+  rows: PnlGroupComparisonRow[]
+  footer: PnlGroupComparisonFooter[] // index-aligned with columns
+  periodDays: number
+}
+
 @Injectable()
 export class PnlService {
   constructor(private readonly dataSource: DataSource) {}
@@ -899,6 +941,139 @@ export class PnlService {
         avgMarginPerDay: totalMargin / periodDays,
         marginPct: totalRevenue > 0 ? (totalMargin / totalRevenue) * 100 : null,
         spacePerKg: totalWeight > 0 ? totalMargin / totalWeight : null,
+        incompleteTos,
+      }
+    })
+
+    return { columns, rows, footer, periodDays }
+  }
+
+  // Revenue and cost per calendar day for each selected route group, behind the "Group Comparison"
+  // tab. Columns are the groups the user picked, in the order they picked them.
+  //
+  // The join to route_group_routes is what makes overlapping groups work: a TO on a route that
+  // belongs to three groups produces three joined rows and lands in all three columns. That is
+  // deliberate — each column is an independent question, and the columns are not a partition of
+  // the period, so they do not sum to a period total.
+  async getGroupComparison(
+    groupIds: string[],
+    cyclePeriod?: string,
+    startDate?: string,
+    endDate?: string,
+    basis?: string,
+  ): Promise<PnlGroupComparison> {
+    const dates = calendarDatesForFilter(cyclePeriod, startDate, endDate)
+    const periodDays = Math.max(1, dates.length)
+
+    if (groupIds.length === 0) {
+      return { columns: [], rows: [], footer: [], periodDays }
+    }
+
+    const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate, 'v.')
+
+    const columnRows = await this.dataSource.query(
+      `
+      SELECT g.id, g.name, COUNT(r.route_group_id)::int AS route_count
+      FROM route_groups g
+      LEFT JOIN route_group_routes r ON r.route_group_id = g.id
+      WHERE g.id = ANY($1::uuid[])
+      GROUP BY g.id, g.name
+      `,
+      [groupIds],
+    )
+
+    // Ordered by the caller's selection, not by name: the table columns should appear in the order
+    // the user ticked the groups.
+    const byId = new Map(
+      (columnRows as Record<string, string>[]).map((r) => [
+        r.id,
+        { id: r.id, name: r.name, routeCount: Number(r.route_count) },
+      ]),
+    )
+    const columns: PnlGroupComparisonColumn[] = groupIds
+      .map((id) => byId.get(id))
+      .filter((c): c is PnlGroupComparisonColumn => c !== undefined)
+
+    const factRows = await this.dataSource.query(
+      `
+      SELECT
+        TO_CHAR(v.${dateCol}::DATE, 'YYYY-MM-DD')                    AS d,
+        r.route_group_id                                             AS gid,
+        COALESCE(SUM(v.revenue_total), 0)                            AS revenue,
+        COALESCE(SUM(v.cost_to), 0)                                  AS cost,
+        COALESCE(SUM(v.cost_smu_awb    * v.weight_share)
+                 FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_smu,
+        COALESCE(SUM(v.cost_ra_awb     * v.weight_share)
+                 FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_ra,
+        COALESCE(SUM(v.cost_sg_out_awb * v.weight_share)
+                 FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_sg_out,
+        COALESCE(SUM(COALESCE(v.cost_sg_in_to, 0))
+                 FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_sg_in,
+        COUNT(*) FILTER (WHERE v.cost_to IS NULL)::int               AS incomplete_tos
+      FROM v_pnl_to v
+      JOIN route_group_routes r
+        ON r.origin_station = v.origin_station
+       AND r.dest_station   = v.dest_station
+      WHERE ${where}
+        AND v.${dateCol} IS NOT NULL
+        AND r.route_group_id = ANY($${params.length + 1}::uuid[])
+      GROUP BY 1, 2
+      `,
+      [...params, groupIds],
+    )
+
+    const columnIndex = new Map(columns.map((c, i) => [c.id, i]))
+
+    const rows: PnlGroupComparisonRow[] = dates.map((date) => ({
+      date,
+      cells: columns.map(() => null),
+    }))
+    const rowIndex = new Map(rows.map((r, i) => [r.date, i]))
+
+    for (const factRow of factRows as Record<string, string>[]) {
+      const ci = columnIndex.get(factRow.gid)
+      const ri = rowIndex.get(factRow.d)
+      if (ci === undefined || ri === undefined) continue
+      rows[ri].cells[ci] = {
+        revenue: Number(factRow.revenue),
+        cost: Number(factRow.cost),
+        costSmu: Number(factRow.cost_smu),
+        costRa: Number(factRow.cost_ra),
+        costSgOut: Number(factRow.cost_sg_out),
+        costSgIn: Number(factRow.cost_sg_in),
+        incompleteTos: Number(factRow.incomplete_tos),
+      }
+    }
+
+    const footer: PnlGroupComparisonFooter[] = columns.map((_, ci) => {
+      let totalRevenue = 0
+      let totalCost = 0
+      let totalCostSmu = 0
+      let totalCostRa = 0
+      let totalCostSgOut = 0
+      let totalCostSgIn = 0
+      let incompleteTos = 0
+      for (const row of rows) {
+        const cell = row.cells[ci]
+        if (!cell) continue
+        totalRevenue += cell.revenue
+        totalCost += cell.cost
+        totalCostSmu += cell.costSmu
+        totalCostRa += cell.costRa
+        totalCostSgOut += cell.costSgOut
+        totalCostSgIn += cell.costSgIn
+        incompleteTos += cell.incompleteTos
+      }
+      return {
+        totalRevenue,
+        totalCost,
+        totalCostSmu,
+        totalCostRa,
+        totalCostSgOut,
+        totalCostSgIn,
+        // Divided by calendar days, not by days that happened to have shipments.
+        avgRevenuePerDay: totalRevenue / periodDays,
+        avgCostPerDay: totalCost / periodDays,
         incompleteTos,
       }
     })

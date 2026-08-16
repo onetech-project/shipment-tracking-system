@@ -622,4 +622,181 @@ describe('PnlService', () => {
       expect(columnParams).toBeUndefined()
     })
   })
+
+  describe('getGroupComparison', () => {
+    // The column query resolves group names; the fact query returns one row per (date, group).
+    function mockQueries(
+      columns: { id: string; name: string; route_count: string }[],
+      facts: Record<string, string>[],
+    ) {
+      dataSource.query.mockResolvedValueOnce(columns).mockResolvedValueOnce(facts)
+    }
+
+    const fact = (over: Partial<Record<string, string>>) => ({
+      d: '2026-05-01',
+      gid: 'g1',
+      revenue: '0',
+      cost: '0',
+      cost_smu: '0',
+      cost_ra: '0',
+      cost_sg_out: '0',
+      cost_sg_in: '0',
+      incomplete_tos: '0',
+      ...over,
+    })
+
+    it('returns nothing and touches no database when no groups are selected', async () => {
+      const result = await service.getGroupComparison([], '2026-05-1H')
+
+      expect(dataSource.query).not.toHaveBeenCalled()
+      expect(result).toEqual({ columns: [], rows: [], footer: [], periodDays: 15 })
+    })
+
+    it('aligns cells with columns and leaves untouched pairs null', async () => {
+      mockQueries(
+        [
+          { id: 'g1', name: 'Kalimantan', route_count: '3' },
+          { id: 'g2', name: 'Sumatera', route_count: '2' },
+        ],
+        [fact({ d: '2026-05-01', gid: 'g2', revenue: '500', cost: '400' })],
+      )
+
+      const result = await service.getGroupComparison(['g1', 'g2'], '2026-05-1H')
+
+      expect(result.columns).toEqual([
+        { id: 'g1', name: 'Kalimantan', routeCount: 3 },
+        { id: 'g2', name: 'Sumatera', routeCount: 2 },
+      ])
+      const firstRow = result.rows[0]
+      expect(firstRow.date).toBe('2026-05-01')
+      expect(firstRow.cells[0]).toBeNull()
+      expect(firstRow.cells[1]).toEqual({
+        revenue: 500,
+        cost: 400,
+        costSmu: 0,
+        costRa: 0,
+        costSgOut: 0,
+        costSgIn: 0,
+        incompleteTos: 0,
+      })
+    })
+
+    it('returns a calendar-complete set of rows for a 1H cycle', async () => {
+      mockQueries([{ id: 'g1', name: 'A', route_count: '1' }], [])
+
+      const result = await service.getGroupComparison(['g1'], '2026-05-1H')
+
+      expect(result.rows).toHaveLength(15)
+      expect(result.rows[0].date).toBe('2026-05-01')
+      expect(result.rows[14].date).toBe('2026-05-15')
+      expect(result.rows.every((r) => r.cells[0] === null)).toBe(true)
+      expect(result.periodDays).toBe(15)
+    })
+
+    // The regression guard for the FILTER (WHERE cost_to IS NOT NULL) clauses. Measured over the
+    // whole view the four components sum to SUM(cost_to) with a residual of exactly 0; if the
+    // filters are ever dropped the components would exceed the cell that expands into them.
+    it('keeps the four cost components summing to the cell cost', async () => {
+      mockQueries(
+        [{ id: 'g1', name: 'A', route_count: '1' }],
+        [
+          fact({
+            cost: '14970000',
+            cost_smu: '12400000',
+            cost_ra: '850000',
+            cost_sg_out: '1100000',
+            cost_sg_in: '620000',
+          }),
+        ],
+      )
+
+      const cell = (await service.getGroupComparison(['g1'], '2026-05-1H')).rows[0].cells[0]!
+
+      expect(cell.costSmu + cell.costRa + cell.costSgOut + cell.costSgIn).toBe(cell.cost)
+    })
+
+    it('emits the FILTER clause that makes the components reconcile', async () => {
+      mockQueries([{ id: 'g1', name: 'A', route_count: '1' }], [])
+
+      await service.getGroupComparison(['g1'], '2026-05-1H')
+
+      const factSql = dataSource.query.mock.calls[1][0] as string
+      expect(factSql).toContain('FILTER (WHERE v.cost_to IS NOT NULL)')
+      expect(factSql).toContain('JOIN route_group_routes r')
+    })
+
+    // Overlap is the whole point of the join: a TO on a route in two groups lands in both columns
+    // and the columns deliberately do not sum to a period total.
+    it('counts a shared route in every group that holds it', async () => {
+      mockQueries(
+        [
+          { id: 'g1', name: 'A', route_count: '1' },
+          { id: 'g2', name: 'B', route_count: '1' },
+        ],
+        [
+          fact({ gid: 'g1', revenue: '1000', cost: '800' }),
+          fact({ gid: 'g2', revenue: '1000', cost: '800' }),
+        ],
+      )
+
+      const row = (await service.getGroupComparison(['g1', 'g2'], '2026-05-1H')).rows[0]
+
+      expect(row.cells[0]!.revenue).toBe(1000)
+      expect(row.cells[1]!.revenue).toBe(1000)
+    })
+
+    it('totals the footer and divides averages by the calendar period', async () => {
+      mockQueries(
+        [{ id: 'g1', name: 'A', route_count: '1' }],
+        [
+          fact({
+            d: '2026-05-01',
+            revenue: '1500',
+            cost: '900',
+            cost_smu: '600',
+            cost_ra: '100',
+            cost_sg_out: '150',
+            cost_sg_in: '50',
+            incomplete_tos: '2',
+          }),
+          fact({
+            d: '2026-05-02',
+            revenue: '1500',
+            cost: '900',
+            cost_smu: '600',
+            cost_ra: '100',
+            cost_sg_out: '150',
+            cost_sg_in: '50',
+            incomplete_tos: '3',
+          }),
+        ],
+      )
+
+      const footer = (await service.getGroupComparison(['g1'], '2026-05-1H')).footer[0]
+
+      expect(footer).toEqual({
+        totalRevenue: 3000,
+        totalCost: 1800,
+        totalCostSmu: 1200,
+        totalCostRa: 200,
+        totalCostSgOut: 300,
+        totalCostSgIn: 100,
+        avgRevenuePerDay: 200, // 3000 / 15 calendar days, not / 2 days with data
+        avgCostPerDay: 120,
+        incompleteTos: 5,
+      })
+    })
+
+    it('drops fact rows for dates outside the period rather than throwing', async () => {
+      mockQueries(
+        [{ id: 'g1', name: 'A', route_count: '1' }],
+        [fact({ d: '2026-06-01', revenue: '999' })],
+      )
+
+      const result = await service.getGroupComparison(['g1'], '2026-05-1H')
+
+      expect(result.rows.every((r) => r.cells[0] === null)).toBe(true)
+      expect(result.footer[0].totalRevenue).toBe(0)
+    })
+  })
 })

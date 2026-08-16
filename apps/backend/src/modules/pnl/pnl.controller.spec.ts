@@ -12,6 +12,7 @@ const mockService = {
   getAwbDrilldown: jest.fn(),
   getDataQuality: jest.fn(),
   getDailyMatrix: jest.fn(),
+  getGroupComparison: jest.fn(),
 }
 
 describe('PnlController', () => {
@@ -96,5 +97,49 @@ describe('PnlController', () => {
       1, 50, '2026-04-2H', undefined, undefined, undefined,
       { origin: undefined, dest: undefined, dateFrom: undefined, dateTo: undefined },
     )
+  })
+
+  describe('getGroupComparison', () => {
+    it('splits groupIds into an array and forwards the period', async () => {
+      mockService.getGroupComparison.mockResolvedValueOnce({})
+
+      await controller.getGroupComparison('g1,g2', '2026-05-1H', undefined, undefined, 'atd_origin')
+
+      expect(mockService.getGroupComparison).toHaveBeenCalledWith(
+        ['g1', 'g2'],
+        '2026-05-1H',
+        undefined,
+        undefined,
+        'atd_origin',
+      )
+    })
+
+    it('trims whitespace and drops empty ids', async () => {
+      mockService.getGroupComparison.mockResolvedValueOnce({})
+
+      await controller.getGroupComparison(' g1 , ,g2 ', '2026-05-1H')
+
+      expect(mockService.getGroupComparison).toHaveBeenCalledWith(
+        ['g1', 'g2'],
+        '2026-05-1H',
+        undefined,
+        undefined,
+        undefined,
+      )
+    })
+
+    it('sends an empty array when groupIds is absent', async () => {
+      mockService.getGroupComparison.mockResolvedValueOnce({})
+
+      await controller.getGroupComparison(undefined, '2026-05-1H')
+
+      expect(mockService.getGroupComparison).toHaveBeenCalledWith(
+        [],
+        '2026-05-1H',
+        undefined,
+        undefined,
+        undefined,
+      )
+    })
   })
 })
