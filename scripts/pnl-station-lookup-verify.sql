@@ -36,8 +36,13 @@ SELECT COALESCE(issue, '(none)') AS issue, count(*) AS rows
 FROM v_pnl_to GROUP BY 1 ORDER BY 1;
 
 \echo '== 6. rows with no station at all =='
+-- Blank vs NULL must count the same on both sides of the migration: the `compile` CTE
+-- converts '' to NULL, so a source row holding an empty string counts as 0 here before the
+-- migration and 1 after, if compared naively -- read as a regression that isn't one.
+-- BTRIM + NULLIF makes blank and NULL count alike on both sides.
 SELECT count(*) AS rows_without_station
-FROM v_pnl_to WHERE origin_station IS NULL OR dest_station IS NULL;
+FROM v_pnl_to
+WHERE NULLIF(BTRIM(origin_station), '') IS NULL OR NULLIF(BTRIM(dest_station), '') IS NULL;
 
 \echo '== 7. view output shape (names and order must be identical) =='
 -- information_schema.columns does NOT cover materialized views (PostgreSQL
@@ -51,3 +56,24 @@ WHERE c.relname = 'v_pnl_to'
   AND a.attnum > 0
   AND NOT a.attisdropped
 ORDER BY a.attnum;
+
+\echo '== 8. pre-deploy sanity check: air_shipments_data.service values =='
+-- station_map filters WHERE service = 'Air', an exact match. If staging stores 'air', 'AIR', or
+-- a trailing space, this CTE comes back empty and the migration succeeds while fixing nothing.
+-- Locally this must show exactly 'Air' 55 / 'Sea' 21, with no other spellings.
+SELECT service, count(*) AS rows FROM air_shipments_data GROUP BY 1 ORDER BY 1;
+
+\echo '== 9. sheet vs master disagreement (rows where both have a station and they differ) =='
+-- The design lets the master override a populated sheet value. This is the one number that
+-- separates "filled a gap" from "silently rewrote a route": rows where the sheet AND the master
+-- both have a non-blank station for the same DC pair (keyed the same way station_map keys its
+-- join), but the values differ. Locally this must be 0 -- lookup and sheet agree everywhere.
+SELECT count(*) AS rows_where_sheet_and_master_disagree
+FROM air_shipments_compileaircgk c
+JOIN air_shipments_data d
+  ON BTRIM(d.origin_dc)      = BTRIM(c.extra_fields->>'origin')
+ AND BTRIM(d.destination_dc) = BTRIM(c.extra_fields->>'destination')
+ AND d.service = 'Air'
+WHERE NULLIF(BTRIM(c.extra_fields->>'origin_station'), '') IS NOT NULL
+  AND NULLIF(BTRIM(d.extra_fields->>'origin_station'), '') IS NOT NULL
+  AND BTRIM(c.extra_fields->>'origin_station') IS DISTINCT FROM BTRIM(d.extra_fields->>'origin_station');
