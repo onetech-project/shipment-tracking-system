@@ -711,5 +711,43 @@ differences that are the fix working:
 The row count and the Tanjung Pinang line must NOT move in either environment. If they grow, a
 duplicate DC pair slipped past `station_map` and revenue is being double-counted — revert.
 
-**Finance must be told that June–August margins will change on deploy.** They are corrections, not
-anomalies.
+### Run these BEFORE deploying
+
+Both are sections of `scripts/pnl-station-lookup-verify.sql`, and both answer a question the local
+database cannot.
+
+**1. Check the master's `service` values.** The lookup is an exact `service = 'Air'` match. If
+staging or production stores `'air'`, `'AIR'`, or a value with a trailing space, `station_map`
+comes back empty, `COALESCE` falls through to the sheet, and the migration succeeds with **no
+error while fixing nothing**. Expect `Air` and `Sea` exactly.
+
+**2. Check the sheet-vs-master disagreement count.** The design lets the master overwrite a
+populated sheet value, so this is the one number separating a gap-fill from a silently rewritten
+route. It is 0 locally. If staging returns a non-zero count, inspect those rows before deploying —
+a DC that moved station would rewrite history for shipments that flew under the old mapping.
+
+### What moves, and in which direction
+
+June–August margins move **both ways**, and finance must be told these are corrections, not
+anomalies:
+
+- `cost_sg_in_to` goes NULL → value for every newly resolved row, so `cost_to` and the Total Cost
+  KPI **rise** and margin **falls** on non-Surabaya routes;
+- Surabaya-origin rows shed a wrongly charged RA, switch SG Out branch, and lose the 5,000 admin
+  default, so their margin **rises**.
+
+The most visible symptom is a disagreement disappearing: blank-station rows counted toward the KPI
+cards but had no Daily Report column, so the two never reconciled. After deploy they do.
+
+### Settlement is safe
+
+`pnl-settlement` shares this view but only ever writes `actual_revenue`; `actual_cost` is populated
+by no code path, and `var_revenue = actual_revenue − revenue_total` touches nothing the station
+feeds. Settled rows simply gain a route in the comparison table — **no stored actual is
+invalidated.**
+
+### Downtime
+
+The migration DROPs and recreates the materialized view and its 8 indexes, so `v_pnl_to` is
+unavailable for the duration and every PnL page errors while it runs. Deploy outside dashboard
+hours. `down()` restores the previous definition verbatim and has been exercised end to end.
