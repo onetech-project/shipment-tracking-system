@@ -1,8 +1,8 @@
 import React from 'react'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { PnlGroupComparisonView } from './PnlGroupComparisonView'
-import { PnlFilter } from '../hooks/usePnl'
+import { PnlFilter, PnlGroupComparison } from '../hooks/usePnl'
 
 jest.mock('../hooks/usePnl', () => ({
   ...jest.requireActual('../hooks/usePnl'),
@@ -82,4 +82,129 @@ it('tells the user when no groups exist yet', () => {
   render(<PnlGroupComparisonView filter={filter} />)
 
   expect(screen.getByText(/belum ada route group/i)).toBeInTheDocument()
+})
+
+// A realistic backend payload: two columns, two date rows (one row has a null cell for a group
+// with no shipments that day), and a footer with both a Total and an Avg / Day entry. This is the
+// only test that lets data flow through toComparisonTable into the real PnlGroupComparisonTable —
+// every other test in this file mocks usePnlGroupComparison with data: undefined.
+const comparisonData: PnlGroupComparison = {
+  columns: [
+    { id: 'g1', name: 'Kalimantan', routeCount: 2 },
+    { id: 'g2', name: 'Sumatera', routeCount: 1 },
+  ],
+  rows: [
+    {
+      date: '2026-05-01',
+      cells: [
+        {
+          revenue: 1500000,
+          cost: 900000,
+          costSmu: 400000,
+          costRa: 300000,
+          costSgOut: 100000,
+          costSgIn: 100000,
+          incompleteTos: 0,
+        },
+        null,
+      ],
+    },
+    {
+      date: '2026-05-02',
+      cells: [
+        {
+          revenue: 2000000,
+          cost: 1000000,
+          costSmu: 500000,
+          costRa: 300000,
+          costSgOut: 100000,
+          costSgIn: 100000,
+          incompleteTos: 1,
+        },
+        {
+          revenue: 800000,
+          cost: 400000,
+          costSmu: 200000,
+          costRa: 100000,
+          costSgOut: 50000,
+          costSgIn: 50000,
+          incompleteTos: 0,
+        },
+      ],
+    },
+  ],
+  footer: [
+    {
+      totalRevenue: 3500000,
+      totalCost: 1900000,
+      totalCostSmu: 900000,
+      totalCostRa: 600000,
+      totalCostSgOut: 200000,
+      totalCostSgIn: 200000,
+      avgRevenuePerDay: 1750000,
+      avgCostPerDay: 950000,
+      incompleteTos: 1,
+    },
+    {
+      totalRevenue: 800000,
+      totalCost: 400000,
+      totalCostSmu: 200000,
+      totalCostRa: 100000,
+      totalCostSgOut: 50000,
+      totalCostSgIn: 50000,
+      avgRevenuePerDay: 800000,
+      avgCostPerDay: 400000,
+      incompleteTos: 0,
+    },
+  ],
+  periodDays: 2,
+}
+
+it('renders the comparison table from a real payload via toComparisonTable', () => {
+  ;(usePnlGroupComparison as jest.Mock).mockReturnValue({
+    data: comparisonData,
+    isLoading: false,
+    isError: false,
+    refetch: jest.fn(),
+  })
+  render(<PnlGroupComparisonView filter={filter} />)
+
+  // Selecting groups only drives the mocked hook's arguments here — its return value is fixed
+  // above — but the table only renders once selectedIds is non-empty.
+  fireEvent.click(screen.getByLabelText(/Kalimantan/))
+  fireEvent.click(screen.getByLabelText(/Sumatera/))
+
+  const table = screen.getByRole('table')
+  // Each group name must appear twice: once as the Revenue block header, once as the Cost block
+  // header. A prop-shape regression (e.g. passing raw data instead of toComparisonTable(data))
+  // would either throw or leave these headers empty.
+  expect(within(table).getAllByText('Kalimantan')).toHaveLength(2)
+  expect(within(table).getAllByText('Sumatera')).toHaveLength(2)
+
+  // A known body value from the payload, formatted by the real table component.
+  expect(screen.getByTestId('revenue-2026-05-01-g1')).toHaveTextContent('1.500.000')
+  // The null cell for g2 on 2026-05-01 renders as the missing-value marker, not a blank or a 0.
+  expect(screen.getByTestId('revenue-2026-05-01-g2')).toHaveTextContent('—')
+
+  // The footer carries both rows the projection always produces.
+  expect(within(table).getByText('Total')).toBeInTheDocument()
+  expect(within(table).getByText('Avg / Day')).toBeInTheDocument()
+  expect(screen.getByText('1.750.000')).toBeInTheDocument() // g1 avgRevenuePerDay
+})
+
+it('sends selected group ids to usePnlGroupComparison in click order, moving a reselected group to the end', () => {
+  render(<PnlGroupComparisonView filter={filter} />)
+
+  const latestSelectedIds = () => {
+    const calls = (usePnlGroupComparison as jest.Mock).mock.calls
+    return calls[calls.length - 1][1]
+  }
+
+  fireEvent.click(screen.getByLabelText(/Kalimantan/)) // g1
+  fireEvent.click(screen.getByLabelText(/Sumatera/)) // g2
+  expect(latestSelectedIds()).toEqual(['g1', 'g2'])
+
+  fireEvent.click(screen.getByLabelText(/Kalimantan/)) // deselect g1
+  fireEvent.click(screen.getByLabelText(/Kalimantan/)) // reselect g1 -> appended, not resorted
+  expect(latestSelectedIds()).toEqual(['g2', 'g1'])
 })
