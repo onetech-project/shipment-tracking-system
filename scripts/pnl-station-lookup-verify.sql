@@ -40,6 +40,14 @@ SELECT count(*) AS rows_without_station
 FROM v_pnl_to WHERE origin_station IS NULL OR dest_station IS NULL;
 
 \echo '== 7. view output shape (names and order must be identical) =='
-SELECT ordinal_position, column_name
-FROM information_schema.columns
-WHERE table_name = 'v_pnl_to' ORDER BY ordinal_position;
+-- information_schema.columns does NOT cover materialized views (PostgreSQL
+-- limitation), so it silently returns 0 rows here and this check would
+-- "pass" even if every column were renamed. Query the system catalogue
+-- (pg_attribute/pg_class) instead -- it does cover materialized views.
+SELECT a.attnum AS ordinal_position, a.attname AS column_name
+FROM pg_attribute a
+JOIN pg_class c ON c.oid = a.attrelid
+WHERE c.relname = 'v_pnl_to'
+  AND a.attnum > 0
+  AND NOT a.attisdropped
+ORDER BY a.attnum;
