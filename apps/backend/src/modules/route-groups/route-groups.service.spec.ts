@@ -8,13 +8,25 @@ import { RouteGroupRouteEntity } from './entities/route-group-route.entity'
 describe('RouteGroupsService', () => {
   let service: RouteGroupsService
   let dataSource: { query: jest.Mock }
-  let groupRepo: { findOne: jest.Mock }
-  let routeRepo: Record<string, jest.Mock>
+  let groupRepo: {
+    findOne: jest.Mock
+    create: jest.Mock
+    save: jest.Mock
+    update: jest.Mock
+    delete: jest.Mock
+  }
+  let routeRepo: { delete: jest.Mock; insert: jest.Mock }
 
   beforeEach(async () => {
     dataSource = { query: jest.fn() }
-    groupRepo = { findOne: jest.fn() }
-    routeRepo = {}
+    groupRepo = {
+      findOne: jest.fn(),
+      create: jest.fn((v) => v),
+      save: jest.fn(async (v) => ({ id: 'new-id', ...v })),
+      update: jest.fn(),
+      delete: jest.fn(),
+    }
+    routeRepo = { delete: jest.fn(), insert: jest.fn() }
     const module = await Test.createTestingModule({
       providers: [
         RouteGroupsService,
@@ -50,6 +62,84 @@ describe('RouteGroupsService', () => {
     it('returns an empty list when the master has no Air rows', async () => {
       dataSource.query.mockResolvedValueOnce([])
       await expect(service.getAvailableRoutes()).resolves.toEqual([])
+    })
+  })
+
+  describe('findAll', () => {
+    it('returns each group with its routes, labelled', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { id: 'g1', name: 'Kalimantan', description: null, origin: 'Jabo', dest: 'Balikpapan' },
+        { id: 'g1', name: 'Kalimantan', description: null, origin: 'Surabaya', dest: 'Pontianak' },
+        { id: 'g2', name: 'Sumatera', description: 'pulau', origin: 'Jabo', dest: 'Batam' },
+      ])
+
+      const result = await service.findAll()
+
+      expect(result).toEqual([
+        {
+          id: 'g1',
+          name: 'Kalimantan',
+          description: null,
+          routes: [
+            { origin: 'Jabo', originLabel: 'CGK', dest: 'Balikpapan' },
+            { origin: 'Surabaya', originLabel: 'SUB', dest: 'Pontianak' },
+          ],
+        },
+        {
+          id: 'g2',
+          name: 'Sumatera',
+          description: 'pulau',
+          routes: [{ origin: 'Jabo', originLabel: 'CGK', dest: 'Batam' }],
+        },
+      ])
+    })
+
+    it('returns an empty array when there are no groups', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+      await expect(service.findAll()).resolves.toEqual([])
+    })
+  })
+
+  describe('create', () => {
+    // A route the master does not know about can never produce numbers, so it is rejected at the
+    // door rather than silently stored.
+    it('rejects a route that is not in the master list', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { origin: 'Jabo', dest: 'Aceh', has_data: true },
+      ])
+
+      await expect(
+        service.create({ name: 'Bad', routes: [{ origin: 'Jabo', dest: 'Nowhere' }] }),
+      ).rejects.toThrow('Unknown route: Jabo → Nowhere')
+    })
+
+    it('rejects a duplicate name with a conflict', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { origin: 'Jabo', dest: 'Aceh', has_data: true },
+      ])
+      groupRepo.findOne.mockResolvedValueOnce({ id: 'existing', name: 'Kalimantan' })
+
+      await expect(
+        service.create({ name: 'Kalimantan', routes: [{ origin: 'Jabo', dest: 'Aceh' }] }),
+      ).rejects.toThrow('A route group named "Kalimantan" already exists')
+    })
+  })
+
+  describe('update', () => {
+    it('throws when the group does not exist', async () => {
+      groupRepo.findOne.mockResolvedValueOnce(null)
+
+      await expect(service.update('missing', { name: 'X' })).rejects.toThrow(
+        'Route group not found',
+      )
+    })
+  })
+
+  describe('remove', () => {
+    it('throws when the group does not exist', async () => {
+      groupRepo.findOne.mockResolvedValueOnce(null)
+
+      await expect(service.remove('missing')).rejects.toThrow('Route group not found')
     })
   })
 })

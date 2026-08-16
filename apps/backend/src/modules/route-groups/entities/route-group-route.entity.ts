@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryColumn } from 'typeorm'
+import { Entity, PrimaryColumn } from 'typeorm'
 
 // Composite primary key across all three columns: a route may appear in many groups, and a group
 // may hold many routes, but the same route twice in one group is meaningless.
