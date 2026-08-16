@@ -33,8 +33,6 @@ export class RouteGroupsService {
     private readonly dataSource: DataSource,
     @InjectRepository(RouteGroupEntity)
     private readonly groupRepo: Repository<RouteGroupEntity>,
-    @InjectRepository(RouteGroupRouteEntity)
-    private readonly routeRepo: Repository<RouteGroupRouteEntity>,
   ) {}
 
   // Selectable routes come from the DC-pair master rather than from v_pnl_to, so a route can be
@@ -132,21 +130,26 @@ export class RouteGroupsService {
     if (dto.routes) await this.assertRoutesExist(dto.routes)
     if (dto.name && dto.name !== existing.name) await this.assertNameFree(dto.name)
 
-    try {
-      await this.dataSource.transaction(async (manager) => {
-        const patch: Partial<Pick<RouteGroupEntity, 'name' | 'description'>> = {}
-        if (dto.name) patch.name = dto.name
-        if (dto.description !== undefined) {
-          patch.description = this.normalizeDescription(dto.description)
-        }
-        if (Object.keys(patch).length > 0) {
-          await manager.getRepository(RouteGroupEntity).update(id, patch)
-        }
-        if (dto.routes) await this.replaceRoutes(manager, id, dto.routes)
-      })
-    } catch (err: unknown) {
-      this.throwIfNameUniqueViolation(err, dto.name ?? existing.name)
-      throw err
+    const patch: Partial<Pick<RouteGroupEntity, 'name' | 'description'>> = {}
+    if (dto.name) patch.name = dto.name
+    if (dto.description !== undefined) {
+      patch.description = this.normalizeDescription(dto.description)
+    }
+
+    // Nothing to write: skip the transaction rather than opening an empty BEGIN/COMMIT before the
+    // read-back below.
+    if (Object.keys(patch).length > 0 || dto.routes) {
+      try {
+        await this.dataSource.transaction(async (manager) => {
+          if (Object.keys(patch).length > 0) {
+            await manager.getRepository(RouteGroupEntity).update(id, patch)
+          }
+          if (dto.routes) await this.replaceRoutes(manager, id, dto.routes)
+        })
+      } catch (err: unknown) {
+        this.throwIfNameUniqueViolation(err, dto.name ?? existing.name)
+        throw err
+      }
     }
 
     return this.findOneOrThrow(id)

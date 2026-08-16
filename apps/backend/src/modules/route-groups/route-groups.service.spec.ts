@@ -3,7 +3,6 @@ import { DataSource, EntityManager } from 'typeorm'
 import { getRepositoryToken } from '@nestjs/typeorm'
 import { RouteGroupsService } from './route-groups.service'
 import { RouteGroupEntity } from './entities/route-group.entity'
-import { RouteGroupRouteEntity } from './entities/route-group-route.entity'
 
 describe('RouteGroupsService', () => {
   let service: RouteGroupsService
@@ -16,7 +15,11 @@ describe('RouteGroupsService', () => {
     update: jest.Mock
     delete: jest.Mock
   }
-  let routeRepo: { delete: jest.Mock; insert: jest.Mock }
+  // Repos handed out by the transactional EntityManager. These are deliberately separate doubles
+  // from the injected `groupRepo` above: create/update must write through the transaction, not
+  // through the plain injected repos, and a shared double would hide that distinction.
+  let txGroupRepo: { create: jest.Mock; save: jest.Mock; update: jest.Mock }
+  let txRouteRepo: { delete: jest.Mock; insert: jest.Mock }
 
   beforeEach(async () => {
     groupRepo = {
@@ -26,13 +29,15 @@ describe('RouteGroupsService', () => {
       update: jest.fn(),
       delete: jest.fn(),
     }
-    routeRepo = { delete: jest.fn(), insert: jest.fn() }
-    // The service runs group + route writes inside dataSource.transaction and pulls its repos off
-    // the transactional manager, so the mock manager routes each entity to the same repo mocks the
-    // tests assert against.
+    txGroupRepo = {
+      create: jest.fn((v) => v),
+      save: jest.fn(async (v) => ({ id: 'new-id', ...v })),
+      update: jest.fn(),
+    }
+    txRouteRepo = { delete: jest.fn(), insert: jest.fn() }
     manager = {
       getRepository: jest.fn((entity: unknown) =>
-        entity === RouteGroupEntity ? groupRepo : routeRepo,
+        entity === RouteGroupEntity ? txGroupRepo : txRouteRepo,
       ),
     }
     dataSource = {
@@ -46,7 +51,6 @@ describe('RouteGroupsService', () => {
         RouteGroupsService,
         { provide: DataSource, useValue: dataSource },
         { provide: getRepositoryToken(RouteGroupEntity), useValue: groupRepo },
-        { provide: getRepositoryToken(RouteGroupRouteEntity), useValue: routeRepo },
       ],
     }).compile()
     service = module.get(RouteGroupsService)
@@ -165,13 +169,18 @@ describe('RouteGroupsService', () => {
         ],
       })
 
-      expect(groupRepo.save).toHaveBeenCalledWith(
+      expect(dataSource.transaction).toHaveBeenCalled()
+      expect(txGroupRepo.save).toHaveBeenCalledWith(
         expect.objectContaining({ name: 'Kalimantan', description: 'pulau' }),
       )
-      expect(routeRepo.delete).toHaveBeenCalledWith({ routeGroupId: 'new-id' })
-      expect(routeRepo.insert).toHaveBeenCalledWith([
+      expect(txRouteRepo.delete).toHaveBeenCalledWith({ routeGroupId: 'new-id' })
+      expect(txRouteRepo.insert).toHaveBeenCalledWith([
         { routeGroupId: 'new-id', originStation: 'Jabo', destStation: 'Aceh' },
       ])
+      // The group write and the route replacement must go through the transactional manager, not
+      // through the plain injected repo — that's the whole point of wrapping them together.
+      expect(groupRepo.save).not.toHaveBeenCalled()
+      expect(groupRepo.update).not.toHaveBeenCalled()
       expect(result).toEqual({
         id: 'new-id',
         name: 'Kalimantan',
@@ -194,13 +203,13 @@ describe('RouteGroupsService', () => {
         routes: [{ origin: 'Jabo', dest: 'Aceh' }],
       })
 
-      expect(groupRepo.save).toHaveBeenCalledWith(expect.objectContaining({ description: null }))
+      expect(txGroupRepo.save).toHaveBeenCalledWith(expect.objectContaining({ description: null }))
     })
 
     it('maps a unique-name race (23505 on uq_route_groups_name) to the same ConflictException as the pre-check', async () => {
       dataSource.query.mockResolvedValueOnce([{ origin: 'Jabo', dest: 'Aceh', has_data: true }])
       groupRepo.findOne.mockResolvedValueOnce(null) // pre-check sees no clash
-      groupRepo.save.mockRejectedValueOnce(
+      txGroupRepo.save.mockRejectedValueOnce(
         Object.assign(new Error('duplicate key value violates unique constraint'), {
           code: '23505',
           constraint: 'uq_route_groups_name',
@@ -215,7 +224,7 @@ describe('RouteGroupsService', () => {
     it('does not remap a 23505 from an unrelated constraint into a name conflict', async () => {
       dataSource.query.mockResolvedValueOnce([{ origin: 'Jabo', dest: 'Aceh', has_data: true }])
       groupRepo.findOne.mockResolvedValueOnce(null)
-      groupRepo.save.mockRejectedValueOnce(
+      txGroupRepo.save.mockRejectedValueOnce(
         Object.assign(new Error('some other violation'), {
           code: '23505',
           constraint: 'pk_route_group_routes',
@@ -225,6 +234,22 @@ describe('RouteGroupsService', () => {
       await expect(
         service.create({ name: 'Kalimantan', routes: [{ origin: 'Jabo', dest: 'Aceh' }] }),
       ).rejects.toThrow('some other violation')
+    })
+
+    // Pins the reason create wraps the group save and the route replacement in one transaction:
+    // if the route insert fails, the error must come straight out of create rather than being
+    // swallowed, leaving the caller (and the DB, once postgres is real rather than mocked) able to
+    // tell the write never landed.
+    it('propagates an error from the transactional route insert rather than swallowing it', async () => {
+      dataSource.query.mockResolvedValueOnce([{ origin: 'Jabo', dest: 'Aceh', has_data: true }])
+      groupRepo.findOne.mockResolvedValueOnce(null)
+      txRouteRepo.insert.mockRejectedValueOnce(new Error('insert failed'))
+
+      await expect(
+        service.create({ name: 'Kalimantan', routes: [{ origin: 'Jabo', dest: 'Aceh' }] }),
+      ).rejects.toThrow('insert failed')
+
+      expect(dataSource.transaction).toHaveBeenCalled()
     })
   })
 
@@ -247,11 +272,13 @@ describe('RouteGroupsService', () => {
 
       const result = await service.update('g1', { routes: [{ origin: 'Jabo', dest: 'Aceh' }] })
 
-      expect(groupRepo.update).not.toHaveBeenCalled()
-      expect(routeRepo.delete).toHaveBeenCalledWith({ routeGroupId: 'g1' })
-      expect(routeRepo.insert).toHaveBeenCalledWith([
+      expect(dataSource.transaction).toHaveBeenCalled()
+      expect(txGroupRepo.update).not.toHaveBeenCalled()
+      expect(txRouteRepo.delete).toHaveBeenCalledWith({ routeGroupId: 'g1' })
+      expect(txRouteRepo.insert).toHaveBeenCalledWith([
         { routeGroupId: 'g1', originStation: 'Jabo', destStation: 'Aceh' },
       ])
+      expect(groupRepo.update).not.toHaveBeenCalled()
       expect(result.name).toBe('Kalimantan')
       expect(result.description).toBe('pulau')
     })
@@ -264,14 +291,16 @@ describe('RouteGroupsService', () => {
 
       await service.update('g1', { description: null })
 
-      expect(groupRepo.update).toHaveBeenCalledWith('g1', { description: null })
+      expect(dataSource.transaction).toHaveBeenCalled()
+      expect(txGroupRepo.update).toHaveBeenCalledWith('g1', { description: null })
+      expect(groupRepo.update).not.toHaveBeenCalled()
     })
 
     it('maps a unique-name race (23505 on uq_route_groups_name) to the same ConflictException as the pre-check', async () => {
       groupRepo.findOne
         .mockResolvedValueOnce({ id: 'g1', name: 'Old' }) // existing lookup
         .mockResolvedValueOnce(null) // assertNameFree pre-check sees no clash
-      groupRepo.update.mockRejectedValueOnce(
+      txGroupRepo.update.mockRejectedValueOnce(
         Object.assign(new Error('duplicate key value violates unique constraint'), {
           code: '23505',
           constraint: 'uq_route_groups_name',
@@ -281,6 +310,40 @@ describe('RouteGroupsService', () => {
       await expect(service.update('g1', { name: 'New' })).rejects.toThrow(
         'A route group named "New" already exists',
       )
+    })
+
+    // Pins the reason update wraps the patch and the route replacement in one transaction: a
+    // failed route insert must not be swallowed, and must not leave the caller thinking the patch
+    // (or the previous routes) landed.
+    it('propagates an error from the transactional route insert rather than swallowing it', async () => {
+      groupRepo.findOne.mockResolvedValueOnce({ id: 'g1', name: 'Kalimantan', description: 'pulau' })
+      dataSource.query.mockResolvedValueOnce([{ origin: 'Jabo', dest: 'Aceh', has_data: true }])
+      txRouteRepo.insert.mockRejectedValueOnce(new Error('insert failed'))
+
+      await expect(
+        service.update('g1', { routes: [{ origin: 'Jabo', dest: 'Aceh' }] }),
+      ).rejects.toThrow('insert failed')
+
+      expect(dataSource.transaction).toHaveBeenCalled()
+    })
+
+    // Finding C: an empty patch with no routes has nothing to write, so it should never open a
+    // transaction in the first place.
+    it('skips the transaction entirely when the patch is empty and no routes are given', async () => {
+      groupRepo.findOne.mockResolvedValueOnce({ id: 'g1', name: 'Kalimantan', description: 'pulau' })
+      dataSource.query.mockResolvedValueOnce([
+        { id: 'g1', name: 'Kalimantan', description: 'pulau', origin: null, dest: null },
+      ])
+
+      const result = await service.update('g1', {})
+
+      expect(dataSource.transaction).not.toHaveBeenCalled()
+      expect(result).toEqual({
+        id: 'g1',
+        name: 'Kalimantan',
+        description: 'pulau',
+        routes: [],
+      })
     })
   })
 
