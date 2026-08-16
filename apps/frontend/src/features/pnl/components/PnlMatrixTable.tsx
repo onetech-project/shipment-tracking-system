@@ -108,6 +108,7 @@ export function PnlMatrixTable({ title, model, defaultOpen = true, onCellClick }
                   </td>
                   {model.values[rowIndex].map((value, colIndex) => {
                     const incomplete = model.incompleteTos?.[rowIndex][colIndex] ?? 0
+                    const column = model.columns[colIndex]
                     const content = (
                       <>
                         {formatValue(value, 'number')}
@@ -117,15 +118,19 @@ export function PnlMatrixTable({ title, model, defaultOpen = true, onCellClick }
                     return (
                       <td
                         key={colIndex}
-                        title={incompleteTooltip(incomplete)}
+                        // The button below covers the whole cell and carries its own tooltip, so a
+                        // <td> title here would be unreachable at best and, in the padding sliver
+                        // the button doesn't cover, a conflicting one at worst.
+                        title={onCellClick ? undefined : incompleteTooltip(incomplete)}
                         className={`whitespace-nowrap border-b border-l text-right ${valueClass(value, model.highlightNegative)} ${onCellClick ? 'p-0' : 'px-3 py-1.5'}`}
                       >
                         {onCellClick ? (
                           <button
                             type="button"
                             title={cellButtonTitle(incomplete)}
+                            aria-label={`Lihat AWB ${column.originLabel} → ${column.dest}, ${formatDayLabel(date)}`}
                             className="w-full px-3 py-1.5 text-right hover:bg-primary/10"
-                            onClick={() => onCellClick(model.columns[colIndex], date)}
+                            onClick={() => onCellClick(column, date)}
                           >
                             {content}
                           </button>

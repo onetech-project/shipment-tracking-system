@@ -167,4 +167,24 @@ describe('PnlMatrixTable cell clicks', () => {
     fireEvent.click(buttons[2])
     expect(onCellClick).toHaveBeenCalledWith(columns[0], '2026-07-02')
   })
+
+  it('drops the <td> title once the button covers the cell, so no conflicting tooltip is left in the padding sliver', () => {
+    const model = baseModel({ values: [[100, 200]], incompleteTos: [[0, 3]] })
+    const { container } = render(
+      <PnlMatrixTable title="t" model={model} onCellClick={jest.fn()} />,
+    )
+    const [cleanCell, flaggedCell] = bodyCells(container)
+    expect(cleanCell.title).toBe('')
+    expect(flaggedCell.title).toBe('')
+  })
+
+  it('gives each clickable cell a distinct accessible name carrying its origin, destination and date', () => {
+    const { container } = render(
+      <PnlMatrixTable title="t" model={baseModel()} onCellClick={jest.fn()} />,
+    )
+    const buttons = container.querySelectorAll<HTMLButtonElement>('tbody button')
+    expect(buttons[0].getAttribute('aria-label')).toBe('Lihat AWB CGK → Aceh, 1-Jul-2026')
+    expect(buttons[1].getAttribute('aria-label')).toBe('Lihat AWB SUB → Pontianak, 1-Jul-2026')
+    expect(buttons[0].getAttribute('aria-label')).not.toBe(buttons[1].getAttribute('aria-label'))
+  })
 })
