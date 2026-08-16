@@ -18,6 +18,7 @@ export interface RouteGroup {
 // The write shape: the API only needs the raw pair, not the display label.
 export interface RouteGroupPayload {
   name: string
-  description?: string
+  // description?: null clears it; omitting the field leaves it unchanged on update.
+  description?: string | null
   routes: { origin: string; dest: string }[]
 }
