@@ -2,7 +2,13 @@
 
 import { Fragment, useState, useEffect } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { usePnlAwbDrilldown, usePnlAwbTos, PnlFilter, PnlToRow } from '../hooks/usePnl'
+import {
+  usePnlAwbDrilldown,
+  usePnlAwbTos,
+  BASIS_LABELS,
+  PnlFilter,
+  PnlToRow,
+} from '../hooks/usePnl'
 import { fmt, num, pct } from '../utils/format'
 import { issueLabel } from '../utils/issueLabels'
 
@@ -16,7 +22,7 @@ function ToSubTable({ awb, filter }: ToSubTableProps) {
 
   return (
     <tr>
-      <td colSpan={15} className="p-0">
+      <td colSpan={18} className="p-0">
         <div className="border-t border-b bg-muted/20 px-4 py-2">
           {isLoading && <p className="py-2 text-xs text-muted-foreground">Loading TOs…</p>}
           {data && data.length === 0 && (
@@ -71,6 +77,21 @@ function ToSubTable({ awb, filter }: ToSubTableProps) {
   )
 }
 
+// Marks a column whose TOs within one AWB disagree, so a dominant-value cell never reads as the
+// whole truth. The AWB stays one row: splitting it would break paging and AWB counts.
+function VariesMark({ when }: { when: boolean }) {
+  if (!when) return null
+  return (
+    <span
+      data-testid="varies-mark"
+      title="TO dalam AWB ini punya nilai berbeda — yang tampil adalah nilai terbanyak"
+      className="ml-1 text-amber-600"
+    >
+      +
+    </span>
+  )
+}
+
 interface PnlAwbDrilldownProps {
   filter: PnlFilter
 }
@@ -112,6 +133,9 @@ export function PnlAwbDrilldown({ filter }: PnlAwbDrilldownProps) {
             <tr className="border-b text-xs text-muted-foreground">
               <th className="w-6 px-2 py-2" />
               <th className="px-3 py-2 text-left">AWB</th>
+              <th className="px-3 py-2 text-left">Origin</th>
+              <th className="px-3 py-2 text-left">Destination</th>
+              <th className="px-3 py-2 text-left">{BASIS_LABELS[filter.basis]}</th>
               <th className="px-3 py-2 text-left">Vendor</th>
               <th className="px-3 py-2 text-left">Airline</th>
               <th className="px-3 py-2 text-right">TOs</th>
@@ -129,7 +153,7 @@ export function PnlAwbDrilldown({ filter }: PnlAwbDrilldownProps) {
           </thead>
           <tbody>
             {isLoading && (
-              <tr><td colSpan={15} className="px-3 py-4 text-center text-muted-foreground">Loading…</td></tr>
+              <tr><td colSpan={18} className="px-3 py-4 text-center text-muted-foreground">Loading…</td></tr>
             )}
             {data?.data.map((row, idx) => {
               const isExpanded = expandedAwb === row.awb
@@ -157,6 +181,18 @@ export function PnlAwbDrilldown({ filter }: PnlAwbDrilldownProps) {
                           {issueLabel(row.issue)}
                         </span>
                       )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {row.origin ?? '—'}
+                      <VariesMark when={row.originVaries} />
+                    </td>
+                    <td className="px-3 py-2">
+                      {row.dest ?? '—'}
+                      <VariesMark when={row.destVaries} />
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      {row.date ?? '—'}
+                      <VariesMark when={row.dateVaries} />
                     </td>
                     <td className="px-3 py-2">{row.vendor ?? '—'}</td>
                     <td className="px-3 py-2">{row.airline ?? '—'}</td>
