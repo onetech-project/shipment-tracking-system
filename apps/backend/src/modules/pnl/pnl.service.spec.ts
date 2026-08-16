@@ -372,6 +372,9 @@ describe('PnlService', () => {
       const normalizedSql = sql.replace(/\s+/g, ' ')
       expect(normalizedSql).toContain('MODE() WITHIN GROUP (ORDER BY origin_station) AS origin')
       expect(normalizedSql).toContain('MODE() WITHIN GROUP (ORDER BY dest_station) AS dest')
+      expect(normalizedSql).toContain(
+        "TO_CHAR(MODE() WITHIN GROUP (ORDER BY v.date_atd::DATE), 'YYYY-MM-DD') AS route_date",
+      )
       expect(normalizedSql).toContain('COUNT(DISTINCT origin_station) > 1 AS origin_varies')
       expect(normalizedSql).toContain('COUNT(DISTINCT dest_station) > 1 AS dest_varies')
       expect(normalizedSql).toContain('COUNT(DISTINCT v.date_atd::DATE) > 1 AS date_varies')
