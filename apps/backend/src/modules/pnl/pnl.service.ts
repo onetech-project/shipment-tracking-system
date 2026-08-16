@@ -325,7 +325,7 @@ export class PnlService {
     if (route?.dest) routeConds.push(`m.dest_station = ${bind(route.dest)}`)
     if (route?.dateFrom) routeConds.push(`${inner.dateCol} >= ${bind(route.dateFrom)}::DATE`)
     if (route?.dateTo) {
-      routeConds.push(`${inner.dateCol} < ${bind(route.dateTo)}::DATE + INTERVAL '1 day'`)
+      routeConds.push(`${inner.dateCol} < (${bind(route.dateTo)}::DATE + INTERVAL '1 day')`)
     }
     const routeWhere = routeConds.length
       ? `AND EXISTS (
