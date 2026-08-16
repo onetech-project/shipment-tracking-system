@@ -51,7 +51,7 @@ export class PnlStationLookup20260816000001 implements MigrationInterface {
           NULLIF(BTRIM(extra_fields->>'destination_station'), '') AS dest_station
         FROM air_shipments_data
         WHERE service = 'Air'
-        ORDER BY BTRIM(origin_dc), BTRIM(destination_dc)
+        ORDER BY BTRIM(origin_dc), BTRIM(destination_dc), updated_at DESC NULLS LAST, id DESC
       ),
       compile AS (
         SELECT
