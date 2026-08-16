@@ -5,7 +5,7 @@
  * tests isolate the renderer from the projection logic (which is covered in dailyMatrix.spec.ts).
  */
 import React from 'react'
-import { render } from '@testing-library/react'
+import { render, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { PnlMatrixTable } from './PnlMatrixTable'
 import { MatrixTableModel } from '../utils/dailyMatrix'
@@ -88,5 +88,58 @@ describe('PnlMatrixTable', () => {
 
     expect(flaggedFooterCell.title).toBe(INCOMPLETE_TOOLTIP(5))
     expect(flaggedFooterCell.textContent).toContain('•')
+  })
+})
+
+describe('PnlMatrixTable cell clicks', () => {
+  it('renders no buttons when onCellClick is absent', () => {
+    const { container } = render(<PnlMatrixTable title="t" model={baseModel()} />)
+    expect(container.querySelectorAll('tbody button')).toHaveLength(0)
+  })
+
+  it('reports the column and date of the clicked cell', () => {
+    const onCellClick = jest.fn()
+    const { container } = render(
+      <PnlMatrixTable title="t" model={baseModel()} onCellClick={onCellClick} />,
+    )
+    const buttons = container.querySelectorAll('tbody button')
+    fireEvent.click(buttons[1])
+    expect(onCellClick).toHaveBeenCalledWith(columns[1], '2026-07-01')
+  })
+
+  it('makes an empty cell clickable too', () => {
+    const onCellClick = jest.fn()
+    const { container } = render(
+      <PnlMatrixTable title="t" model={baseModel()} onCellClick={onCellClick} />,
+    )
+    const buttons = container.querySelectorAll('tbody button')
+    // values is [[null, 0]] — the first cell is empty and must still be clickable.
+    expect(buttons).toHaveLength(2)
+    fireEvent.click(buttons[0])
+    expect(onCellClick).toHaveBeenCalledWith(columns[0], '2026-07-01')
+  })
+
+  it('leaves footer cells and the date column unclickable', () => {
+    const { container } = render(
+      <PnlMatrixTable title="t" model={baseModel()} onCellClick={jest.fn()} />,
+    )
+    expect(container.querySelectorAll('tfoot button')).toHaveLength(0)
+    const firstBodyCell = container.querySelector('tbody tr td') as HTMLTableCellElement
+    expect(firstBodyCell.querySelector('button')).toBeNull()
+  })
+
+  it('reports each row own date, not the first date in the model', () => {
+    const onCellClick = jest.fn()
+    const model = baseModel({
+      dates: ['2026-07-01', '2026-07-02'],
+      values: [[1, 2], [3, 4]],
+    })
+    const { container } = render(
+      <PnlMatrixTable title="t" model={model} onCellClick={onCellClick} />,
+    )
+    const buttons = container.querySelectorAll('tbody button')
+    // Second row, first column — must report the second row's date.
+    fireEvent.click(buttons[2])
+    expect(onCellClick).toHaveBeenCalledWith(columns[0], '2026-07-02')
   })
 })

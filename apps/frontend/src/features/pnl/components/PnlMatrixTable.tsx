@@ -3,12 +3,16 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { MatrixTableModel, formatDayLabel, groupOrigins } from '../utils/dailyMatrix'
+import { PnlDailyMatrixColumn } from '../hooks/usePnl'
 import { num, pct } from '../utils/format'
 
 interface PnlMatrixTableProps {
   title: string
   model: MatrixTableModel
   defaultOpen?: boolean
+  // When given, every body cell becomes a button — including empty ones, which are a valid answer
+  // ("nothing flew this route that day"). Footer cells stay inert: they span the whole period.
+  onCellClick?: (column: PnlDailyMatrixColumn, date: string) => void
 }
 
 // Alternating group tints mirror the spreadsheet: the first origin block green, the next blue.
@@ -35,7 +39,7 @@ function valueClass(value: number | null, highlightNegative: boolean): string {
   return 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-950/40'
 }
 
-export function PnlMatrixTable({ title, model, defaultOpen = true }: PnlMatrixTableProps) {
+export function PnlMatrixTable({ title, model, defaultOpen = true, onCellClick }: PnlMatrixTableProps) {
   const [open, setOpen] = useState(defaultOpen)
   const groups = groupOrigins(model.columns)
 
@@ -96,14 +100,30 @@ export function PnlMatrixTable({ title, model, defaultOpen = true }: PnlMatrixTa
                   </td>
                   {model.values[rowIndex].map((value, colIndex) => {
                     const incomplete = model.incompleteTos?.[rowIndex][colIndex] ?? 0
+                    const content = (
+                      <>
+                        {formatValue(value, 'number')}
+                        {incomplete > 0 && <span className="ml-1 text-amber-600">•</span>}
+                      </>
+                    )
                     return (
                       <td
                         key={colIndex}
                         title={incompleteTooltip(incomplete)}
-                        className={`whitespace-nowrap border-b border-l px-3 py-1.5 text-right ${valueClass(value, model.highlightNegative)}`}
+                        className={`whitespace-nowrap border-b border-l text-right ${valueClass(value, model.highlightNegative)} ${onCellClick ? 'p-0' : 'px-3 py-1.5'}`}
                       >
-                        {formatValue(value, 'number')}
-                        {incomplete > 0 && <span className="ml-1 text-amber-600">•</span>}
+                        {onCellClick ? (
+                          <button
+                            type="button"
+                            title="Lihat AWB rute dan tanggal ini"
+                            className="w-full px-3 py-1.5 text-right hover:bg-primary/10"
+                            onClick={() => onCellClick(model.columns[colIndex], date)}
+                          >
+                            {content}
+                          </button>
+                        ) : (
+                          content
+                        )}
                       </td>
                     )
                   })}

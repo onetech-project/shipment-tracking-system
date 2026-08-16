@@ -1,10 +1,15 @@
 'use client'
 
-import { PnlFilter, usePnlDailyMatrix } from '../hooks/usePnl'
+import { PnlDailyMatrixColumn, PnlFilter, usePnlDailyMatrix } from '../hooks/usePnl'
 import { groupOrigins, toMarginTable, toRevenueTable } from '../utils/dailyMatrix'
 import { PnlMatrixTable } from './PnlMatrixTable'
 
-export function PnlDailyMatrixView({ filter }: { filter: PnlFilter }) {
+interface PnlDailyMatrixViewProps {
+  filter: PnlFilter
+  onCellClick?: (column: PnlDailyMatrixColumn, date: string) => void
+}
+
+export function PnlDailyMatrixView({ filter, onCellClick }: PnlDailyMatrixViewProps) {
   const { data, isLoading, isError, refetch } = usePnlDailyMatrix(filter)
 
   if (isLoading) {
@@ -39,8 +44,8 @@ export function PnlDailyMatrixView({ filter }: { filter: PnlFilter }) {
 
   return (
     <div className="space-y-6">
-      <PnlMatrixTable title={`Revenue — ${originSuffix}`} model={toRevenueTable(data)} />
-      <PnlMatrixTable title={`Profit Margin — ${originSuffix}`} model={toMarginTable(data)} />
+      <PnlMatrixTable title={`Revenue — ${originSuffix}`} model={toRevenueTable(data)} onCellClick={onCellClick} />
+      <PnlMatrixTable title={`Profit Margin — ${originSuffix}`} model={toMarginTable(data)} onCellClick={onCellClick} />
     </div>
   )
 }
