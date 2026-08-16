@@ -3,7 +3,7 @@
  * filter interaction only — the query layer is exercised by the backend suites.
  */
 import React from 'react'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { PnlAwbDrilldown } from './PnlAwbDrilldown'
 import { PnlAwbRow, PnlFilter } from '../hooks/usePnl'
@@ -14,6 +14,7 @@ jest.mock('../hooks/usePnl', () => {
     ...actual,
     usePnlAwbDrilldown: jest.fn(),
     usePnlAwbTos: jest.fn(() => ({ data: [], isLoading: false })),
+    usePnlStations: jest.fn(() => ({ data: [] })),
   }
 })
 
@@ -49,7 +50,7 @@ describe('PnlAwbDrilldown route columns', () => {
 
   it('renders origin, destination and the date for each AWB', () => {
     mockRows([row()])
-    render(<PnlAwbDrilldown filter={filter} />)
+    render(<PnlAwbDrilldown filter={filter} route={{}} onRouteChange={jest.fn()} />)
     expect(screen.getByText('Jabo')).toBeInTheDocument()
     expect(screen.getByText('Tanjung Pinang')).toBeInTheDocument()
     expect(screen.getByText('2026-05-01')).toBeInTheDocument()
@@ -57,7 +58,7 @@ describe('PnlAwbDrilldown route columns', () => {
 
   it('places origin, destination and date in that column order after the AWB cell', () => {
     mockRows([row()])
-    const { container } = render(<PnlAwbDrilldown filter={filter} />)
+    const { container } = render(<PnlAwbDrilldown filter={filter} route={{}} onRouteChange={jest.fn()} />)
     const cells = Array.from(container.querySelectorAll('tbody tr td'))
     // Expander, AWB, then origin / dest / date, in that order.
     expect(cells[2].textContent).toBe('Jabo')
@@ -67,10 +68,10 @@ describe('PnlAwbDrilldown route columns', () => {
 
   it('titles the date column with the active date basis', () => {
     mockRows([row()])
-    const { rerender } = render(<PnlAwbDrilldown filter={filter} />)
+    const { rerender } = render(<PnlAwbDrilldown filter={filter} route={{}} onRouteChange={jest.fn()} />)
     expect(screen.getByRole('columnheader', { name: 'ATA Vendor WH dest' })).toBeInTheDocument()
 
-    rerender(<PnlAwbDrilldown filter={{ ...filter, basis: 'atd_origin' }} />)
+    rerender(<PnlAwbDrilldown filter={{ ...filter, basis: 'atd_origin' }} route={{}} onRouteChange={jest.fn()} />)
     expect(screen.getByRole('columnheader', { name: 'ATD origin' })).toBeInTheDocument()
   })
 
@@ -82,7 +83,7 @@ describe('PnlAwbDrilldown route columns', () => {
     'marks only the $marked cell when only $marked varies',
     ({ originVaries, destVaries, dateVaries, marked }) => {
       mockRows([row({ originVaries, destVaries, dateVaries })])
-      const { container } = render(<PnlAwbDrilldown filter={filter} />)
+      const { container } = render(<PnlAwbDrilldown filter={filter} route={{}} onRouteChange={jest.fn()} />)
       const cells = Array.from(container.querySelectorAll('tbody tr td'))
       // Expander, AWB, then origin / dest / date, in that order.
       const [originCell, destCell, dateCell] = [cells[2], cells[3], cells[4]]
@@ -104,9 +105,111 @@ describe('PnlAwbDrilldown route columns', () => {
 
   it('renders a dash when the AWB has no origin, dest or date', () => {
     mockRows([row({ origin: null, dest: null, date: null })])
-    const { container } = render(<PnlAwbDrilldown filter={filter} />)
+    const { container } = render(<PnlAwbDrilldown filter={filter} route={{}} onRouteChange={jest.fn()} />)
     const cells = Array.from(container.querySelectorAll('tbody tr td')).map((c) => c.textContent)
     // Expander, AWB, then origin / dest / date.
     expect(cells.slice(2, 5)).toEqual(['—', '—', '—'])
+  })
+})
+
+describe('PnlAwbDrilldown filter section', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    hooks.usePnlStations.mockReturnValue({
+      data: [
+        { origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' },
+        { origin: 'Jabo', originLabel: 'CGK', dest: 'Tanjung Pinang' },
+        { origin: 'Surabaya', originLabel: 'SUB', dest: 'Pontianak' },
+      ],
+    })
+    mockRows([row()])
+  })
+
+  it('offers every distinct origin once', () => {
+    render(<PnlAwbDrilldown filter={filter} route={{}} onRouteChange={jest.fn()} />)
+    const origin = screen.getByLabelText('Origin') as HTMLSelectElement
+    expect(Array.from(origin.options).map((o) => o.value)).toEqual(['', 'Jabo', 'Surabaya'])
+  })
+
+  it('lists every destination until an origin narrows it', () => {
+    const { rerender } = render(
+      <PnlAwbDrilldown filter={filter} route={{}} onRouteChange={jest.fn()} />,
+    )
+    const all = screen.getByLabelText('Destination') as HTMLSelectElement
+    expect(Array.from(all.options).map((o) => o.value)).toEqual(['', 'Aceh', 'Pontianak', 'Tanjung Pinang'])
+
+    rerender(
+      <PnlAwbDrilldown filter={filter} route={{ origin: 'Surabaya' }} onRouteChange={jest.fn()} />,
+    )
+    const narrowed = screen.getByLabelText('Destination') as HTMLSelectElement
+    expect(Array.from(narrowed.options).map((o) => o.value)).toEqual(['', 'Pontianak'])
+  })
+
+  it('reports an origin choice and clears a destination that no longer belongs to it', () => {
+    const onRouteChange = jest.fn()
+    render(
+      <PnlAwbDrilldown
+        filter={filter}
+        route={{ origin: 'Jabo', dest: 'Aceh' }}
+        onRouteChange={onRouteChange}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText('Origin'), { target: { value: 'Surabaya' } })
+    expect(onRouteChange).toHaveBeenCalledWith({ origin: 'Surabaya', dest: undefined })
+  })
+
+  it('converts a cleared field back to undefined, not an empty string', () => {
+    const onRouteChange = jest.fn()
+    render(<PnlAwbDrilldown filter={filter} route={{ origin: 'Jabo' }} onRouteChange={onRouteChange} />)
+    fireEvent.change(screen.getByLabelText('Origin'), { target: { value: '' } })
+    const [reported] = onRouteChange.mock.calls[0]
+    expect(reported.origin).toBeUndefined()
+  })
+
+  it('reports date changes', () => {
+    const onRouteChange = jest.fn()
+    render(<PnlAwbDrilldown filter={filter} route={{ origin: 'Jabo' }} onRouteChange={onRouteChange} />)
+    fireEvent.change(screen.getByLabelText('Dari'), { target: { value: '2026-05-03' } })
+    expect(onRouteChange).toHaveBeenCalledWith({ origin: 'Jabo', dateFrom: '2026-05-03' })
+  })
+
+  it('bounds the date inputs to the active cycle', () => {
+    render(<PnlAwbDrilldown filter={filter} route={{}} onRouteChange={jest.fn()} />)
+    const from = screen.getByLabelText('Dari') as HTMLInputElement
+    expect(from.min).toBe('2026-05-01')
+    expect(from.max).toBe('2026-05-15')
+  })
+
+  it('shows Reset only while a filter is active, and clears everything', () => {
+    const onRouteChange = jest.fn()
+    const { rerender } = render(
+      <PnlAwbDrilldown filter={filter} route={{}} onRouteChange={onRouteChange} />,
+    )
+    expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument()
+
+    rerender(
+      <PnlAwbDrilldown filter={filter} route={{ dest: 'Aceh' }} onRouteChange={onRouteChange} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }))
+    expect(onRouteChange).toHaveBeenCalledWith({})
+  })
+
+  it('resets to page 1 when the route filter changes', () => {
+    hooks.usePnlAwbDrilldown.mockReturnValue({
+      data: { data: [row()], total: 60 },
+      isLoading: false,
+      isError: false,
+      refetch: jest.fn(),
+    })
+    const { rerender } = render(
+      <PnlAwbDrilldown filter={filter} route={{}} onRouteChange={jest.fn()} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Next →' }))
+    expect(screen.getByText('Page 2 / 2')).toBeInTheDocument()
+
+    rerender(
+      <PnlAwbDrilldown filter={filter} route={{ origin: 'Jabo' }} onRouteChange={jest.fn()} />,
+    )
+    expect(screen.getByText('Page 1 / 2')).toBeInTheDocument()
   })
 })

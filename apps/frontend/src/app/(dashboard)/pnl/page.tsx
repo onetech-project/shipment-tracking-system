@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
-import { usePnlCycles, usePnlSummary, PnlFilter, DateBasis, DEFAULT_DATE_BASIS } from '@/features/pnl/hooks/usePnl'
+import { usePnlCycles, usePnlSummary, PnlFilter, PnlRouteFilter, DateBasis, DEFAULT_DATE_BASIS } from '@/features/pnl/hooks/usePnl'
 import { PnlKpiCards, PnlKpiKey } from '@/features/pnl/components/PnlKpiCards'
 import { PnlDailyMarginChart } from '@/features/pnl/components/PnlDailyMarginChart'
 import { PnlBreakdownPanel } from '@/features/pnl/components/PnlBreakdownPanel'
@@ -68,6 +68,7 @@ function PnlPageContent() {
   const [activeKpi, setActiveKpi] = useState<PnlKpiKey | null>(null)
   const [showDq, setShowDq] = useState(false)
   const [view, setView] = useState<PnlView>('estimate')
+  const [drilldownRoute, setDrilldownRoute] = useState<PnlRouteFilter>({})
 
   useEffect(() => {
     if (cycles && cycles.length > 0 && (!cycle || !cycles.includes(cycle))) {
@@ -234,7 +235,13 @@ function PnlPageContent() {
           )}
           {filter && <PnlDailyMarginChart filter={filter} />}
           {filter && <PnlBreakdownPanel filter={filter} activeKpi={activeKpi} />}
-          {filter && <PnlAwbDrilldown filter={filter} />}
+          {filter && (
+            <PnlAwbDrilldown
+              filter={filter}
+              route={drilldownRoute}
+              onRouteChange={setDrilldownRoute}
+            />
+          )}
           {showDq ? (
             <PnlDataQuality />
           ) : (
