@@ -1,4 +1,4 @@
-import { PnlDailyMatrix, PnlDailyMatrixColumn } from '../hooks/usePnl'
+import { PnlDailyMatrix, PnlDailyMatrixColumn, PnlRouteFilter } from '../hooks/usePnl'
 
 export interface OriginGroup {
   label: string
@@ -77,4 +77,10 @@ export function toMarginTable(matrix: PnlDailyMatrix): MatrixTableModel {
     ],
     highlightNegative: true,
   }
+}
+
+// A clicked matrix cell as an AWB drilldown filter. The column carries both forms of the origin;
+// the drilldown filters on the raw value ('Jabo'), while the matrix header shows the label ('CGK').
+export function routeFromCell(column: PnlDailyMatrixColumn, date: string): PnlRouteFilter {
+  return { origin: column.origin, dest: column.dest, dateFrom: date, dateTo: date }
 }
