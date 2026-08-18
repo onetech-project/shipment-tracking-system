@@ -74,7 +74,9 @@ export function toComparisonTable(data: PnlGroupComparison): ComparisonTableMode
       revenue: data.footer.map((f) => f.totalRevenue),
       cost: data.footer.map((f) => f.totalCost),
       components: totalComponents,
-      warnings: data.footer.map((f) => ({ issues: f.issues, incompleteTos: f.incompleteTos })),
+      // Same rolling-deploy fallback as the per-cell warnings above: `issues` is non-optional in the
+      // type, but an old backend's footer can still lack the field during a parallel deploy.
+      warnings: data.footer.map((f) => ({ issues: f.issues ?? [], incompleteTos: f.incompleteTos })),
     },
     {
       // No component breakdown: the average of a component is not itself a cost anyone books.
