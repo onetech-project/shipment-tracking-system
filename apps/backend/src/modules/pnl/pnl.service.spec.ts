@@ -234,51 +234,132 @@ describe('PnlService', () => {
       expect(countParams).toEqual(['2026-04-2H'])
     })
 
-    it('filters by origin through an EXISTS semi-join on the same AWB', async () => {
+    it('filters by a route pair through an EXISTS semi-join on the same AWB', async () => {
       mockEmptyPage()
       await service.getAwbDrilldown(1, 50, '2026-04-2H', undefined, undefined, undefined, {
-        origin: 'Jabo',
+        routes: [{ origin: 'Jabo', dest: 'Aceh' }],
       })
       const [sql, params] = dataSource.query.mock.calls[0]
       // Pin the full head, not just a substring, so a mutation to `NOT EXISTS` is caught.
       expect(sql).toContain('AND EXISTS (')
       expect(sql).not.toContain('NOT EXISTS')
       expect(sql).toContain('m.awb = v.awb')
-      expect(sql).toContain('m.origin_station = $2')
+      expect(sql).toContain(
+        '(m.origin_station, m.dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
+      )
       // The period filter is re-applied inside the subquery, reusing $1 rather than rebinding it.
       expect(sql).toContain('m.cycle_ata = $1')
       // The outer filter runs against the aliased view, not the bare v_pnl_to columns.
       expect(sql).toContain('v.cycle_ata = $1')
-      expect(params).toEqual(['2026-04-2H', 'Jabo', 50, 0])
+      expect(params).toEqual(['2026-04-2H', ['Jabo'], ['Aceh'], 50, 0])
     })
 
-    it('filters by destination and date range together, ending exclusive on the next day', async () => {
+    it('filters by route and date range together, ending exclusive on the next day', async () => {
       mockEmptyPage()
       await service.getAwbDrilldown(1, 50, '2026-04-2H', undefined, undefined, undefined, {
-        dest: 'Tanjung Pinang',
+        routes: [{ origin: 'Jabo', dest: 'Tanjung Pinang' }],
         dateFrom: '2026-05-01',
         dateTo: '2026-05-01',
       })
       const [sql, params] = dataSource.query.mock.calls[0]
-      expect(sql).toContain('m.dest_station = $2')
-      expect(sql).toContain('m.date_ata >= $3::DATE')
-      expect(sql).toContain("m.date_ata < ($4::DATE + INTERVAL '1 day')")
-      expect(params).toEqual(['2026-04-2H', 'Tanjung Pinang', '2026-05-01', '2026-05-01', 50, 0])
+      expect(sql).toContain(
+        '(m.origin_station, m.dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
+      )
+      expect(sql).toContain('m.date_ata >= $4::DATE')
+      expect(sql).toContain("m.date_ata < ($5::DATE + INTERVAL '1 day')")
+      expect(params).toEqual([
+        '2026-04-2H',
+        ['Jabo'],
+        ['Tanjung Pinang'],
+        '2026-05-01',
+        '2026-05-01',
+        50,
+        0,
+      ])
     })
 
     it('binds route params after the range-mode offset in custom-date-range mode', async () => {
       mockEmptyPage()
       await service.getAwbDrilldown(1, 50, undefined, '2026-05-01', '2026-05-31', undefined, {
-        origin: 'Jabo',
-        dest: 'Aceh',
+        routes: [{ origin: 'Jabo', dest: 'Aceh' }],
       })
       const [sql, params] = dataSource.query.mock.calls[0]
       // Range mode binds two params ($1, $2) for the outer filter before any route params, so the
       // route conditions must land at $3/$4, not $2/$3 (which the cycle-mode-only offset would give).
-      expect(sql).toContain('m.origin_station = $3')
-      expect(sql).toContain('m.dest_station = $4')
+      expect(sql).toContain(
+        '(m.origin_station, m.dest_station) IN (SELECT * FROM UNNEST($3::text[], $4::text[]))',
+      )
       expect(sql).toContain('LIMIT $5 OFFSET $6')
-      expect(params).toEqual(['2026-05-01', '2026-05-31', 'Jabo', 'Aceh', 50, 0])
+      expect(params).toEqual(['2026-05-01', '2026-05-31', ['Jabo'], ['Aceh'], 50, 0])
+    })
+
+    it('matches any of the selected route pairs with a single UNNEST condition', async () => {
+      dataSource.query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: '0' }])
+
+      await service.getAwbDrilldown(1, 50, '2026-04-2H', undefined, undefined, undefined, {
+        routes: [
+          { origin: 'Jabo', dest: 'Denpasar' },
+          { origin: 'Surabaya', dest: 'Pontianak' },
+        ],
+      })
+
+      const [sql, params] = dataSource.query.mock.calls[0]
+      const normalized = (sql as string).replace(/\s+/g, ' ')
+      expect(normalized).toContain(
+        '(m.origin_station, m.dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
+      )
+      // Two parallel arrays, not an interleaved list: a flattened list would silently pair
+      // Denpasar with Surabaya.
+      expect(params).toEqual([
+        '2026-04-2H',
+        ['Jabo', 'Surabaya'],
+        ['Denpasar', 'Pontianak'],
+        50,
+        0,
+      ])
+    })
+
+    it('still narrows AWBs by EXISTS so cost stays whole-AWB', async () => {
+      dataSource.query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: '0' }])
+
+      await service.getAwbDrilldown(1, 50, '2026-04-2H', undefined, undefined, undefined, {
+        routes: [{ origin: 'Jabo', dest: 'Aceh' }],
+      })
+
+      const normalized = (dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')
+      expect(normalized).toContain('AND EXISTS ( SELECT 1 FROM v_pnl_to m WHERE m.awb = v.awb')
+    })
+
+    it('emits no route condition at all when no routes are selected', async () => {
+      dataSource.query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: '0' }])
+
+      await service.getAwbDrilldown(1, 50, '2026-04-2H', undefined, undefined, undefined, {
+        routes: [],
+      })
+
+      expect(dataSource.query.mock.calls[0][0]).not.toContain('EXISTS')
+      expect(dataSource.query.mock.calls[0][1]).toEqual(['2026-04-2H', 50, 0])
+    })
+
+    it('combines routes with the date window in one EXISTS', async () => {
+      dataSource.query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: '0' }])
+
+      await service.getAwbDrilldown(1, 50, '2026-04-2H', undefined, undefined, undefined, {
+        routes: [{ origin: 'Jabo', dest: 'Aceh' }],
+        dateFrom: '2026-04-20',
+        dateTo: '2026-04-20',
+      })
+
+      const [, params] = dataSource.query.mock.calls[0]
+      expect(params).toEqual([
+        '2026-04-2H',
+        ['Jabo'],
+        ['Aceh'],
+        '2026-04-20',
+        '2026-04-20',
+        50,
+        0,
+      ])
     })
 
     it('uses the date column of the selected basis inside the subquery', async () => {
@@ -293,13 +374,15 @@ describe('PnlService', () => {
     it('applies the identical WHERE clause to the count query so paging matches', async () => {
       mockEmptyPage()
       await service.getAwbDrilldown(2, 50, '2026-04-2H', undefined, undefined, undefined, {
-        origin: 'Jabo',
+        routes: [{ origin: 'Jabo', dest: 'Aceh' }],
       })
       const [countSql, countParams] = dataSource.query.mock.calls[1]
       expect(countSql).toContain('COUNT(DISTINCT awb)')
-      expect(countSql).toContain('m.origin_station = $2')
+      expect(countSql).toContain(
+        '(m.origin_station, m.dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
+      )
       // No LIMIT/OFFSET params on the count query.
-      expect(countParams).toEqual(['2026-04-2H', 'Jabo'])
+      expect(countParams).toEqual(['2026-04-2H', ['Jabo'], ['Aceh']])
     })
 
     it('reports the dominant origin, dest and date, flagging none as varying when uniform', async () => {

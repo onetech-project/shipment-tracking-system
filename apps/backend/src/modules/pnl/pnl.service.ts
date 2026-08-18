@@ -10,6 +10,7 @@ import {
 } from './pnl-filter.util'
 import { originLabel } from '../../common/utils/origin-labels.util'
 import { indexIssueRows, ISSUE_BY_RANK, PnlCellIssue } from './pnl-cell-issues.util'
+import { RoutePair } from './pnl-columns.util'
 
 export interface PnlSummary {
   label: string
@@ -59,8 +60,7 @@ export interface PnlAwbRow {
 // Optional narrowing for the AWB drilldown. Every field is independent; supplying none leaves the
 // query exactly as it was before route filtering existed.
 export interface PnlRouteFilter {
-  origin?: string
-  dest?: string
+  routes?: RoutePair[]
   dateFrom?: string // YYYY-MM-DD
   dateTo?: string // YYYY-MM-DD, inclusive
 }
@@ -363,8 +363,15 @@ export class PnlService {
       routeParams.push(value)
       return `$${params.length + routeParams.length}`
     }
-    if (route?.origin) routeConds.push(`m.origin_station = ${bind(route.origin)}`)
-    if (route?.dest) routeConds.push(`m.dest_station = ${bind(route.dest)}`)
+    // Two parallel arrays rather than one interleaved list: UNNEST zips them, so the pairs stay
+    // pairs. A flattened list would match any origin against any destination.
+    if (route?.routes?.length) {
+      const origins = bind(route.routes.map((r) => r.origin))
+      const dests = bind(route.routes.map((r) => r.dest))
+      routeConds.push(
+        `(m.origin_station, m.dest_station) IN (SELECT * FROM UNNEST(${origins}::text[], ${dests}::text[]))`,
+      )
+    }
     if (route?.dateFrom) routeConds.push(`${inner.dateCol} >= ${bind(route.dateFrom)}::DATE`)
     if (route?.dateTo) {
       routeConds.push(`${inner.dateCol} < (${bind(route.dateTo)}::DATE + INTERVAL '1 day')`)

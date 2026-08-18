@@ -61,7 +61,7 @@ describe('PnlController', () => {
     await controller.getAwbDrilldown(1, 50, '2026-04-2H', undefined, undefined, 'ata_vendor_wh_destination')
     expect(mockService.getAwbDrilldown).toHaveBeenCalledWith(
       1, 50, '2026-04-2H', undefined, undefined, 'ata_vendor_wh_destination',
-      { origin: undefined, dest: undefined, dateFrom: undefined, dateTo: undefined },
+      { routes: [], dateFrom: undefined, dateTo: undefined },
     )
   })
 
@@ -78,24 +78,31 @@ describe('PnlController', () => {
     expect(result.periodDays).toBe(15)
   })
 
-  it('getAwbDrilldown forwards the route query params as one object', async () => {
-    mockService.getAwbDrilldown.mockResolvedValueOnce({ data: [], total: 0 })
+  it('getAwbDrilldown parses the routes param into pairs', async () => {
     await controller.getAwbDrilldown(
-      1, 50, '2026-04-2H', undefined, undefined, 'ata_vendor_wh_destination',
-      'Jabo', 'Tanjung Pinang', '2026-05-01', '2026-05-31',
+      1, 50, '2026-04-2H', undefined, undefined, undefined,
+      'Jabo|Denpasar,Surabaya|Pontianak', '2026-04-20', '2026-04-21',
     )
+
     expect(mockService.getAwbDrilldown).toHaveBeenCalledWith(
-      1, 50, '2026-04-2H', undefined, undefined, 'ata_vendor_wh_destination',
-      { origin: 'Jabo', dest: 'Tanjung Pinang', dateFrom: '2026-05-01', dateTo: '2026-05-31' },
+      1, 50, '2026-04-2H', undefined, undefined, undefined,
+      {
+        routes: [
+          { origin: 'Jabo', dest: 'Denpasar' },
+          { origin: 'Surabaya', dest: 'Pontianak' },
+        ],
+        dateFrom: '2026-04-20',
+        dateTo: '2026-04-21',
+      },
     )
   })
 
-  it('getAwbDrilldown passes undefined route fields through untouched', async () => {
-    mockService.getAwbDrilldown.mockResolvedValueOnce({ data: [], total: 0 })
+  it('getAwbDrilldown sends an empty route list when the param is absent', async () => {
     await controller.getAwbDrilldown(1, 50, '2026-04-2H')
+
     expect(mockService.getAwbDrilldown).toHaveBeenCalledWith(
       1, 50, '2026-04-2H', undefined, undefined, undefined,
-      { origin: undefined, dest: undefined, dateFrom: undefined, dateTo: undefined },
+      { routes: [], dateFrom: undefined, dateTo: undefined },
     )
   })
 
