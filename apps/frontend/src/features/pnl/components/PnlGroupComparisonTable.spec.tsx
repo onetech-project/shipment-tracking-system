@@ -9,6 +9,16 @@ import '@testing-library/jest-dom'
 import { PnlGroupComparisonTable } from './PnlGroupComparisonTable'
 import { ComparisonTableModel } from '../utils/groupComparison'
 
+// Task 13 turns the footer cost cell into a plain <td> (no button), so locating it by row label
+// and cell position — the same style PnlMatrixTable.spec.tsx uses — survives that rework, unlike a
+// button data-testid would.
+function footerRow(container: HTMLElement, label: string): HTMLTableCellElement[] {
+  const rows = Array.from(container.querySelectorAll<HTMLTableRowElement>('tfoot tr'))
+  const row = rows.find((r) => r.querySelector('td')?.textContent === label)
+  if (!row) throw new Error(`no tfoot row labelled ${label}`)
+  return Array.from(row.querySelectorAll<HTMLTableCellElement>('td')).slice(1) // drop the label cell
+}
+
 const columns = [
   { id: 'g1', name: 'Kalimantan', routeCount: 3, kind: 'group' as const, routes: [] },
   { id: 'g2', name: 'Sumatera', routeCount: 2, kind: 'group' as const, routes: [] },
@@ -211,4 +221,25 @@ it('leaves a clean cost cell untinted', () => {
   expect(screen.getByTestId('cost-2026-05-02-g2').closest('td')!.className).not.toContain(
     'bg-amber-100',
   )
+})
+
+// The Revenue cell has no button to hang the amber class off, so its <td> class is asserted
+// directly — Task 12's guarantee is that both the Revenue and the Cost cell of a warned
+// column/date go amber, not just the one with the drilldown affordance.
+it('paints a warned revenue cell amber and leaves a clean one untinted', () => {
+  render(<PnlGroupComparisonTable model={baseModel()} />)
+  expect(screen.getByTestId('revenue-2026-05-02-g1').className).toContain('bg-amber-100')
+  expect(screen.getByTestId('revenue-2026-05-02-g2').className).not.toContain('bg-amber-100')
+})
+
+// The Total footer row's fixture already carries one warned column (g1) and one clean column
+// (g2) in warnings[0]/warnings[1] — same values the body-cost test above exercises for the same
+// date, so this checks the footer gets the same amber treatment on both blocks, not just the body.
+it('paints both blocks of the Total footer row amber for a warned column, and leaves a clean column untinted', () => {
+  const { container } = render(<PnlGroupComparisonTable model={baseModel()} />)
+  const [revenueWarned, revenueClean, costWarned, costClean] = footerRow(container, 'Total')
+  expect(revenueWarned.className).toContain('bg-amber-100')
+  expect(revenueClean.className).not.toContain('bg-amber-100')
+  expect(costWarned.className).toContain('bg-amber-100')
+  expect(costClean.className).not.toContain('bg-amber-100')
 })
