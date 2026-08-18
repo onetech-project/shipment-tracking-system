@@ -10,7 +10,11 @@ export interface CellWarning {
   incompleteTos: number // the effect: TOs with no cost at all
 }
 
-export function hasWarning(warning: CellWarning | undefined): boolean {
+// The amber tint every warned cell shares, across both the daily matrix and the group comparison
+// tables — one definition so the two tables cannot drift into two different "warned" colors.
+export const WARNING_TINT = 'bg-amber-100 dark:bg-amber-950/40'
+
+export function hasWarning(warning: CellWarning | undefined): warning is CellWarning {
   if (!warning) return false
   return warning.issues.length > 0 || warning.incompleteTos > 0
 }
@@ -18,17 +22,17 @@ export function hasWarning(warning: CellWarning | undefined): boolean {
 export function warningTooltip(warning: CellWarning | undefined): string | undefined {
   if (!hasWarning(warning)) return undefined
   const parts: string[] = []
-  if (warning!.issues.length > 0) {
+  if (warning.issues.length > 0) {
     // Per-issue counts, never a total: an AWB can carry two issues, so summing would overstate how
     // many AWBs are actually broken.
-    const named = [...warning!.issues]
+    const named = [...warning.issues]
       .sort((a, b) => issueRank(a.issue) - issueRank(b.issue) || a.issue.localeCompare(b.issue))
       .map((i) => `${issueLabel(i.issue)} (${i.awbs} AWB)`)
       .join(', ')
     parts.push(`Data quality: ${named}`)
   }
-  if (warning!.incompleteTos > 0) {
-    parts.push(`${warning!.incompleteTos} TO belum ada cost`)
+  if (warning.incompleteTos > 0) {
+    parts.push(`${warning.incompleteTos} TO belum ada cost`)
   }
   return parts.join(' · ')
 }

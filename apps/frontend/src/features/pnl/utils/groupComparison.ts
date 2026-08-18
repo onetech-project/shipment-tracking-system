@@ -39,6 +39,10 @@ function emptyComponents(): Record<CostComponentKey, (number | null)[]> {
   return { costSmu: [], costRa: [], costSgOut: [], costSgIn: [] }
 }
 
+// An absent cell still gets a clean warning rather than being left undefined, so the renderer and
+// the tests have exactly one shape to read. Matches dailyMatrix.ts's CLEAN.
+const CLEAN: CellWarning = { issues: [], incompleteTos: 0 }
+
 export function toComparisonTable(data: PnlGroupComparison): ComparisonTableModel {
   const rows: ComparisonRowModel[] = data.rows.map((row) => {
     const components = emptyComponents()
@@ -50,7 +54,9 @@ export function toComparisonTable(data: PnlGroupComparison): ComparisonTableMode
       revenue: row.cells.map((c) => (c ? c.revenue : null)),
       cost: row.cells.map((c) => (c ? c.cost : null)),
       warnings: row.cells.map((c) =>
-        c ? { issues: c.issues, incompleteTos: c.incompleteTos } : { issues: [], incompleteTos: 0 },
+        // `issues` is non-optional in the type, but the deploy pipeline brings backend and frontend
+        // up in parallel, so a new frontend can briefly hit an old backend whose cells lack the field.
+        c ? { issues: c.issues ?? [], incompleteTos: c.incompleteTos } : CLEAN,
       ),
       components,
     }

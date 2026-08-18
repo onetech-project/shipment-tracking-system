@@ -5,7 +5,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import { formatDayLabel } from '../utils/dailyMatrix'
 import { COST_COMPONENTS, ComparisonTableModel } from '../utils/groupComparison'
 import { num } from '../utils/format'
-import { CellWarning, hasWarning, warningTooltip } from '../utils/cellWarning'
+import { CellWarning, hasWarning, warningTooltip, WARNING_TINT } from '../utils/cellWarning'
 import { PnlGroupComparisonColumn } from '../hooks/usePnl'
 
 interface PnlGroupComparisonTableProps {
@@ -168,7 +168,7 @@ export function PnlGroupComparisonTable({ model, onCellClick }: PnlGroupComparis
                     {(['revenue', 'cost'] as const).flatMap((field) =>
                       row[field].map((value, i) => {
                         const warning = row.warnings[i]
-                        const tint = hasWarning(warning) ? 'bg-amber-100 dark:bg-amber-950/40' : ''
+                        const tint = hasWarning(warning) ? WARNING_TINT : ''
                         const testId = `${field}-${row.date}-${model.columns[i].id}`
                         return onCellClick ? (
                           <td key={testId} className={`border-b border-l p-0 ${tint}`}>
@@ -221,7 +221,7 @@ export function PnlGroupComparisonTable({ model, onCellClick }: PnlGroupComparis
                     <td
                       key={`rev-${ci}`}
                       title={warningTooltip(footerRow.warnings?.[ci])}
-                      className={`whitespace-nowrap border-b border-l px-3 py-1.5 text-right ${hasWarning(footerRow.warnings?.[ci]) ? 'bg-amber-100 dark:bg-amber-950/40' : ''}`}
+                      className={`whitespace-nowrap border-b border-l px-3 py-1.5 text-right ${hasWarning(footerRow.warnings?.[ci]) ? WARNING_TINT : ''}`}
                     >
                       {formatValue(value)}
                     </td>
@@ -230,7 +230,7 @@ export function PnlGroupComparisonTable({ model, onCellClick }: PnlGroupComparis
                     <td
                       key={`cost-${ci}`}
                       title={warningTooltip(footerRow.warnings?.[ci])}
-                      className={`whitespace-nowrap border-b border-l px-3 py-1.5 text-right ${hasWarning(footerRow.warnings?.[ci]) ? 'bg-amber-100 dark:bg-amber-950/40' : ''}`}
+                      className={`whitespace-nowrap border-b border-l px-3 py-1.5 text-right ${hasWarning(footerRow.warnings?.[ci]) ? WARNING_TINT : ''}`}
                     >
                       {formatValue(value)}
                     </td>

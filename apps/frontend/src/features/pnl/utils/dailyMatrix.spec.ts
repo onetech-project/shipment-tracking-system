@@ -98,6 +98,13 @@ describe('toRevenueTable', () => {
       { issues: [], incompleteTos: 0 },
     ])
   })
+
+  it('warns both footer rows, since Avg / Day divides the same understated totalRevenue', () => {
+    const [total, avg] = toRevenueTable(matrix).footerRows
+    const expectedWarning = { issues: [{ issue: 'no_booking', awbs: 3 }], incompleteTos: 2 }
+    expect(total.warnings?.[2]).toEqual(expectedWarning)
+    expect(avg.warnings?.[2]).toEqual(expectedWarning)
+  })
 })
 
 describe('toMarginTable', () => {
@@ -145,9 +152,19 @@ describe('toMarginTable', () => {
       issues: [{ issue: 'no_booking', awbs: 3 }],
       incompleteTos: 2,
     })
-    // Only the Total row aggregates the period; an average has no set of AWBs behind it.
-    expect(model.footerRows[1].warnings).toBeUndefined()
     expect(model.highlightNegative).toBe(true)
+  })
+
+  it('warns every footer row derived from totalMargin, but not gross weight', () => {
+    const [total, avg, pct, tonase, space] = toMarginTable(matrix).footerRows
+    const expectedWarning = { issues: [{ issue: 'no_booking', awbs: 3 }], incompleteTos: 2 }
+    // Avg / Day, % Margin and Space per Kg all divide totalMargin, so they inherit its warning.
+    expect(total.warnings?.[2]).toEqual(expectedWarning)
+    expect(avg.warnings?.[2]).toEqual(expectedWarning)
+    expect(pct.warnings?.[2]).toEqual(expectedWarning)
+    expect(space.warnings?.[2]).toEqual(expectedWarning)
+    // Total Tonase is gross weight: it never touches cost, so it deliberately stays clean.
+    expect(tonase.warnings).toBeUndefined()
   })
 })
 

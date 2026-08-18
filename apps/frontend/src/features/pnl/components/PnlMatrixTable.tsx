@@ -5,7 +5,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import { MatrixTableModel, formatDayLabel, groupOrigins } from '../utils/dailyMatrix'
 import { PnlDailyMatrixColumn } from '../hooks/usePnl'
 import { num, pct } from '../utils/format'
-import { CellWarning, hasWarning, warningTooltip } from '../utils/cellWarning'
+import { CellWarning, hasWarning, warningTooltip, WARNING_TINT } from '../utils/cellWarning'
 
 interface PnlMatrixTableProps {
   title: string
@@ -42,7 +42,7 @@ function cellButtonTitle(warning: CellWarning | undefined): string {
 // A negative value keeps its red text so a warned loss never reads as a warned profit.
 function cellClass(value: number | null, highlightNegative: boolean, warned: boolean): string {
   const negative = value != null && value < 0 && highlightNegative
-  if (warned) return `bg-amber-100 dark:bg-amber-950/40 ${negative ? 'text-red-700 dark:text-red-400 font-semibold' : ''}`
+  if (warned) return `${WARNING_TINT} ${negative ? 'text-red-700 dark:text-red-400 font-semibold' : ''}`
   return negative ? 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-950/40' : ''
 }
 
