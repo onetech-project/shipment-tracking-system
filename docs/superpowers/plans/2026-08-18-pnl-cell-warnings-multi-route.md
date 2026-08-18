@@ -13,10 +13,13 @@
 ## Global Constraints
 
 - Branch: `feature/pnl-cell-warnings-multi-route`, already created off `development`. Do not switch branches.
-- Backend focused tests: `cd apps/backend && pnpm test -- --runInBand <pattern>`.
-- Backend **full** suite (Task 14 only): `cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm test -- --runInBand`. Bare `pnpm test` spawns ~15 workers and gets OOM-killed on this box; bare `--runInBand` without the heap bump core-dumps.
-- Frontend tests: `cd apps/frontend && pnpm test <pattern>`. The suite is small; no flags needed.
-- Type-check: `cd apps/frontend && pnpm type-check`, and `cd apps/backend && pnpm build`.
+- **Every Jest run on this machine needs the heap bump AND `--runInBand`, focused runs included.** Bare `pnpm test` spawns ~15 workers and gets OOM-killed; bare `--runInBand` without the heap bump core-dumps.
+  - Backend: `cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest <pattern> --runInBand`
+  - Frontend: `cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest <pattern> --runInBand`
+  - Full suite: the same command with no pattern.
+- Type gate is `pnpm exec tsc --noEmit` in the app directory, **not** `next lint`. `next lint` has a pre-existing error in `src/features/roles/components/role-permissions-panel.tsx` (`no-assign-module-variable`) that is not ours — leave it alone and never use lint as a gate.
+- An `rtk` hook rewrites Jest output down to `PASS (n) FAIL (n)`. When a count looks wrong, read the raw output from the newest file in `~/.local/share/rtk/tee/`.
+- Local database for the integration spec: `postgres://postgres:postgres@localhost:5432/app`.
 - Comments explain *why*, never *what*. Match the density and tone of the surrounding P&L code, which is comment-heavy at decision points and bare elsewhere.
 - All user-facing strings in these components are Indonesian, except issue labels from `ISSUE_LABELS`, which stay English because they name source-sheet columns.
 - Route label forms are fixed and must not be unified:
@@ -150,7 +153,7 @@ describe('indexIssueRows', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl-cell-issues`
+Run: `cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest pnl-cell-issues --runInBand`
 Expected: FAIL — `Cannot find module './pnl-cell-issues.util'`
 
 - [ ] **Step 3: Write the implementation**
@@ -223,7 +226,7 @@ export function indexIssueRows(
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl-cell-issues`
+Run: `cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest pnl-cell-issues --runInBand`
 Expected: PASS, 6 tests
 
 - [ ] **Step 5: Delete the duplicated rank block from the service**
@@ -259,7 +262,7 @@ import { ISSUE_BY_RANK, PnlCellIssue } from './pnl-cell-issues.util'
 
 - [ ] **Step 6: Verify nothing regressed**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl.service`
+Run: `cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest pnl.service --runInBand`
 Expected: PASS — the existing `issue_rank 6 → station_mapping_missing` assertions still hold.
 
 - [ ] **Step 7: Commit**
@@ -349,7 +352,7 @@ Add inside `describe('getDailyMatrix', ...)` in `apps/backend/src/modules/pnl/pn
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl.service -t "getDailyMatrix"`
+Run: `cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest pnl.service -t "getDailyMatrix" --runInBand`
 Expected: FAIL — `issues` is undefined on the cell.
 
 - [ ] **Step 3: Add the fields to the interfaces**
@@ -448,7 +451,7 @@ import { indexIssueRows, ISSUE_BY_RANK, PnlCellIssue } from './pnl-cell-issues.u
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl.service -t "getDailyMatrix"`
+Run: `cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest pnl.service -t "getDailyMatrix" --runInBand`
 Expected: PASS — all pre-existing `getDailyMatrix` tests plus the three new ones.
 
 - [ ] **Step 6: Commit**
@@ -546,7 +549,7 @@ describe('parseColumnPicks', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl-columns`
+Run: `cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest pnl-columns --runInBand`
 Expected: FAIL — `Cannot find module './pnl-columns.util'`
 
 - [ ] **Step 3: Write the implementation**
@@ -630,7 +633,7 @@ export function parseColumnPicks(raw?: string): ColumnPick[] {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl-columns`
+Run: `cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest pnl-columns --runInBand`
 Expected: PASS, 13 tests
 
 - [ ] **Step 5: Commit**
@@ -769,7 +772,7 @@ The spec builds the controller through `Test.createTestingModule` with `mockServ
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl.service -t "getAwbDrilldown"`
+Run: `cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest pnl.service -t "getAwbDrilldown" --runInBand`
 Expected: FAIL — the SQL still contains `m.origin_station = $2`.
 
 - [ ] **Step 3: Change the filter interface**
@@ -849,7 +852,7 @@ import { parseRoutePairs } from './pnl-columns.util'
 
 - [ ] **Step 6: Run tests to verify they pass**
 
-Run: `cd apps/backend && pnpm test -- --runInBand "pnl.service|pnl.controller"`
+Run: `cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest "pnl.service|pnl.controller" --runInBand`
 Expected: PASS
 
 - [ ] **Step 7: Commit**
@@ -1067,7 +1070,7 @@ Then add:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl.service -t "getGroupComparison"`
+Run: `cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest pnl.service -t "getGroupComparison" --runInBand`
 Expected: FAIL — `getGroupComparison` still takes string ids.
 
 - [ ] **Step 3: Change the interfaces**
@@ -1404,10 +1407,10 @@ and the seeded route may not be Jabo → Aceh. Adapt the values, not the asserti
 
 - [ ] **Step 7: Run tests to verify they pass**
 
-Run: `cd apps/backend && pnpm test -- --runInBand "pnl.service|pnl.controller"`
+Run: `cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest "pnl.service|pnl.controller" --runInBand`
 Expected: PASS
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl-group-comparison.integration`
+Run: `cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest pnl-group-comparison.integration --runInBand`
 Expected: PASS if a test database is reachable. If the suite skips itself for want of a database,
 say so explicitly in the commit body rather than claiming it passed.
 
@@ -1459,7 +1462,7 @@ The component had no test; it now has two consumers, so pin its contract. Create
 
 ```tsx
 import React from 'react'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { MultiRouteFilter } from './multi-route-filter'
 
@@ -1469,6 +1472,12 @@ function open(selected: string[] = [], onChange = jest.fn()) {
   render(<MultiRouteFilter routes={routes} selected={selected} onChange={onChange} />)
   fireEvent.click(screen.getByRole('button', { expanded: false }))
   return onChange
+}
+
+// The checkbox carries no accessible name of its own — the label text sits in a sibling <span> —
+// so it is addressed through the <label> that wraps it.
+function checkboxFor(label: string): HTMLElement {
+  return within(screen.getByText(label).closest('label')!).getByRole('checkbox')
 }
 
 describe('MultiRouteFilter', () => {
@@ -1486,13 +1495,13 @@ describe('MultiRouteFilter', () => {
   it('appends a newly ticked route rather than replacing the selection', () => {
     // Selection order is meaningful to the P&L comparison, where it decides column order.
     const onChange = open(['Jabo → Aceh'])
-    fireEvent.click(screen.getByRole('checkbox', { name: '' }) ?? screen.getAllByRole('checkbox')[1])
+    fireEvent.click(checkboxFor('Jabo → Denpasar'))
     expect(onChange).toHaveBeenCalledWith(['Jabo → Aceh', 'Jabo → Denpasar'])
   })
 
   it('unticks a route already selected', () => {
     const onChange = open(['Jabo → Aceh'])
-    fireEvent.click(screen.getAllByRole('checkbox')[2])
+    fireEvent.click(checkboxFor('Jabo → Aceh'))
     expect(onChange).toHaveBeenCalledWith([])
   })
 
@@ -1512,13 +1521,13 @@ describe('MultiRouteFilter', () => {
 })
 ```
 
-The checkbox indexing above assumes the options render in `routes` order after opening. Run the test,
-read the failure, and address the checkboxes by their surrounding label text if the indexes do not
-line up — do not weaken the assertion about the resulting array.
+`checkboxFor` reaches the input through its wrapping `<label>` because the component gives the
+checkbox no accessible name of its own. If that lookup fails, fix the lookup — never weaken the
+assertion about the resulting array.
 
 - [ ] **Step 3: Run tests to verify they pass**
 
-Run: `cd apps/frontend && pnpm test multi-route-filter`
+Run: `cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest multi-route-filter --runInBand`
 Expected: PASS
 
 - [ ] **Step 4: Verify nothing else referenced the old path**
@@ -1526,7 +1535,7 @@ Expected: PASS
 Run: `grep -rn "components/MultiRouteFilter" apps/frontend/src apps/frontend/e2e`
 Expected: no output
 
-Run: `cd apps/frontend && pnpm type-check`
+Run: `cd apps/frontend && pnpm exec tsc --noEmit`
 Expected: no errors
 
 - [ ] **Step 5: Commit**
@@ -1545,7 +1554,7 @@ git commit -m "refactor(frontend): share MultiRouteFilter outside the SLA featur
 - Create: `apps/frontend/src/features/pnl/utils/routeLabels.spec.ts`
 
 **Interfaces:**
-- Produces: `dropdownRouteLabel(pair: { origin: string; dest: string }): string`; `displayRouteLabel(route: { originLabel: string; dest: string }): string`; `buildRouteLabelIndex(pairs: { origin: string; dest: string }[]): { labels: string[]; byLabel: Map<string, { origin: string; dest: string }> }`; `routesForLabels(labels: string[], index: RouteLabelIndex): PnlRoutePair[]`; `labelsForRoutes(pairs: PnlRoutePair[], index: RouteLabelIndex): string[]`
+- Produces: `dropdownRouteLabel(pair: { origin: string; dest: string }): string`; `displayRouteLabel(route: { originLabel: string; dest: string }): string`; `buildRouteLabelIndex(pairs: { origin: string; dest: string }[]): { labels: string[]; byLabel: Map<string, { origin: string; dest: string }> }`; `routesForLabels(labels: string[], index: RouteLabelIndex): PnlRoutePair[]`; `labelsForRoutes(pairs: PnlRoutePair[]): string[]`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1607,22 +1616,20 @@ describe('labelsForRoutes', () => {
   ])
 
   it('turns selected pairs back into the labels the dropdown ticks', () => {
-    expect(labelsForRoutes([{ origin: 'Jabo', dest: 'Aceh' }], index)).toEqual(['Jabo → Aceh'])
+    expect(labelsForRoutes([{ origin: 'Jabo', dest: 'Aceh' }])).toEqual(['Jabo → Aceh'])
   })
 
   it('keeps a pair that is not in the index, so a filter is never silently widened', () => {
     // A cell click can carry a route the station list has not caught up with. Dropping it here
     // would show the user a wider result set than the one they asked for, with no clue why.
-    expect(labelsForRoutes([{ origin: 'Jabo', dest: 'Manokwari' }], index)).toEqual([
-      'Jabo → Manokwari',
-    ])
+    expect(labelsForRoutes([{ origin: 'Jabo', dest: 'Manokwari' }])).toEqual(['Jabo → Manokwari'])
   })
 })
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd apps/frontend && pnpm test routeLabels`
+Run: `cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest routeLabels --runInBand`
 Expected: FAIL — `Cannot find module './routeLabels'`
 
 - [ ] **Step 3: Write the implementation**
@@ -1679,16 +1686,12 @@ export function routesForLabels(labels: string[], index: RouteLabelIndex): PnlRo
 
 // The inverse. A pair the station list does not know is still labelled rather than dropped: losing
 // it would silently widen the filter, which reads as a real (wider) answer instead of a mistake.
-export function labelsForRoutes(pairs: PnlRoutePair[], _index: RouteLabelIndex): string[] {
+export function labelsForRoutes(pairs: PnlRoutePair[]): string[] {
   return pairs.map(dropdownRouteLabel)
 }
 ```
 
-Two notes. `routesForLabels` is used by Task 9 and Task 11; `_index` on `labelsForRoutes` keeps the
-two functions symmetrical at the call site — if the linter rejects the unused parameter, drop it
-from the signature and update both callers.
-
-And `PnlRoutePair` does not exist yet: it arrives in Task 9. **Delete the
+`routesForLabels` is used by Task 9 and Task 11. `PnlRoutePair` does not exist yet: it arrives in Task 9. **Delete the
 `import { PnlRoutePair } from '../hooks/usePnl'` line shown above** and declare the type locally for
 now, so this task stands on its own:
 
@@ -1700,7 +1703,7 @@ Task 9 Step 4 deletes that local copy and restores the import.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd apps/frontend && pnpm test routeLabels`
+Run: `cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest routeLabels --runInBand`
 Expected: PASS, 7 tests
 
 - [ ] **Step 5: Commit**
@@ -1807,7 +1810,7 @@ describe('warningTooltip', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd apps/frontend && pnpm test "cellWarning|issueLabels"`
+Run: `cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest "cellWarning|issueLabels" --runInBand`
 Expected: FAIL — `Cannot find module './cellWarning'` and `issueRank` is not exported.
 
 - [ ] **Step 3: Add the rank to issueLabels**
@@ -1886,7 +1889,7 @@ Task 9 Step 4 deletes that local copy and restores the import.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `cd apps/frontend && pnpm test "cellWarning|issueLabels"`
+Run: `cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest "cellWarning|issueLabels" --runInBand`
 Expected: PASS
 
 - [ ] **Step 6: Commit**
@@ -2043,7 +2046,7 @@ weakening the assertion.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd apps/frontend && pnpm test "usePnl|dailyMatrix|PnlAwbDrilldown"`
+Run: `cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest "usePnl|dailyMatrix|PnlAwbDrilldown" --runInBand`
 Expected: FAIL
 
 - [ ] **Step 3: Change the hook types and serialisation**
@@ -2163,7 +2166,7 @@ Replace the two `<label>`-wrapped `<select>` blocks (Origin and Destination) wit
           <MultiRouteFilter
             className="w-[260px]"
             routes={routeIndex.labels}
-            selected={labelsForRoutes(route.routes ?? [], routeIndex)}
+            selected={labelsForRoutes(route.routes ?? [])}
             onChange={setRoutes}
           />
         </label>
@@ -2180,10 +2183,10 @@ to `routeFromCell`, which now returns the new shape. Confirm by reading it; do n
 
 - [ ] **Step 8: Run tests to verify they pass**
 
-Run: `cd apps/frontend && pnpm test "usePnl|dailyMatrix|PnlAwbDrilldown|routeLabels|cellWarning|pnl/page"`
+Run: `cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest "usePnl|dailyMatrix|PnlAwbDrilldown|routeLabels|cellWarning|pnl/page" --runInBand`
 Expected: PASS
 
-Run: `cd apps/frontend && pnpm type-check`
+Run: `cd apps/frontend && pnpm exec tsc --noEmit`
 Expected: no errors
 
 - [ ] **Step 9: Commit**
@@ -2313,7 +2316,7 @@ Add `screen` to the Testing Library import in that file if it is not already the
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd apps/frontend && pnpm test "dailyMatrix|PnlMatrixTable"`
+Run: `cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest "dailyMatrix|PnlMatrixTable" --runInBand`
 Expected: FAIL
 
 - [ ] **Step 3: Add issues to the hook types**
@@ -2456,10 +2459,10 @@ The amber `•` markers are gone from both loops — the background is the marke
 
 - [ ] **Step 6: Run tests to verify they pass**
 
-Run: `cd apps/frontend && pnpm test "dailyMatrix|PnlMatrixTable|PnlDailyMatrixView"`
+Run: `cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest "dailyMatrix|PnlMatrixTable|PnlDailyMatrixView" --runInBand`
 Expected: PASS
 
-Run: `cd apps/frontend && pnpm type-check`
+Run: `cd apps/frontend && pnpm exec tsc --noEmit`
 Expected: no errors
 
 - [ ] **Step 7: Commit**
@@ -2581,7 +2584,7 @@ comparison response's columns the new `kind` and `routes` fields.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd apps/frontend && pnpm test "usePnl|groupComparison|PnlGroupComparisonView"`
+Run: `cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest "usePnl|groupComparison|PnlGroupComparisonView" --runInBand`
 Expected: FAIL
 
 - [ ] **Step 3: Change the hook**
@@ -2723,7 +2726,7 @@ In the picker card, change the group checkbox `checked` to
         <MultiRouteFilter
           className="w-[260px]"
           routes={routeIndex.labels}
-          selected={labelsForRoutes(pickedRoutes, routeIndex)}
+          selected={labelsForRoutes(pickedRoutes)}
           onChange={setRouteLabels}
         />
 ```
@@ -2755,10 +2758,10 @@ guard the group `<p>`/checkbox row on `(groups ?? []).length > 0`.
 
 - [ ] **Step 6: Run tests to verify they pass**
 
-Run: `cd apps/frontend && pnpm test "usePnl|groupComparison|PnlGroupComparisonView"`
+Run: `cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest "usePnl|groupComparison|PnlGroupComparisonView" --runInBand`
 Expected: PASS
 
-Run: `cd apps/frontend && pnpm type-check`
+Run: `cd apps/frontend && pnpm exec tsc --noEmit`
 Expected: no errors
 
 - [ ] **Step 7: Commit**
@@ -2847,7 +2850,7 @@ test asserted the `•` marker, and add:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd apps/frontend && pnpm test "groupComparison|PnlGroupComparisonTable"`
+Run: `cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest "groupComparison|PnlGroupComparisonTable" --runInBand`
 Expected: FAIL
 
 - [ ] **Step 3: Add issues to the hook types**
@@ -2946,10 +2949,10 @@ footer `<td>` the same way. The amber `•` markers are gone everywhere — the 
 
 - [ ] **Step 6: Run tests to verify they pass**
 
-Run: `cd apps/frontend && pnpm test "groupComparison|PnlGroupComparison"`
+Run: `cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest "groupComparison|PnlGroupComparison" --runInBand`
 Expected: PASS
 
-Run: `cd apps/frontend && pnpm type-check`
+Run: `cd apps/frontend && pnpm exec tsc --noEmit`
 Expected: no errors
 
 - [ ] **Step 7: Commit**
@@ -3118,7 +3121,7 @@ it does not already take them.
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd apps/frontend && pnpm test "groupComparison|PnlGroupComparison|pnl/page"`
+Run: `cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest "groupComparison|PnlGroupComparison|pnl/page" --runInBand`
 Expected: FAIL
 
 - [ ] **Step 3: Add the cell-to-filter projection**
@@ -3314,10 +3317,10 @@ and pass the handler to the comparison view:
 
 - [ ] **Step 7: Run tests to verify they pass**
 
-Run: `cd apps/frontend && pnpm test "groupComparison|PnlGroupComparison|pnl/page"`
+Run: `cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest "groupComparison|PnlGroupComparison|pnl/page" --runInBand`
 Expected: PASS
 
-Run: `cd apps/frontend && pnpm type-check`
+Run: `cd apps/frontend && pnpm exec tsc --noEmit`
 Expected: no errors
 
 - [ ] **Step 8: Commit**
@@ -3335,25 +3338,27 @@ No new behaviour. This is the gate before the branch is offered for review.
 
 **Files:** none changed unless a failure demands it.
 
-- [ ] **Step 1: Backend build and full suite**
+- [ ] **Step 1: Backend type gate, build and full suite**
+
+Run: `cd apps/backend && pnpm exec tsc --noEmit`
+Expected: no errors
 
 Run: `cd apps/backend && pnpm build`
 Expected: no errors
 
-Run: `cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm test -- --runInBand`
-Expected: all suites pass. If suites fail with zero individual test failures, that is the OOM
-signature — re-run with `pnpm test -- --maxWorkers=1 --workerIdleMemoryLimit=512MB` instead.
+Run: `cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest --runInBand`
+Expected: all suites pass. The pre-change baseline is 632 passed / 1 skipped / 0 failed. Suites
+failing with zero individual test failures is the OOM signature, not a real failure.
 
-- [ ] **Step 2: Frontend type-check, lint and full suite**
+- [ ] **Step 2: Frontend type gate and full suite**
 
-Run: `cd apps/frontend && pnpm type-check`
+Run: `cd apps/frontend && pnpm exec tsc --noEmit`
 Expected: no errors
 
-Run: `cd apps/frontend && pnpm lint`
-Expected: no errors
+Run: `cd apps/frontend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest --runInBand`
+Expected: all suites pass. The pre-change baseline is 152 passed / 0 failed.
 
-Run: `cd apps/frontend && pnpm test`
-Expected: all suites pass
+Do **not** run `next lint` as a gate — it has a pre-existing unrelated error.
 
 - [ ] **Step 3: Confirm the old params are gone**
 
