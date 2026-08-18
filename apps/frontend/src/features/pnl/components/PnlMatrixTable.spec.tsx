@@ -5,25 +5,25 @@
  * tests isolate the renderer from the projection logic (which is covered in dailyMatrix.spec.ts).
  */
 import React from 'react'
-import { render, fireEvent } from '@testing-library/react'
+import { render, fireEvent, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { PnlMatrixTable } from './PnlMatrixTable'
 import { MatrixTableModel } from '../utils/dailyMatrix'
-
-const INCOMPLETE_TOOLTIP = (n: number) =>
-  `${n} TO belum ada cost — margin di sel ini lebih tinggi dari seharusnya`
 
 const columns = [
   { origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' },
   { origin: 'Surabaya', originLabel: 'SUB', dest: 'Pontianak' },
 ]
 
+const warned = { issues: [{ issue: 'smu_rate_missing', awbs: 2 }], incompleteTos: 3 }
+const clean = { issues: [], incompleteTos: 0 }
+
 function baseModel(overrides: Partial<MatrixTableModel> = {}): MatrixTableModel {
   return {
     columns,
     dates: ['2026-07-01'],
     values: [[null, 0]],
-    incompleteTos: null,
+    warnings: [[{ issues: [], incompleteTos: 0 }, { issues: [], incompleteTos: 0 }]],
     footerRows: [{ label: 'Total', values: [10, -5], format: 'number' }],
     highlightNegative: false,
     ...overrides,
@@ -73,33 +73,42 @@ describe('PnlMatrixTable', () => {
     expect(negativeCell.className).not.toContain('text-red-700')
   })
 
-  it('renders the incomplete-TOs marker and tooltip on a body cell', () => {
-    const model = baseModel({
-      values: [[100, 200]],
-      incompleteTos: [[0, 3]],
-    })
+  it('paints a warned cell amber and explains it in the title', () => {
+    const model = baseModel({ values: [[10, 20]], warnings: [[warned, clean]] })
     const { container } = render(<PnlMatrixTable title="t" model={model} />)
-    const [cleanCell, flaggedCell] = bodyCells(container)
-
-    expect(cleanCell.title).toBe('')
-    expect(cleanCell.textContent).not.toContain('•')
-
-    expect(flaggedCell.title).toBe(INCOMPLETE_TOOLTIP(3))
-    expect(flaggedCell.textContent).toContain('•')
+    const [warnedCell, cleanCell] = bodyCells(container)
+    expect(warnedCell.className).toContain('bg-amber-100')
+    expect(warnedCell.getAttribute('title')).toBe(
+      'Data quality: SMU rate missing for route (2 AWB) · 3 TO belum ada cost',
+    )
+    expect(cleanCell.className).not.toContain('bg-amber-100')
+    expect(cleanCell.getAttribute('title')).toBeNull()
   })
 
-  it('renders the incomplete-TOs marker on the footer Total row when it carries a non-zero count', () => {
+  it('keeps a negative value legible as red text when the cell is also warned', () => {
+    // The amber background wins — it says the number is unreliable — but the red text must survive,
+    // otherwise a warned loss reads as a warned profit.
     const model = baseModel({
-      footerRows: [{ label: 'Total', values: [10, -5], format: 'number', incompleteTos: [0, 5] }],
+      values: [[-5, -5]],
+      warnings: [[warned, clean]],
+      highlightNegative: true,
     })
     const { container } = render(<PnlMatrixTable title="t" model={model} />)
-    const [cleanFooterCell, flaggedFooterCell] = footerRow(container, 0)
+    const [warnedCell, cleanCell] = bodyCells(container)
+    expect(warnedCell.className).toContain('bg-amber-100')
+    expect(warnedCell.className).not.toContain('bg-red-50')
+    expect(warnedCell.className).toContain('text-red-700')
+    expect(cleanCell.className).toContain('bg-red-50')
+  })
 
-    expect(cleanFooterCell.title).toBe('')
-    expect(cleanFooterCell.textContent).not.toContain('•')
-
-    expect(flaggedFooterCell.title).toBe(INCOMPLETE_TOOLTIP(5))
-    expect(flaggedFooterCell.textContent).toContain('•')
+  it('paints a warned footer cell amber but leaves it inert', () => {
+    const model = baseModel({
+      footerRows: [{ label: 'Total', values: [10, -5], format: 'number', warnings: [warned, clean] }],
+    })
+    const { container } = render(<PnlMatrixTable title="t" model={model} onCellClick={jest.fn()} />)
+    const [warnedFooter] = footerRow(container, 0)
+    expect(warnedFooter.className).toContain('bg-amber-100')
+    expect(warnedFooter.querySelector('button')).toBeNull()
   })
 })
 
@@ -140,29 +149,27 @@ describe('PnlMatrixTable cell clicks', () => {
     expect(firstBodyCell.querySelector('button')).toBeNull()
   })
 
-  it('keeps the incomplete-cost warning reachable on a clickable flagged cell', () => {
-    const model = baseModel({
-      values: [[100, 200]],
-      incompleteTos: [[0, 3]],
-    })
-    const { container } = render(
-      <PnlMatrixTable title="t" model={model} onCellClick={jest.fn()} />,
+  it('merges the warning into the button title when the cell is clickable', () => {
+    // The button covers the whole cell, so a title on the <td> would be unreachable.
+    const model = baseModel({ values: [[10, 20]], warnings: [[warned, clean]] })
+    render(<PnlMatrixTable title="t" model={model} onCellClick={jest.fn()} />)
+    const [button] = screen.getAllByRole('button', { name: /Lihat AWB/ })
+    expect(button.getAttribute('title')).toBe(
+      'Lihat AWB rute dan tanggal ini — Data quality: SMU rate missing for route (2 AWB) · 3 TO belum ada cost',
     )
-    const buttons = container.querySelectorAll<HTMLButtonElement>('tbody button')
-    expect(buttons[1].title).toContain(INCOMPLETE_TOOLTIP(3))
   })
 
-  it('does not mention incomplete costs on a clickable cell without them', () => {
+  it('does not mention any warning on a clickable cell without one', () => {
     const model = baseModel({
       values: [[100, 200]],
-      incompleteTos: [[0, 0]],
+      warnings: [[clean, clean]],
     })
     const { container } = render(
       <PnlMatrixTable title="t" model={model} onCellClick={jest.fn()} />,
     )
     const buttons = container.querySelectorAll<HTMLButtonElement>('tbody button')
-    expect(buttons[0].title).not.toContain('TO belum ada cost')
-    expect(buttons[1].title).not.toContain('TO belum ada cost')
+    expect(buttons[0].title).toBe('Lihat AWB rute dan tanggal ini')
+    expect(buttons[1].title).toBe('Lihat AWB rute dan tanggal ini')
   })
 
   it('reports each row own date, not the first date in the model', () => {
@@ -181,13 +188,13 @@ describe('PnlMatrixTable cell clicks', () => {
   })
 
   it('drops the <td> title once the button covers the cell, so no conflicting tooltip is left in the padding sliver', () => {
-    const model = baseModel({ values: [[100, 200]], incompleteTos: [[0, 3]] })
+    const model = baseModel({ values: [[100, 200]], warnings: [[warned, clean]] })
     const { container } = render(
       <PnlMatrixTable title="t" model={model} onCellClick={jest.fn()} />,
     )
-    const [cleanCell, flaggedCell] = bodyCells(container)
+    const [warnedCell, cleanCell] = bodyCells(container)
+    expect(warnedCell.title).toBe('')
     expect(cleanCell.title).toBe('')
-    expect(flaggedCell.title).toBe('')
   })
 
   it('gives each clickable cell a distinct accessible name carrying its origin, destination and date', () => {

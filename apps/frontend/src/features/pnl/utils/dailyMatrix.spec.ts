@@ -11,9 +11,9 @@ const matrix: PnlDailyMatrix = {
     {
       date: '2026-07-01',
       cells: [
-        { revenue: 1000, margin: 100, weight: 10, incompleteTos: 0 },
+        { revenue: 1000, margin: 100, weight: 10, incompleteTos: 0, issues: [] },
         null,
-        { revenue: 0, margin: -50, weight: 5, incompleteTos: 2 },
+        { revenue: 0, margin: -50, weight: 5, incompleteTos: 2, issues: [{ issue: 'no_booking', awbs: 2 }] },
       ],
     },
     { date: '2026-07-02', cells: [null, null, null] },
@@ -22,17 +22,17 @@ const matrix: PnlDailyMatrix = {
     {
       totalRevenue: 1000, totalMargin: 100, totalWeight: 10,
       avgRevenuePerDay: 500, avgMarginPerDay: 50,
-      marginPct: 10, spacePerKg: 10, incompleteTos: 0,
+      marginPct: 10, spacePerKg: 10, incompleteTos: 0, issues: [],
     },
     {
       totalRevenue: 0, totalMargin: 0, totalWeight: 0,
       avgRevenuePerDay: 0, avgMarginPerDay: 0,
-      marginPct: null, spacePerKg: null, incompleteTos: 0,
+      marginPct: null, spacePerKg: null, incompleteTos: 0, issues: [],
     },
     {
       totalRevenue: 0, totalMargin: -50, totalWeight: 5,
       avgRevenuePerDay: 0, avgMarginPerDay: -25,
-      marginPct: null, spacePerKg: -10, incompleteTos: 2,
+      marginPct: null, spacePerKg: -10, incompleteTos: 2, issues: [{ issue: 'no_booking', awbs: 3 }],
     },
   ],
   periodDays: 2,
@@ -80,9 +80,23 @@ describe('toRevenueTable', () => {
     expect(model.footerRows.every((r) => r.format === 'number')).toBe(true)
   })
 
-  it('does not flag incomplete cost, which does not affect revenue', () => {
-    expect(model.incompleteTos).toBeNull()
+  it('warns on the revenue table too, since a missing revenue row understates it', () => {
+    const model = toRevenueTable(matrix)
+    expect(model.warnings[0][2]).toEqual({
+      issues: [{ issue: 'no_booking', awbs: 2 }],
+      incompleteTos: 2,
+    })
+    expect(model.warnings[0][1]).toEqual({ issues: [], incompleteTos: 0 })
     expect(model.highlightNegative).toBe(false)
+  })
+
+  it('gives an absent cell a clean warning rather than undefined', () => {
+    // Row 2 has no shipments at all. A missing entry here would make every consumer null-check.
+    expect(toRevenueTable(matrix).warnings[1]).toEqual([
+      { issues: [], incompleteTos: 0 },
+      { issues: [], incompleteTos: 0 },
+      { issues: [], incompleteTos: 0 },
+    ])
   })
 })
 
@@ -121,11 +135,18 @@ describe('toMarginTable', () => {
     ])
   })
 
-  it('exposes per-cell incomplete-cost counts and highlights negatives', () => {
-    expect(model.incompleteTos).toEqual([
-      [0, 0, 2],
-      [0, 0, 0],
-    ])
+  it('carries the same warnings onto the margin table and its Total footer row', () => {
+    const model = toMarginTable(matrix)
+    expect(model.warnings[0][2]).toEqual({
+      issues: [{ issue: 'no_booking', awbs: 2 }],
+      incompleteTos: 2,
+    })
+    expect(model.footerRows[0].warnings?.[2]).toEqual({
+      issues: [{ issue: 'no_booking', awbs: 3 }],
+      incompleteTos: 2,
+    })
+    // Only the Total row aggregates the period; an average has no set of AWBs behind it.
+    expect(model.footerRows[1].warnings).toBeUndefined()
     expect(model.highlightNegative).toBe(true)
   })
 })

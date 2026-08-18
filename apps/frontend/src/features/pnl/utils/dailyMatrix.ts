@@ -1,4 +1,5 @@
 import { PnlDailyMatrix, PnlDailyMatrixColumn, PnlRouteFilter } from '../hooks/usePnl'
+import { CellWarning } from './cellWarning'
 
 export interface OriginGroup {
   label: string
@@ -9,7 +10,7 @@ export interface MatrixFooterRow {
   label: string
   values: (number | null)[] // index-aligned with columns
   format: 'number' | 'percent'
-  incompleteTos?: number[] // index-aligned with columns, same convention as values
+  warnings?: CellWarning[] // index-aligned with columns; absent = this row has no AWBs behind it
 }
 
 // Everything PnlMatrixTable needs to render, with no knowledge of revenue or margin. Both tables
@@ -18,7 +19,7 @@ export interface MatrixTableModel {
   columns: PnlDailyMatrixColumn[]
   dates: string[]
   values: (number | null)[][] // [rowIndex][columnIndex]; null = no shipment, distinct from 0
-  incompleteTos: number[][] | null // null = cost completeness is irrelevant to this table
+  warnings: CellWarning[][] // [rowIndex][columnIndex]; always present, clean cells included
   footerRows: MatrixFooterRow[]
   highlightNegative: boolean
 }
@@ -43,14 +44,34 @@ export function groupOrigins(columns: PnlDailyMatrixColumn[]): OriginGroup[] {
   return groups
 }
 
+// An absent cell still gets a clean warning rather than being left undefined, so the renderer and
+// the tests have exactly one shape to read.
+const CLEAN: CellWarning = { issues: [], incompleteTos: 0 }
+
+function cellWarnings(matrix: PnlDailyMatrix): CellWarning[][] {
+  return matrix.rows.map((row) =>
+    row.cells.map((cell) =>
+      cell ? { issues: cell.issues, incompleteTos: cell.incompleteTos } : CLEAN,
+    ),
+  )
+}
+
 export function toRevenueTable(matrix: PnlDailyMatrix): MatrixTableModel {
   return {
     columns: matrix.columns,
     dates: matrix.rows.map((r) => r.date),
     values: matrix.rows.map((r) => r.cells.map((c) => (c ? c.revenue : null))),
-    incompleteTos: null,
+    warnings: cellWarnings(matrix),
     footerRows: [
-      { label: 'Total', values: matrix.footer.map((f) => f.totalRevenue), format: 'number' },
+      {
+        label: 'Total',
+        values: matrix.footer.map((f) => f.totalRevenue),
+        format: 'number',
+        warnings: matrix.footer.map((f) => ({
+          issues: f.issues,
+          incompleteTos: f.incompleteTos,
+        })),
+      },
       { label: 'Avg / Day', values: matrix.footer.map((f) => f.avgRevenuePerDay), format: 'number' },
     ],
     highlightNegative: false,
@@ -62,13 +83,16 @@ export function toMarginTable(matrix: PnlDailyMatrix): MatrixTableModel {
     columns: matrix.columns,
     dates: matrix.rows.map((r) => r.date),
     values: matrix.rows.map((r) => r.cells.map((c) => (c ? c.margin : null))),
-    incompleteTos: matrix.rows.map((r) => r.cells.map((c) => (c ? c.incompleteTos : 0))),
+    warnings: cellWarnings(matrix),
     footerRows: [
       {
         label: 'Total',
         values: matrix.footer.map((f) => f.totalMargin),
         format: 'number',
-        incompleteTos: matrix.footer.map((f) => f.incompleteTos),
+        warnings: matrix.footer.map((f) => ({
+          issues: f.issues,
+          incompleteTos: f.incompleteTos,
+        })),
       },
       { label: 'Avg / Day', values: matrix.footer.map((f) => f.avgMarginPerDay), format: 'number' },
       { label: '% Margin', values: matrix.footer.map((f) => f.marginPct), format: 'percent' },

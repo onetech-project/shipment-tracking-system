@@ -171,6 +171,7 @@ export interface PnlDailyMatrixCell {
   margin: number
   weight: number
   incompleteTos: number
+  issues: PnlCellIssue[]
 }
 
 export interface PnlDailyMatrixRow {
@@ -187,6 +188,7 @@ export interface PnlDailyMatrixFooter {
   marginPct: number | null
   spacePerKg: number | null
   incompleteTos: number
+  issues: PnlCellIssue[]
 }
 
 export interface PnlDailyMatrix {
