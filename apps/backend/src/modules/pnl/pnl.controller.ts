@@ -4,7 +4,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
 import { Authorize } from '../../common/decorators/authorize.decorator'
 import { Permission } from '@shared/auth'
 import { PnlService } from './pnl.service'
-import { parseRoutePairs } from './pnl-columns.util'
+import { parseColumnPicks, parseRoutePairs } from './pnl-columns.util'
 
 @ApiTags('PnL')
 @Controller('pnl')
@@ -168,16 +168,12 @@ export class PnlController {
 
   @Get('breakdown/group-comparison')
   getGroupComparison(
-    @Query('groupIds') groupIds?: string,
+    @Query('columns') columns?: string,
     @Query('cycle') cycle?: string,
     @Query('start') start?: string,
     @Query('end') end?: string,
     @Query('basis') basis?: string,
   ) {
-    const ids = (groupIds ?? '')
-      .split(',')
-      .map((id) => id.trim())
-      .filter(Boolean)
-    return this.pnlService.getGroupComparison(ids, cycle, start, end, basis)
+    return this.pnlService.getGroupComparison(parseColumnPicks(columns), cycle, start, end, basis)
   }
 }

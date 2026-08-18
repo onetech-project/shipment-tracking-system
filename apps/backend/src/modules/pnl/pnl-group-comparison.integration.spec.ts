@@ -143,16 +143,19 @@ describe('PnlService.getGroupComparison (integration)', () => {
     await queryRunner.release()
   })
 
+  // A group pick, shorthand so the fixture calls below read as picks rather than raw ids.
+  const pick = (id: string) => ({ kind: 'group' as const, id })
+
   // This is the assertion that would have caught the v.v.date_ata bug: it was a SQL syntax error,
   // so any real execution in any filter mode throws. The mocked unit spec cannot see that.
   it('runs in cycle mode without throwing', async () => {
-    const result = await service.getGroupComparison([groupA, groupB], CYCLE)
+    const result = await service.getGroupComparison([pick(groupA), pick(groupB)], CYCLE)
     expect(result.columns.map((c) => c.id)).toEqual([groupA, groupB])
   })
 
   it('runs in range mode without throwing', async () => {
     const result = await service.getGroupComparison(
-      [groupA, groupB],
+      [pick(groupA), pick(groupB)],
       undefined,
       RANGE_START,
       RANGE_END,
@@ -161,7 +164,32 @@ describe('PnlService.getGroupComparison (integration)', () => {
   })
 
   it('runs in the no-filter fallback (WHERE 1=0) without throwing', async () => {
-    await expect(service.getGroupComparison([groupA, groupB])).resolves.toBeDefined()
+    await expect(service.getGroupComparison([pick(groupA), pick(groupB)])).resolves.toBeDefined()
+  })
+
+  it('gives a bare route column the same numbers as the group that contains it', async () => {
+    // groupA and groupB both hold two routes in this fixture, so neither is "the group whose only
+    // route is X" on its own. Seed a third, single-route group here (same INSERT shape as
+    // beforeEach, rolled back by the same afterEach) so the equality below is meaningful rather
+    // than vacuous.
+    const groupC = randomUUID()
+    await queryRunner.query(`INSERT INTO route_groups (id, name) VALUES ($1, $2)`, [
+      groupC,
+      'INT-TEST Group C (single route)',
+    ])
+    await queryRunner.query(
+      `INSERT INTO route_group_routes (route_group_id, origin_station, dest_station) VALUES ($1, $2, $3)`,
+      [groupC, SHARED_ORIGIN, SHARED_DEST],
+    )
+
+    const result = await service.getGroupComparison(
+      [pick(groupC), { kind: 'route', origin: SHARED_ORIGIN, dest: SHARED_DEST }],
+      CYCLE,
+    )
+
+    expect(result.columns.map((c) => c.kind)).toEqual(['group', 'route'])
+    expect(result.footer[1].totalRevenue).toBe(result.footer[0].totalRevenue)
+    expect(result.footer[1].totalCost).toBe(result.footer[0].totalCost)
   })
 
   it('counts the shared route revenue in both groups columns', async () => {
@@ -182,7 +210,7 @@ describe('PnlService.getGroupComparison (integration)', () => {
     expect(aOnlyRev).toBeGreaterThan(0)
     expect(bOnlyRev).toBeGreaterThan(0)
 
-    const result = await service.getGroupComparison([groupA, groupB], CYCLE)
+    const result = await service.getGroupComparison([pick(groupA), pick(groupB)], CYCLE)
     const row = result.rows.find((r) => r.date === SHARED_ROUTE_DATE)!
 
     // Group A = shared route + A-only route; Group B = shared route + B-only route. If the shared
@@ -192,9 +220,9 @@ describe('PnlService.getGroupComparison (integration)', () => {
   })
 
   it('sums the four cost components to the cell cost for every non-null cell', async () => {
-    const cycleResult = await service.getGroupComparison([groupA, groupB], CYCLE)
+    const cycleResult = await service.getGroupComparison([pick(groupA), pick(groupB)], CYCLE)
     const rangeResult = await service.getGroupComparison(
-      [groupA, groupB],
+      [pick(groupA), pick(groupB)],
       undefined,
       RANGE_START,
       RANGE_END,

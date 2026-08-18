@@ -107,27 +107,17 @@ describe('PnlController', () => {
   })
 
   describe('getGroupComparison', () => {
-    it('splits groupIds into an array and forwards the period', async () => {
-      mockService.getGroupComparison.mockResolvedValueOnce({})
-
-      await controller.getGroupComparison('g1,g2', '2026-05-1H', undefined, undefined, 'atd_origin')
-
-      expect(mockService.getGroupComparison).toHaveBeenCalledWith(
-        ['g1', 'g2'],
+    it('parses mixed group and route descriptors in pick order', async () => {
+      await controller.getGroupComparison(
+        `g:11111111-1111-4111-8111-111111111111,r:Jabo|Denpasar`,
         '2026-05-1H',
-        undefined,
-        undefined,
-        'atd_origin',
       )
-    })
-
-    it('trims whitespace and drops empty ids', async () => {
-      mockService.getGroupComparison.mockResolvedValueOnce({})
-
-      await controller.getGroupComparison(' g1 , ,g2 ', '2026-05-1H')
 
       expect(mockService.getGroupComparison).toHaveBeenCalledWith(
-        ['g1', 'g2'],
+        [
+          { kind: 'group', id: '11111111-1111-4111-8111-111111111111' },
+          { kind: 'route', origin: 'Jabo', dest: 'Denpasar' },
+        ],
         '2026-05-1H',
         undefined,
         undefined,
@@ -135,17 +125,11 @@ describe('PnlController', () => {
       )
     })
 
-    it('sends an empty array when groupIds is absent', async () => {
-      mockService.getGroupComparison.mockResolvedValueOnce({})
-
+    it('sends an empty pick list when the columns param is absent', async () => {
       await controller.getGroupComparison(undefined, '2026-05-1H')
 
       expect(mockService.getGroupComparison).toHaveBeenCalledWith(
-        [],
-        '2026-05-1H',
-        undefined,
-        undefined,
-        undefined,
+        [], '2026-05-1H', undefined, undefined, undefined,
       )
     })
   })
