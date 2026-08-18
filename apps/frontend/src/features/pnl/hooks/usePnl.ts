@@ -12,10 +12,20 @@ export const BASIS_LABELS: Record<DateBasis, string> = {
   completed_time: 'Completed time',
 }
 
+export interface PnlRoutePair {
+  origin: string // raw v_pnl_to value, e.g. 'Jabo'
+  dest: string // already a city name, e.g. 'Denpasar'
+}
+
+// One data quality issue inside one cell, and how many distinct AWBs carry it there.
+export interface PnlCellIssue {
+  issue: string
+  awbs: number
+}
+
 // Narrows the AWB drilldown only. Empty fields are omitted from the request entirely.
 export interface PnlRouteFilter {
-  origin?: string
-  dest?: string
+  routes?: PnlRoutePair[]
   dateFrom?: string // YYYY-MM-DD
   dateTo?: string // YYYY-MM-DD, inclusive
 }
@@ -268,8 +278,9 @@ export function usePnlDailyMargin(filter: PnlFilter | undefined) {
 export function routeToParams(route: PnlRouteFilter | undefined) {
   if (!route) return {}
   return {
-    ...(route.origin ? { origin: route.origin } : {}),
-    ...(route.dest ? { dest: route.dest } : {}),
+    ...(route.routes?.length
+      ? { routes: route.routes.map((r) => `${r.origin}|${r.dest}`).join(',') }
+      : {}),
     ...(route.dateFrom ? { dateFrom: route.dateFrom } : {}),
     ...(route.dateTo ? { dateTo: route.dateTo } : {}),
   }

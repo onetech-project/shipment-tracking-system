@@ -1,7 +1,5 @@
 import { issueLabel, issueRank } from './issueLabels'
-
-// Declared locally for now; Task 9 brings this in from usePnl.
-export interface PnlCellIssue { issue: string; awbs: number }
+import { PnlCellIssue } from '../hooks/usePnl'
 
 /**
  * What makes a P&L cell yellow, and what the tooltip says about it. One definition for the daily

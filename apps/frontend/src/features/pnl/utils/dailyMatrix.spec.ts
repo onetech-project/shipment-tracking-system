@@ -134,8 +134,7 @@ describe('routeFromCell', () => {
   it('maps a CGK column to the raw origin the drilldown filters on', () => {
     const route = routeFromCell({ origin: 'Jabo', originLabel: 'CGK', dest: 'Tanjung Pinang' }, '2026-05-01')
     expect(route).toEqual({
-      origin: 'Jabo',
-      dest: 'Tanjung Pinang',
+      routes: [{ origin: 'Jabo', dest: 'Tanjung Pinang' }],
       dateFrom: '2026-05-01',
       dateTo: '2026-05-01',
     })
@@ -144,8 +143,7 @@ describe('routeFromCell', () => {
   it('maps a SUB column the same way', () => {
     const route = routeFromCell({ origin: 'Surabaya', originLabel: 'SUB', dest: 'Pontianak' }, '2026-05-20')
     expect(route).toEqual({
-      origin: 'Surabaya',
-      dest: 'Pontianak',
+      routes: [{ origin: 'Surabaya', dest: 'Pontianak' }],
       dateFrom: '2026-05-20',
       dateTo: '2026-05-20',
     })

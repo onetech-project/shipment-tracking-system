@@ -7,10 +7,7 @@
  * what the source sheet says. Collapsing these into one form would make one of the two lie.
  */
 
-export interface PnlRoutePair {
-  origin: string
-  dest: string
-}
+import { PnlRoutePair } from '../hooks/usePnl'
 
 const SEPARATOR = ' → '
 
