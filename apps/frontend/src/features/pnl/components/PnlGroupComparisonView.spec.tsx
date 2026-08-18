@@ -2,7 +2,7 @@ import React from 'react'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { PnlGroupComparisonView } from './PnlGroupComparisonView'
-import { PnlFilter, PnlGroupComparison } from '../hooks/usePnl'
+import { PnlColumnPick, PnlFilter, PnlGroupComparison } from '../hooks/usePnl'
 
 jest.mock('../hooks/usePnl', () => ({
   ...jest.requireActual('../hooks/usePnl'),
@@ -60,31 +60,61 @@ it('lists every group as a checkbox with its route count', () => {
 
 // The columns are independent by design, so a shared route lands in both and the columns do not
 // sum to a period total. Saying so stops the table being read as a partition. Overlap is driven by
-// the response's columns (not the client-side selection), so this test mocks that response.
-it('warns when the selected groups share a route', () => {
-  ;(usePnlGroupComparison as jest.Mock).mockReturnValue({
-    data: {
-      columns: [
-        { id: 'g1', name: 'Kalimantan', routeCount: 2, kind: 'group', routes: [route('Balikpapan'), route('Batam')] },
-        { id: 'g2', name: 'Sumatera', routeCount: 1, kind: 'group', routes: [route('Batam')] },
-      ],
-      rows: [],
-      footer: [],
-      periodDays: 0,
-    },
-    isLoading: false,
-    isError: false,
-    refetch: jest.fn(),
+// the response's columns (not the client-side selection), so the mock below reads its `picks`
+// argument and only returns overlapping columns once picks actually warrant it — making the
+// clicks below load-bearing rather than vestigial. The overlap itself comes from a bare-route pick
+// (Jabo → Balikpapan) that duplicates a member of the Kalimantan group but has no entry of its own
+// in the saved-groups fixture: a reverted implementation reading `selectedGroups` (built from that
+// fixture) would only ever see one selected group here and could never produce this warning.
+it('warns when a picked group and a picked route share a route', () => {
+  ;(useAvailableRoutes as jest.Mock).mockReturnValue({
+    data: [
+      { origin: 'Jabo', originLabel: 'CGK', dest: 'Denpasar', hasData: true },
+      { origin: 'Jabo', originLabel: 'CGK', dest: 'Balikpapan', hasData: true },
+    ],
+  })
+  ;(usePnlGroupComparison as jest.Mock).mockImplementation((_filter: PnlFilter, picks: PnlColumnPick[]) => {
+    if (picks.length === 0) {
+      return { data: undefined, isLoading: false, isError: false, refetch: jest.fn() }
+    }
+    const columns = picks.map((p) =>
+      p.kind === 'group'
+        ? {
+            id: p.id,
+            name: 'Kalimantan',
+            routeCount: 2,
+            kind: 'group' as const,
+            routes: [route('Balikpapan'), route('Batam')],
+          }
+        : {
+            id: `r:${p.origin}|${p.dest}`,
+            name: `CGK → ${p.dest}`,
+            routeCount: 1,
+            kind: 'route' as const,
+            routes: [route(p.dest)],
+          },
+    )
+    return { data: { columns, rows: [], footer: [], periodDays: 0 }, isLoading: false, isError: false, refetch: jest.fn() }
   })
   render(<PnlGroupComparisonView filter={filter} />)
 
+  // Before the route pick there is only one column, so no overlap is possible yet.
   fireEvent.click(screen.getByLabelText(/Kalimantan/))
-  fireEvent.click(screen.getByLabelText(/Sumatera/))
+  expect(screen.queryByText(/berbagi/i)).not.toBeInTheDocument()
 
-  expect(screen.getByText(/CGK → Batam/)).toBeInTheDocument()
-  expect(screen.getByText(/Kalimantan, Sumatera/)).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { expanded: false }))
+  fireEvent.click(screen.getByRole('checkbox', { name: /Jabo → Balikpapan/ }))
+
+  // The table also renders a "CGK → Balikpapan" column header, so the warning text must be
+  // matched by its full sentence rather than the bare route label.
+  expect(screen.getByText(/berbagi rute CGK → Balikpapan/)).toBeInTheDocument()
+  expect(screen.getByText(/Kalimantan, CGK → Balikpapan berbagi/)).toBeInTheDocument()
 })
 
+// Disjoint saved groups must stay silent even once their real routes flow through the response,
+// not merely because the mock never returns any columns. The mock derives columns from `picks` the
+// same way the "warns" test does, so this test would catch overlap logic that fires on selection
+// alone rather than on the (still disjoint) routes the picks resolve to.
 it('does not warn when the selected groups are disjoint', () => {
   ;(useRouteGroups as jest.Mock).mockReturnValue({
     data: [
@@ -92,6 +122,19 @@ it('does not warn when the selected groups are disjoint', () => {
       { id: 'g2', name: 'B', description: null, routes: [route('Batam')] },
     ],
     isLoading: false,
+  })
+  const routesById: Record<string, ReturnType<typeof route>[]> = { g1: [route('Aceh')], g2: [route('Batam')] }
+  const namesById: Record<string, string> = { g1: 'A', g2: 'B' }
+  ;(usePnlGroupComparison as jest.Mock).mockImplementation((_filter: PnlFilter, picks: PnlColumnPick[]) => {
+    if (picks.length === 0) {
+      return { data: undefined, isLoading: false, isError: false, refetch: jest.fn() }
+    }
+    const columns = picks.flatMap((p) =>
+      p.kind === 'group'
+        ? [{ id: p.id, name: namesById[p.id], routeCount: 1, kind: 'group' as const, routes: routesById[p.id] }]
+        : [],
+    )
+    return { data: { columns, rows: [], footer: [], periodDays: 0 }, isLoading: false, isError: false, refetch: jest.fn() }
   })
   render(<PnlGroupComparisonView filter={filter} />)
 
