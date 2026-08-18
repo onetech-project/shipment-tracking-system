@@ -9,7 +9,7 @@ import {
   calendarDatesForFilter,
 } from './pnl-filter.util'
 import { originLabel } from '../../common/utils/origin-labels.util'
-import { ISSUE_BY_RANK, PnlCellIssue } from './pnl-cell-issues.util'
+import { indexIssueRows, ISSUE_BY_RANK, PnlCellIssue } from './pnl-cell-issues.util'
 
 export interface PnlSummary {
   label: string
@@ -154,6 +154,7 @@ export interface PnlDailyMatrixCell {
   margin: number
   weight: number
   incompleteTos: number // TOs whose cost could not be computed; margin here is optimistic
+  issues: PnlCellIssue[] // empty = clean; never null, so the frontend has one shape to read
 }
 
 export interface PnlDailyMatrixRow {
@@ -170,6 +171,9 @@ export interface PnlDailyMatrixFooter {
   marginPct: number | null // null when totalRevenue is 0
   spacePerKg: number | null // null when totalWeight is 0
   incompleteTos: number
+  // Distinct AWBs for the whole period, from its own grouping set — NOT the sum of the day cells,
+  // which would count an AWB once per day it shipped.
+  issues: PnlCellIssue[]
 }
 
 export interface PnlDailyMatrix {
@@ -871,7 +875,7 @@ export class PnlService {
     const dates = calendarDatesForFilter(cyclePeriod, startDate, endDate)
     const periodDays = Math.max(1, dates.length)
 
-    const [columns, factRows] = await Promise.all([
+    const [columns, factRows, issueRows] = await Promise.all([
       this.getStations(),
       this.dataSource.query(
         `
@@ -891,9 +895,34 @@ export class PnlService {
         `,
         params,
       ),
+      this.dataSource.query(
+        `
+        SELECT d, origin_station, dest_station, issue, COUNT(DISTINCT awb)::int AS awbs
+        FROM (
+          SELECT
+            TO_CHAR(${dateCol}::DATE, 'YYYY-MM-DD') AS d,
+            origin_station, dest_station, issue, awb
+          FROM v_pnl_to
+          WHERE ${where}
+            AND ${dateCol} IS NOT NULL
+            AND issue IS NOT NULL
+        ) s
+        GROUP BY GROUPING SETS ((d, origin_station, dest_station, issue), (origin_station, dest_station, issue))
+        `,
+        params,
+      ),
     ])
 
     const columnIndex = new Map(columns.map((c, i) => [`${c.origin}|${c.dest}`, i]))
+
+    // The issues query is the fact query plus `issue IS NOT NULL`, so its grouping set is a subset:
+    // an issue can never land on a (date, route) pair that produced no cell.
+    const cellIssues = indexIssueRows(issueRows as Record<string, unknown>[], (r) =>
+      r.d == null ? null : `${r.d}|${r.origin_station}|${r.dest_station}`,
+    )
+    const columnIssues = indexIssueRows(issueRows as Record<string, unknown>[], (r) =>
+      r.d == null ? `${r.origin_station}|${r.dest_station}` : null,
+    )
 
     const rows: PnlDailyMatrixRow[] = dates.map((date) => ({
       date,
@@ -910,6 +939,7 @@ export class PnlService {
         margin: Number(fact.margin),
         weight: Number(fact.weight),
         incompleteTos: Number(fact.incomplete_tos),
+        issues: cellIssues.get(`${fact.d}|${fact.origin_station}|${fact.dest_station}`) ?? [],
       }
     }
 
@@ -935,6 +965,7 @@ export class PnlService {
         marginPct: totalRevenue > 0 ? (totalMargin / totalRevenue) * 100 : null,
         spacePerKg: totalWeight > 0 ? totalMargin / totalWeight : null,
         incompleteTos,
+        issues: columnIssues.get(`${columns[ci].origin}|${columns[ci].dest}`) ?? [],
       }
     })
 

@@ -493,6 +493,7 @@ describe('PnlService', () => {
       dataSource.query
         .mockResolvedValueOnce(columnRows)
         .mockResolvedValueOnce(factRows)
+        .mockResolvedValueOnce([])
     }
 
     it('labels Jabo as CGK and Surabaya as SUB, preserving query order', async () => {
@@ -525,9 +526,9 @@ describe('PnlService', () => {
       const result = await service.getDailyMatrix('2026-07-1H')
 
       expect(result.rows[0].cells[0]).toBeNull()
-      expect(result.rows[0].cells[1]).toEqual({ revenue: 200, margin: 20, weight: 2, incompleteTos: 1 })
+      expect(result.rows[0].cells[1]).toEqual({ revenue: 200, margin: 20, weight: 2, incompleteTos: 1, issues: [] })
       expect(result.rows[0].cells[2]).toBeNull()
-      expect(result.rows[1].cells[2]).toEqual({ revenue: 300, margin: 30, weight: 3, incompleteTos: 0 })
+      expect(result.rows[1].cells[2]).toEqual({ revenue: 300, margin: 30, weight: 3, incompleteTos: 0, issues: [] })
     })
 
     it('distinguishes a zero-valued cell from an absent one', async () => {
@@ -536,7 +537,7 @@ describe('PnlService', () => {
           revenue: '0', margin: '0', weight: '0', incomplete_tos: '0' },
       ])
       const result = await service.getDailyMatrix('2026-07-1H')
-      expect(result.rows[0].cells[0]).toEqual({ revenue: 0, margin: 0, weight: 0, incompleteTos: 0 })
+      expect(result.rows[0].cells[0]).toEqual({ revenue: 0, margin: 0, weight: 0, incompleteTos: 0, issues: [] })
       expect(result.rows[0].cells[1]).toBeNull()
     })
 
@@ -558,6 +559,7 @@ describe('PnlService', () => {
         marginPct: 10,      // 100 / 1000 × 100
         spacePerKg: 5,      // 100 / 20
         incompleteTos: 3,
+        issues: [],
       })
     })
 
@@ -579,7 +581,7 @@ describe('PnlService', () => {
       expect(result.footer[2]).toEqual({
         totalRevenue: 0, totalMargin: 0, totalWeight: 0,
         avgRevenuePerDay: 0, avgMarginPerDay: 0,
-        marginPct: null, spacePerKg: null, incompleteTos: 0,
+        marginPct: null, spacePerKg: null, incompleteTos: 0, issues: [],
       })
     })
 
@@ -621,6 +623,66 @@ describe('PnlService', () => {
       const [columnSql, columnParams] = dataSource.query.mock.calls[0]
       expect(columnSql).toContain('SELECT DISTINCT origin_station, dest_station')
       expect(columnParams).toBeUndefined()
+    })
+
+    it('attaches per-issue AWB counts to the cell and the footer they belong to', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ origin_station: 'Jabo', dest_station: 'Aceh' }])
+        .mockResolvedValueOnce([
+          {
+            d: '2026-05-01', origin_station: 'Jabo', dest_station: 'Aceh',
+            revenue: '1000', margin: '100', weight: '10', incomplete_tos: '2',
+          },
+        ])
+        .mockResolvedValueOnce([
+          // Body rows carry a date; the GROUPING SETS footer rows carry d = null.
+          { d: '2026-05-01', origin_station: 'Jabo', dest_station: 'Aceh', issue: 'sg_in_rate_missing', awbs: '1' },
+          { d: '2026-05-01', origin_station: 'Jabo', dest_station: 'Aceh', issue: 'no_booking', awbs: '3' },
+          { d: null, origin_station: 'Jabo', dest_station: 'Aceh', issue: 'no_booking', awbs: '4' },
+        ])
+
+      const result = await service.getDailyMatrix('2026-05-1H')
+
+      expect(result.rows[0].cells[0]!.issues).toEqual([
+        { issue: 'no_booking', awbs: 3 },
+        { issue: 'sg_in_rate_missing', awbs: 1 },
+      ])
+      // The footer is NOT the sum of the body: one AWB shipping on two days is one distinct AWB
+      // for the period, so the period figure comes from its own grouping set.
+      expect(result.footer[0].issues).toEqual([{ issue: 'no_booking', awbs: 4 }])
+    })
+
+    it('gives a clean cell and a clean footer an empty list rather than null', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ origin_station: 'Jabo', dest_station: 'Aceh' }])
+        .mockResolvedValueOnce([
+          {
+            d: '2026-05-01', origin_station: 'Jabo', dest_station: 'Aceh',
+            revenue: '1000', margin: '100', weight: '10', incomplete_tos: '0',
+          },
+        ])
+        .mockResolvedValueOnce([])
+
+      const result = await service.getDailyMatrix('2026-05-1H')
+
+      expect(result.rows[0].cells[0]!.issues).toEqual([])
+      expect(result.footer[0].issues).toEqual([])
+    })
+
+    it('counts distinct AWBs and asks only for rows that actually have an issue', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      await service.getDailyMatrix('2026-05-1H')
+
+      const issuesSql = (dataSource.query.mock.calls[2][0] as string).replace(/\s+/g, ' ')
+      expect(issuesSql).toContain('COUNT(DISTINCT awb)::int AS awbs')
+      expect(issuesSql).toContain('issue IS NOT NULL')
+      expect(issuesSql).toContain(
+        'GROUP BY GROUPING SETS ((d, origin_station, dest_station, issue), (origin_station, dest_station, issue))',
+      )
     })
   })
 
