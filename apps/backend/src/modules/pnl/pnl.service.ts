@@ -9,6 +9,7 @@ import {
   calendarDatesForFilter,
 } from './pnl-filter.util'
 import { originLabel } from '../../common/utils/origin-labels.util'
+import { ISSUE_BY_RANK, PnlCellIssue } from './pnl-cell-issues.util'
 
 export interface PnlSummary {
   label: string
@@ -90,23 +91,6 @@ export interface PnlDataQualitySummaryItem {
   rows: number
   awbs: number
 }
-
-// Severity order for the canonical v_pnl_to.issue values (root cause first). Shared by the
-// per-AWB drilldown (which aggregates the most-severe issue across an AWB's TOs).
-const ISSUE_RANK: Record<string, number> = {
-  no_booking: 1,
-  smu_rate_missing: 2,
-  ra_rate_missing: 3,
-  sgout_name_missing: 4,
-  revenue_missing: 5,
-  // A blank station breaks the SG Incoming join, so it ranks as the cause of the rate miss below
-  // it. This order must match the CASE chain in the v_pnl_to definition.
-  station_mapping_missing: 6,
-  sg_in_rate_missing: 7,
-}
-const ISSUE_BY_RANK: Record<number, string> = Object.fromEntries(
-  Object.entries(ISSUE_RANK).map(([k, v]) => [v, k]),
-)
 
 export interface PnlRevenueByRouteItem {
   route: string
