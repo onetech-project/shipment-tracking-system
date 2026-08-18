@@ -4,16 +4,17 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { MultiRouteFilter } from '@/components/shared/multi-route-filter'
 import { useAvailableRoutes, useRouteGroups } from '@/features/route-groups/hooks/useRouteGroups'
-import { PnlColumnPick, PnlFilter, usePnlGroupComparison } from '../hooks/usePnl'
+import { PnlColumnPick, PnlFilter, PnlRouteFilter, usePnlGroupComparison } from '../hooks/usePnl'
 import { buildRouteLabelIndex, labelsForRoutes, routesForLabels } from '../utils/routeLabels'
-import { overlappingRoutes, toComparisonTable } from '../utils/groupComparison'
+import { overlappingRoutes, routeFromComparisonCell, toComparisonTable } from '../utils/groupComparison'
 import { PnlGroupComparisonTable } from './PnlGroupComparisonTable'
 
 interface PnlGroupComparisonViewProps {
   filter: PnlFilter
+  onCellClick?: (route: PnlRouteFilter) => void
 }
 
-export function PnlGroupComparisonView({ filter }: PnlGroupComparisonViewProps) {
+export function PnlGroupComparisonView({ filter, onCellClick }: PnlGroupComparisonViewProps) {
   // Pick order is column order, so the array is appended to rather than re-sorted.
   const [picks, setPicks] = useState<PnlColumnPick[]>([])
   const {
@@ -157,7 +158,14 @@ export function PnlGroupComparisonView({ filter }: PnlGroupComparisonViewProps) 
             Kolom Revenue di sini bruto (belum dikurangi discount), berbeda dari Margin di tab Daily
             Report. Revenue dan Cost tidak dimaksudkan untuk dikurangkan satu sama lain.
           </p>
-          <PnlGroupComparisonTable model={toComparisonTable(data)} />
+          <PnlGroupComparisonTable
+            model={toComparisonTable(data)}
+            onCellClick={
+              onCellClick
+                ? (column, date) => onCellClick(routeFromComparisonCell(column, date))
+                : undefined
+            }
+          />
         </div>
       ) : null}
     </div>

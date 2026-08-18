@@ -1,4 +1,9 @@
-import { toComparisonTable, overlappingRoutes, COST_COMPONENTS } from './groupComparison'
+import {
+  toComparisonTable,
+  overlappingRoutes,
+  COST_COMPONENTS,
+  routeFromComparisonCell,
+} from './groupComparison'
 import { PnlGroupComparison, PnlGroupComparisonCell, PnlGroupComparisonColumn } from '../hooks/usePnl'
 
 const cell = (over: Partial<PnlGroupComparisonCell> = {}): PnlGroupComparisonCell => ({
@@ -171,5 +176,43 @@ describe('overlappingRoutes', () => {
         column({ id: 'g2', name: 'Sumatera', routes: [medan] }),
       ]),
     ).toEqual([])
+  })
+})
+
+describe('routeFromComparisonCell', () => {
+  it('carries every route of a group column into one drilldown filter', () => {
+    const route = routeFromComparisonCell(
+      {
+        id: 'g1', name: 'Kalimantan', routeCount: 2, kind: 'group',
+        routes: [
+          { origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' },
+          { origin: 'Surabaya', originLabel: 'SUB', dest: 'Pontianak' },
+        ],
+      },
+      '2026-05-01',
+    )
+    expect(route).toEqual({
+      routes: [
+        { origin: 'Jabo', dest: 'Aceh' },
+        { origin: 'Surabaya', dest: 'Pontianak' },
+      ],
+      dateFrom: '2026-05-01',
+      dateTo: '2026-05-01',
+    })
+  })
+
+  it('narrows a bare route column to its single pair', () => {
+    const route = routeFromComparisonCell(
+      {
+        id: 'r:Jabo|Denpasar', name: 'CGK → Denpasar', routeCount: 1, kind: 'route',
+        routes: [{ origin: 'Jabo', originLabel: 'CGK', dest: 'Denpasar' }],
+      },
+      '2026-05-02',
+    )
+    expect(route).toEqual({
+      routes: [{ origin: 'Jabo', dest: 'Denpasar' }],
+      dateFrom: '2026-05-02',
+      dateTo: '2026-05-02',
+    })
   })
 })

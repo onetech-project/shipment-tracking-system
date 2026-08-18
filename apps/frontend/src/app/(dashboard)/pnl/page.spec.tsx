@@ -13,7 +13,7 @@ import React from 'react'
 import { fireEvent, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { routeFromCell } from '@/features/pnl/utils/dailyMatrix'
-import { PnlDailyMatrixColumn } from '@/features/pnl/hooks/usePnl'
+import { PnlDailyMatrixColumn, PnlRouteFilter } from '@/features/pnl/hooks/usePnl'
 
 jest.mock('@/features/auth/auth.context', () => ({
   useAuth: jest.fn(),
@@ -58,11 +58,48 @@ jest.mock('@/features/pnl/components/PnlAwbDrilldown', () => ({
   ),
 }))
 
+const COMPARISON_CELL_ROUTE: PnlRouteFilter = {
+  routes: [{ origin: 'Jabo', dest: 'Aceh' }],
+  dateFrom: '2026-05-01',
+  dateTo: '2026-05-01',
+}
+
+// A minimal stand-in for the real comparison table: one button that fires the same
+// onCellClick(route) callback a real value-cell click would (already projected to a route filter).
+jest.mock('@/features/pnl/components/PnlGroupComparisonView', () => ({
+  PnlGroupComparisonView: ({
+    onCellClick,
+  }: {
+    onCellClick?: (route: PnlRouteFilter) => void
+  }) => <button onClick={() => onCellClick?.(COMPARISON_CELL_ROUTE)}>comparison-cell</button>,
+}))
+
 import PnlPage from './page'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
 import { useRouter } from 'next/navigation'
 import { usePnlCycles, usePnlSummary } from '@/features/pnl/hooks/usePnl'
+
+// Shared across every describe block below: mocks useAuth/usePermissions from a plain permission
+// list (defaulting to a bare read.pnl user) and renders the page. Kept in one place so the Daily
+// Report and Group Comparison click-through tests can't drift in how they stub the auth gate.
+function renderPage({ permissions = ['read.pnl'] }: { permissions?: string[] } = {}) {
+  ;(useAuth as jest.Mock).mockReturnValue({
+    user: {
+      id: '1',
+      username: 'u',
+      organizationId: 'o',
+      isSuperAdmin: false,
+      roles: [],
+      permissions,
+    },
+    loading: false,
+  })
+  ;(usePermissions as jest.Mock).mockReturnValue({
+    hasPermission: (p: string) => permissions.includes(p),
+  })
+  return render(<PnlPage />)
+}
 
 describe('PnlPage click-through from Daily Report to Estimated drilldown', () => {
   beforeAll(() => {
@@ -73,18 +110,6 @@ describe('PnlPage click-through from Daily Report to Estimated drilldown', () =>
 
   beforeEach(() => {
     jest.clearAllMocks()
-    ;(useAuth as jest.Mock).mockReturnValue({
-      user: {
-        id: '1',
-        username: 'u',
-        organizationId: 'o',
-        isSuperAdmin: false,
-        roles: [],
-        permissions: ['read.pnl'],
-      },
-      loading: false,
-    })
-    ;(usePermissions as jest.Mock).mockReturnValue({ hasPermission: () => true })
     ;(useRouter as jest.Mock).mockReturnValue({ replace: jest.fn() })
     ;(usePnlCycles as jest.Mock).mockReturnValue({
       data: ['2026-05-1H'],
@@ -110,7 +135,7 @@ describe('PnlPage click-through from Daily Report to Estimated drilldown', () =>
   })
 
   it('switches to the Estimated view and passes the clicked cell as the drilldown route', () => {
-    render(<PnlPage />)
+    renderPage()
 
     fireEvent.click(screen.getByRole('button', { name: 'Daily Report' }))
     fireEvent.click(screen.getByRole('button', { name: 'Fake cell' }))
@@ -118,6 +143,23 @@ describe('PnlPage click-through from Daily Report to Estimated drilldown', () =>
     expect(screen.getByRole('button', { name: 'Estimated' })).toHaveClass('bg-primary')
     expect(screen.getByTestId('drilldown-route')).toHaveTextContent(
       JSON.stringify(routeFromCell(CELL_COLUMN, CELL_DATE)),
+    )
+  })
+
+  // Same wiring as the Daily Report cell: without it the click leaves the user on the comparison
+  // tab with nothing visibly changed.
+  it('switches to Estimated and applies a clicked comparison cell as the drilldown route', () => {
+    renderPage({ permissions: ['read.pnl', 'read.route_group'] })
+    fireEvent.click(screen.getByRole('button', { name: 'Group Comparison' }))
+    fireEvent.click(screen.getByRole('button', { name: 'comparison-cell' }))
+
+    expect(screen.getByText('Estimated').className).toContain('bg-primary')
+    expect(screen.getByTestId('drilldown-route')).toHaveTextContent(
+      JSON.stringify({
+        routes: [{ origin: 'Jabo', dest: 'Aceh' }],
+        dateFrom: '2026-05-01',
+        dateTo: '2026-05-01',
+      }),
     )
   })
 })
@@ -129,17 +171,6 @@ describe('PnlPage click-through from Daily Report to Estimated drilldown', () =>
 describe('PnlPage Group Comparison tab gating', () => {
   beforeEach(() => {
     jest.clearAllMocks()
-    ;(useAuth as jest.Mock).mockReturnValue({
-      user: {
-        id: '1',
-        username: 'u',
-        organizationId: 'o',
-        isSuperAdmin: false,
-        roles: [],
-        permissions: ['read.pnl'],
-      },
-      loading: false,
-    })
     ;(useRouter as jest.Mock).mockReturnValue({ replace: jest.fn() })
     ;(usePnlCycles as jest.Mock).mockReturnValue({
       data: ['2026-05-1H'],
@@ -165,17 +196,13 @@ describe('PnlPage Group Comparison tab gating', () => {
   })
 
   it('hides the Group Comparison tab for a user without read.route_group', () => {
-    ;(usePermissions as jest.Mock).mockReturnValue({
-      hasPermission: (p: string) => p !== 'read.route_group',
-    })
-    render(<PnlPage />)
+    renderPage({ permissions: ['read.pnl'] })
 
     expect(screen.queryByRole('button', { name: 'Group Comparison' })).not.toBeInTheDocument()
   })
 
   it('shows the Group Comparison tab for a user with read.route_group', () => {
-    ;(usePermissions as jest.Mock).mockReturnValue({ hasPermission: () => true })
-    render(<PnlPage />)
+    renderPage({ permissions: ['read.pnl', 'read.route_group'] })
 
     expect(screen.getByRole('button', { name: 'Group Comparison' })).toBeInTheDocument()
   })

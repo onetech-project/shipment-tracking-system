@@ -1,13 +1,18 @@
 'use client'
 
 import React, { useState } from 'react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { formatDayLabel } from '../utils/dailyMatrix'
 import { COST_COMPONENTS, ComparisonTableModel } from '../utils/groupComparison'
 import { num } from '../utils/format'
 import { CellWarning, hasWarning, warningTooltip } from '../utils/cellWarning'
+import { PnlGroupComparisonColumn } from '../hooks/usePnl'
 
 interface PnlGroupComparisonTableProps {
   model: ComparisonTableModel
+  // When given, every value cell becomes a button — including empty ones, which are a valid answer
+  // ("nothing flew these routes that day"). Footer cells stay inert: they span the whole period.
+  onCellClick?: (column: PnlGroupComparisonColumn, date: string) => void
 }
 
 // The Total footer row expands like a body row; this is the key it occupies in the open set.
@@ -20,13 +25,44 @@ function formatValue(value: number | null): string {
   return num(Math.round(value))
 }
 
-function costCellTitle(warning: CellWarning | undefined): string {
-  const hint = 'Lihat rincian SMU, RA, SG Out, SG In'
+// Revenue and Cost cells now do the same thing — drill into the AWBs behind them — so they share
+// one title rather than two near-identical strings that could drift.
+function cellTitle(warning: CellWarning | undefined): string {
+  const hint = 'Lihat AWB kolom ini pada tanggal ini'
   const tooltip = warningTooltip(warning)
   return tooltip ? `${hint} — ${tooltip}` : hint
 }
 
-export function PnlGroupComparisonTable({ model }: PnlGroupComparisonTableProps) {
+// The expand toggle lives on the date, not on a cost cell: the detail rows it opens always covered
+// every column, so a per-cell toggle claimed a scope it never had.
+function DateCell({
+  label,
+  open,
+  onToggle,
+  className,
+}: {
+  label: string
+  open: boolean
+  onToggle: () => void
+  className: string
+}) {
+  return (
+    <td className={`sticky left-0 z-10 whitespace-nowrap border-b border-r p-0 ${className}`}>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-label={`Rincian cost ${label}`}
+        className="flex w-full items-center gap-1 px-3 py-1.5 text-left hover:bg-primary/10"
+        onClick={onToggle}
+      >
+        {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        {label}
+      </button>
+    </td>
+  )
+}
+
+export function PnlGroupComparisonTable({ model, onCellClick }: PnlGroupComparisonTableProps) {
   const [openDates, setOpenDates] = useState<Set<string>>(new Set())
   const groupCount = model.columns.length
 
@@ -123,41 +159,41 @@ export function PnlGroupComparisonTable({ model }: PnlGroupComparisonTableProps)
                     data-testid={`row-${row.date}`}
                     className={striped ? 'bg-muted/30' : ''}
                   >
-                    <td
-                      className={`sticky left-0 z-10 whitespace-nowrap border-b border-r px-3 py-1.5 ${striped ? 'bg-muted/30' : 'bg-card'}`}
-                    >
-                      {formatDayLabel(row.date)}
-                    </td>
-                    {row.revenue.map((value, i) => (
-                      <td
-                        key={`rev-${i}`}
-                        data-testid={`revenue-${row.date}-${model.columns[i].id}`}
-                        title={warningTooltip(row.warnings[i])}
-                        className={`whitespace-nowrap border-b border-l px-3 py-1.5 text-right ${hasWarning(row.warnings[i]) ? 'bg-amber-100 dark:bg-amber-950/40' : ''}`}
-                      >
-                        {formatValue(value)}
-                      </td>
-                    ))}
-                    {row.cost.map((value, i) => {
-                      const warning = row.warnings[i]
-                      return (
-                        <td
-                          key={`cost-${i}`}
-                          className={`border-b border-l p-0 ${hasWarning(warning) ? 'bg-amber-100 dark:bg-amber-950/40' : ''}`}
-                        >
-                          <button
-                            type="button"
-                            data-testid={`cost-${row.date}-${model.columns[i].id}`}
-                            title={costCellTitle(warning)}
-                            aria-expanded={openDates.has(row.date)}
-                            className="w-full px-3 py-1.5 text-right hover:bg-primary/10"
-                            onClick={() => toggle(row.date)}
+                    <DateCell
+                      label={formatDayLabel(row.date)}
+                      open={openDates.has(row.date)}
+                      onToggle={() => toggle(row.date)}
+                      className={striped ? 'bg-muted/30' : 'bg-card'}
+                    />
+                    {(['revenue', 'cost'] as const).flatMap((field) =>
+                      row[field].map((value, i) => {
+                        const warning = row.warnings[i]
+                        const tint = hasWarning(warning) ? 'bg-amber-100 dark:bg-amber-950/40' : ''
+                        const testId = `${field}-${row.date}-${model.columns[i].id}`
+                        return onCellClick ? (
+                          <td key={testId} className={`border-b border-l p-0 ${tint}`}>
+                            <button
+                              type="button"
+                              data-testid={testId}
+                              title={cellTitle(warning)}
+                              className="w-full px-3 py-1.5 text-right hover:bg-primary/10"
+                              onClick={() => onCellClick(model.columns[i], row.date)}
+                            >
+                              {formatValue(value)}
+                            </button>
+                          </td>
+                        ) : (
+                          <td
+                            key={testId}
+                            data-testid={testId}
+                            title={warningTooltip(warning)}
+                            className={`whitespace-nowrap border-b border-l px-3 py-1.5 text-right ${tint}`}
                           >
                             {formatValue(value)}
-                          </button>
-                        </td>
-                      )
-                    })}
+                          </td>
+                        )
+                      }),
+                    )}
                   </tr>
                   {openDates.has(row.date) && detailRows(row.date, row.components, striped)}
                 </React.Fragment>
@@ -169,9 +205,18 @@ export function PnlGroupComparisonTable({ model }: PnlGroupComparisonTableProps)
             {model.footerRows.map((footerRow, i) => (
               <React.Fragment key={footerRow.label}>
                 <tr className={i === 0 ? 'border-t-2 font-semibold' : 'font-semibold'}>
-                  <td className="sticky left-0 z-10 whitespace-nowrap border-b border-r bg-card px-3 py-1.5 text-right">
-                    {footerRow.label}
-                  </td>
+                  {footerRow.components ? (
+                    <DateCell
+                      label={footerRow.label}
+                      open={openDates.has(FOOTER_KEY)}
+                      onToggle={() => toggle(FOOTER_KEY)}
+                      className="bg-card text-right"
+                    />
+                  ) : (
+                    <td className="sticky left-0 z-10 whitespace-nowrap border-b border-r bg-card px-3 py-1.5 text-right">
+                      {footerRow.label}
+                    </td>
+                  )}
                   {footerRow.revenue.map((value, ci) => (
                     <td
                       key={`rev-${ci}`}
@@ -181,32 +226,15 @@ export function PnlGroupComparisonTable({ model }: PnlGroupComparisonTableProps)
                       {formatValue(value)}
                     </td>
                   ))}
-                  {footerRow.cost.map((value, ci) =>
-                    footerRow.components ? (
-                      <td
-                        key={`cost-${ci}`}
-                        className={`border-b border-l p-0 ${hasWarning(footerRow.warnings?.[ci]) ? 'bg-amber-100 dark:bg-amber-950/40' : ''}`}
-                      >
-                        <button
-                          type="button"
-                          data-testid={`cost-${FOOTER_KEY}-${model.columns[ci].id}`}
-                          title={costCellTitle(footerRow.warnings?.[ci])}
-                          aria-expanded={openDates.has(FOOTER_KEY)}
-                          className="w-full px-3 py-1.5 text-right hover:bg-primary/10"
-                          onClick={() => toggle(FOOTER_KEY)}
-                        >
-                          {formatValue(value)}
-                        </button>
-                      </td>
-                    ) : (
-                      <td
-                        key={`cost-${ci}`}
-                        className="whitespace-nowrap border-b border-l px-3 py-1.5 text-right"
-                      >
-                        {formatValue(value)}
-                      </td>
-                    ),
-                  )}
+                  {footerRow.cost.map((value, ci) => (
+                    <td
+                      key={`cost-${ci}`}
+                      title={warningTooltip(footerRow.warnings?.[ci])}
+                      className={`whitespace-nowrap border-b border-l px-3 py-1.5 text-right ${hasWarning(footerRow.warnings?.[ci]) ? 'bg-amber-100 dark:bg-amber-950/40' : ''}`}
+                    >
+                      {formatValue(value)}
+                    </td>
+                  ))}
                 </tr>
                 {footerRow.components &&
                   openDates.has(FOOTER_KEY) &&

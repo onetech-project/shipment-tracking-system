@@ -113,15 +113,19 @@ function PnlPageContent() {
     setCycle(undefined)
   }
 
-  // A clicked daily cell narrows the drilldown only: the page period, KPIs, chart and breakdowns
-  // keep showing the whole cycle, which is what makes the drilldown readable as a subset of them.
-  function handleCellClick(column: PnlDailyMatrixColumn, date: string) {
-    setDrilldownRoute(routeFromCell(column, date))
+  // The page period, KPIs, chart and breakdowns keep showing the whole cycle; only the drilldown
+  // narrows, which is what makes it readable as a subset of them.
+  function applyDrilldownRoute(route: PnlRouteFilter) {
+    setDrilldownRoute(route)
     setView('estimate')
     // Runs after the Estimated tab has mounted the drilldown.
     requestAnimationFrame(() => {
       drilldownRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     })
+  }
+
+  function handleCellClick(column: PnlDailyMatrixColumn, date: string) {
+    applyDrilldownRoute(routeFromCell(column, date))
   }
 
   const filter: PnlFilter | undefined =
@@ -277,7 +281,10 @@ function PnlPageContent() {
       ) : view === 'daily' ? (
         filter && <PnlDailyMatrixView filter={filter} onCellClick={handleCellClick} />
       ) : view === 'groups' ? (
-        filter && hasPermission('read.route_group') && <PnlGroupComparisonView filter={filter} />
+        filter &&
+        hasPermission('read.route_group') && (
+          <PnlGroupComparisonView filter={filter} onCellClick={applyDrilldownRoute} />
+        )
       ) : (
         <>
           <PnlFormulaPanel />

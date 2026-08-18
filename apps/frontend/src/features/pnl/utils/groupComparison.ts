@@ -1,4 +1,4 @@
-import { PnlGroupComparison, PnlGroupComparisonColumn } from '../hooks/usePnl'
+import { PnlGroupComparison, PnlGroupComparisonColumn, PnlRouteFilter } from '../hooks/usePnl'
 import { displayRouteLabel } from './routeLabels'
 import { CellWarning } from './cellWarning'
 
@@ -103,4 +103,17 @@ export function overlappingRoutes(
   return [...byRoute.entries()]
     .filter(([, names]) => names.length > 1)
     .map(([route, groupNames]) => ({ route, groupNames }))
+}
+
+// A clicked comparison cell as an AWB drilldown filter. A group column carries every route it
+// aggregates, so the drilldown answers exactly the question the cell did — for that one day.
+export function routeFromComparisonCell(
+  column: PnlGroupComparisonColumn,
+  date: string,
+): PnlRouteFilter {
+  return {
+    routes: column.routes.map((r) => ({ origin: r.origin, dest: r.dest })),
+    dateFrom: date,
+    dateTo: date,
+  }
 }
