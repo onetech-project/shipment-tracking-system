@@ -2,8 +2,10 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { useRouteGroups } from '@/features/route-groups/hooks/useRouteGroups'
-import { PnlFilter, usePnlGroupComparison } from '../hooks/usePnl'
+import { MultiRouteFilter } from '@/components/shared/multi-route-filter'
+import { useAvailableRoutes, useRouteGroups } from '@/features/route-groups/hooks/useRouteGroups'
+import { PnlColumnPick, PnlFilter, usePnlGroupComparison } from '../hooks/usePnl'
+import { buildRouteLabelIndex, labelsForRoutes, routesForLabels } from '../utils/routeLabels'
 import { overlappingRoutes, toComparisonTable } from '../utils/groupComparison'
 import { PnlGroupComparisonTable } from './PnlGroupComparisonTable'
 
@@ -12,21 +14,43 @@ interface PnlGroupComparisonViewProps {
 }
 
 export function PnlGroupComparisonView({ filter }: PnlGroupComparisonViewProps) {
-  // Selection order is the column order, so the array is appended to rather than re-sorted.
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
+  // Pick order is column order, so the array is appended to rather than re-sorted.
+  const [picks, setPicks] = useState<PnlColumnPick[]>([])
   const {
     data: groups,
     isLoading: isLoadingGroups,
     isError: isGroupsError,
     refetch: refetchGroups,
   } = useRouteGroups()
-  const { data, isLoading, isError, refetch } = usePnlGroupComparison(filter, selectedIds)
+  const { data: availableRoutes } = useAvailableRoutes()
+  const { data, isLoading, isError, refetch } = usePnlGroupComparison(filter, picks)
 
-  const toggle = (id: string) =>
-    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
+  const routeIndex = buildRouteLabelIndex(availableRoutes ?? [])
+  const pickedRoutes = picks.flatMap((p) => (p.kind === 'route' ? [{ origin: p.origin, dest: p.dest }] : []))
 
-  const selectedGroups = (groups ?? []).filter((g) => selectedIds.includes(g.id))
-  const overlaps = overlappingRoutes(selectedGroups)
+  const toggleGroup = (id: string) =>
+    setPicks((prev) =>
+      prev.some((p) => p.kind === 'group' && p.id === id)
+        ? prev.filter((p) => !(p.kind === 'group' && p.id === id))
+        : [...prev, { kind: 'group', id }],
+    )
+
+  // Routes are replaced wholesale by the dropdown, but the group picks keep their relative order:
+  // dropping and re-adding every pick would silently reshuffle the columns.
+  const setRouteLabels = (labels: string[]) => {
+    const next = routesForLabels(labels, routeIndex)
+    setPicks((prev) => {
+      const kept = prev.filter(
+        (p) => p.kind === 'group' || next.some((r) => r.origin === p.origin && r.dest === p.dest),
+      )
+      const added = next
+        .filter((r) => !prev.some((p) => p.kind === 'route' && p.origin === r.origin && p.dest === r.dest))
+        .map((r) => ({ kind: 'route' as const, origin: r.origin, dest: r.dest }))
+      return [...kept, ...added]
+    })
+  }
+
+  const overlaps = overlappingRoutes(data?.columns ?? [])
 
   if (isLoadingGroups) {
     return <div className="h-24 animate-pulse rounded-lg border bg-card" />
@@ -47,17 +71,19 @@ export function PnlGroupComparisonView({ filter }: PnlGroupComparisonViewProps) 
     )
   }
 
-  if ((groups ?? []).length === 0) {
+  // A user with no saved groups can still compare bare routes, so this only blocks the whole tab
+  // when there is genuinely nothing to pick from.
+  if ((groups ?? []).length === 0 && (availableRoutes ?? []).length === 0) {
     return (
       <div className="rounded-lg border bg-card p-8 text-center">
         {/* Each sentence is its own node so the surrounding <p> never mixes text with the link —
             a mixed parent makes getByText unable to match either half. */}
         <p className="text-sm text-muted-foreground">
-          <span>Belum ada Route Group.</span>{' '}
+          <span>Belum ada Route Group maupun rute yang bisa dibandingkan.</span>{' '}
           <Link href="/route-groups" className="text-primary underline">
             Buat satu dulu
-          </Link>{' '}
-          <span>untuk mulai membandingkan.</span>
+          </Link>
+          <span>.</span>
         </p>
       </div>
     )
@@ -66,21 +92,33 @@ export function PnlGroupComparisonView({ filter }: PnlGroupComparisonViewProps) 
   return (
     <div className="space-y-4">
       <div className="rounded-lg border bg-card p-4">
-        <p className="mb-2 text-sm font-medium">Group</p>
-        <div className="flex flex-wrap gap-x-6 gap-y-2">
-          {(groups ?? []).map((group) => (
-            <label key={group.id} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                aria-label={`${group.name} (${group.routes.length} rute)`}
-                checked={selectedIds.includes(group.id)}
-                onChange={() => toggle(group.id)}
-              />
-              <span>{group.name}</span>
-              <span className="text-xs text-muted-foreground">{group.routes.length} rute</span>
-            </label>
-          ))}
-        </div>
+        {(groups ?? []).length > 0 && (
+          <>
+            <p className="mb-2 text-sm font-medium">Group</p>
+            <div className="flex flex-wrap gap-x-6 gap-y-2">
+              {(groups ?? []).map((group) => (
+                <label key={group.id} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    aria-label={`${group.name} (${group.routes.length} rute)`}
+                    checked={picks.some((p) => p.kind === 'group' && p.id === group.id)}
+                    onChange={() => toggleGroup(group.id)}
+                  />
+                  <span>{group.name}</span>
+                  <span className="text-xs text-muted-foreground">{group.routes.length} rute</span>
+                </label>
+              ))}
+            </div>
+          </>
+        )}
+
+        <p className="mb-2 mt-4 text-sm font-medium">Rute</p>
+        <MultiRouteFilter
+          className="w-[260px]"
+          routes={routeIndex.labels}
+          selected={labelsForRoutes(pickedRoutes)}
+          onChange={setRouteLabels}
+        />
 
         {overlaps.length > 0 && (
           <div className="mt-3 rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
@@ -95,10 +133,10 @@ export function PnlGroupComparisonView({ filter }: PnlGroupComparisonViewProps) 
         )}
       </div>
 
-      {selectedIds.length === 0 ? (
+      {picks.length === 0 ? (
         <div className="rounded-lg border bg-card p-8 text-center">
           <p className="text-sm text-muted-foreground">
-            Pilih minimal satu group untuk melihat perbandingan.
+            Pilih minimal satu group atau rute untuk melihat perbandingan.
           </p>
         </div>
       ) : isLoading ? (

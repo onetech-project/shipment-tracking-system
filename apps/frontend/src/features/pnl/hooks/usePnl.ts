@@ -199,9 +199,25 @@ export interface PnlDailyMatrix {
 }
 
 export interface PnlGroupComparisonColumn {
+  // A group column's id is its uuid; a route column's is `r:<origin>|<dest>`.
   id: string
   name: string
   routeCount: number
+  kind: 'group' | 'route'
+  // The pairs this column aggregates, straight from the response — so a clicked cell and the
+  // overlap warning both read the same list the numbers came from.
+  routes: { origin: string; originLabel: string; dest: string }[]
+}
+
+// One comparison column the user picked: a saved group, or a bare route.
+export type PnlColumnPick =
+  | { kind: 'group'; id: string }
+  | { kind: 'route'; origin: string; dest: string }
+
+export function columnsToParam(picks: PnlColumnPick[]): string {
+  return picks
+    .map((p) => (p.kind === 'group' ? `g:${p.id}` : `r:${p.origin}|${p.dest}`))
+    .join(',')
 }
 
 export interface PnlGroupComparisonCell {
@@ -440,18 +456,18 @@ export function usePnlDailyMatrix(filter: PnlFilter | undefined) {
   })
 }
 
-// Disabled until at least one group is selected, so an untouched tab makes no request at all.
-// groupIds is part of the query key, so re-picking groups refetches without a manual invalidate.
-export function usePnlGroupComparison(filter: PnlFilter | undefined, groupIds: string[]) {
+// Disabled until at least one column is picked, so an untouched tab makes no request at all.
+// picks is part of the query key, so re-picking refetches without a manual invalidate.
+export function usePnlGroupComparison(filter: PnlFilter | undefined, picks: PnlColumnPick[]) {
   return useQuery<PnlGroupComparison>({
-    queryKey: ['pnl', 'group-comparison', filter, groupIds],
+    queryKey: ['pnl', 'group-comparison', filter, picks],
     queryFn: () =>
       apiClient
         .get('/pnl/breakdown/group-comparison', {
-          params: { ...filterToParams(filter!), groupIds: groupIds.join(',') },
+          params: { ...filterToParams(filter!), columns: columnsToParam(picks) },
         })
         .then((r) => r.data),
-    enabled: !!filter && groupIds.length > 0,
+    enabled: !!filter && picks.length > 0,
     staleTime: 60 * 1000,
   })
 }

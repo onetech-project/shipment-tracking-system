@@ -10,14 +10,20 @@ jest.mock('../hooks/usePnl', () => ({
 }))
 jest.mock('@/features/route-groups/hooks/useRouteGroups', () => ({
   useRouteGroups: jest.fn(),
+  useAvailableRoutes: jest.fn(),
 }))
 
+import * as hooks from '../hooks/usePnl'
 import { usePnlGroupComparison } from '../hooks/usePnl'
-import { useRouteGroups } from '@/features/route-groups/hooks/useRouteGroups'
+import { useRouteGroups, useAvailableRoutes } from '@/features/route-groups/hooks/useRouteGroups'
 
 const filter: PnlFilter = { mode: 'cycle', cycle: '2026-05-1H', basis: 'ata_vendor_wh_destination' }
 
 const route = (dest: string) => ({ origin: 'Jabo', originLabel: 'CGK', dest })
+
+function renderView() {
+  render(<PnlGroupComparisonView filter={filter} />)
+}
 
 beforeEach(() => {
   ;(useRouteGroups as jest.Mock).mockReturnValue({
@@ -26,6 +32,9 @@ beforeEach(() => {
       { id: 'g2', name: 'Sumatera', description: null, routes: [route('Batam')] },
     ],
     isLoading: false,
+  })
+  ;(useAvailableRoutes as jest.Mock).mockReturnValue({
+    data: [{ origin: 'Jabo', originLabel: 'CGK', dest: 'Denpasar', hasData: true }],
   })
   ;(usePnlGroupComparison as jest.Mock).mockReturnValue({
     data: undefined,
@@ -50,8 +59,23 @@ it('lists every group as a checkbox with its route count', () => {
 })
 
 // The columns are independent by design, so a shared route lands in both and the columns do not
-// sum to a period total. Saying so stops the table being read as a partition.
+// sum to a period total. Saying so stops the table being read as a partition. Overlap is driven by
+// the response's columns (not the client-side selection), so this test mocks that response.
 it('warns when the selected groups share a route', () => {
+  ;(usePnlGroupComparison as jest.Mock).mockReturnValue({
+    data: {
+      columns: [
+        { id: 'g1', name: 'Kalimantan', routeCount: 2, kind: 'group', routes: [route('Balikpapan'), route('Batam')] },
+        { id: 'g2', name: 'Sumatera', routeCount: 1, kind: 'group', routes: [route('Batam')] },
+      ],
+      rows: [],
+      footer: [],
+      periodDays: 0,
+    },
+    isLoading: false,
+    isError: false,
+    refetch: jest.fn(),
+  })
   render(<PnlGroupComparisonView filter={filter} />)
 
   fireEvent.click(screen.getByLabelText(/Kalimantan/))
@@ -77,11 +101,22 @@ it('does not warn when the selected groups are disjoint', () => {
   expect(screen.queryByText(/berbagi/i)).not.toBeInTheDocument()
 })
 
-it('tells the user when no groups exist yet', () => {
+it('tells the user when no groups and no routes exist yet', () => {
   ;(useRouteGroups as jest.Mock).mockReturnValue({ data: [], isLoading: false })
+  ;(useAvailableRoutes as jest.Mock).mockReturnValue({ data: [] })
   render(<PnlGroupComparisonView filter={filter} />)
 
   expect(screen.getByText(/belum ada route group/i)).toBeInTheDocument()
+})
+
+// A user with no saved groups can still compare bare routes, so the empty state must only trigger
+// when there is genuinely nothing to pick from.
+it('still renders the picker when there are no groups but there are routes', () => {
+  ;(useRouteGroups as jest.Mock).mockReturnValue({ data: [], isLoading: false })
+  render(<PnlGroupComparisonView filter={filter} />)
+
+  expect(screen.queryByText(/belum ada route group/i)).not.toBeInTheDocument()
+  expect(screen.getByText('Rute')).toBeInTheDocument()
 })
 
 // Finding 1: GET /route-groups is guarded by read.route_group, so a user without it gets a 403,
@@ -108,8 +143,8 @@ it('tells the user loading Route Groups failed, distinct from the empty-groups m
 // every other test in this file mocks usePnlGroupComparison with data: undefined.
 const comparisonData: PnlGroupComparison = {
   columns: [
-    { id: 'g1', name: 'Kalimantan', routeCount: 2 },
-    { id: 'g2', name: 'Sumatera', routeCount: 1 },
+    { id: 'g1', name: 'Kalimantan', routeCount: 2, kind: 'group', routes: [route('Balikpapan'), route('Batam')] },
+    { id: 'g2', name: 'Sumatera', routeCount: 1, kind: 'group', routes: [route('Batam')] },
   ],
   rows: [
     {
@@ -228,19 +263,48 @@ it('captions the table to say Revenue is gross and not meant to be subtracted fr
   expect(screen.getByText(/tidak dimaksudkan untuk dikurangkan/i)).toBeInTheDocument()
 })
 
-it('sends selected group ids to usePnlGroupComparison in click order, moving a reselected group to the end', () => {
+it('sends selected group picks to usePnlGroupComparison in click order, moving a reselected group to the end', () => {
   render(<PnlGroupComparisonView filter={filter} />)
 
-  const latestSelectedIds = () => {
+  const latestPicks = () => {
     const calls = (usePnlGroupComparison as jest.Mock).mock.calls
     return calls[calls.length - 1][1]
   }
 
   fireEvent.click(screen.getByLabelText(/Kalimantan/)) // g1
   fireEvent.click(screen.getByLabelText(/Sumatera/)) // g2
-  expect(latestSelectedIds()).toEqual(['g1', 'g2'])
+  expect(latestPicks()).toEqual([
+    { kind: 'group', id: 'g1' },
+    { kind: 'group', id: 'g2' },
+  ])
 
   fireEvent.click(screen.getByLabelText(/Kalimantan/)) // deselect g1
   fireEvent.click(screen.getByLabelText(/Kalimantan/)) // reselect g1 -> appended, not resorted
-  expect(latestSelectedIds()).toEqual(['g2', 'g1'])
+  expect(latestPicks()).toEqual([
+    { kind: 'group', id: 'g2' },
+    { kind: 'group', id: 'g1' },
+  ])
+})
+
+it('lists bare routes to pick alongside the groups', () => {
+  renderView()
+  fireEvent.click(screen.getByRole('button', { expanded: false }))
+  expect(screen.getByText('Jabo → Denpasar')).toBeInTheDocument()
+})
+
+it('sends groups and routes in the order they were picked', () => {
+  renderView()
+  fireEvent.click(screen.getByRole('checkbox', { name: /Kalimantan/ }))
+  fireEvent.click(screen.getByRole('button', { expanded: false }))
+  fireEvent.click(screen.getByRole('checkbox', { name: /Jabo → Denpasar/ }))
+
+  expect(hooks.usePnlGroupComparison).toHaveBeenLastCalledWith(filter, [
+    { kind: 'group', id: 'g1' },
+    { kind: 'route', origin: 'Jabo', dest: 'Denpasar' },
+  ])
+})
+
+it('prompts for a pick when nothing is selected', () => {
+  renderView()
+  expect(screen.getByText('Pilih minimal satu group atau rute untuk melihat perbandingan.')).toBeInTheDocument()
 })

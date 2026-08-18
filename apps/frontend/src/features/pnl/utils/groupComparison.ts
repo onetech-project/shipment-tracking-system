@@ -1,5 +1,5 @@
-import { RouteGroup } from '@/features/route-groups/types'
 import { PnlGroupComparison, PnlGroupComparisonColumn } from '../hooks/usePnl'
+import { displayRouteLabel } from './routeLabels'
 
 export type CostComponentKey = 'costSmu' | 'costRa' | 'costSgOut' | 'costSgIn'
 
@@ -80,19 +80,21 @@ export function toComparisonTable(data: PnlGroupComparison): ComparisonTableMode
   return { columns: data.columns, rows, footerRows }
 }
 
-// Routes belonging to more than one of the selected groups. The comparison columns are deliberately
-// independent, so a shared route contributes to every column that holds it and the columns do not
-// sum to a period total. Surfacing the overlap stops the table being read as a partition.
+// Routes belonging to more than one of the selected columns. The comparison columns are
+// deliberately independent, so a shared route contributes to every column that holds it and the
+// columns do not sum to a period total. Surfacing the overlap stops the table being read as a
+// partition. Computed from the response columns rather than the saved groups, so a bare route that
+// duplicates a group member is caught by the same code.
 export function overlappingRoutes(
-  groups: RouteGroup[],
+  columns: PnlGroupComparisonColumn[],
 ): { route: string; groupNames: string[] }[] {
   const byRoute = new Map<string, string[]>()
-  for (const group of groups) {
-    for (const route of group.routes) {
-      const label = `${route.originLabel} → ${route.dest}`
+  for (const column of columns) {
+    for (const route of column.routes) {
+      const label = displayRouteLabel(route)
       const names = byRoute.get(label)
-      if (names) names.push(group.name)
-      else byRoute.set(label, [group.name])
+      if (names) names.push(column.name)
+      else byRoute.set(label, [column.name])
     }
   }
   return [...byRoute.entries()]

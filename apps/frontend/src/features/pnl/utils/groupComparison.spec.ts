@@ -1,6 +1,5 @@
 import { toComparisonTable, overlappingRoutes, COST_COMPONENTS } from './groupComparison'
-import { PnlGroupComparison, PnlGroupComparisonCell } from '../hooks/usePnl'
-import { RouteGroup } from '@/features/route-groups/types'
+import { PnlGroupComparison, PnlGroupComparisonCell, PnlGroupComparisonColumn } from '../hooks/usePnl'
 
 const cell = (over: Partial<PnlGroupComparisonCell> = {}): PnlGroupComparisonCell => ({
   revenue: 0,
@@ -15,8 +14,8 @@ const cell = (over: Partial<PnlGroupComparisonCell> = {}): PnlGroupComparisonCel
 
 const data: PnlGroupComparison = {
   columns: [
-    { id: 'g1', name: 'Kalimantan', routeCount: 3 },
-    { id: 'g2', name: 'Sumatera', routeCount: 2 },
+    { id: 'g1', name: 'Kalimantan', routeCount: 3, kind: 'group', routes: [] },
+    { id: 'g2', name: 'Sumatera', routeCount: 2, kind: 'group', routes: [] },
   ],
   rows: [
     {
@@ -104,37 +103,36 @@ describe('toComparisonTable', () => {
 })
 
 describe('overlappingRoutes', () => {
-  const group = (id: string, name: string, dests: string[]): RouteGroup => ({
-    id,
-    name,
-    description: null,
-    routes: dests.map((dest) => ({ origin: 'Jabo', originLabel: 'CGK', dest })),
+  const aceh = { origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' }
+  const medan = { origin: 'Jabo', originLabel: 'CGK', dest: 'Medan' }
+
+  const column = (over: Partial<PnlGroupComparisonColumn>): PnlGroupComparisonColumn => ({
+    id: 'g1', name: 'Kalimantan', routeCount: 1, kind: 'group', routes: [aceh], ...over,
   })
 
-  it('returns nothing when the groups are disjoint', () => {
-    expect(overlappingRoutes([group('a', 'A', ['Aceh']), group('b', 'B', ['Batam'])])).toEqual([])
-  })
-
-  it('names the groups that share a route', () => {
-    const result = overlappingRoutes([
-      group('a', 'A', ['Aceh', 'Batam']),
-      group('b', 'B', ['Batam']),
+  it('names every column that holds a shared route', () => {
+    const overlaps = overlappingRoutes([
+      column({ id: 'g1', name: 'Kalimantan', routes: [aceh, medan] }),
+      column({ id: 'g2', name: 'Sumatera', routes: [aceh] }),
     ])
-
-    expect(result).toEqual([{ route: 'CGK → Batam', groupNames: ['A', 'B'] }])
+    expect(overlaps).toEqual([{ route: 'CGK → Aceh', groupNames: ['Kalimantan', 'Sumatera'] }])
   })
 
-  it('handles a route shared by three groups', () => {
-    const result = overlappingRoutes([
-      group('a', 'A', ['Batam']),
-      group('b', 'B', ['Batam']),
-      group('c', 'C', ['Batam']),
+  it('catches a bare route column that duplicates a group member', () => {
+    // This is the case the old RouteGroup-driven version could not see at all.
+    const overlaps = overlappingRoutes([
+      column({ id: 'g1', name: 'Kalimantan', routes: [aceh] }),
+      column({ id: 'r:Jabo|Aceh', name: 'CGK → Aceh', kind: 'route', routes: [aceh] }),
     ])
-
-    expect(result).toEqual([{ route: 'CGK → Batam', groupNames: ['A', 'B', 'C'] }])
+    expect(overlaps).toEqual([{ route: 'CGK → Aceh', groupNames: ['Kalimantan', 'CGK → Aceh'] }])
   })
 
-  it('returns nothing for a single group', () => {
-    expect(overlappingRoutes([group('a', 'A', ['Aceh', 'Batam'])])).toEqual([])
+  it('says nothing when the columns are disjoint', () => {
+    expect(
+      overlappingRoutes([
+        column({ id: 'g1', routes: [aceh] }),
+        column({ id: 'g2', name: 'Sumatera', routes: [medan] }),
+      ]),
+    ).toEqual([])
   })
 })

@@ -9,7 +9,7 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/client'
-import { routeToParams, usePnlAwbDrilldown, PnlFilter, PnlRouteFilter } from './usePnl'
+import { routeToParams, usePnlAwbDrilldown, PnlFilter, PnlRouteFilter, columnsToParam } from './usePnl'
 
 jest.mock('@tanstack/react-query', () => ({ useQuery: jest.fn() }))
 jest.mock('@/shared/api/client', () => ({
@@ -86,5 +86,20 @@ describe('usePnlAwbDrilldown HTTP contract', () => {
     expect(configA.queryKey).toContain(routeA)
     expect(configB.queryKey).toContain(routeB)
     expect(configA.queryKey).not.toEqual(configB.queryKey)
+  })
+})
+
+describe('columnsToParam', () => {
+  it('prefixes each pick by kind and keeps the pick order', () => {
+    expect(
+      columnsToParam([
+        { kind: 'group', id: 'abc' },
+        { kind: 'route', origin: 'Jabo', dest: 'Denpasar' },
+      ]),
+    ).toBe('g:abc,r:Jabo|Denpasar')
+  })
+
+  it('is empty for no picks', () => {
+    expect(columnsToParam([])).toBe('')
   })
 })

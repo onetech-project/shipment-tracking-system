@@ -10,8 +10,8 @@ import { PnlGroupComparisonTable } from './PnlGroupComparisonTable'
 import { ComparisonTableModel } from '../utils/groupComparison'
 
 const columns = [
-  { id: 'g1', name: 'Kalimantan', routeCount: 3 },
-  { id: 'g2', name: 'Sumatera', routeCount: 2 },
+  { id: 'g1', name: 'Kalimantan', routeCount: 3, kind: 'group' as const, routes: [] },
+  { id: 'g2', name: 'Sumatera', routeCount: 2, kind: 'group' as const, routes: [] },
 ]
 
 function baseModel(overrides: Partial<ComparisonTableModel> = {}): ComparisonTableModel {
