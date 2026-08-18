@@ -228,6 +228,7 @@ export interface PnlGroupComparisonCell {
   costSgOut: number
   costSgIn: number
   incompleteTos: number
+  issues: PnlCellIssue[]
 }
 
 export interface PnlGroupComparisonRow {
@@ -245,6 +246,7 @@ export interface PnlGroupComparisonFooter {
   avgRevenuePerDay: number
   avgCostPerDay: number
   incompleteTos: number
+  issues: PnlCellIssue[]
 }
 
 export interface PnlGroupComparison {

@@ -9,6 +9,7 @@ const cell = (over: Partial<PnlGroupComparisonCell> = {}): PnlGroupComparisonCel
   costSgOut: 0,
   costSgIn: 0,
   incompleteTos: 0,
+  issues: [],
   ...over,
 })
 
@@ -21,7 +22,16 @@ const data: PnlGroupComparison = {
     {
       date: '2026-05-01',
       cells: [
-        cell({ revenue: 1000, cost: 800, costSmu: 500, costRa: 100, costSgOut: 150, costSgIn: 50, incompleteTos: 2 }),
+        cell({
+          revenue: 1000,
+          cost: 800,
+          costSmu: 500,
+          costRa: 100,
+          costSgOut: 150,
+          costSgIn: 50,
+          incompleteTos: 2,
+          issues: [{ issue: 'no_booking', awbs: 2 }],
+        }),
         null,
       ],
     },
@@ -37,6 +47,7 @@ const data: PnlGroupComparison = {
       avgRevenuePerDay: 66.6,
       avgCostPerDay: 53.3,
       incompleteTos: 2,
+      issues: [{ issue: 'no_booking', awbs: 4 }],
     },
     {
       totalRevenue: 0,
@@ -48,6 +59,7 @@ const data: PnlGroupComparison = {
       avgRevenuePerDay: 0,
       avgCostPerDay: 0,
       incompleteTos: 0,
+      issues: [],
     },
   ],
   periodDays: 15,
@@ -86,7 +98,7 @@ describe('toComparisonTable', () => {
 
   it('reports incomplete TOs per column as a number, defaulting to zero', () => {
     const model = toComparisonTable(data)
-    expect(model.rows[0].incompleteTos).toEqual([2, 0])
+    expect(model.rows[0].warnings.map((w) => w.incompleteTos)).toEqual([2, 0])
   })
 
   it('builds a Total footer row that expands and an Avg / Day row that does not', () => {
@@ -95,10 +107,35 @@ describe('toComparisonTable', () => {
     expect(model.footerRows.map((r) => r.label)).toEqual(['Total', 'Avg / Day'])
     expect(model.footerRows[0].revenue).toEqual([1000, 0])
     expect(model.footerRows[0].components!.costSmu).toEqual([500, 0])
-    expect(model.footerRows[0].incompleteTos).toEqual([2, 0])
+    expect(model.footerRows[0].warnings?.map((w) => w.incompleteTos)).toEqual([2, 0])
     // Averages have no component breakdown — an average of a component is not a cost.
     expect(model.footerRows[1].components).toBeNull()
     expect(model.footerRows[1].revenue).toEqual([66.6, 0])
+  })
+})
+
+describe('toComparisonTable warnings', () => {
+  it('pairs each cell issue list with its incomplete-cost count', () => {
+    const model = toComparisonTable(data)
+    expect(model.rows[0].warnings[0]).toEqual({
+      issues: [{ issue: 'no_booking', awbs: 2 }],
+      incompleteTos: 2,
+    })
+  })
+
+  it('gives an absent cell a clean warning rather than undefined', () => {
+    const model = toComparisonTable(data)
+    expect(model.rows[0].warnings[1]).toEqual({ issues: [], incompleteTos: 0 })
+  })
+
+  it('warns on the Total row but not on Avg / Day', () => {
+    // An average has no set of AWBs behind it, so there is nothing for a warning to point at.
+    const model = toComparisonTable(data)
+    expect(model.footerRows[0].warnings?.[0]).toEqual({
+      issues: [{ issue: 'no_booking', awbs: 4 }],
+      incompleteTos: 2,
+    })
+    expect(model.footerRows[1].warnings).toBeNull()
   })
 })
 

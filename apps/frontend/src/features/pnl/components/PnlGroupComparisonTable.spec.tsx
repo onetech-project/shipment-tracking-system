@@ -26,7 +26,10 @@ function baseModel(overrides: Partial<ComparisonTableModel> = {}): ComparisonTab
         date: '2026-05-01',
         revenue: [1000, null],
         cost: [800, null],
-        incompleteTos: [0, 0],
+        warnings: [
+          { issues: [], incompleteTos: 0 },
+          { issues: [], incompleteTos: 0 },
+        ],
         components: {
           costSmu: [500, 260],
           costRa: [100, 140],
@@ -38,7 +41,10 @@ function baseModel(overrides: Partial<ComparisonTableModel> = {}): ComparisonTab
         date: '2026-05-02',
         revenue: [0, 2000],
         cost: [0, 1500],
-        incompleteTos: [3, 0],
+        warnings: [
+          { issues: [], incompleteTos: 3 },
+          { issues: [], incompleteTos: 0 },
+        ],
         components: {
           costSmu: [0, 900],
           costRa: [0, 200],
@@ -58,14 +64,17 @@ function baseModel(overrides: Partial<ComparisonTableModel> = {}): ComparisonTab
           costSgOut: [150, 300],
           costSgIn: [50, 100],
         },
-        incompleteTos: [3, 0],
+        warnings: [
+          { issues: [], incompleteTos: 3 },
+          { issues: [], incompleteTos: 0 },
+        ],
       },
       {
         label: 'Avg / Day',
         revenue: [66, 133],
         cost: [53, 100],
         components: null,
-        incompleteTos: null,
+        warnings: null,
       },
     ],
     ...overrides,
@@ -186,4 +195,20 @@ it('expands the Total footer row but not Avg / Day', () => {
   expect(screen.getByTestId('detail-__footer__-costSmu')).toBeInTheDocument()
 
   expect(screen.queryByTestId('cost-Avg / Day-g1')).not.toBeInTheDocument()
+})
+
+it('paints a warned cost cell amber and explains it in the title', () => {
+  render(<PnlGroupComparisonTable model={baseModel()} />)
+  const warned = screen.getByTestId('cost-2026-05-02-g1')
+  expect(warned.closest('td')!.className).toContain('bg-amber-100')
+  expect(warned.getAttribute('title')).toBe(
+    'Lihat rincian SMU, RA, SG Out, SG In — 3 TO belum ada cost',
+  )
+})
+
+it('leaves a clean cost cell untinted', () => {
+  render(<PnlGroupComparisonTable model={baseModel()} />)
+  expect(screen.getByTestId('cost-2026-05-02-g2').closest('td')!.className).not.toContain(
+    'bg-amber-100',
+  )
 })

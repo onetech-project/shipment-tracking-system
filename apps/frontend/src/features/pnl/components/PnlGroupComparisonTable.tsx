@@ -4,6 +4,7 @@ import React, { useState } from 'react'
 import { formatDayLabel } from '../utils/dailyMatrix'
 import { COST_COMPONENTS, ComparisonTableModel } from '../utils/groupComparison'
 import { num } from '../utils/format'
+import { CellWarning, hasWarning, warningTooltip } from '../utils/cellWarning'
 
 interface PnlGroupComparisonTableProps {
   model: ComparisonTableModel
@@ -19,16 +20,10 @@ function formatValue(value: number | null): string {
   return num(Math.round(value))
 }
 
-function incompleteTooltip(count: number): string | undefined {
-  return count > 0
-    ? `${count} TO belum ada cost — cost di sel ini lebih rendah dari seharusnya`
-    : undefined
-}
-
-function costCellTitle(incomplete: number): string {
+function costCellTitle(warning: CellWarning | undefined): string {
   const hint = 'Lihat rincian SMU, RA, SG Out, SG In'
-  const warning = incompleteTooltip(incomplete)
-  return warning ? `${hint} — ${warning}` : hint
+  const tooltip = warningTooltip(warning)
+  return tooltip ? `${hint} — ${tooltip}` : hint
 }
 
 export function PnlGroupComparisonTable({ model }: PnlGroupComparisonTableProps) {
@@ -137,28 +132,32 @@ export function PnlGroupComparisonTable({ model }: PnlGroupComparisonTableProps)
                       <td
                         key={`rev-${i}`}
                         data-testid={`revenue-${row.date}-${model.columns[i].id}`}
-                        className="whitespace-nowrap border-b border-l px-3 py-1.5 text-right"
+                        title={warningTooltip(row.warnings[i])}
+                        className={`whitespace-nowrap border-b border-l px-3 py-1.5 text-right ${hasWarning(row.warnings[i]) ? 'bg-amber-100 dark:bg-amber-950/40' : ''}`}
                       >
                         {formatValue(value)}
                       </td>
                     ))}
-                    {row.cost.map((value, i) => (
-                      <td key={`cost-${i}`} className="border-b border-l p-0">
-                        <button
-                          type="button"
-                          data-testid={`cost-${row.date}-${model.columns[i].id}`}
-                          title={costCellTitle(row.incompleteTos[i])}
-                          aria-expanded={openDates.has(row.date)}
-                          className="w-full px-3 py-1.5 text-right hover:bg-primary/10"
-                          onClick={() => toggle(row.date)}
+                    {row.cost.map((value, i) => {
+                      const warning = row.warnings[i]
+                      return (
+                        <td
+                          key={`cost-${i}`}
+                          className={`border-b border-l p-0 ${hasWarning(warning) ? 'bg-amber-100 dark:bg-amber-950/40' : ''}`}
                         >
-                          {formatValue(value)}
-                          {row.incompleteTos[i] > 0 && (
-                            <span className="ml-1 text-amber-600">•</span>
-                          )}
-                        </button>
-                      </td>
-                    ))}
+                          <button
+                            type="button"
+                            data-testid={`cost-${row.date}-${model.columns[i].id}`}
+                            title={costCellTitle(warning)}
+                            aria-expanded={openDates.has(row.date)}
+                            className="w-full px-3 py-1.5 text-right hover:bg-primary/10"
+                            onClick={() => toggle(row.date)}
+                          >
+                            {formatValue(value)}
+                          </button>
+                        </td>
+                      )
+                    })}
                   </tr>
                   {openDates.has(row.date) && detailRows(row.date, row.components, striped)}
                 </React.Fragment>
@@ -176,26 +175,27 @@ export function PnlGroupComparisonTable({ model }: PnlGroupComparisonTableProps)
                   {footerRow.revenue.map((value, ci) => (
                     <td
                       key={`rev-${ci}`}
-                      className="whitespace-nowrap border-b border-l px-3 py-1.5 text-right"
+                      title={warningTooltip(footerRow.warnings?.[ci])}
+                      className={`whitespace-nowrap border-b border-l px-3 py-1.5 text-right ${hasWarning(footerRow.warnings?.[ci]) ? 'bg-amber-100 dark:bg-amber-950/40' : ''}`}
                     >
                       {formatValue(value)}
                     </td>
                   ))}
                   {footerRow.cost.map((value, ci) =>
                     footerRow.components ? (
-                      <td key={`cost-${ci}`} className="border-b border-l p-0">
+                      <td
+                        key={`cost-${ci}`}
+                        className={`border-b border-l p-0 ${hasWarning(footerRow.warnings?.[ci]) ? 'bg-amber-100 dark:bg-amber-950/40' : ''}`}
+                      >
                         <button
                           type="button"
                           data-testid={`cost-${FOOTER_KEY}-${model.columns[ci].id}`}
-                          title={costCellTitle(footerRow.incompleteTos?.[ci] ?? 0)}
+                          title={costCellTitle(footerRow.warnings?.[ci])}
                           aria-expanded={openDates.has(FOOTER_KEY)}
                           className="w-full px-3 py-1.5 text-right hover:bg-primary/10"
                           onClick={() => toggle(FOOTER_KEY)}
                         >
                           {formatValue(value)}
-                          {(footerRow.incompleteTos?.[ci] ?? 0) > 0 && (
-                            <span className="ml-1 text-amber-600">•</span>
-                          )}
                         </button>
                       </td>
                     ) : (

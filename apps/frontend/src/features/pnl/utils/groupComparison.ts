@@ -1,5 +1,6 @@
 import { PnlGroupComparison, PnlGroupComparisonColumn } from '../hooks/usePnl'
 import { displayRouteLabel } from './routeLabels'
+import { CellWarning } from './cellWarning'
 
 export type CostComponentKey = 'costSmu' | 'costRa' | 'costSgOut' | 'costSgIn'
 
@@ -16,7 +17,7 @@ export interface ComparisonRowModel {
   date: string
   revenue: (number | null)[] // index-aligned with columns; null = no shipment, distinct from 0
   cost: (number | null)[]
-  incompleteTos: number[]
+  warnings: CellWarning[]
   components: Record<CostComponentKey, (number | null)[]>
 }
 
@@ -25,7 +26,7 @@ export interface ComparisonFooterRowModel {
   revenue: (number | null)[]
   cost: (number | null)[]
   components: Record<CostComponentKey, (number | null)[]> | null // null = this row does not expand
-  incompleteTos: number[] | null
+  warnings: CellWarning[] | null // null = this row has no AWBs behind it
 }
 
 export interface ComparisonTableModel {
@@ -48,7 +49,9 @@ export function toComparisonTable(data: PnlGroupComparison): ComparisonTableMode
       date: row.date,
       revenue: row.cells.map((c) => (c ? c.revenue : null)),
       cost: row.cells.map((c) => (c ? c.cost : null)),
-      incompleteTos: row.cells.map((c) => (c ? c.incompleteTos : 0)),
+      warnings: row.cells.map((c) =>
+        c ? { issues: c.issues, incompleteTos: c.incompleteTos } : { issues: [], incompleteTos: 0 },
+      ),
       components,
     }
   })
@@ -65,7 +68,7 @@ export function toComparisonTable(data: PnlGroupComparison): ComparisonTableMode
       revenue: data.footer.map((f) => f.totalRevenue),
       cost: data.footer.map((f) => f.totalCost),
       components: totalComponents,
-      incompleteTos: data.footer.map((f) => f.incompleteTos),
+      warnings: data.footer.map((f) => ({ issues: f.issues, incompleteTos: f.incompleteTos })),
     },
     {
       // No component breakdown: the average of a component is not itself a cost anyone books.
@@ -73,7 +76,7 @@ export function toComparisonTable(data: PnlGroupComparison): ComparisonTableMode
       revenue: data.footer.map((f) => f.avgRevenuePerDay),
       cost: data.footer.map((f) => f.avgCostPerDay),
       components: null,
-      incompleteTos: null,
+      warnings: null,
     },
   ]
 
