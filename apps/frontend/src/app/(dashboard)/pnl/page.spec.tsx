@@ -121,3 +121,62 @@ describe('PnlPage click-through from Daily Report to Estimated drilldown', () =>
     )
   })
 })
+
+// Finding 1: without this gate, a user who cannot read route groups still saw the tab button and,
+// behind it, a false "no groups exist, go create one" message linking to a page that immediately
+// redirects them away. The tab button is the only way `view` can become 'groups' in this page, so
+// hiding it is what actually keeps such a user off the view — not just a cosmetic omission.
+describe('PnlPage Group Comparison tab gating', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    ;(useAuth as jest.Mock).mockReturnValue({
+      user: {
+        id: '1',
+        username: 'u',
+        organizationId: 'o',
+        isSuperAdmin: false,
+        roles: [],
+        permissions: ['read.pnl'],
+      },
+      loading: false,
+    })
+    ;(useRouter as jest.Mock).mockReturnValue({ replace: jest.fn() })
+    ;(usePnlCycles as jest.Mock).mockReturnValue({
+      data: ['2026-05-1H'],
+      isLoading: false,
+      isError: false,
+      refetch: jest.fn(),
+    })
+    ;(usePnlSummary as jest.Mock).mockReturnValue({
+      data: {
+        label: '2026-05-1H',
+        totalTos: 0,
+        totalAwbs: 0,
+        totalRevenue: 0,
+        totalDiscount: 0,
+        totalCost: 0,
+        grossProfit: 0,
+        grossMarginPct: 0,
+      },
+      isLoading: false,
+      isError: false,
+      refetch: jest.fn(),
+    })
+  })
+
+  it('hides the Group Comparison tab for a user without read.route_group', () => {
+    ;(usePermissions as jest.Mock).mockReturnValue({
+      hasPermission: (p: string) => p !== 'read.route_group',
+    })
+    render(<PnlPage />)
+
+    expect(screen.queryByRole('button', { name: 'Group Comparison' })).not.toBeInTheDocument()
+  })
+
+  it('shows the Group Comparison tab for a user with read.route_group', () => {
+    ;(usePermissions as jest.Mock).mockReturnValue({ hasPermission: () => true })
+    render(<PnlPage />)
+
+    expect(screen.getByRole('button', { name: 'Group Comparison' })).toBeInTheDocument()
+  })
+})

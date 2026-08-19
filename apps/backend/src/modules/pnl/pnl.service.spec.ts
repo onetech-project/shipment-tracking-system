@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import { DataSource } from 'typeorm'
 import { PnlService } from './pnl.service'
@@ -620,6 +621,239 @@ describe('PnlService', () => {
       const [columnSql, columnParams] = dataSource.query.mock.calls[0]
       expect(columnSql).toContain('SELECT DISTINCT origin_station, dest_station')
       expect(columnParams).toBeUndefined()
+    })
+  })
+
+  describe('getGroupComparison', () => {
+    // Real-shaped UUIDs, not 'g1'/'g2': getGroupComparison now rejects non-UUID ids (finding 6)
+    // before it ever reaches dataSource.query, so the fixtures have to look like what the
+    // controller actually forwards.
+    const G1 = '11111111-1111-4111-8111-111111111111'
+    const G2 = '22222222-2222-4222-8222-222222222222'
+
+    // The column query resolves group names; the fact query returns one row per (date, group).
+    function mockQueries(
+      columns: { id: string; name: string; route_count: string }[],
+      facts: Record<string, string>[],
+    ) {
+      dataSource.query.mockResolvedValueOnce(columns).mockResolvedValueOnce(facts)
+    }
+
+    const fact = (over: Partial<Record<string, string>>) => ({
+      d: '2026-05-01',
+      gid: G1,
+      revenue: '0',
+      cost: '0',
+      cost_smu: '0',
+      cost_ra: '0',
+      cost_sg_out: '0',
+      cost_sg_in: '0',
+      incomplete_tos: '0',
+      ...over,
+    })
+
+    it('returns nothing and touches no database when no groups are selected', async () => {
+      const result = await service.getGroupComparison([], '2026-05-1H')
+
+      expect(dataSource.query).not.toHaveBeenCalled()
+      expect(result).toEqual({ columns: [], rows: [], footer: [], periodDays: 15 })
+    })
+
+    it('aligns cells with columns and leaves untouched pairs null', async () => {
+      // The column query's DB row order (G2 then G1) deliberately differs from the requested order
+      // (G1 then G2): `columns` must follow groupIds, not whatever order the DB happened to return.
+      // Swapping `ids.map(id => byId.get(id))` for `[...byId.values()]` in getGroupComparison makes
+      // this assertion fail (columns come back G2, G1) — verified by hand, then reverted.
+      mockQueries(
+        [
+          { id: G2, name: 'Sumatera', route_count: '2' },
+          { id: G1, name: 'Kalimantan', route_count: '3' },
+        ],
+        [fact({ d: '2026-05-01', gid: G2, revenue: '500', cost: '400' })],
+      )
+
+      const result = await service.getGroupComparison([G1, G2], '2026-05-1H')
+
+      expect(result.columns).toEqual([
+        { id: G1, name: 'Kalimantan', routeCount: 3 },
+        { id: G2, name: 'Sumatera', routeCount: 2 },
+      ])
+      const firstRow = result.rows[0]
+      expect(firstRow.date).toBe('2026-05-01')
+      expect(firstRow.cells[0]).toBeNull()
+      expect(firstRow.cells[1]).toEqual({
+        revenue: 500,
+        cost: 400,
+        costSmu: 0,
+        costRa: 0,
+        costSgOut: 0,
+        costSgIn: 0,
+        incompleteTos: 0,
+      })
+    })
+
+    it('returns a calendar-complete set of rows for a 1H cycle', async () => {
+      mockQueries([{ id: G1, name: 'A', route_count: '1' }], [])
+
+      const result = await service.getGroupComparison([G1], '2026-05-1H')
+
+      expect(result.rows).toHaveLength(15)
+      expect(result.rows[0].date).toBe('2026-05-01')
+      expect(result.rows[14].date).toBe('2026-05-15')
+      expect(result.rows.every((r) => r.cells[0] === null)).toBe(true)
+      expect(result.periodDays).toBe(15)
+    })
+
+    // dataSource.query is mocked here, so this cannot exercise the FILTER clause or catch a SQL
+    // error — it only proves the service maps the four component fields off the row through to
+    // the cell without dropping or swapping any of them. The actual reconciliation invariant
+    // (components sum to `cost`) is asserted against a real database in
+    // pnl-group-comparison.integration.spec.ts, which is the only spec that can catch it.
+    it('passes the four cost component fields through from the query row unmangled', async () => {
+      mockQueries(
+        [{ id: G1, name: 'A', route_count: '1' }],
+        [
+          fact({
+            cost: '14970000',
+            cost_smu: '12400000',
+            cost_ra: '850000',
+            cost_sg_out: '1100000',
+            cost_sg_in: '620000',
+          }),
+        ],
+      )
+
+      const cell = (await service.getGroupComparison([G1], '2026-05-1H')).rows[0].cells[0]!
+
+      expect(cell).toEqual({
+        revenue: 0,
+        cost: 14970000,
+        costSmu: 12400000,
+        costRa: 850000,
+        costSgOut: 1100000,
+        costSgIn: 620000,
+        incompleteTos: 0,
+      })
+    })
+
+    // Guards that the FILTER (WHERE cost_to IS NOT NULL) clause and the route-group join stay in
+    // the query shape — not a claim that every component currently changes value because of it.
+    // Measured against the live view, only the RA and SG In components currently shift when this
+    // filter is dropped; SMU and SG Out are no-ops today (see the PnlGroupComparisonCell comment
+    // in pnl.service.ts). All four stay filtered regardless, so this checks the SQL text, and the
+    // real sum-to-cost invariant is covered by the integration spec (finding 2).
+    it('emits the FILTER clause that keeps the components query-shape correct', async () => {
+      mockQueries([{ id: G1, name: 'A', route_count: '1' }], [])
+
+      await service.getGroupComparison([G1], '2026-05-1H')
+
+      const factSql = dataSource.query.mock.calls[1][0] as string
+      expect(factSql).toContain('FILTER (WHERE v.cost_to IS NOT NULL)')
+      expect(factSql).toContain('JOIN route_group_routes r')
+    })
+
+    // Overlap is the whole point of the join: a TO on a route in two groups lands in both columns
+    // and the columns deliberately do not sum to a period total.
+    it('counts a shared route in every group that holds it', async () => {
+      mockQueries(
+        [
+          { id: G1, name: 'A', route_count: '1' },
+          { id: G2, name: 'B', route_count: '1' },
+        ],
+        [
+          fact({ gid: G1, revenue: '1000', cost: '800' }),
+          fact({ gid: G2, revenue: '1000', cost: '800' }),
+        ],
+      )
+
+      const row = (await service.getGroupComparison([G1, G2], '2026-05-1H')).rows[0]
+
+      expect(row.cells[0]!.revenue).toBe(1000)
+      expect(row.cells[1]!.revenue).toBe(1000)
+    })
+
+    it('totals the footer and divides averages by the calendar period', async () => {
+      mockQueries(
+        [{ id: G1, name: 'A', route_count: '1' }],
+        [
+          fact({
+            d: '2026-05-01',
+            revenue: '1500',
+            cost: '900',
+            cost_smu: '600',
+            cost_ra: '100',
+            cost_sg_out: '150',
+            cost_sg_in: '50',
+            incomplete_tos: '2',
+          }),
+          fact({
+            d: '2026-05-02',
+            revenue: '1500',
+            cost: '900',
+            cost_smu: '600',
+            cost_ra: '100',
+            cost_sg_out: '150',
+            cost_sg_in: '50',
+            incomplete_tos: '3',
+          }),
+        ],
+      )
+
+      const footer = (await service.getGroupComparison([G1], '2026-05-1H')).footer[0]
+
+      expect(footer).toEqual({
+        totalRevenue: 3000,
+        totalCost: 1800,
+        totalCostSmu: 1200,
+        totalCostRa: 200,
+        totalCostSgOut: 300,
+        totalCostSgIn: 100,
+        avgRevenuePerDay: 200, // 3000 / 15 calendar days, not / 2 days with data
+        avgCostPerDay: 120,
+        incompleteTos: 5,
+      })
+    })
+
+    it('drops fact rows for dates outside the period rather than throwing', async () => {
+      mockQueries(
+        [{ id: G1, name: 'A', route_count: '1' }],
+        [fact({ d: '2026-06-01', revenue: '999' })],
+      )
+
+      const result = await service.getGroupComparison([G1], '2026-05-1H')
+
+      expect(result.rows.every((r) => r.cells[0] === null)).toBe(true)
+      expect(result.footer[0].totalRevenue).toBe(0)
+    })
+
+    // Finding 5: ?groupIds=g1,g1 used to produce two `columns` entries for one id; columnIndex is
+    // keyed by id, so only the last column write ever won and the first rendered permanently null.
+    it('de-duplicates a repeated group id while preserving the caller order', async () => {
+      mockQueries(
+        [
+          { id: G1, name: 'A', route_count: '1' },
+          { id: G2, name: 'B', route_count: '1' },
+        ],
+        [],
+      )
+
+      const result = await service.getGroupComparison([G1, G2, G1], '2026-05-1H')
+
+      expect(result.columns).toEqual([
+        { id: G1, name: 'A', routeCount: 1 },
+        { id: G2, name: 'B', routeCount: 1 },
+      ])
+      // The column query is bound with the deduped id list, not the raw one with the repeat.
+      expect(dataSource.query.mock.calls[0][1]).toEqual([[G1, G2]])
+    })
+
+    // Finding 6: a malformed id used to reach `$1::uuid[]` and Postgres would throw a raw
+    // "invalid input syntax for type uuid" 500. It must be rejected before any query runs.
+    it('rejects a non-UUID group id with a 400 before querying', async () => {
+      await expect(service.getGroupComparison(['not-a-uuid'], '2026-05-1H')).rejects.toBeInstanceOf(
+        BadRequestException,
+      )
+      expect(dataSource.query).not.toHaveBeenCalled()
     })
   })
 })
