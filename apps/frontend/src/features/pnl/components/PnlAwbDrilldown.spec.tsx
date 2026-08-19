@@ -6,7 +6,7 @@ import React from 'react'
 import { fireEvent, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { PnlAwbDrilldown } from './PnlAwbDrilldown'
-import { PnlAwbRow, PnlFilter } from '../hooks/usePnl'
+import { PnlAwbRow, PnlFilter, PnlRouteFilter } from '../hooks/usePnl'
 
 jest.mock('../hooks/usePnl', () => {
   const actual = jest.requireActual('../hooks/usePnl')
@@ -125,7 +125,11 @@ describe('PnlAwbDrilldown overhang note', () => {
       row({ awb: '3' }),
     ])
     render(
-      <PnlAwbDrilldown filter={filter} route={{ origin: 'Jabo' }} onRouteChange={jest.fn()} />,
+      <PnlAwbDrilldown
+        filter={filter}
+        route={{ routes: [{ origin: 'Jabo', dest: 'Aceh' }] }}
+        onRouteChange={jest.fn()}
+      />,
     )
     expect(screen.getByText(overhangText)).toBeInTheDocument()
   })
@@ -140,7 +144,11 @@ describe('PnlAwbDrilldown overhang note', () => {
   it('does not show the note when a filter is active but no row varies', () => {
     mockRows([row({ awb: '1' }), row({ awb: '2' })])
     render(
-      <PnlAwbDrilldown filter={filter} route={{ origin: 'Jabo' }} onRouteChange={jest.fn()} />,
+      <PnlAwbDrilldown
+        filter={filter}
+        route={{ routes: [{ origin: 'Jabo', dest: 'Aceh' }] }}
+        onRouteChange={jest.fn()}
+      />,
     )
     expect(screen.queryByText(/punya TO di luar filter/)).not.toBeInTheDocument()
   })
@@ -159,73 +167,21 @@ describe('PnlAwbDrilldown filter section', () => {
     mockRows([row()])
   })
 
-  it('offers every distinct origin once', () => {
-    render(<PnlAwbDrilldown filter={filter} route={{}} onRouteChange={jest.fn()} />)
-    const origin = screen.getByLabelText('Origin') as HTMLSelectElement
-    expect(Array.from(origin.options).map((o) => o.value)).toEqual(['', 'Jabo', 'Surabaya'])
-  })
-
-  it('lists every destination until an origin narrows it', () => {
-    const { rerender } = render(
-      <PnlAwbDrilldown filter={filter} route={{}} onRouteChange={jest.fn()} />,
-    )
-    const all = screen.getByLabelText('Destination') as HTMLSelectElement
-    expect(Array.from(all.options).map((o) => o.value)).toEqual(['', 'Aceh', 'Pontianak', 'Tanjung Pinang'])
-
-    rerender(
-      <PnlAwbDrilldown filter={filter} route={{ origin: 'Surabaya' }} onRouteChange={jest.fn()} />,
-    )
-    const narrowed = screen.getByLabelText('Destination') as HTMLSelectElement
-    expect(Array.from(narrowed.options).map((o) => o.value)).toEqual(['', 'Pontianak'])
-  })
-
-  it('reports an origin choice and clears a destination that no longer belongs to it', () => {
-    const onRouteChange = jest.fn()
-    render(
-      <PnlAwbDrilldown
-        filter={filter}
-        route={{ origin: 'Jabo', dest: 'Aceh' }}
-        onRouteChange={onRouteChange}
-      />,
-    )
-    fireEvent.change(screen.getByLabelText('Origin'), { target: { value: 'Surabaya' } })
-    expect(onRouteChange).toHaveBeenCalledWith({ origin: 'Surabaya', dest: undefined })
-  })
-
-  it('converts a cleared field back to undefined, not an empty string', () => {
-    const onRouteChange = jest.fn()
-    render(<PnlAwbDrilldown filter={filter} route={{ origin: 'Jabo' }} onRouteChange={onRouteChange} />)
-    fireEvent.change(screen.getByLabelText('Origin'), { target: { value: '' } })
-    const [reported] = onRouteChange.mock.calls[0]
-    expect(reported.origin).toBeUndefined()
-  })
-
-  it('keeps a destination that still applies when the origin is widened back to Semua', () => {
-    const onRouteChange = jest.fn()
-    render(
-      <PnlAwbDrilldown
-        filter={filter}
-        route={{ origin: 'Jabo', dest: 'Aceh' }}
-        onRouteChange={onRouteChange}
-      />,
-    )
-    fireEvent.change(screen.getByLabelText('Origin'), { target: { value: '' } })
-    expect(onRouteChange).toHaveBeenCalledWith({ origin: undefined, dest: 'Aceh' })
-  })
-
   it('passes the route filter through to the drilldown hook', () => {
-    render(<PnlAwbDrilldown filter={filter} route={{ origin: 'Jabo' }} onRouteChange={jest.fn()} />)
-    expect(hooks.usePnlAwbDrilldown).toHaveBeenCalledWith(filter, 1, { origin: 'Jabo' })
+    const route: PnlRouteFilter = { routes: [{ origin: 'Jabo', dest: 'Aceh' }] }
+    render(<PnlAwbDrilldown filter={filter} route={route} onRouteChange={jest.fn()} />)
+    expect(hooks.usePnlAwbDrilldown).toHaveBeenCalledWith(filter, 1, route)
   })
 
   it('reports date changes', () => {
     const onRouteChange = jest.fn()
-    render(<PnlAwbDrilldown filter={filter} route={{ origin: 'Jabo' }} onRouteChange={onRouteChange} />)
+    const route: PnlRouteFilter = { routes: [{ origin: 'Jabo', dest: 'Aceh' }] }
+    render(<PnlAwbDrilldown filter={filter} route={route} onRouteChange={onRouteChange} />)
     fireEvent.change(screen.getByLabelText('Dari'), { target: { value: '2026-05-03' } })
-    expect(onRouteChange).toHaveBeenCalledWith({ origin: 'Jabo', dateFrom: '2026-05-03' })
+    expect(onRouteChange).toHaveBeenCalledWith({ ...route, dateFrom: '2026-05-03' })
 
     fireEvent.change(screen.getByLabelText('Sampai'), { target: { value: '2026-05-10' } })
-    expect(onRouteChange).toHaveBeenCalledWith({ origin: 'Jabo', dateTo: '2026-05-10' })
+    expect(onRouteChange).toHaveBeenCalledWith({ ...route, dateTo: '2026-05-10' })
   })
 
   it('bounds the date inputs to the active cycle', () => {
@@ -260,7 +216,11 @@ describe('PnlAwbDrilldown filter section', () => {
     expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument()
 
     rerender(
-      <PnlAwbDrilldown filter={filter} route={{ dest: 'Aceh' }} onRouteChange={onRouteChange} />,
+      <PnlAwbDrilldown
+        filter={filter}
+        route={{ routes: [{ origin: 'Jabo', dest: 'Aceh' }] }}
+        onRouteChange={onRouteChange}
+      />,
     )
     fireEvent.click(screen.getByRole('button', { name: 'Reset' }))
     expect(onRouteChange).toHaveBeenCalledWith({})
@@ -280,8 +240,70 @@ describe('PnlAwbDrilldown filter section', () => {
     expect(screen.getByText('Page 2 / 2')).toBeInTheDocument()
 
     rerender(
-      <PnlAwbDrilldown filter={filter} route={{ origin: 'Jabo' }} onRouteChange={jest.fn()} />,
+      <PnlAwbDrilldown
+        filter={filter}
+        route={{ routes: [{ origin: 'Jabo', dest: 'Aceh' }] }}
+        onRouteChange={jest.fn()}
+      />,
     )
     expect(screen.getByText('Page 1 / 2')).toBeInTheDocument()
+  })
+})
+
+describe('PnlAwbDrilldown route filter', () => {
+  beforeEach(() => jest.clearAllMocks())
+
+  const stations = [
+    { origin: 'Jabo', originLabel: 'CGK', dest: 'Denpasar' },
+    { origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' },
+    { origin: 'Surabaya', originLabel: 'SUB', dest: 'Pontianak' },
+  ]
+
+  function renderWith(route: PnlRouteFilter, onRouteChange = jest.fn()) {
+    hooks.usePnlStations.mockReturnValue({ data: stations })
+    mockRows([])
+    render(<PnlAwbDrilldown filter={filter} route={route} onRouteChange={onRouteChange} />)
+    return onRouteChange
+  }
+
+  it('lists every station pair with both stations named as the data stores them', () => {
+    renderWith({})
+    fireEvent.click(screen.getByRole('button', { expanded: false }))
+    expect(screen.getByText('Jabo → Denpasar')).toBeInTheDocument()
+    expect(screen.getByText('Surabaya → Pontianak')).toBeInTheDocument()
+    // Not the airport-code form, which belongs to the matrix header.
+    expect(screen.queryByText('CGK → Denpasar')).not.toBeInTheDocument()
+  })
+
+  it('reports a ticked route back as a pair, appending to the existing selection', () => {
+    const onRouteChange = renderWith({ routes: [{ origin: 'Jabo', dest: 'Aceh' }] })
+    fireEvent.click(screen.getByRole('button', { expanded: false }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /Jabo → Denpasar/ }))
+    expect(onRouteChange).toHaveBeenCalledWith({
+      routes: [
+        { origin: 'Jabo', dest: 'Aceh' },
+        { origin: 'Jabo', dest: 'Denpasar' },
+      ],
+    })
+  })
+
+  it('shows the currently filtered routes as ticked', () => {
+    renderWith({ routes: [{ origin: 'Jabo', dest: 'Aceh' }] })
+    expect(screen.getByRole('button', { expanded: false })).toHaveTextContent('Jabo → Aceh')
+  })
+
+  it('drops the routes key entirely when the last route is unticked', () => {
+    // An empty array would still serialise as a filter that matches nothing; undefined means
+    // "no route filter", which is what unticking everything asks for.
+    const onRouteChange = renderWith({ routes: [{ origin: 'Jabo', dest: 'Aceh' }] })
+    fireEvent.click(screen.getByRole('button', { expanded: false }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /Jabo → Aceh/ }))
+    expect(onRouteChange).toHaveBeenCalledWith({ routes: undefined })
+  })
+
+  it('resets routes and dates together', () => {
+    const onRouteChange = renderWith({ routes: [{ origin: 'Jabo', dest: 'Aceh' }], dateFrom: '2026-05-01' })
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }))
+    expect(onRouteChange).toHaveBeenCalledWith({})
   })
 })

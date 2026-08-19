@@ -17,7 +17,7 @@ export interface MultiRouteFilterProps {
 
 /**
  * Multi-select route filter rendered as a checkbox list inside a dropdown.
- * Shared between the table filter row and the summary panel — both bind to the
+ * Shared by the SLA table filter row and the P&L route filters — all bind to the
  * same `selected` route labels.
  */
 export function MultiRouteFilter({

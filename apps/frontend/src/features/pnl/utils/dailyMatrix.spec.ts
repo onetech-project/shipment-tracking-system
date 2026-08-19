@@ -11,9 +11,9 @@ const matrix: PnlDailyMatrix = {
     {
       date: '2026-07-01',
       cells: [
-        { revenue: 1000, margin: 100, weight: 10, incompleteTos: 0 },
+        { revenue: 1000, margin: 100, weight: 10, incompleteTos: 0, issues: [] },
         null,
-        { revenue: 0, margin: -50, weight: 5, incompleteTos: 2 },
+        { revenue: 0, margin: -50, weight: 5, incompleteTos: 2, issues: [{ issue: 'no_booking', awbs: 2 }] },
       ],
     },
     { date: '2026-07-02', cells: [null, null, null] },
@@ -22,17 +22,17 @@ const matrix: PnlDailyMatrix = {
     {
       totalRevenue: 1000, totalMargin: 100, totalWeight: 10,
       avgRevenuePerDay: 500, avgMarginPerDay: 50,
-      marginPct: 10, spacePerKg: 10, incompleteTos: 0,
+      marginPct: 10, spacePerKg: 10, incompleteTos: 0, issues: [],
     },
     {
       totalRevenue: 0, totalMargin: 0, totalWeight: 0,
       avgRevenuePerDay: 0, avgMarginPerDay: 0,
-      marginPct: null, spacePerKg: null, incompleteTos: 0,
+      marginPct: null, spacePerKg: null, incompleteTos: 0, issues: [],
     },
     {
       totalRevenue: 0, totalMargin: -50, totalWeight: 5,
       avgRevenuePerDay: 0, avgMarginPerDay: -25,
-      marginPct: null, spacePerKg: -10, incompleteTos: 2,
+      marginPct: null, spacePerKg: -10, incompleteTos: 2, issues: [{ issue: 'no_booking', awbs: 3 }],
     },
   ],
   periodDays: 2,
@@ -80,9 +80,30 @@ describe('toRevenueTable', () => {
     expect(model.footerRows.every((r) => r.format === 'number')).toBe(true)
   })
 
-  it('does not flag incomplete cost, which does not affect revenue', () => {
-    expect(model.incompleteTos).toBeNull()
+  it('warns on the revenue table too, since a missing revenue row understates it', () => {
+    const model = toRevenueTable(matrix)
+    expect(model.warnings[0][2]).toEqual({
+      issues: [{ issue: 'no_booking', awbs: 2 }],
+      incompleteTos: 2,
+    })
+    expect(model.warnings[0][1]).toEqual({ issues: [], incompleteTos: 0 })
     expect(model.highlightNegative).toBe(false)
+  })
+
+  it('gives an absent cell a clean warning rather than undefined', () => {
+    // Row 2 has no shipments at all. A missing entry here would make every consumer null-check.
+    expect(toRevenueTable(matrix).warnings[1]).toEqual([
+      { issues: [], incompleteTos: 0 },
+      { issues: [], incompleteTos: 0 },
+      { issues: [], incompleteTos: 0 },
+    ])
+  })
+
+  it('warns both footer rows, since Avg / Day divides the same understated totalRevenue', () => {
+    const [total, avg] = toRevenueTable(matrix).footerRows
+    const expectedWarning = { issues: [{ issue: 'no_booking', awbs: 3 }], incompleteTos: 2 }
+    expect(total.warnings?.[2]).toEqual(expectedWarning)
+    expect(avg.warnings?.[2]).toEqual(expectedWarning)
   })
 })
 
@@ -121,12 +142,29 @@ describe('toMarginTable', () => {
     ])
   })
 
-  it('exposes per-cell incomplete-cost counts and highlights negatives', () => {
-    expect(model.incompleteTos).toEqual([
-      [0, 0, 2],
-      [0, 0, 0],
-    ])
+  it('carries the same warnings onto the margin table and its Total footer row', () => {
+    const model = toMarginTable(matrix)
+    expect(model.warnings[0][2]).toEqual({
+      issues: [{ issue: 'no_booking', awbs: 2 }],
+      incompleteTos: 2,
+    })
+    expect(model.footerRows[0].warnings?.[2]).toEqual({
+      issues: [{ issue: 'no_booking', awbs: 3 }],
+      incompleteTos: 2,
+    })
     expect(model.highlightNegative).toBe(true)
+  })
+
+  it('warns every footer row derived from totalMargin, but not gross weight', () => {
+    const [total, avg, pct, tonase, space] = toMarginTable(matrix).footerRows
+    const expectedWarning = { issues: [{ issue: 'no_booking', awbs: 3 }], incompleteTos: 2 }
+    // Avg / Day, % Margin and Space per Kg all divide totalMargin, so they inherit its warning.
+    expect(total.warnings?.[2]).toEqual(expectedWarning)
+    expect(avg.warnings?.[2]).toEqual(expectedWarning)
+    expect(pct.warnings?.[2]).toEqual(expectedWarning)
+    expect(space.warnings?.[2]).toEqual(expectedWarning)
+    // Total Tonase is gross weight: it never touches cost, so it deliberately stays clean.
+    expect(tonase.warnings).toBeUndefined()
   })
 })
 
@@ -134,8 +172,7 @@ describe('routeFromCell', () => {
   it('maps a CGK column to the raw origin the drilldown filters on', () => {
     const route = routeFromCell({ origin: 'Jabo', originLabel: 'CGK', dest: 'Tanjung Pinang' }, '2026-05-01')
     expect(route).toEqual({
-      origin: 'Jabo',
-      dest: 'Tanjung Pinang',
+      routes: [{ origin: 'Jabo', dest: 'Tanjung Pinang' }],
       dateFrom: '2026-05-01',
       dateTo: '2026-05-01',
     })
@@ -144,8 +181,7 @@ describe('routeFromCell', () => {
   it('maps a SUB column the same way', () => {
     const route = routeFromCell({ origin: 'Surabaya', originLabel: 'SUB', dest: 'Pontianak' }, '2026-05-20')
     expect(route).toEqual({
-      origin: 'Surabaya',
-      dest: 'Pontianak',
+      routes: [{ origin: 'Surabaya', dest: 'Pontianak' }],
       dateFrom: '2026-05-20',
       dateTo: '2026-05-20',
     })

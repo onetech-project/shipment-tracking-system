@@ -14,6 +14,8 @@ import {
 import { periodBounds } from '../utils/periodBounds'
 import { fmt, num, pct } from '../utils/format'
 import { issueLabel } from '../utils/issueLabels'
+import { MultiRouteFilter } from '@/components/shared/multi-route-filter'
+import { buildRouteLabelIndex, labelsForRoutes, routesForLabels } from '../utils/routeLabels'
 
 interface ToSubTableProps {
   awb: string
@@ -114,31 +116,22 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
   const totalPages = data ? Math.ceil(data.total / 50) : 0
   const title = filter.mode === 'cycle' ? filter.cycle : `${filter.start} → ${filter.end}`
 
-  const origins = Array.from(new Set((stations ?? []).map((s) => s.origin))).sort()
-  const dests = Array.from(
-    new Set(
-      (stations ?? [])
-        .filter((s) => !route.origin || s.origin === route.origin)
-        .map((s) => s.dest),
-    ),
-  ).sort()
+  const routeIndex = buildRouteLabelIndex(stations ?? [])
   const bounds = periodBounds(filter)
-  const hasRoute = Boolean(route.origin || route.dest || route.dateFrom || route.dateTo)
+  const hasRoute = Boolean(route.routes?.length || route.dateFrom || route.dateTo)
   const overhangCount = (data?.data ?? []).filter(
     (row) => row.originVaries || row.destVaries || row.dateVaries,
   ).length
 
-  // Empty string means "no filter": the hook drops empty fields before building the request.
-  function setField(field: keyof PnlRouteFilter, value: string) {
-    const next: PnlRouteFilter = { ...route, [field]: value || undefined }
-    // A destination that does not belong to the newly chosen origin would return nothing at all.
-    // Only prune when origin is being narrowed to a specific value — clearing it back to "Semua"
-    // widens the filter, so any destination the user already picked still applies fine.
-    if (field === 'origin' && value && next.dest) {
-      const stillValid = (stations ?? []).some((s) => s.origin === value && s.dest === next.dest)
-      if (!stillValid) next.dest = undefined
-    }
-    onRouteChange(next)
+  // Empty means "no filter": routeToParams drops empty fields before building the request, and an
+  // empty array would otherwise be serialised as a filter that matches nothing.
+  function setRoutes(labels: string[]) {
+    const routes = routesForLabels(labels, routeIndex)
+    onRouteChange({ ...route, routes: routes.length ? routes : undefined })
+  }
+
+  function setDate(field: 'dateFrom' | 'dateTo', value: string) {
+    onRouteChange({ ...route, [field]: value || undefined })
   }
 
   function toggleAwb(awb: string) {
@@ -169,33 +162,13 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
       </div>
       <div className="flex flex-wrap items-end gap-3 border-b px-4 py-3">
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          Origin
-          <select
-            aria-label="Origin"
-            className="rounded-md border bg-background px-2 py-1.5 text-sm text-foreground"
-            value={route.origin ?? ''}
-            onChange={(e) => setField('origin', e.target.value)}
-          >
-            <option value="">Semua</option>
-            {origins.map((o) => (
-              <option key={o} value={o}>{o}</option>
-            ))}
-          </select>
-        </label>
-
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          Destination
-          <select
-            aria-label="Destination"
-            className="rounded-md border bg-background px-2 py-1.5 text-sm text-foreground"
-            value={route.dest ?? ''}
-            onChange={(e) => setField('dest', e.target.value)}
-          >
-            <option value="">Semua</option>
-            {dests.map((d) => (
-              <option key={d} value={d}>{d}</option>
-            ))}
-          </select>
+          Rute
+          <MultiRouteFilter
+            className="w-[260px]"
+            routes={routeIndex.labels}
+            selected={labelsForRoutes(route.routes ?? [])}
+            onChange={setRoutes}
+          />
         </label>
 
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -207,7 +180,7 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
             min={bounds.min}
             max={route.dateTo || bounds.max}
             value={route.dateFrom ?? ''}
-            onChange={(e) => setField('dateFrom', e.target.value)}
+            onChange={(e) => setDate('dateFrom', e.target.value)}
           />
         </label>
 
@@ -220,7 +193,7 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
             min={route.dateFrom || bounds.min}
             max={bounds.max}
             value={route.dateTo ?? ''}
-            onChange={(e) => setField('dateTo', e.target.value)}
+            onChange={(e) => setDate('dateTo', e.target.value)}
           />
         </label>
 

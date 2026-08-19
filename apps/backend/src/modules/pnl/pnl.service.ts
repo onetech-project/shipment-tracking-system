@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { DataSource } from 'typeorm'
 import {
   DateBasis,
@@ -9,6 +9,8 @@ import {
   calendarDatesForFilter,
 } from './pnl-filter.util'
 import { originLabel } from '../../common/utils/origin-labels.util'
+import { indexIssueRows, ISSUE_BY_RANK, PnlCellIssue } from './pnl-cell-issues.util'
+import { RoutePair, ColumnPick } from './pnl-columns.util'
 
 export interface PnlSummary {
   label: string
@@ -58,8 +60,7 @@ export interface PnlAwbRow {
 // Optional narrowing for the AWB drilldown. Every field is independent; supplying none leaves the
 // query exactly as it was before route filtering existed.
 export interface PnlRouteFilter {
-  origin?: string
-  dest?: string
+  routes?: RoutePair[]
   dateFrom?: string // YYYY-MM-DD
   dateTo?: string // YYYY-MM-DD, inclusive
 }
@@ -90,23 +91,6 @@ export interface PnlDataQualitySummaryItem {
   rows: number
   awbs: number
 }
-
-// Severity order for the canonical v_pnl_to.issue values (root cause first). Shared by the
-// per-AWB drilldown (which aggregates the most-severe issue across an AWB's TOs).
-const ISSUE_RANK: Record<string, number> = {
-  no_booking: 1,
-  smu_rate_missing: 2,
-  ra_rate_missing: 3,
-  sgout_name_missing: 4,
-  revenue_missing: 5,
-  // A blank station breaks the SG Incoming join, so it ranks as the cause of the rate miss below
-  // it. This order must match the CASE chain in the v_pnl_to definition.
-  station_mapping_missing: 6,
-  sg_in_rate_missing: 7,
-}
-const ISSUE_BY_RANK: Record<number, string> = Object.fromEntries(
-  Object.entries(ISSUE_RANK).map(([k, v]) => [v, k]),
-)
 
 export interface PnlRevenueByRouteItem {
   route: string
@@ -170,6 +154,7 @@ export interface PnlDailyMatrixCell {
   margin: number
   weight: number
   incompleteTos: number // TOs whose cost could not be computed; margin here is optimistic
+  issues: PnlCellIssue[] // empty = clean; never null, so the frontend has one shape to read
 }
 
 export interface PnlDailyMatrixRow {
@@ -186,6 +171,9 @@ export interface PnlDailyMatrixFooter {
   marginPct: number | null // null when totalRevenue is 0
   spacePerKg: number | null // null when totalWeight is 0
   incompleteTos: number
+  // Distinct AWBs for the whole period, from its own grouping set — NOT the sum of the day cells,
+  // which would count an AWB once per day it shipped.
+  issues: PnlCellIssue[]
 }
 
 export interface PnlDailyMatrix {
@@ -196,9 +184,16 @@ export interface PnlDailyMatrix {
 }
 
 export interface PnlGroupComparisonColumn {
+  // A group column's id is its uuid; a route column's is `r:<origin>|<dest>`, which is also the
+  // descriptor the frontend sends back, so the id round-trips.
   id: string
   name: string
   routeCount: number
+  kind: 'group' | 'route'
+  // The pairs this column aggregates. Sent to the client so a clicked cell can build the AWB
+  // drilldown filter, and so overlap between columns is computed off the same list the numbers
+  // came from rather than a second, drifting copy.
+  routes: { origin: string; originLabel: string; dest: string }[]
 }
 
 export interface PnlGroupComparisonCell {
@@ -215,6 +210,7 @@ export interface PnlGroupComparisonCell {
   costSgOut: number
   costSgIn: number
   incompleteTos: number // TOs with no computable cost; `cost` here is understated
+  issues: PnlCellIssue[] // empty = clean; never null, so the frontend has one shape to read
 }
 
 export interface PnlGroupComparisonRow {
@@ -232,6 +228,8 @@ export interface PnlGroupComparisonFooter {
   avgRevenuePerDay: number
   avgCostPerDay: number
   incompleteTos: number
+  // Distinct AWBs for the period, from its own grouping set — NOT the sum of the day cells.
+  issues: PnlCellIssue[]
 }
 
 export interface PnlGroupComparison {
@@ -240,11 +238,6 @@ export interface PnlGroupComparison {
   footer: PnlGroupComparisonFooter[] // index-aligned with columns
   periodDays: number
 }
-
-// Matches any UUID version/variant. group ids come off the query string as plain strings, and
-// `$1::uuid[]` throws a raw Postgres error (not a 400) on anything malformed, so this is checked
-// up front.
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 @Injectable()
 export class PnlService {
@@ -375,8 +368,15 @@ export class PnlService {
       routeParams.push(value)
       return `$${params.length + routeParams.length}`
     }
-    if (route?.origin) routeConds.push(`m.origin_station = ${bind(route.origin)}`)
-    if (route?.dest) routeConds.push(`m.dest_station = ${bind(route.dest)}`)
+    // Two parallel arrays rather than one interleaved list: UNNEST zips them, so the pairs stay
+    // pairs. A flattened list would match any origin against any destination.
+    if (route?.routes?.length) {
+      const origins = bind(route.routes.map((r) => r.origin))
+      const dests = bind(route.routes.map((r) => r.dest))
+      routeConds.push(
+        `(m.origin_station, m.dest_station) IN (SELECT * FROM UNNEST(${origins}::text[], ${dests}::text[]))`,
+      )
+    }
     if (route?.dateFrom) routeConds.push(`${inner.dateCol} >= ${bind(route.dateFrom)}::DATE`)
     if (route?.dateTo) {
       routeConds.push(`${inner.dateCol} < (${bind(route.dateTo)}::DATE + INTERVAL '1 day')`)
@@ -887,7 +887,7 @@ export class PnlService {
     const dates = calendarDatesForFilter(cyclePeriod, startDate, endDate)
     const periodDays = Math.max(1, dates.length)
 
-    const [columns, factRows] = await Promise.all([
+    const [columns, factRows, issueRows] = await Promise.all([
       this.getStations(),
       this.dataSource.query(
         `
@@ -907,9 +907,34 @@ export class PnlService {
         `,
         params,
       ),
+      this.dataSource.query(
+        `
+        SELECT d, origin_station, dest_station, issue, COUNT(DISTINCT awb)::int AS awbs
+        FROM (
+          SELECT
+            TO_CHAR(${dateCol}::DATE, 'YYYY-MM-DD') AS d,
+            origin_station, dest_station, issue, awb
+          FROM v_pnl_to
+          WHERE ${where}
+            AND ${dateCol} IS NOT NULL
+            AND issue IS NOT NULL
+        ) s
+        GROUP BY GROUPING SETS ((d, origin_station, dest_station, issue), (origin_station, dest_station, issue))
+        `,
+        params,
+      ),
     ])
 
     const columnIndex = new Map(columns.map((c, i) => [`${c.origin}|${c.dest}`, i]))
+
+    // The issues query is the fact query plus `issue IS NOT NULL`, so its grouping set is a subset:
+    // an issue can never land on a (date, route) pair that produced no cell.
+    const cellIssues = indexIssueRows(issueRows as Record<string, unknown>[], (r) =>
+      r.d == null ? null : `${r.d}|${r.origin_station}|${r.dest_station}`,
+    )
+    const columnIssues = indexIssueRows(issueRows as Record<string, unknown>[], (r) =>
+      r.d == null ? `${r.origin_station}|${r.dest_station}` : null,
+    )
 
     const rows: PnlDailyMatrixRow[] = dates.map((date) => ({
       date,
@@ -926,6 +951,7 @@ export class PnlService {
         margin: Number(fact.margin),
         weight: Number(fact.weight),
         incompleteTos: Number(fact.incomplete_tos),
+        issues: cellIssues.get(`${fact.d}|${fact.origin_station}|${fact.dest_station}`) ?? [],
       }
     }
 
@@ -951,21 +977,22 @@ export class PnlService {
         marginPct: totalRevenue > 0 ? (totalMargin / totalRevenue) * 100 : null,
         spacePerKg: totalWeight > 0 ? totalMargin / totalWeight : null,
         incompleteTos,
+        issues: columnIssues.get(`${columns[ci].origin}|${columns[ci].dest}`) ?? [],
       }
     })
 
     return { columns, rows, footer, periodDays }
   }
 
-  // Revenue and cost per calendar day for each selected route group, behind the "Group Comparison"
-  // tab. Columns are the groups the user picked, in the order they picked them.
+  // Revenue and cost per calendar day for each selected comparison column, behind the
+  // "Group Comparison" tab. A column is either a saved route group or a single route the user
+  // picked ad hoc; both reduce to a list of origin→destination pairs, so both take the same path.
   //
-  // The join to route_group_routes is what makes overlapping groups work: a TO on a route that
-  // belongs to three groups produces three joined rows and lands in all three columns. That is
-  // deliberate — each column is an independent question, and the columns are not a partition of
-  // the period, so they do not sum to a period total.
+  // Overlap is deliberate: a TO on a route held by three columns lands in all three. Each column
+  // is an independent question, the columns are not a partition of the period, and they therefore
+  // do not sum to a period total.
   async getGroupComparison(
-    groupIds: string[],
+    picks: ColumnPick[],
     cyclePeriod?: string,
     startDate?: string,
     endDate?: string,
@@ -974,73 +1001,149 @@ export class PnlService {
     const dates = calendarDatesForFilter(cyclePeriod, startDate, endDate)
     const periodDays = Math.max(1, dates.length)
 
-    if (groupIds.length === 0) {
+    if (picks.length === 0) {
       return { columns: [], rows: [], footer: [], periodDays }
     }
 
-    // De-duplicate while preserving the caller's selection order: columnIndex below is keyed by
-    // id, so a repeated id would otherwise silently overwrite an earlier column, leaving it
-    // permanently null.
-    const ids = [...new Set(groupIds)]
-    const invalidId = ids.find((id) => !UUID_RE.test(id))
-    if (invalidId) {
-      throw new BadRequestException(`Invalid group id: ${invalidId}`)
+    const groupIds = picks.filter((p) => p.kind === 'group').map((p) => p.id)
+    // Only asked for when a group was actually picked, so a route-only comparison costs one query
+    // less rather than sending an empty uuid array to the database.
+    const groupRouteRows: Record<string, string>[] = groupIds.length
+      ? await this.dataSource.query(
+          `
+          SELECT g.id, g.name, r.origin_station, r.dest_station
+          FROM route_groups g
+          LEFT JOIN route_group_routes r ON r.route_group_id = g.id
+          WHERE g.id = ANY($1::uuid[])
+          ORDER BY g.id, r.origin_station, r.dest_station
+          `,
+          [groupIds],
+        )
+      : []
+
+    const groupNames = new Map<string, string>()
+    const groupRoutes = new Map<string, { origin: string; originLabel: string; dest: string }[]>()
+    for (const row of groupRouteRows) {
+      groupNames.set(row.id, row.name)
+      if (!groupRoutes.has(row.id)) groupRoutes.set(row.id, [])
+      // A group with no routes yet still LEFT JOINs to one row with null stations.
+      if (row.origin_station && row.dest_station) {
+        groupRoutes.get(row.id)!.push({
+          origin: row.origin_station,
+          originLabel: originLabel(row.origin_station),
+          dest: row.dest_station,
+        })
+      }
+    }
+
+    // A group that was deleted between the picker loading and this request is dropped rather than
+    // rendered as a permanently empty column with no name to explain itself.
+    const columns: PnlGroupComparisonColumn[] = picks.flatMap((pick): PnlGroupComparisonColumn[] => {
+      if (pick.kind === 'group') {
+        if (!groupNames.has(pick.id)) return []
+        const routes = groupRoutes.get(pick.id) ?? []
+        return [{
+          id: pick.id,
+          name: groupNames.get(pick.id)!,
+          routeCount: routes.length,
+          kind: 'group' as const,
+          routes,
+        }]
+      }
+      const label = originLabel(pick.origin)
+      return [{
+        id: `r:${pick.origin}|${pick.dest}`,
+        name: `${label} → ${pick.dest}`,
+        routeCount: 1,
+        kind: 'route' as const,
+        routes: [{ origin: pick.origin, originLabel: label, dest: pick.dest }],
+      }]
+    })
+
+    if (columns.length === 0) {
+      return { columns: [], rows: [], footer: [], periodDays }
     }
 
     const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate, 'v.')
 
-    const columnRows = await this.dataSource.query(
-      `
-      SELECT g.id, g.name, COUNT(r.route_group_id)::int AS route_count
-      FROM route_groups g
-      LEFT JOIN route_group_routes r ON r.route_group_id = g.id
-      WHERE g.id = ANY($1::uuid[])
-      GROUP BY g.id, g.name
-      `,
-      [ids],
-    )
+    // One row per (column, route) pair, flattened into three parallel arrays. UNNEST zips them
+    // back into the mapping table both queries below join against.
+    const colIdx: number[] = []
+    const colOrigins: string[] = []
+    const colDests: string[] = []
+    columns.forEach((column, index) => {
+      for (const route of column.routes) {
+        colIdx.push(index)
+        colOrigins.push(route.origin)
+        colDests.push(route.dest)
+      }
+    })
 
-    // Ordered by the caller's selection, not by name: the table columns should appear in the order
-    // the user ticked the groups.
-    const byId = new Map(
-      (columnRows as Record<string, string>[]).map((r) => [
-        r.id,
-        { id: r.id, name: r.name, routeCount: Number(r.route_count) },
-      ]),
-    )
-    const columns: PnlGroupComparisonColumn[] = ids
-      .map((id) => byId.get(id))
-      .filter((c): c is PnlGroupComparisonColumn => c !== undefined)
+    const p = params.length
+    const colRoutesCte = `
+      WITH col_routes(col_idx, origin_station, dest_station) AS (
+        SELECT * FROM UNNEST($${p + 1}::int[], $${p + 2}::text[], $${p + 3}::text[])
+      )`
+    const colParams = [...params, colIdx, colOrigins, colDests]
 
-    const factRows = await this.dataSource.query(
-      `
-      SELECT
-        TO_CHAR(${dateCol}::DATE, 'YYYY-MM-DD')                      AS d,
-        r.route_group_id                                             AS gid,
-        COALESCE(SUM(v.revenue_total), 0)                            AS revenue,
-        COALESCE(SUM(v.cost_to), 0)                                  AS cost,
-        COALESCE(SUM(v.cost_smu_awb    * v.weight_share)
-                 FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_smu,
-        COALESCE(SUM(v.cost_ra_awb     * v.weight_share)
-                 FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_ra,
-        COALESCE(SUM(v.cost_sg_out_awb * v.weight_share)
-                 FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_sg_out,
-        COALESCE(SUM(COALESCE(v.cost_sg_in_to, 0))
-                 FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_sg_in,
-        COUNT(*) FILTER (WHERE v.cost_to IS NULL)::int               AS incomplete_tos
-      FROM v_pnl_to v
-      JOIN route_group_routes r
-        ON r.origin_station = v.origin_station
-       AND r.dest_station   = v.dest_station
-      WHERE ${where}
-        AND ${dateCol} IS NOT NULL
-        AND r.route_group_id = ANY($${params.length + 1}::uuid[])
-      GROUP BY 1, 2
-      `,
-      [...params, ids],
-    )
+    const [factRows, issueRows] = await Promise.all([
+      this.dataSource.query(
+        `
+        ${colRoutesCte}
+        SELECT
+          TO_CHAR(${dateCol}::DATE, 'YYYY-MM-DD')                      AS d,
+          cr.col_idx                                                   AS col_idx,
+          COALESCE(SUM(v.revenue_total), 0)                            AS revenue,
+          COALESCE(SUM(v.cost_to), 0)                                  AS cost,
+          COALESCE(SUM(v.cost_smu_awb    * v.weight_share)
+                   FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_smu,
+          COALESCE(SUM(v.cost_ra_awb     * v.weight_share)
+                   FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_ra,
+          COALESCE(SUM(v.cost_sg_out_awb * v.weight_share)
+                   FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_sg_out,
+          COALESCE(SUM(COALESCE(v.cost_sg_in_to, 0))
+                   FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_sg_in,
+          COUNT(*) FILTER (WHERE v.cost_to IS NULL)::int               AS incomplete_tos
+        FROM v_pnl_to v
+        JOIN col_routes cr
+          ON cr.origin_station = v.origin_station
+         AND cr.dest_station   = v.dest_station
+        WHERE ${where}
+          AND ${dateCol} IS NOT NULL
+        GROUP BY 1, 2
+        `,
+        colParams,
+      ),
+      this.dataSource.query(
+        `
+        ${colRoutesCte}, issue_rows AS (
+          SELECT
+            TO_CHAR(${dateCol}::DATE, 'YYYY-MM-DD') AS d,
+            cr.col_idx                              AS col_idx,
+            v.issue                                 AS issue,
+            v.awb                                   AS awb
+          FROM v_pnl_to v
+          JOIN col_routes cr
+            ON cr.origin_station = v.origin_station
+           AND cr.dest_station   = v.dest_station
+          WHERE ${where}
+            AND ${dateCol} IS NOT NULL
+            AND v.issue IS NOT NULL
+        )
+        SELECT d, col_idx, issue, COUNT(DISTINCT awb)::int AS awbs
+        FROM issue_rows
+        GROUP BY GROUPING SETS ((d, col_idx, issue), (col_idx, issue))
+        `,
+        colParams,
+      ),
+    ])
 
-    const columnIndex = new Map(columns.map((c, i) => [c.id, i]))
+    const cellIssues = indexIssueRows(issueRows as Record<string, unknown>[], (r) =>
+      r.d == null ? null : `${r.d}|${r.col_idx}`,
+    )
+    const columnIssues = indexIssueRows(issueRows as Record<string, unknown>[], (r) =>
+      r.d == null ? String(r.col_idx) : null,
+    )
 
     const rows: PnlGroupComparisonRow[] = dates.map((date) => ({
       date,
@@ -1049,9 +1152,9 @@ export class PnlService {
     const rowIndex = new Map(rows.map((r, i) => [r.date, i]))
 
     for (const factRow of factRows as Record<string, string>[]) {
-      const ci = columnIndex.get(factRow.gid)
+      const ci = Number(factRow.col_idx)
       const ri = rowIndex.get(factRow.d)
-      if (ci === undefined || ri === undefined) continue
+      if (!Number.isInteger(ci) || ci < 0 || ci >= columns.length || ri === undefined) continue
       rows[ri].cells[ci] = {
         revenue: Number(factRow.revenue),
         cost: Number(factRow.cost),
@@ -1060,10 +1163,11 @@ export class PnlService {
         costSgOut: Number(factRow.cost_sg_out),
         costSgIn: Number(factRow.cost_sg_in),
         incompleteTos: Number(factRow.incomplete_tos),
+        issues: cellIssues.get(`${factRow.d}|${ci}`) ?? [],
       }
     }
 
-    const footer: PnlGroupComparisonFooter[] = columns.map((_, ci) => {
+    const footer: PnlGroupComparisonFooter[] = columns.map((_column, ci) => {
       let totalRevenue = 0
       let totalCost = 0
       let totalCostSmu = 0
@@ -1093,6 +1197,7 @@ export class PnlService {
         avgRevenuePerDay: totalRevenue / periodDays,
         avgCostPerDay: totalCost / periodDays,
         incompleteTos,
+        issues: columnIssues.get(String(ci)) ?? [],
       }
     })
 

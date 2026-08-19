@@ -1,6 +1,10 @@
-import { toComparisonTable, overlappingRoutes, COST_COMPONENTS } from './groupComparison'
-import { PnlGroupComparison, PnlGroupComparisonCell } from '../hooks/usePnl'
-import { RouteGroup } from '@/features/route-groups/types'
+import {
+  toComparisonTable,
+  overlappingRoutes,
+  COST_COMPONENTS,
+  routeFromComparisonCell,
+} from './groupComparison'
+import { PnlGroupComparison, PnlGroupComparisonCell, PnlGroupComparisonColumn } from '../hooks/usePnl'
 
 const cell = (over: Partial<PnlGroupComparisonCell> = {}): PnlGroupComparisonCell => ({
   revenue: 0,
@@ -10,19 +14,29 @@ const cell = (over: Partial<PnlGroupComparisonCell> = {}): PnlGroupComparisonCel
   costSgOut: 0,
   costSgIn: 0,
   incompleteTos: 0,
+  issues: [],
   ...over,
 })
 
 const data: PnlGroupComparison = {
   columns: [
-    { id: 'g1', name: 'Kalimantan', routeCount: 3 },
-    { id: 'g2', name: 'Sumatera', routeCount: 2 },
+    { id: 'g1', name: 'Kalimantan', routeCount: 3, kind: 'group', routes: [] },
+    { id: 'g2', name: 'Sumatera', routeCount: 2, kind: 'group', routes: [] },
   ],
   rows: [
     {
       date: '2026-05-01',
       cells: [
-        cell({ revenue: 1000, cost: 800, costSmu: 500, costRa: 100, costSgOut: 150, costSgIn: 50, incompleteTos: 2 }),
+        cell({
+          revenue: 1000,
+          cost: 800,
+          costSmu: 500,
+          costRa: 100,
+          costSgOut: 150,
+          costSgIn: 50,
+          incompleteTos: 2,
+          issues: [{ issue: 'no_booking', awbs: 2 }],
+        }),
         null,
       ],
     },
@@ -38,6 +52,7 @@ const data: PnlGroupComparison = {
       avgRevenuePerDay: 66.6,
       avgCostPerDay: 53.3,
       incompleteTos: 2,
+      issues: [{ issue: 'no_booking', awbs: 4 }],
     },
     {
       totalRevenue: 0,
@@ -49,6 +64,7 @@ const data: PnlGroupComparison = {
       avgRevenuePerDay: 0,
       avgCostPerDay: 0,
       incompleteTos: 0,
+      issues: [],
     },
   ],
   periodDays: 15,
@@ -87,7 +103,7 @@ describe('toComparisonTable', () => {
 
   it('reports incomplete TOs per column as a number, defaulting to zero', () => {
     const model = toComparisonTable(data)
-    expect(model.rows[0].incompleteTos).toEqual([2, 0])
+    expect(model.rows[0].warnings.map((w) => w.incompleteTos)).toEqual([2, 0])
   })
 
   it('builds a Total footer row that expands and an Avg / Day row that does not', () => {
@@ -96,45 +112,107 @@ describe('toComparisonTable', () => {
     expect(model.footerRows.map((r) => r.label)).toEqual(['Total', 'Avg / Day'])
     expect(model.footerRows[0].revenue).toEqual([1000, 0])
     expect(model.footerRows[0].components!.costSmu).toEqual([500, 0])
-    expect(model.footerRows[0].incompleteTos).toEqual([2, 0])
+    expect(model.footerRows[0].warnings?.map((w) => w.incompleteTos)).toEqual([2, 0])
     // Averages have no component breakdown — an average of a component is not a cost.
     expect(model.footerRows[1].components).toBeNull()
     expect(model.footerRows[1].revenue).toEqual([66.6, 0])
   })
 })
 
+describe('toComparisonTable warnings', () => {
+  it('pairs each cell issue list with its incomplete-cost count', () => {
+    const model = toComparisonTable(data)
+    expect(model.rows[0].warnings[0]).toEqual({
+      issues: [{ issue: 'no_booking', awbs: 2 }],
+      incompleteTos: 2,
+    })
+  })
+
+  it('gives an absent cell a clean warning rather than undefined', () => {
+    const model = toComparisonTable(data)
+    expect(model.rows[0].warnings[1]).toEqual({ issues: [], incompleteTos: 0 })
+  })
+
+  it('warns on the Total row but not on Avg / Day', () => {
+    // An average has no set of AWBs behind it, so there is nothing for a warning to point at.
+    const model = toComparisonTable(data)
+    expect(model.footerRows[0].warnings?.[0]).toEqual({
+      issues: [{ issue: 'no_booking', awbs: 4 }],
+      incompleteTos: 2,
+    })
+    expect(model.footerRows[1].warnings).toBeNull()
+  })
+})
+
 describe('overlappingRoutes', () => {
-  const group = (id: string, name: string, dests: string[]): RouteGroup => ({
-    id,
-    name,
-    description: null,
-    routes: dests.map((dest) => ({ origin: 'Jabo', originLabel: 'CGK', dest })),
+  const aceh = { origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' }
+  const medan = { origin: 'Jabo', originLabel: 'CGK', dest: 'Medan' }
+
+  const column = (over: Partial<PnlGroupComparisonColumn>): PnlGroupComparisonColumn => ({
+    id: 'g1', name: 'Kalimantan', routeCount: 1, kind: 'group', routes: [aceh], ...over,
   })
 
-  it('returns nothing when the groups are disjoint', () => {
-    expect(overlappingRoutes([group('a', 'A', ['Aceh']), group('b', 'B', ['Batam'])])).toEqual([])
-  })
-
-  it('names the groups that share a route', () => {
-    const result = overlappingRoutes([
-      group('a', 'A', ['Aceh', 'Batam']),
-      group('b', 'B', ['Batam']),
+  it('names every column that holds a shared route', () => {
+    const overlaps = overlappingRoutes([
+      column({ id: 'g1', name: 'Kalimantan', routes: [aceh, medan] }),
+      column({ id: 'g2', name: 'Sumatera', routes: [aceh] }),
     ])
-
-    expect(result).toEqual([{ route: 'CGK → Batam', groupNames: ['A', 'B'] }])
+    expect(overlaps).toEqual([{ route: 'CGK → Aceh', groupNames: ['Kalimantan', 'Sumatera'] }])
   })
 
-  it('handles a route shared by three groups', () => {
-    const result = overlappingRoutes([
-      group('a', 'A', ['Batam']),
-      group('b', 'B', ['Batam']),
-      group('c', 'C', ['Batam']),
+  it('catches a bare route column that duplicates a group member', () => {
+    // This is the case the old RouteGroup-driven version could not see at all.
+    const overlaps = overlappingRoutes([
+      column({ id: 'g1', name: 'Kalimantan', routes: [aceh] }),
+      column({ id: 'r:Jabo|Aceh', name: 'CGK → Aceh', kind: 'route', routes: [aceh] }),
     ])
-
-    expect(result).toEqual([{ route: 'CGK → Batam', groupNames: ['A', 'B', 'C'] }])
+    expect(overlaps).toEqual([{ route: 'CGK → Aceh', groupNames: ['Kalimantan', 'CGK → Aceh'] }])
   })
 
-  it('returns nothing for a single group', () => {
-    expect(overlappingRoutes([group('a', 'A', ['Aceh', 'Batam'])])).toEqual([])
+  it('says nothing when the columns are disjoint', () => {
+    expect(
+      overlappingRoutes([
+        column({ id: 'g1', routes: [aceh] }),
+        column({ id: 'g2', name: 'Sumatera', routes: [medan] }),
+      ]),
+    ).toEqual([])
+  })
+})
+
+describe('routeFromComparisonCell', () => {
+  it('carries every route of a group column into one drilldown filter', () => {
+    const route = routeFromComparisonCell(
+      {
+        id: 'g1', name: 'Kalimantan', routeCount: 2, kind: 'group',
+        routes: [
+          { origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' },
+          { origin: 'Surabaya', originLabel: 'SUB', dest: 'Pontianak' },
+        ],
+      },
+      '2026-05-01',
+    )
+    expect(route).toEqual({
+      routes: [
+        { origin: 'Jabo', dest: 'Aceh' },
+        { origin: 'Surabaya', dest: 'Pontianak' },
+      ],
+      dateFrom: '2026-05-01',
+      dateTo: '2026-05-01',
+    })
+  })
+
+  it('narrows a bare route column to its single pair', () => {
+    const route = routeFromComparisonCell(
+      {
+        id: 'r:Jabo|Denpasar', name: 'CGK → Denpasar', routeCount: 1, kind: 'route',
+        routes: [{ origin: 'Jabo', originLabel: 'CGK', dest: 'Denpasar' }],
+      },
+      '2026-05-02',
+    )
+    expect(route).toEqual({
+      routes: [{ origin: 'Jabo', dest: 'Denpasar' }],
+      dateFrom: '2026-05-02',
+      dateTo: '2026-05-02',
+    })
   })
 })

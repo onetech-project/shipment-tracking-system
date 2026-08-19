@@ -24,13 +24,13 @@ const matrix: PnlDailyMatrix = {
     { origin: 'Surabaya', originLabel: 'SUB', dest: 'Pontianak' },
   ],
   rows: [
-    { date: '2026-07-01', cells: [{ revenue: 100, margin: 10, weight: 1, incompleteTos: 0 }, null] },
+    { date: '2026-07-01', cells: [{ revenue: 100, margin: 10, weight: 1, incompleteTos: 0, issues: [] }, null] },
   ],
   footer: [
     { totalRevenue: 100, totalMargin: 10, totalWeight: 1, avgRevenuePerDay: 100,
-      avgMarginPerDay: 10, marginPct: 10, spacePerKg: 10, incompleteTos: 0 },
+      avgMarginPerDay: 10, marginPct: 10, spacePerKg: 10, incompleteTos: 0, issues: [] },
     { totalRevenue: 0, totalMargin: 0, totalWeight: 0, avgRevenuePerDay: 0,
-      avgMarginPerDay: 0, marginPct: null, spacePerKg: null, incompleteTos: 0 },
+      avgMarginPerDay: 0, marginPct: null, spacePerKg: null, incompleteTos: 0, issues: [] },
   ],
   periodDays: 1,
 }

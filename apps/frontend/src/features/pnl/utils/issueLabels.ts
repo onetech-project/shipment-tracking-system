@@ -23,3 +23,20 @@ export function issueLabel(issue: string | null | undefined): string {
   if (!issue) return '—'
   return ISSUE_LABELS[issue] ?? issue
 }
+
+// Severity order, root cause first — the same order the backend applies when it collapses an AWB's
+// TOs down to one issue. Mirrored here rather than fetched so a tooltip can sort without a request.
+export const ISSUE_RANK: Record<string, number> = {
+  no_booking: 1,
+  smu_rate_missing: 2,
+  ra_rate_missing: 3,
+  sgout_name_missing: 4,
+  revenue_missing: 5,
+  station_mapping_missing: 6,
+  sg_in_rate_missing: 7,
+}
+
+// An issue the view starts emitting before this map is updated sorts last rather than disappearing.
+export function issueRank(issue: string): number {
+  return ISSUE_RANK[issue] ?? Number.MAX_SAFE_INTEGER
+}

@@ -9,7 +9,7 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/client'
-import { routeToParams, usePnlAwbDrilldown, PnlFilter, PnlRouteFilter } from './usePnl'
+import { routeToParams, usePnlAwbDrilldown, PnlFilter, PnlRouteFilter, columnsToParam } from './usePnl'
 
 jest.mock('@tanstack/react-query', () => ({ useQuery: jest.fn() }))
 jest.mock('@/shared/api/client', () => ({
@@ -19,31 +19,29 @@ jest.mock('@/shared/api/client', () => ({
 const filter: PnlFilter = { mode: 'cycle', cycle: '2026-05-1H', basis: 'ata_vendor_wh_destination' }
 
 describe('routeToParams', () => {
-  it('sends the exact param names the backend expects for a populated route', () => {
-    const route: PnlRouteFilter = {
-      origin: 'Jabo',
-      dest: 'Tanjung Pinang',
-      dateFrom: '2026-05-01',
-      dateTo: '2026-05-01',
-    }
-    expect(routeToParams(route)).toEqual({
-      origin: 'Jabo',
-      dest: 'Tanjung Pinang',
-      dateFrom: '2026-05-01',
-      dateTo: '2026-05-01',
-    })
-  })
-
-  it('omits empty or undefined fields entirely rather than sending them empty', () => {
-    const params = routeToParams({ origin: 'Jabo', dest: '', dateFrom: undefined, dateTo: undefined })
-    expect(params).toEqual({ origin: 'Jabo' })
-    expect(Object.keys(params)).not.toContain('dest')
-    expect(Object.keys(params)).not.toContain('dateFrom')
-    expect(Object.keys(params)).not.toContain('dateTo')
-  })
-
-  it('returns an empty object for an undefined route', () => {
+  it('sends nothing at all for an untouched filter', () => {
+    // An untouched filter must produce the exact request shape the endpoint saw before route
+    // filtering existed, not `routes=`.
     expect(routeToParams(undefined)).toEqual({})
+    expect(routeToParams({})).toEqual({})
+    expect(routeToParams({ routes: [] })).toEqual({})
+  })
+
+  it('joins route pairs into one comma-separated param', () => {
+    expect(
+      routeToParams({
+        routes: [
+          { origin: 'Jabo', dest: 'Denpasar' },
+          { origin: 'Surabaya', dest: 'Tanjung Pinang' },
+        ],
+      }),
+    ).toEqual({ routes: 'Jabo|Denpasar,Surabaya|Tanjung Pinang' })
+  })
+
+  it('carries the date window alongside the routes', () => {
+    expect(
+      routeToParams({ routes: [{ origin: 'Jabo', dest: 'Aceh' }], dateFrom: '2026-05-01', dateTo: '2026-05-01' }),
+    ).toEqual({ routes: 'Jabo|Aceh', dateFrom: '2026-05-01', dateTo: '2026-05-01' })
   })
 })
 
@@ -52,8 +50,7 @@ describe('usePnlAwbDrilldown HTTP contract', () => {
 
   it('requests with the route params merged alongside the filter, page and limit', async () => {
     const route: PnlRouteFilter = {
-      origin: 'Jabo',
-      dest: 'Tanjung Pinang',
+      routes: [{ origin: 'Jabo', dest: 'Tanjung Pinang' }],
       dateFrom: '2026-05-01',
       dateTo: '2026-05-01',
     }
@@ -67,8 +64,7 @@ describe('usePnlAwbDrilldown HTTP contract', () => {
       params: {
         cycle: '2026-05-1H',
         basis: 'ata_vendor_wh_destination',
-        origin: 'Jabo',
-        dest: 'Tanjung Pinang',
+        routes: 'Jabo|Tanjung Pinang',
         dateFrom: '2026-05-01',
         dateTo: '2026-05-01',
         page: 2,
@@ -79,8 +75,8 @@ describe('usePnlAwbDrilldown HTTP contract', () => {
 
   it('includes the route in the query key so a route change is not served from a stale cache entry', () => {
     ;(useQuery as jest.Mock).mockReturnValue({})
-    const routeA: PnlRouteFilter = { origin: 'Jabo' }
-    const routeB: PnlRouteFilter = { origin: 'Surabaya' }
+    const routeA: PnlRouteFilter = { routes: [{ origin: 'Jabo', dest: 'Denpasar' }] }
+    const routeB: PnlRouteFilter = { routes: [{ origin: 'Surabaya', dest: 'Pontianak' }] }
 
     usePnlAwbDrilldown(filter, 1, routeA)
     usePnlAwbDrilldown(filter, 1, routeB)
@@ -90,5 +86,20 @@ describe('usePnlAwbDrilldown HTTP contract', () => {
     expect(configA.queryKey).toContain(routeA)
     expect(configB.queryKey).toContain(routeB)
     expect(configA.queryKey).not.toEqual(configB.queryKey)
+  })
+})
+
+describe('columnsToParam', () => {
+  it('prefixes each pick by kind and keeps the pick order', () => {
+    expect(
+      columnsToParam([
+        { kind: 'group', id: 'abc' },
+        { kind: 'route', origin: 'Jabo', dest: 'Denpasar' },
+      ]),
+    ).toBe('g:abc,r:Jabo|Denpasar')
+  })
+
+  it('is empty for no picks', () => {
+    expect(columnsToParam([])).toBe('')
   })
 })
