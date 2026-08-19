@@ -4,6 +4,28 @@ import { apiClient } from '@/shared/api/client'
 export type DateBasis = 'completed_time' | 'ata_vendor_wh_destination' | 'atd_origin'
 export const DEFAULT_DATE_BASIS: DateBasis = 'ata_vendor_wh_destination'
 
+// One source of truth for how a date basis is named in the UI: the header dropdown and the
+// drilldown's date column header must never drift apart.
+export const BASIS_LABELS: Record<DateBasis, string> = {
+  ata_vendor_wh_destination: 'ATA Vendor WH dest',
+  atd_origin: 'ATD origin',
+  completed_time: 'Completed time',
+}
+
+// Narrows the AWB drilldown only. Empty fields are omitted from the request entirely.
+export interface PnlRouteFilter {
+  origin?: string
+  dest?: string
+  dateFrom?: string // YYYY-MM-DD
+  dateTo?: string // YYYY-MM-DD, inclusive
+}
+
+export interface PnlStation {
+  origin: string
+  originLabel: string
+  dest: string
+}
+
 export type PnlFilter =
   | { mode: 'cycle'; cycle: string; basis: DateBasis }
   | { mode: 'range'; start: string; end: string; basis: DateBasis }
@@ -31,6 +53,12 @@ export interface PnlAwbRow {
   awb: string
   vendor: string | null
   airline: string | null
+  origin: string | null
+  dest: string | null
+  date: string | null
+  originVaries: boolean
+  destVaries: boolean
+  dateVaries: boolean
   toCount: number
   sumGw: number
   chwt: number | null
@@ -122,6 +150,42 @@ export interface PnlProfitByRouteItem {
   avgMarginPerDay: number
 }
 
+export interface PnlDailyMatrixColumn {
+  origin: string
+  originLabel: string
+  dest: string
+}
+
+export interface PnlDailyMatrixCell {
+  revenue: number
+  margin: number
+  weight: number
+  incompleteTos: number
+}
+
+export interface PnlDailyMatrixRow {
+  date: string
+  cells: (PnlDailyMatrixCell | null)[]
+}
+
+export interface PnlDailyMatrixFooter {
+  totalRevenue: number
+  totalMargin: number
+  totalWeight: number
+  avgRevenuePerDay: number
+  avgMarginPerDay: number
+  marginPct: number | null
+  spacePerKg: number | null
+  incompleteTos: number
+}
+
+export interface PnlDailyMatrix {
+  columns: PnlDailyMatrixColumn[]
+  rows: PnlDailyMatrixRow[]
+  footer: PnlDailyMatrixFooter[]
+  periodDays: number
+}
+
 function filterToParams(filter: PnlFilter) {
   return filter.mode === 'cycle'
     ? { cycle: filter.cycle, basis: filter.basis }
@@ -158,12 +222,40 @@ export function usePnlDailyMargin(filter: PnlFilter | undefined) {
   })
 }
 
-export function usePnlAwbDrilldown(filter: PnlFilter | undefined, page: number, limit = 50) {
+// Only non-empty fields are sent, so an untouched filter produces the exact request shape the
+// endpoint saw before route filtering existed. Exported so its HTTP param names are pinned by a
+// direct test rather than only indirectly through a mocked hook.
+export function routeToParams(route: PnlRouteFilter | undefined) {
+  if (!route) return {}
+  return {
+    ...(route.origin ? { origin: route.origin } : {}),
+    ...(route.dest ? { dest: route.dest } : {}),
+    ...(route.dateFrom ? { dateFrom: route.dateFrom } : {}),
+    ...(route.dateTo ? { dateTo: route.dateTo } : {}),
+  }
+}
+
+export function usePnlStations() {
+  return useQuery<PnlStation[]>({
+    queryKey: ['pnl', 'stations'],
+    queryFn: () => apiClient.get('/pnl/stations').then((r) => r.data),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function usePnlAwbDrilldown(
+  filter: PnlFilter | undefined,
+  page: number,
+  route?: PnlRouteFilter,
+  limit = 50,
+) {
   return useQuery<{ data: PnlAwbRow[]; total: number }>({
-    queryKey: ['pnl', 'awb-drilldown', filter, page, limit],
+    queryKey: ['pnl', 'awb-drilldown', filter, page, limit, route],
     queryFn: () =>
       apiClient
-        .get('/pnl/awb-drilldown', { params: { ...filterToParams(filter!), page, limit } })
+        .get('/pnl/awb-drilldown', {
+          params: { ...filterToParams(filter!), ...routeToParams(route), page, limit },
+        })
         .then((r) => r.data),
     enabled: !!filter,
     staleTime: 60 * 1000,
@@ -277,6 +369,18 @@ export function usePnlProfitByRoute(filter: PnlFilter | undefined) {
     queryFn: () =>
       apiClient
         .get('/pnl/breakdown/profit-by-route', { params: filterToParams(filter!) })
+        .then((r) => r.data),
+    enabled: !!filter,
+    staleTime: 60 * 1000,
+  })
+}
+
+export function usePnlDailyMatrix(filter: PnlFilter | undefined) {
+  return useQuery<PnlDailyMatrix>({
+    queryKey: ['pnl', 'daily-matrix', filter],
+    queryFn: () =>
+      apiClient
+        .get('/pnl/breakdown/daily-matrix', { params: filterToParams(filter!) })
         .then((r) => r.data),
     enabled: !!filter,
     staleTime: 60 * 1000,

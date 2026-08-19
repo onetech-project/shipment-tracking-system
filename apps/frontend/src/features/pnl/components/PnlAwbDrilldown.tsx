@@ -2,7 +2,16 @@
 
 import { Fragment, useState, useEffect } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { usePnlAwbDrilldown, usePnlAwbTos, PnlFilter, PnlToRow } from '../hooks/usePnl'
+import {
+  usePnlAwbDrilldown,
+  usePnlAwbTos,
+  usePnlStations,
+  BASIS_LABELS,
+  PnlFilter,
+  PnlRouteFilter,
+  PnlToRow,
+} from '../hooks/usePnl'
+import { periodBounds } from '../utils/periodBounds'
 import { fmt, num, pct } from '../utils/format'
 import { issueLabel } from '../utils/issueLabels'
 
@@ -16,7 +25,7 @@ function ToSubTable({ awb, filter }: ToSubTableProps) {
 
   return (
     <tr>
-      <td colSpan={15} className="p-0">
+      <td colSpan={18} className="p-0">
         <div className="border-t border-b bg-muted/20 px-4 py-2">
           {isLoading && <p className="py-2 text-xs text-muted-foreground">Loading TOs…</p>}
           {data && data.length === 0 && (
@@ -71,21 +80,66 @@ function ToSubTable({ awb, filter }: ToSubTableProps) {
   )
 }
 
-interface PnlAwbDrilldownProps {
-  filter: PnlFilter
+// Marks a column whose TOs within one AWB disagree, so a dominant-value cell never reads as the
+// whole truth. The AWB stays one row: splitting it would break paging and AWB counts.
+function VariesMark({ when }: { when: boolean }) {
+  if (!when) return null
+  return (
+    <span
+      data-testid="varies-mark"
+      title="TO dalam AWB ini punya nilai berbeda — yang tampil adalah nilai terbanyak, dan angka di baris ini menjumlahkan seluruh TO AWB ini, termasuk yang berada di luar filter rute/tanggal"
+      className="ml-1 text-amber-600"
+    >
+      +
+    </span>
+  )
 }
 
-export function PnlAwbDrilldown({ filter }: PnlAwbDrilldownProps) {
+interface PnlAwbDrilldownProps {
+  filter: PnlFilter
+  route: PnlRouteFilter
+  onRouteChange: (next: PnlRouteFilter) => void
+}
+
+export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldownProps) {
   const [page, setPage] = useState(1)
   const [expandedAwb, setExpandedAwb] = useState<string | null>(null)
+  const { data: stations } = usePnlStations()
 
   useEffect(() => {
     setPage(1)
     setExpandedAwb(null)
-  }, [filter])
-  const { data, isLoading, isError, refetch } = usePnlAwbDrilldown(filter, page)
+  }, [filter, route])
+  const { data, isLoading, isError, refetch } = usePnlAwbDrilldown(filter, page, route)
   const totalPages = data ? Math.ceil(data.total / 50) : 0
   const title = filter.mode === 'cycle' ? filter.cycle : `${filter.start} → ${filter.end}`
+
+  const origins = Array.from(new Set((stations ?? []).map((s) => s.origin))).sort()
+  const dests = Array.from(
+    new Set(
+      (stations ?? [])
+        .filter((s) => !route.origin || s.origin === route.origin)
+        .map((s) => s.dest),
+    ),
+  ).sort()
+  const bounds = periodBounds(filter)
+  const hasRoute = Boolean(route.origin || route.dest || route.dateFrom || route.dateTo)
+  const overhangCount = (data?.data ?? []).filter(
+    (row) => row.originVaries || row.destVaries || row.dateVaries,
+  ).length
+
+  // Empty string means "no filter": the hook drops empty fields before building the request.
+  function setField(field: keyof PnlRouteFilter, value: string) {
+    const next: PnlRouteFilter = { ...route, [field]: value || undefined }
+    // A destination that does not belong to the newly chosen origin would return nothing at all.
+    // Only prune when origin is being narrowed to a specific value — clearing it back to "Semua"
+    // widens the filter, so any destination the user already picked still applies fine.
+    if (field === 'origin' && value && next.dest) {
+      const stillValid = (stations ?? []).some((s) => s.origin === value && s.dest === next.dest)
+      if (!stillValid) next.dest = undefined
+    }
+    onRouteChange(next)
+  }
 
   function toggleAwb(awb: string) {
     setExpandedAwb((prev) => (prev === awb ? null : awb))
@@ -105,6 +159,80 @@ export function PnlAwbDrilldown({ filter }: PnlAwbDrilldownProps) {
       <div className="border-b px-4 py-3">
         <p className="text-sm font-medium">AWB Drilldown — {title}</p>
         {data && <p className="text-xs text-muted-foreground">{data.total} AWBs</p>}
+        {hasRoute && overhangCount > 0 && (
+          <p className="mt-1 text-xs text-amber-600">
+            {overhangCount} AWB di halaman ini punya TO di luar filter — umumnya tanggal ATA yang
+            berbeda. Angka barisnya mencakup seluruh TO milik AWB itu, jadi totalnya bisa lebih
+            besar dari cell yang diklik.
+          </p>
+        )}
+      </div>
+      <div className="flex flex-wrap items-end gap-3 border-b px-4 py-3">
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          Origin
+          <select
+            aria-label="Origin"
+            className="rounded-md border bg-background px-2 py-1.5 text-sm text-foreground"
+            value={route.origin ?? ''}
+            onChange={(e) => setField('origin', e.target.value)}
+          >
+            <option value="">Semua</option>
+            {origins.map((o) => (
+              <option key={o} value={o}>{o}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          Destination
+          <select
+            aria-label="Destination"
+            className="rounded-md border bg-background px-2 py-1.5 text-sm text-foreground"
+            value={route.dest ?? ''}
+            onChange={(e) => setField('dest', e.target.value)}
+          >
+            <option value="">Semua</option>
+            {dests.map((d) => (
+              <option key={d} value={d}>{d}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          Dari
+          <input
+            type="date"
+            aria-label="Dari"
+            className="rounded-md border bg-background px-2 py-1.5 text-sm text-foreground"
+            min={bounds.min}
+            max={route.dateTo || bounds.max}
+            value={route.dateFrom ?? ''}
+            onChange={(e) => setField('dateFrom', e.target.value)}
+          />
+        </label>
+
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          Sampai
+          <input
+            type="date"
+            aria-label="Sampai"
+            className="rounded-md border bg-background px-2 py-1.5 text-sm text-foreground"
+            min={route.dateFrom || bounds.min}
+            max={bounds.max}
+            value={route.dateTo ?? ''}
+            onChange={(e) => setField('dateTo', e.target.value)}
+          />
+        </label>
+
+        {hasRoute && (
+          <button
+            type="button"
+            className="pb-1.5 text-xs text-muted-foreground underline hover:text-foreground"
+            onClick={() => onRouteChange({})}
+          >
+            Reset
+          </button>
+        )}
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -112,6 +240,9 @@ export function PnlAwbDrilldown({ filter }: PnlAwbDrilldownProps) {
             <tr className="border-b text-xs text-muted-foreground">
               <th className="w-6 px-2 py-2" />
               <th className="px-3 py-2 text-left">AWB</th>
+              <th className="px-3 py-2 text-left">Origin</th>
+              <th className="px-3 py-2 text-left">Destination</th>
+              <th className="px-3 py-2 text-left">{BASIS_LABELS[filter.basis]}</th>
               <th className="px-3 py-2 text-left">Vendor</th>
               <th className="px-3 py-2 text-left">Airline</th>
               <th className="px-3 py-2 text-right">TOs</th>
@@ -129,7 +260,7 @@ export function PnlAwbDrilldown({ filter }: PnlAwbDrilldownProps) {
           </thead>
           <tbody>
             {isLoading && (
-              <tr><td colSpan={15} className="px-3 py-4 text-center text-muted-foreground">Loading…</td></tr>
+              <tr><td colSpan={18} className="px-3 py-4 text-center text-muted-foreground">Loading…</td></tr>
             )}
             {data?.data.map((row, idx) => {
               const isExpanded = expandedAwb === row.awb
@@ -157,6 +288,18 @@ export function PnlAwbDrilldown({ filter }: PnlAwbDrilldownProps) {
                           {issueLabel(row.issue)}
                         </span>
                       )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {row.origin ?? '—'}
+                      <VariesMark when={row.originVaries} />
+                    </td>
+                    <td className="px-3 py-2">
+                      {row.dest ?? '—'}
+                      <VariesMark when={row.destVaries} />
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      {row.date ?? '—'}
+                      <VariesMark when={row.dateVaries} />
                     </td>
                     <td className="px-3 py-2">{row.vendor ?? '—'}</td>
                     <td className="px-3 py-2">{row.airline ?? '—'}</td>

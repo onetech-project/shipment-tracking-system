@@ -96,7 +96,7 @@ pipeline {
 
         stage('Drop Staging Backend Service') {
             when {
-                expression { params.DROP_STG_BE == true }
+                expression { params.DROP_STG_BE.toString() == 'true' }
             }
             steps {
                 script {
@@ -367,7 +367,7 @@ pipeline {
             when {
                 allOf {
                     expression { params.TARGET_ENV == 'production' }
-                    expression { params.DROP_STG_BE == true }
+                    expression { params.DROP_STG_BE.toString() == 'true' }
                 }
             }
             steps {
