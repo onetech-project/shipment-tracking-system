@@ -307,6 +307,15 @@ it('paints both blocks of the Total footer row amber for a warned column, and le
   expect(costClean.className).not.toContain('bg-amber-100')
 })
 
+it('keeps every footer value row 3N cells wide, matching the column count', () => {
+  // Two columns in the fixture, so each footer row's value cells (label already dropped by the
+  // footerRow helper) are 3*2 = 6 wide. A footer that dropped the Margin block would still pass
+  // the amber-tint test above, which only destructures the first four cells.
+  const { container } = render(<PnlComparisonTable model={baseModel()} firstColumnHeader={firstColumnHeader} cellHint={cellHint} />)
+  expect(footerRow(container, 'Total')).toHaveLength(6)
+  expect(footerRow(container, 'Avg / Day')).toHaveLength(6)
+})
+
 it('renders a Margin block and keeps every row 1 + 3N cells wide', async () => {
   render(<PnlComparisonTable model={baseModel()} firstColumnHeader={firstColumnHeader} cellHint={cellHint} />)
 

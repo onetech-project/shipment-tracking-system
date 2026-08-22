@@ -245,4 +245,46 @@ describe('PnlService.getRouteComparison (integration)', () => {
     // nothing.
     expect(checkedCells).toBeGreaterThan(0)
   })
+
+  // The response cell does not carry revenue_discount on its own (only revenue, cost and the
+  // already-netted margin), so this checks margin against a direct query of the same expression
+  // the service's SQL uses, rather than reconstructing it from response fields alone.
+  it('keeps margin consistent with revenue minus discount minus cost, for every non-null cell', async () => {
+    const cycleResult = await service.getRouteComparison([pick(groupA), pick(groupB)], CYCLE)
+    const rangeResult = await service.getRouteComparison(
+      [pick(groupA), pick(groupB)],
+      undefined,
+      RANGE_START,
+      RANGE_END,
+    )
+
+    const discountOf = async (origin: string, dest: string, date: string): Promise<number> => {
+      const [row] = await queryRunner.query(
+        `SELECT COALESCE(SUM(revenue_discount), 0) AS d FROM v_pnl_to
+         WHERE origin_station = $1 AND dest_station = $2 AND date_ata::date = $3::date`,
+        [origin, dest, date],
+      )
+      return Number(row.d)
+    }
+
+    let checkedCells = 0
+    for (const result of [cycleResult, rangeResult]) {
+      for (const row of result.rows) {
+        for (let ci = 0; ci < result.columns.length; ci++) {
+          const cell = row.cells[ci]
+          if (!cell) continue
+          const routes = result.columns[ci].routes
+          let discount = 0
+          for (const r of routes) {
+            discount += await discountOf(r.origin, r.dest, row.date)
+          }
+          expect(cell.margin).toBeCloseTo(cell.revenue - discount - cell.cost, 4)
+          checkedCells += 1
+        }
+      }
+    }
+    // Sanity: the fixture actually produced non-null cells to check, or the loop above proved
+    // nothing.
+    expect(checkedCells).toBeGreaterThan(0)
+  })
 })
