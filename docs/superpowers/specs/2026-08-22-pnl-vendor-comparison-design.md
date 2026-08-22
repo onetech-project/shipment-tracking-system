@@ -45,13 +45,19 @@ Diukur pada database saat ini (`v_pnl_to`: 66.203 baris):
 
 ```sql
 SELECT count(*) FROM (
-  SELECT DISTINCT vendor FROM v_pnl_to WHERE vendor IS NOT NULL
+  SELECT DISTINCT vendor FROM v_pnl_to          WHERE vendor IS NOT NULL AND vendor <> ''
   EXCEPT
-  SELECT DISTINCT vendor FROM air_shipments_smu
+  SELECT DISTINCT vendor FROM air_shipments_smu WHERE vendor IS NOT NULL AND vendor <> ''
 ) x;
 ```
 
-Angkanya menentukan apakah `available-vendors` boleh master-only. Route Group aman master-only hanya karena containment-nya diukur dan dicatat ([`route-groups.service.ts:39-43`](../../../apps/backend/src/modules/route-groups/route-groups.service.ts)); vendor belum punya bukti setara, dan issue `smu_rate_missing` membuktikan booking tanpa rate card memang terjadi. Desain ini karena itu memakai union sejati — lihat [Backend Fitur 3](#backend).
+Filter `<> ''` ada di kedua sisi supaya angkanya terdefinisi atas himpunan yang sama dengan `available-vendors`, yang juga membuang nama kosong. Tanpa itu, TO bernama vendor `''` — yang memang ada — terhitung sebagai orphan di sini tapi tidak pernah muncul di endpoint, dan selisihnya akan terbaca sebagai bug di query union.
+
+Angkanya menentukan apakah `available-vendors` boleh master-only. Route Group aman master-only hanya karena containment-nya diukur dan dicatat ([`route-groups.service.ts:38-41`](../../../apps/backend/src/modules/route-groups/route-groups.service.ts)); vendor belum punya bukti setara.
+
+Perlu diluruskan: issue `smu_rate_missing` **bukan** bukti bahwa ada vendor ter-booking yang absen dari master. Issue itu menyala saat `cost_smu_awb IS NULL` ([`20260816000001:209`](../../../apps/backend/src/database/migrations/20260816000001-pnl-station-lookup.ts)), dan `cost_smu_awb` berasal dari join empat kolom `s.vendor=b.vendor AND s.airlines=b.airlines AND s.origin=b.via AND s.destination=b.dest` ([`:101-102`](../../../apps/backend/src/database/migrations/20260816000001-pnl-station-lookup.ts)) — meleset di airline, origin, atau destination menghasilkan issue yang sama dengan vendor yang justru ada di master. Diukur: 56 baris ber-`smu_rate_missing` punya vendor yang ada di `air_shipments_smu`, dan query containment di atas mengembalikan 0.
+
+Union sejati tetap dipilih, tapi alasannya bukan itu: master adalah snapshot Google Sheet yang ditulis ulang setiap sync, jadi containment yang diukur hari ini adalah fakta tentang isi sheet hari ini, bukan tentang skema. Union tidak memakan biaya apa pun dan menghapus ketergantungan pada pengukuran itu — lihat [Backend Fitur 3](#backend).
 
 ## Keputusan Desain
 
@@ -306,7 +312,7 @@ DTO-nya **bukan** salinan langsung. Anggota route group adalah objek `{origin_st
 vendors: string[]
 ```
 
-`GET /vendor-groups/available-vendors` — **union sejati**, bukan LEFT JOIN master-only seperti route-groups, karena containment vendor belum diukur dan `smu_rate_missing` membuktikan booking tanpa rate card memang ada:
+`GET /vendor-groups/available-vendors` — **union sejati**, bukan LEFT JOIN master-only seperti route-groups. Alasannya bukan `smu_rate_missing` (lihat [Kelayakan](#cakupan-vendor--diukur-bukan-diasumsikan)) melainkan bahwa master adalah snapshot sheet yang bisa ditulis ulang kapan saja, sehingga containment tidak boleh diandalkan sebagai properti permanen:
 
 ```sql
 WITH master AS (
@@ -349,7 +355,7 @@ Panel Roles mengelompokkan berdasarkan `p.name.split('.')[1]` ([`role-permission
 
 `features/vendor-groups/` (types, hooks berkunci `['vendor-groups']`, `VendorPicker`, `VendorGroupForm`, `DeleteVendorGroupDialog`) dan halaman `/vendor-groups`. Validasi manual, tanpa Zod — di app ini hanya form login yang memakai Zod.
 
-`VendorPicker` **tidak** menyalin `RoutePicker` mentah-mentah: `RoutePicker` bersandar pada sumbu pengelompokan origin dan ~31 rute ([`RoutePicker.tsx:57-64`](../../../apps/frontend/src/features/route-groups/components/RoutePicker.tsx)), sementara vendor tidak punya sumbu semacam itu. Bentuknya: daftar alfabetis datar + input pencarian + titik amber untuk `has_data === false` + penghitung terpilih. Vendor dengan `in_master === false` diberi label terpisah ("ada data, tidak ada rate card") karena itu gejala `smu_rate_missing`.
+`VendorPicker` **tidak** menyalin `RoutePicker` mentah-mentah: `RoutePicker` bersandar pada sumbu pengelompokan origin dan ~31 rute ([`RoutePicker.tsx:57-64`](../../../apps/frontend/src/features/route-groups/components/RoutePicker.tsx)), sementara vendor tidak punya sumbu semacam itu. Bentuknya: daftar alfabetis datar + input pencarian + titik amber untuk `has_data === false` + penghitung terpilih. Vendor dengan `in_master === false` diberi label terpisah ("ada data, tidak ada rate card") — vendor yang punya TO tapi tidak punya baris rate card sama sekali.
 
 Sidebar: entri baru setelah [`sidebar.tsx:155`](../../../apps/frontend/src/components/layout/sidebar.tsx), digerbangi `read.vendor_group`, di dalam grup "Air Shipments" bersebelahan dengan Route Group.
 
