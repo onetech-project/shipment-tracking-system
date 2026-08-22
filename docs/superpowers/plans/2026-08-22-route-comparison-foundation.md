@@ -474,8 +474,10 @@ describe('toRouteComparisonTable row axis', () => {
     })
 
     expect(model.rows[0].rowKey).toBe('2026-05-01')
-    // The label is already formatted — the renderer must not know this axis holds dates.
-    expect(model.rows[0].rowLabel).toBe('1 Mei')
+    // The label is already formatted — the renderer must not know this axis holds dates. The
+    // format is formatDayLabel's, unchanged: this task is a refactor, so the rendered label must
+    // be byte-identical to what the renderer produced before.
+    expect(model.rows[0].rowLabel).toBe('1-May-2026')
   })
 })
 ```
