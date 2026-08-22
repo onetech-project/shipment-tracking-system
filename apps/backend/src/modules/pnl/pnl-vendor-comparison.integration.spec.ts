@@ -167,11 +167,15 @@ describe('PnlService.getVendorComparison (integration)', () => {
     expect(result.footer[1].totalMargin).toBeCloseTo(result.footer[0].totalMargin, 6)
   })
 
-  it('splits an AWB across the routes its TOs flew instead of posting it whole to each', async () => {
-    // cost_to is TO-grain, so summing every cell of a single-vendor column must land exactly on
-    // SUM(cost_to) for that vendor. A per-AWB rollup (MAX(cost_smu_awb) GROUP BY awb, as the
-    // Cost by Vendor panel uses) would post the same AWB's cost to every route the AWB touched,
-    // making this total strictly larger. Same argument for the prorated SMU component.
+  it('sums TO-grain cost across every route for a vendor without dropping or double-counting a TO', async () => {
+    // This proves the row-grouped aggregation is associative — summing every per-route cell back up
+    // lands exactly on the ungrouped SUM(cost_to)/SUM(revenue_total)/SUM(cost_smu_awb*weight_share)
+    // for the vendor. It does NOT prove weight_share proration is correct: that identity holds
+    // whether or not any AWB actually spans more than one route, and would hold just the same under
+    // the buggy MAX(cost_smu_awb) GROUP BY awb rollup the Cost by Vendor panel uses, as long as that
+    // rollup were re-grouped by route and re-summed the same way. The real proration check — which
+    // needs an AWB whose TOs land on more than one route — lives in the guarded test below, because
+    // no AWB attributed to any vendor in this cycle currently spans a route.
     const [expected] = await queryRunner.query(
       `SELECT
          COALESCE(SUM(cost_to), 0)                      AS cost,
@@ -202,6 +206,96 @@ describe('PnlService.getVendorComparison (integration)', () => {
     expect(summed.cost).toBeCloseTo(Number(expected.cost), 4)
     expect(summed.revenue).toBeCloseTo(Number(expected.revenue), 4)
     expect(summed.costSmu).toBeCloseTo(Number(expected.cost_smu), 4)
+  })
+
+  // Real proration check, guarded on the data actually containing a multi-route AWB for the chosen
+  // vendor. Unlike the test above, this is not associativity-trivial: it targets one AWB known to
+  // have TOs on more than one route, and checks (a) that AWB's own prorated contributions split
+  // across its routes and sum back to its single AWB-grain cost_smu_awb value rather than each route
+  // getting the whole thing, and (b) that the service's per-route cell for each of those routes
+  // matches an independent per-route recompute of the same formula the service uses — which the
+  // buggy MAX(cost_smu_awb) GROUP BY awb rollup would inflate for exactly these routes, since it
+  // would post this AWB's full cost_smu_awb onto every route it touches instead of a weight_share
+  // fraction of it.
+  it("splits a multi-route AWB's SMU cost across its routes instead of posting the whole amount to each (guarded)", async () => {
+    const [candidate] = await queryRunner.query(
+      `SELECT awb, MAX(cost_smu_awb) AS total_cost_smu
+       FROM v_pnl_to
+       WHERE cycle_ata = $1 AND vendor = $2
+         AND origin_station IS NOT NULL AND dest_station IS NOT NULL
+         AND cost_smu_awb IS NOT NULL
+       GROUP BY awb
+       HAVING COUNT(DISTINCT origin_station || ' -> ' || dest_station) > 1
+       LIMIT 1`,
+      [CYCLE, busiestVendor],
+    )
+
+    if (!candidate) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `\n${'='.repeat(78)}\n` +
+          `UNVERIFIED: weight_share proration for vendor "${busiestVendor}" in cycle ${CYCLE} — no ` +
+          `AWB attributed to this vendor this cycle has TOs on more than one route, so the ` +
+          `split-vs-whole-posting property cannot be exercised against this dataset right now. ` +
+          `This test passes vacuously until a qualifying AWB exists.\n` +
+          `${'='.repeat(78)}\n`,
+      )
+      return
+    }
+
+    const totalCostSmu = Number(candidate.total_cost_smu)
+    expect(totalCostSmu).toBeGreaterThan(0)
+
+    // This AWB's own prorated contribution to each route it touches.
+    const perRouteForAwb = await queryRunner.query(
+      `SELECT origin_station, dest_station,
+         COALESCE(SUM(cost_smu_awb * weight_share)
+                  FILTER (WHERE cost_to IS NOT NULL), 0) AS cost_smu
+       FROM v_pnl_to
+       WHERE cycle_ata = $1 AND vendor = $2 AND awb = $3
+         AND origin_station IS NOT NULL AND dest_station IS NOT NULL
+       GROUP BY origin_station, dest_station`,
+      [CYCLE, busiestVendor, candidate.awb],
+    )
+
+    expect(perRouteForAwb.length).toBeGreaterThan(1)
+    const summedContribution = perRouteForAwb.reduce(
+      (sum: number, r: { cost_smu: string }) => sum + Number(r.cost_smu),
+      0,
+    )
+    // Conservation: the AWB's per-route fractions add back up to its single AWB-grain value.
+    expect(summedContribution).toBeCloseTo(totalCostSmu, 4)
+    // Split, not whole: no single route carries the entire AWB cost — that is exactly what the
+    // buggy per-AWB rollup would do instead.
+    for (const r of perRouteForAwb) {
+      expect(Number(r.cost_smu)).toBeLessThan(totalCostSmu)
+    }
+
+    // Now confirm the service itself produces these per-route splits, not the buggy whole-posting
+    // alternative, for every route this AWB touches.
+    const result = await service.getVendorComparison([group()], CYCLE)
+    for (const r of perRouteForAwb) {
+      const row = result.rows.find(
+        (row) => row.origin === r.origin_station && row.dest === r.dest_station,
+      )
+      expect(row).toBeDefined()
+      const cell = row!.cells[0]
+      expect(cell).toBeTruthy()
+
+      const [independentRoute] = await queryRunner.query(
+        `SELECT COALESCE(SUM(cost_smu_awb * weight_share)
+                          FILTER (WHERE cost_to IS NOT NULL), 0) AS cost_smu
+         FROM v_pnl_to
+         WHERE cycle_ata = $1 AND vendor = $2
+           AND origin_station = $3 AND dest_station = $4`,
+        [CYCLE, busiestVendor, r.origin_station, r.dest_station],
+      )
+
+      // Had the service posted this AWB's whole cost_smu_awb onto this route instead of its
+      // weight_share fraction, this cell would be inflated above the independent per-route
+      // recompute by (totalCostSmu - r.cost_smu) and this equality would fail.
+      expect(cell!.costSmu).toBeCloseTo(Number(independentRoute.cost_smu), 4)
+    }
   })
 
   it('sums the four cost components to the cell cost for every non-null cell', async () => {
