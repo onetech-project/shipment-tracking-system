@@ -14,6 +14,7 @@ const mockService = {
   getDataQuality: jest.fn(),
   getDailyMatrix: jest.fn(),
   getRouteComparison: jest.fn(),
+  getVendorComparison: jest.fn(),
 }
 
 describe('PnlController', () => {
@@ -130,6 +131,34 @@ describe('PnlController', () => {
       await controller.getRouteComparison(undefined, '2026-05-1H')
 
       expect(mockService.getRouteComparison).toHaveBeenCalledWith(
+        [], '2026-05-1H', undefined, undefined, undefined,
+      )
+    })
+  })
+
+  describe('getVendorComparison', () => {
+    it('parses vendor group and raw vendor descriptors in pick order', async () => {
+      await controller.getVendorComparison(
+        ['vg:11111111-1111-4111-8111-111111111111', 'v:PT Kargo, Tbk'],
+        '2026-05-1H',
+      )
+
+      expect(mockService.getVendorComparison).toHaveBeenCalledWith(
+        [
+          { kind: 'group', id: '11111111-1111-4111-8111-111111111111' },
+          { kind: 'vendor', name: 'PT Kargo, Tbk' },
+        ],
+        '2026-05-1H',
+        undefined,
+        undefined,
+        undefined,
+      )
+    })
+
+    it('sends an empty pick list when the columns param is absent', async () => {
+      await controller.getVendorComparison(undefined, '2026-05-1H')
+
+      expect(mockService.getVendorComparison).toHaveBeenCalledWith(
         [], '2026-05-1H', undefined, undefined, undefined,
       )
     })

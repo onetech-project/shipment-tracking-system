@@ -5,6 +5,7 @@ import { Authorize } from '../../common/decorators/authorize.decorator'
 import { Permission } from '@shared/auth'
 import { PnlService } from './pnl.service'
 import { parseColumnPicks, parseRoutePairs } from './pnl-columns.util'
+import { parseVendorColumnPicks, parseVendorNames } from './pnl-vendor-columns.util'
 
 @ApiTags('PnL')
 @Controller('pnl')
@@ -178,5 +179,29 @@ export class PnlController {
     @Query('basis') basis?: string,
   ) {
     return this.pnlService.getRouteComparison(parseColumnPicks(columns), cycle, start, end, basis)
+  }
+
+  // No method-level @Authorize. RbacGuard resolves permissions with getAllAndOverride([handler,
+  // class]), so a method-level decorator would REPLACE the class-level read.pnl rather than add to
+  // it — this endpoint would then stop requiring read.pnl. The read.vendor_group gate is a UI-side
+  // gate on the tab; what is genuinely guarded server-side is /vendor-groups itself.
+  //
+  // `columns` repeats: qs gives a string for one occurrence and an array for two or more, so the
+  // parameter is typed for both and the parser normalises before iterating.
+  @Get('breakdown/vendor-comparison')
+  getVendorComparison(
+    @Query('columns') columns?: string | string[],
+    @Query('cycle') cycle?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+    @Query('basis') basis?: string,
+  ) {
+    return this.pnlService.getVendorComparison(
+      parseVendorColumnPicks(columns),
+      cycle,
+      start,
+      end,
+      basis,
+    )
   }
 }
