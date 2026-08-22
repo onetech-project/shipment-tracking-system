@@ -42,7 +42,7 @@ export function DeleteVendorGroupDialog({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Delete "{group.name}"?</DialogTitle>
+          <DialogTitle>Delete “{group.name}”?</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
           {group.vendors.length} vendor di group ini tidak ikut terhapus — yang hilang hanya

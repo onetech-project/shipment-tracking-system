@@ -20,7 +20,7 @@ const group: VendorGroup = {
 it('names the group and says how many vendors it holds', () => {
   render(<DeleteVendorGroupDialog group={group} onConfirm={jest.fn()} onClose={jest.fn()} />)
 
-  expect(screen.getByText('Delete "Maskapai"?')).toBeInTheDocument()
+  expect(screen.getByText('Delete “Maskapai”?')).toBeInTheDocument()
   expect(screen.getByText(/2 vendor/)).toBeInTheDocument()
 })
 
@@ -57,4 +57,15 @@ it('closes the dialog when the delete succeeds', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
 
   await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
+})
+
+it('cancels without triggering delete', () => {
+  const onConfirm = jest.fn()
+  const onClose = jest.fn()
+  render(<DeleteVendorGroupDialog group={group} onConfirm={onConfirm} onClose={onClose} />)
+
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+  expect(onConfirm).not.toHaveBeenCalled()
+  expect(onClose).toHaveBeenCalledTimes(1)
 })
