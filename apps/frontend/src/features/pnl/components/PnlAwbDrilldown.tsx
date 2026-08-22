@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useState, useEffect } from 'react'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, X } from 'lucide-react'
 import {
   usePnlAwbDrilldown,
   usePnlAwbTos,
@@ -118,7 +118,12 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
 
   const routeIndex = buildRouteLabelIndex(stations ?? [])
   const bounds = periodBounds(filter)
-  const hasRoute = Boolean(route.routes?.length || route.dateFrom || route.dateTo)
+  // `vendors` is in here, not just routes and dates. A drilldown opened from a Vendor Comparison
+  // cell carries only a vendor and a period; leaving it out would hide Reset from exactly the user
+  // who most needs it, and — because setRoutes and setDate both spread ...route — the invisible
+  // vendor narrowing would then survive every edit they made.
+  const vendors = route.vendors ?? []
+  const hasRoute = Boolean(route.routes?.length || route.dateFrom || route.dateTo || vendors.length)
   const overhangCount = (data?.data ?? []).filter(
     (row) => row.originVaries || row.destVaries || row.dateVaries,
   ).length
@@ -132,6 +137,13 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
 
   function setDate(field: 'dateFrom' | 'dateTo', value: string) {
     onRouteChange({ ...route, [field]: value || undefined })
+  }
+
+  // Same "empty means no filter" rule as setRoutes: an empty array would be serialised as a filter
+  // matching nothing rather than as no filter at all.
+  function removeVendor(name: string) {
+    const next = vendors.filter((v) => v !== name)
+    onRouteChange({ ...route, vendors: next.length ? next : undefined })
   }
 
   function toggleAwb(awb: string) {
@@ -157,6 +169,13 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
             {overhangCount} AWB di halaman ini punya TO di luar filter — umumnya tanggal ATA yang
             berbeda. Angka barisnya mencakup seluruh TO milik AWB itu, jadi totalnya bisa lebih
             besar dari cell yang diklik.
+          </p>
+        )}
+        {vendors.length > 0 && (
+          <p data-testid="vendor-scope-note" className="mt-1 text-xs text-amber-600">
+            Angka di sini menjumlahkan seluruh TO milik AWB yang cocok dan memakai biaya per-AWB,
+            sedangkan sel Vendor Comparison memakai prorata weight_share yang dibatasi satu rute.
+            Kedua angka memang tidak akan sama.
           </p>
         )}
       </div>
@@ -196,6 +215,31 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
             onChange={(e) => setDate('dateTo', e.target.value)}
           />
         </label>
+
+        {vendors.length > 0 && (
+          <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+            Vendor
+            <div className="flex flex-wrap items-center gap-1 pb-0.5">
+              {vendors.map((vendor) => (
+                <span
+                  key={vendor}
+                  data-testid={`vendor-chip-${vendor}`}
+                  className="flex items-center gap-1 rounded-full border bg-muted px-2 py-1 text-xs text-foreground"
+                >
+                  {vendor}
+                  <button
+                    type="button"
+                    aria-label={`Hapus filter vendor ${vendor}`}
+                    className="text-muted-foreground hover:text-foreground"
+                    onClick={() => removeVendor(vendor)}
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {hasRoute && (
           <button
