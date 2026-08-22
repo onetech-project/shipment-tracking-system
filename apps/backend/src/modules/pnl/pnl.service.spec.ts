@@ -1103,4 +1103,112 @@ describe('PnlService', () => {
       )
     })
   })
+
+  describe('getVendorComparison', () => {
+    const VG1 = '33333333-3333-4333-8333-333333333333'
+    const VG2 = '44444444-4444-4444-8444-444444444444'
+
+    const group = (id: string) => ({ kind: 'group' as const, id })
+    const vendor = (name: string) => ({ kind: 'vendor' as const, name })
+
+    // Query order: vendor-group members, stations, then facts / issues / coverage. The first is
+    // skipped entirely when no group was picked.
+    function mockColumnQueries(groupRows: Record<string, string | null>[]) {
+      dataSource.query
+        .mockResolvedValueOnce(groupRows)
+        .mockResolvedValueOnce([
+          { origin_station: 'Jabo', dest_station: 'Denpasar' },
+          { origin_station: 'Jabo', dest_station: 'Aceh' },
+        ])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ revenue_period: '0', revenue_in_columns: '0' }])
+    }
+
+    it('builds one column per pick, in pick order, with round-tripping ids', async () => {
+      mockColumnQueries([
+        { id: VG1, name: 'Vendor Utama', vendor: 'ESP' },
+        { id: VG1, name: 'Vendor Utama', vendor: 'Angkasa' },
+      ])
+
+      const result = await service.getVendorComparison(
+        [group(VG1), vendor('PT Kargo, Tbk')],
+        '2026-05-1H',
+      )
+
+      expect(result.columns).toEqual([
+        {
+          id: `vg:${VG1}`,
+          name: 'Vendor Utama',
+          kind: 'group',
+          vendors: ['ESP', 'Angkasa'],
+          vendorCount: 2,
+        },
+        {
+          id: 'v:PT Kargo, Tbk',
+          name: 'PT Kargo, Tbk',
+          kind: 'vendor',
+          vendors: ['PT Kargo, Tbk'],
+          vendorCount: 1,
+        },
+      ])
+    })
+
+    it('drops a group that was deleted since the picker loaded', async () => {
+      // VG2 comes back with no row at all: it no longer exists. Rendering it as a nameless empty
+      // column would leave the user with nothing to explain the blank.
+      mockColumnQueries([{ id: VG1, name: 'Vendor Utama', vendor: 'ESP' }])
+
+      const result = await service.getVendorComparison([group(VG1), group(VG2)], '2026-05-1H')
+
+      expect(result.columns.map((c) => c.id)).toEqual([`vg:${VG1}`])
+    })
+
+    it('keeps a group that has no members yet as an empty column', async () => {
+      // LEFT JOIN gives one row with a null vendor for a group with no members.
+      mockColumnQueries([{ id: VG1, name: 'Group Kosong', vendor: null }])
+
+      const result = await service.getVendorComparison([group(VG1)], '2026-05-1H')
+
+      expect(result.columns[0].vendors).toEqual([])
+      expect(result.columns[0].vendorCount).toBe(0)
+    })
+
+    it('keeps an unknown vendor name as a column instead of failing the request', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ origin_station: 'Jabo', dest_station: 'Denpasar' }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ revenue_period: '0', revenue_in_columns: '0' }])
+
+      const result = await service.getVendorComparison([vendor('Sudah Hilang')], '2026-05-1H')
+
+      expect(result.columns.map((c) => c.name)).toEqual(['Sudah Hilang'])
+      expect(result.rows.every((r) => r.cells[0] === null)).toBe(true)
+    })
+
+    it('rows every station pair the view knows, empty ones included', async () => {
+      mockColumnQueries([{ id: VG1, name: 'Vendor Utama', vendor: 'ESP' }])
+
+      const result = await service.getVendorComparison([group(VG1)], '2026-05-1H')
+
+      expect(result.rows.map((r) => `${r.origin}|${r.dest}`)).toEqual([
+        'Jabo|Denpasar',
+        'Jabo|Aceh',
+      ])
+      expect(result.rows[0].originLabel).toBe('CGK')
+    })
+
+    it('makes no database call at all when nothing was picked', async () => {
+      const result = await service.getVendorComparison([], '2026-05-1H')
+
+      expect(dataSource.query).not.toHaveBeenCalled()
+      expect(result).toEqual({
+        columns: [],
+        rows: [],
+        footer: [],
+        coverage: { revenueInColumns: 0, revenuePeriod: 0 },
+      })
+    })
+  })
 })

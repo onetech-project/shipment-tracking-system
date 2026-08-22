@@ -11,6 +11,7 @@ import {
 import { originLabel } from '../../common/utils/origin-labels.util'
 import { indexIssueRows, ISSUE_BY_RANK, PnlCellIssue } from './pnl-cell-issues.util'
 import { RoutePair, ColumnPick } from './pnl-columns.util'
+import { VendorColumnPick } from './pnl-vendor-columns.util'
 
 export interface PnlSummary {
   label: string
@@ -244,6 +245,73 @@ export interface PnlRouteComparison {
   rows: PnlRouteComparisonRow[]
   footer: PnlRouteComparisonFooter[] // index-aligned with columns
   periodDays: number
+}
+
+export interface PnlVendorComparisonColumn {
+  // 'vg:<uuid>' for a saved vendor group, 'v:<raw name>' for a single vendor. Identical to the
+  // descriptor the frontend sent, so the id round-trips and the client can match columns to picks.
+  id: string
+  name: string
+  kind: 'group' | 'vendor'
+  // The vendor names this column aggregates, raw. Sent to the client so a clicked cell can build
+  // the drilldown filter, and so overlap between columns is computed off the same list the numbers
+  // came from rather than a second, drifting copy.
+  vendors: string[]
+  vendorCount: number
+}
+
+export interface PnlVendorComparisonCell {
+  revenue: number // gross: SUM(revenue_total), discount not netted
+  cost: number
+  // revenue_total - revenue_discount - cost_to, the same expression getDailyMatrix uses, so one
+  // route and period reads the same in both tabs. NOT SUM(gross_profit_to), which is
+  // NULL-propagating where COALESCE(SUM(...)) skips NULL rows.
+  margin: number
+  // Three of these four are AWB-grain and are prorated by weight_share here; cost_sg_in_to already
+  // carries weight_share inside the view definition and is therefore summed as-is. All four sit
+  // behind the same FILTER (WHERE cost_to IS NOT NULL) clause as `cost`, so they sum exactly to it.
+  costSmu: number
+  costRa: number
+  costSgOut: number
+  costSgIn: number
+  incompleteTos: number // TOs with no computable cost; `cost` here is understated
+  issues: PnlCellIssue[] // empty = clean; never null, so the frontend has one shape to read
+}
+
+export interface PnlVendorComparisonRow {
+  origin: string
+  originLabel: string
+  dest: string
+  cells: (PnlVendorComparisonCell | null)[] // index-aligned with columns; null = nothing flew
+}
+
+export interface PnlVendorComparisonFooter {
+  totalRevenue: number
+  totalCost: number
+  totalMargin: number
+  totalCostSmu: number
+  totalCostRa: number
+  totalCostSgOut: number
+  totalCostSgIn: number
+  // The divisor behind the three averages below, sent explicitly rather than recomputed on the
+  // client: the Route Comparison footer divides by calendar days, this one divides by routes, and
+  // the two tabs share one renderer. A slot that means two different things must say which.
+  routesWithData: number
+  avgRevenuePerRoute: number | null // null when routesWithData is 0
+  avgCostPerRoute: number | null
+  avgMarginPerRoute: number | null
+  incompleteTos: number
+  // Distinct AWBs for the whole period, from its own grouping set — NOT the sum of the row cells.
+  issues: PnlCellIssue[]
+}
+
+export interface PnlVendorComparison {
+  columns: PnlVendorComparisonColumn[]
+  rows: PnlVendorComparisonRow[]
+  footer: PnlVendorComparisonFooter[] // index-aligned with columns
+  // Drives a permanent banner. Only about a third of period revenue is attributable to a vendor at
+  // all, so without this the table reads as a decomposition of the period and quietly loses 70%.
+  coverage: { revenueInColumns: number; revenuePeriod: number }
 }
 
 @Injectable()
@@ -1217,5 +1285,117 @@ export class PnlService {
     })
 
     return { columns, rows, footer, periodDays }
+  }
+
+  // Revenue, cost and margin per origin→destination route for each selected vendor column, behind
+  // the "Vendor Comparison" tab. A column is either a saved vendor group or one raw vendor name;
+  // both reduce to a list of vendor names, so both take the same path.
+  //
+  // Every TO carries at most one vendor, so two columns can only double-count when the same vendor
+  // sits in both — surfaced by the client, not forbidden here. The columns still do not sum to the
+  // period total: only TOs that have a booking carry a vendor at all.
+  async getVendorComparison(
+    picks: VendorColumnPick[],
+    cyclePeriod?: string,
+    startDate?: string,
+    endDate?: string,
+    basis?: string,
+  ): Promise<PnlVendorComparison> {
+    // Zeroed rather than measured: with no columns there is no banner to draw, so a period-wide
+    // revenue scan would be work nobody reads.
+    const empty: PnlVendorComparison = {
+      columns: [],
+      rows: [],
+      footer: [],
+      coverage: { revenueInColumns: 0, revenuePeriod: 0 },
+    }
+    if (picks.length === 0) return empty
+
+    const groupIds = picks.filter((p) => p.kind === 'group').map((p) => p.id)
+    // Only asked for when a group was actually picked, so a vendor-only comparison costs one query
+    // less rather than sending an empty uuid array to the database.
+    const groupRows: Record<string, string | null>[] = groupIds.length
+      ? await this.dataSource.query(
+          `
+          SELECT g.id, g.name, m.vendor
+          FROM vendor_groups g
+          LEFT JOIN vendor_group_vendors m ON m.vendor_group_id = g.id
+          WHERE g.id = ANY($1::uuid[])
+          ORDER BY g.id, m.vendor
+          `,
+          [groupIds],
+        )
+      : []
+
+    const groupNames = new Map<string, string>()
+    const groupVendors = new Map<string, string[]>()
+    for (const row of groupRows) {
+      const id = row.id as string
+      groupNames.set(id, row.name as string)
+      if (!groupVendors.has(id)) groupVendors.set(id, [])
+      // A group with no members yet still LEFT JOINs to one row with a null vendor.
+      if (row.vendor != null) groupVendors.get(id)!.push(row.vendor)
+    }
+
+    // A group deleted between the picker loading and this request is dropped rather than rendered
+    // as a permanently empty column with no name to explain itself. A vendor *name* is never
+    // dropped: names are free text from a sheet and can vanish at any time, and an empty column the
+    // user can see and remove is more honest — and far less destructive — than a 400.
+    const columns: PnlVendorComparisonColumn[] = picks.flatMap(
+      (pick): PnlVendorComparisonColumn[] => {
+        if (pick.kind === 'group') {
+          if (!groupNames.has(pick.id)) return []
+          const vendors = groupVendors.get(pick.id) ?? []
+          return [
+            {
+              id: `vg:${pick.id}`,
+              name: groupNames.get(pick.id)!,
+              kind: 'group' as const,
+              vendors,
+              vendorCount: vendors.length,
+            },
+          ]
+        }
+        return [
+          {
+            id: `v:${pick.name}`,
+            name: pick.name,
+            kind: 'vendor' as const,
+            vendors: [pick.name],
+            vendorCount: 1,
+          },
+        ]
+      },
+    )
+
+    if (columns.length === 0) return empty
+
+    // Every station pair the view knows, not only the ones with data this period, so the rows stay
+    // put as the user changes cycle — the same rule the daily matrix columns follow.
+    const stations = await this.getStations()
+    const rows: PnlVendorComparisonRow[] = stations.map((s) => ({
+      origin: s.origin,
+      originLabel: s.originLabel,
+      dest: s.dest,
+      cells: columns.map(() => null),
+    }))
+
+    const footer: PnlVendorComparisonFooter[] = columns.map(() => ({
+      totalRevenue: 0,
+      totalCost: 0,
+      totalMargin: 0,
+      totalCostSmu: 0,
+      totalCostRa: 0,
+      totalCostSgOut: 0,
+      totalCostSgIn: 0,
+      routesWithData: 0,
+      avgRevenuePerRoute: null,
+      avgCostPerRoute: null,
+      avgMarginPerRoute: null,
+      incompleteTos: 0,
+      issues: [],
+    }))
+
+    return { columns, rows, footer, coverage: { revenueInColumns: 0, revenuePeriod: 0 } }
   }
 }
