@@ -1,5 +1,5 @@
 /**
- * The one P&L test that goes through real HTTP.
+ * The one P&L spec that goes through real HTTP.
  *
  * pnl.controller.spec.ts calls controller methods directly and pnl-vendor-comparison.integration
  * .spec.ts calls PnlService directly, so neither ever executes Express's query-string parsing.
@@ -8,7 +8,7 @@
  * would iterate that string one character at a time. Only a real request can show the difference.
  */
 import { Test, TestingModule } from '@nestjs/testing'
-import { INestApplication } from '@nestjs/common'
+import { INestApplication, ValidationPipe } from '@nestjs/common'
 import request from 'supertest'
 import { PnlController } from './pnl.controller'
 import { PnlService } from './pnl.service'
@@ -20,7 +20,6 @@ const EMPTY = { columns: [], rows: [], footer: [], coverage: { revenueInColumns:
 
 const mockService = {
   getVendorComparison: jest.fn().mockResolvedValue(EMPTY),
-  getAwbDrilldown: jest.fn().mockResolvedValue({ data: [], total: 0 }),
 }
 
 describe('PnlController query-string parsing (HTTP)', () => {
@@ -29,7 +28,6 @@ describe('PnlController query-string parsing (HTTP)', () => {
   beforeEach(async () => {
     jest.clearAllMocks()
     mockService.getVendorComparison.mockResolvedValue(EMPTY)
-    mockService.getAwbDrilldown.mockResolvedValue({ data: [], total: 0 })
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [PnlController],
@@ -42,6 +40,7 @@ describe('PnlController query-string parsing (HTTP)', () => {
       .compile()
 
     app = module.createNestApplication()
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }))
     await app.init()
   })
 
