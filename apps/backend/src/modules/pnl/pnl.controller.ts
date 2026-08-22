@@ -166,7 +166,10 @@ export class PnlController {
     return this.pnlService.getDailyMatrix(cycle, start, end, basis)
   }
 
-  @Get('breakdown/group-comparison')
+  // Two paths, one handler. `group-comparison` is the legacy name kept alive for one release so a
+  // frontend that has not yet been redeployed keeps working — frontend and backend roll out in
+  // parallel. Remove the legacy entry only after the release carrying the rename is fully out.
+  @Get(['breakdown/route-comparison', 'breakdown/group-comparison'])
   getGroupComparison(
     @Query('columns') columns?: string,
     @Query('cycle') cycle?: string,

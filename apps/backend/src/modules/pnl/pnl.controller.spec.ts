@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing'
+import { PATH_METADATA } from '@nestjs/common/constants'
 import { PnlController } from './pnl.controller'
 import { PnlService } from './pnl.service'
 import { RbacGuard } from '../../common/guards/rbac.guard'
@@ -132,5 +133,18 @@ describe('PnlController', () => {
         [], '2026-05-1H', undefined, undefined, undefined,
       )
     })
+  })
+})
+
+describe('route aliases', () => {
+  it('serves the comparison endpoint under both the new and the legacy path', () => {
+    const paths = Reflect.getMetadata(
+      PATH_METADATA,
+      PnlController.prototype.getGroupComparison,
+    )
+
+    expect(paths).toEqual(
+      expect.arrayContaining(['breakdown/route-comparison', 'breakdown/group-comparison']),
+    )
   })
 })
