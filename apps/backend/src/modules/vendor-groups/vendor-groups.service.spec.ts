@@ -105,4 +105,194 @@ describe('VendorGroupsService', () => {
       await expect(service.getAvailableVendors()).resolves.toEqual([])
     })
   })
+
+  describe('findAll', () => {
+    it('returns each group with its vendor names', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { id: 'vg1', name: 'Maskapai', description: null, vendor: 'GARUDA INDONESIA' },
+        { id: 'vg1', name: 'Maskapai', description: null, vendor: 'Sriwijaya Air' },
+        { id: 'vg2', name: 'Kargo', description: 'pihak ketiga', vendor: 'ASIA CARGO' },
+      ])
+
+      await expect(service.findAll()).resolves.toEqual([
+        {
+          id: 'vg1',
+          name: 'Maskapai',
+          description: null,
+          vendors: ['GARUDA INDONESIA', 'Sriwijaya Air'],
+        },
+        { id: 'vg2', name: 'Kargo', description: 'pihak ketiga', vendors: ['ASIA CARGO'] },
+      ])
+    })
+
+    it('returns an empty array when there are no groups', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+      await expect(service.findAll()).resolves.toEqual([])
+    })
+
+    it('yields vendors: [] for a group whose LEFT JOIN produced a single all-null row', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { id: 'vg1', name: 'Empty', description: null, vendor: null },
+      ])
+
+      await expect(service.findAll()).resolves.toEqual([
+        { id: 'vg1', name: 'Empty', description: null, vendors: [] },
+      ])
+    })
+  })
+
+  describe('create', () => {
+    it('rejects a vendor that is in neither the master nor the observed set', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { vendor: 'GARUDA INDONESIA', has_data: true, in_master: true },
+      ])
+
+      await expect(
+        service.create({ name: 'Bad', vendors: ['NOBODY AIR'] }),
+      ).rejects.toThrow('Unknown vendor: NOBODY AIR')
+    })
+
+    // A vendor that exists only in v_pnl_to must be accepted — that is the entire reason
+    // getAvailableVendors is a union rather than a master lookup.
+    it('accepts a vendor that exists only in the observed set', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ vendor: 'GARUDA INDONESIA', has_data: true, in_master: false }])
+        .mockResolvedValueOnce([
+          { id: 'new-id', name: 'Maskapai', description: null, vendor: 'GARUDA INDONESIA' },
+        ])
+      groupRepo.findOne.mockResolvedValueOnce(null)
+
+      await expect(
+        service.create({ name: 'Maskapai', vendors: ['GARUDA INDONESIA'] }),
+      ).resolves.toEqual({
+        id: 'new-id',
+        name: 'Maskapai',
+        description: null,
+        vendors: ['GARUDA INDONESIA'],
+      })
+    })
+
+    // Case and whitespace are significant: 'garuda indonesia' is a different vendor from
+    // 'GARUDA INDONESIA' as far as the comparison join is concerned, so it must not be accepted
+    // by accident.
+    it('matches vendor names exactly, without folding case or trimming', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { vendor: 'GARUDA INDONESIA', has_data: true, in_master: true },
+      ])
+
+      await expect(
+        service.create({ name: 'Maskapai', vendors: ['garuda indonesia'] }),
+      ).rejects.toThrow('Unknown vendor: garuda indonesia')
+    })
+
+    it('rejects a duplicate name with a conflict', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { vendor: 'GARUDA INDONESIA', has_data: true, in_master: true },
+      ])
+      groupRepo.findOne.mockResolvedValueOnce({ id: 'existing', name: 'Maskapai' })
+
+      await expect(
+        service.create({ name: 'Maskapai', vendors: ['GARUDA INDONESIA'] }),
+      ).rejects.toThrow('A vendor group named "Maskapai" already exists')
+    })
+
+    it('saves the group, de-dupes the vendors, and returns the created group', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ vendor: 'GARUDA INDONESIA', has_data: true, in_master: true }])
+        .mockResolvedValueOnce([
+          { id: 'new-id', name: 'Maskapai', description: 'pulau', vendor: 'GARUDA INDONESIA' },
+        ])
+      groupRepo.findOne.mockResolvedValueOnce(null)
+
+      const result = await service.create({
+        name: 'Maskapai',
+        description: 'pulau',
+        vendors: ['GARUDA INDONESIA', 'GARUDA INDONESIA'],
+      })
+
+      expect(dataSource.transaction).toHaveBeenCalled()
+      expect(txGroupRepo.save).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'Maskapai', description: 'pulau' }),
+      )
+      expect(txVendorRepo.delete).toHaveBeenCalledWith({ vendorGroupId: 'new-id' })
+      expect(txVendorRepo.insert).toHaveBeenCalledWith([
+        { vendorGroupId: 'new-id', vendor: 'GARUDA INDONESIA' },
+      ])
+      // The writes must go through the transactional manager, not the injected repos — that is the
+      // whole point of wrapping them together.
+      expect(groupRepo.save).not.toHaveBeenCalled()
+      expect(groupRepo.update).not.toHaveBeenCalled()
+      expect(result).toEqual({
+        id: 'new-id',
+        name: 'Maskapai',
+        description: 'pulau',
+        vendors: ['GARUDA INDONESIA'],
+      })
+    })
+
+    it('normalizes a whitespace-only description to null', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ vendor: 'GARUDA INDONESIA', has_data: true, in_master: true }])
+        .mockResolvedValueOnce([
+          { id: 'new-id', name: 'Maskapai', description: null, vendor: 'GARUDA INDONESIA' },
+        ])
+      groupRepo.findOne.mockResolvedValueOnce(null)
+
+      await service.create({
+        name: 'Maskapai',
+        description: '   ',
+        vendors: ['GARUDA INDONESIA'],
+      })
+
+      expect(txGroupRepo.save).toHaveBeenCalledWith(expect.objectContaining({ description: null }))
+    })
+
+    it('maps a unique-name race (23505 on uq_vendor_groups_name) to the same ConflictException as the pre-check', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { vendor: 'GARUDA INDONESIA', has_data: true, in_master: true },
+      ])
+      groupRepo.findOne.mockResolvedValueOnce(null)
+      txGroupRepo.save.mockRejectedValueOnce(
+        Object.assign(new Error('duplicate key value violates unique constraint'), {
+          code: '23505',
+          constraint: 'uq_vendor_groups_name',
+        }),
+      )
+
+      await expect(
+        service.create({ name: 'Maskapai', vendors: ['GARUDA INDONESIA'] }),
+      ).rejects.toThrow('A vendor group named "Maskapai" already exists')
+    })
+
+    it('does not remap a 23505 from an unrelated constraint into a name conflict', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { vendor: 'GARUDA INDONESIA', has_data: true, in_master: true },
+      ])
+      groupRepo.findOne.mockResolvedValueOnce(null)
+      txGroupRepo.save.mockRejectedValueOnce(
+        Object.assign(new Error('some other violation'), {
+          code: '23505',
+          constraint: 'pk_vendor_group_vendors',
+        }),
+      )
+
+      await expect(
+        service.create({ name: 'Maskapai', vendors: ['GARUDA INDONESIA'] }),
+      ).rejects.toThrow('some other violation')
+    })
+
+    it('propagates an error from the transactional vendor insert rather than swallowing it', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { vendor: 'GARUDA INDONESIA', has_data: true, in_master: true },
+      ])
+      groupRepo.findOne.mockResolvedValueOnce(null)
+      txVendorRepo.insert.mockRejectedValueOnce(new Error('insert failed'))
+
+      await expect(
+        service.create({ name: 'Maskapai', vendors: ['GARUDA INDONESIA'] }),
+      ).rejects.toThrow('insert failed')
+
+      expect(dataSource.transaction).toHaveBeenCalled()
+    })
+  })
 })
