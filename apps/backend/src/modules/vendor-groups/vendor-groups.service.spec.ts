@@ -185,6 +185,16 @@ describe('VendorGroupsService', () => {
       ).rejects.toThrow('Unknown vendor: garuda indonesia')
     })
 
+    it('rejects a vendor name with leading or trailing whitespace when the trimmed form is not in the known set', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { vendor: 'GARUDA INDONESIA', has_data: true, in_master: true },
+      ])
+
+      await expect(
+        service.create({ name: 'Maskapai', vendors: [' GARUDA INDONESIA'] }),
+      ).rejects.toThrow('Unknown vendor:  GARUDA INDONESIA')
+    })
+
     it('rejects a duplicate name with a conflict', async () => {
       dataSource.query.mockResolvedValueOnce([
         { vendor: 'GARUDA INDONESIA', has_data: true, in_master: true },
