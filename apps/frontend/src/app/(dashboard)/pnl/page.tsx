@@ -13,8 +13,8 @@ import {
   DateBasis,
   DEFAULT_DATE_BASIS,
   BASIS_LABELS,
-  ROUTE_COMPARISON_LABEL,
 } from '@/features/pnl/hooks/usePnl'
+import { ROUTE_COMPARISON_LABEL } from '@/features/pnl/constants'
 import { routeFromCell } from '@/features/pnl/utils/dailyMatrix'
 import { PnlKpiCards, PnlKpiKey } from '@/features/pnl/components/PnlKpiCards'
 import { PnlDailyMarginChart } from '@/features/pnl/components/PnlDailyMarginChart'

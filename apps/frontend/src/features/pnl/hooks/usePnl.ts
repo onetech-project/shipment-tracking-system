@@ -12,11 +12,6 @@ export const BASIS_LABELS: Record<DateBasis, string> = {
   completed_time: 'Completed time',
 }
 
-// Exported so a rename touches one place. Lives here rather than in page.tsx because Next's App
-// Router only allows a page.tsx to export `default` and a fixed whitelist (metadata,
-// generateStaticParams, ...) — any other named export fails the generated page type check.
-export const ROUTE_COMPARISON_LABEL = 'Route Comparison'
-
 export interface PnlRoutePair {
   origin: string // raw v_pnl_to value, e.g. 'Jabo'
   dest: string // already a city name, e.g. 'Denpasar'
