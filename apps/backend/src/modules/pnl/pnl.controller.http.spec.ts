@@ -18,8 +18,11 @@ import { ALLOW_ALL_GUARD } from '../../test/test-helpers'
 
 const EMPTY = { columns: [], rows: [], footer: [], coverage: { revenueInColumns: 0, revenuePeriod: 0 } }
 
+const EMPTY_DRILLDOWN = { data: [], total: 0 }
+
 const mockService = {
   getVendorComparison: jest.fn().mockResolvedValue(EMPTY),
+  getAwbDrilldown: jest.fn().mockResolvedValue(EMPTY_DRILLDOWN),
 }
 
 describe('PnlController query-string parsing (HTTP)', () => {
@@ -28,6 +31,7 @@ describe('PnlController query-string parsing (HTTP)', () => {
   beforeEach(async () => {
     jest.clearAllMocks()
     mockService.getVendorComparison.mockResolvedValue(EMPTY)
+    mockService.getAwbDrilldown.mockResolvedValue(EMPTY_DRILLDOWN)
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [PnlController],
@@ -90,5 +94,29 @@ describe('PnlController query-string parsing (HTTP)', () => {
       .expect(400)
 
     expect(mockService.getVendorComparison).not.toHaveBeenCalled()
+  })
+
+  it('reads a repeated vendor param on the AWB drilldown', async () => {
+    await request(app.getHttpServer())
+      .get('/pnl/awb-drilldown')
+      .query({ cycle: '2026-05-1H' })
+      // .query() with an array emits the param twice, which is the wire shape the frontend sends.
+      .query('vendor=ESP&vendor=Angkasa')
+      .expect(200)
+
+    expect(mockService.getAwbDrilldown).toHaveBeenCalledWith(
+      1,
+      50,
+      '2026-05-1H',
+      undefined,
+      undefined,
+      undefined,
+      {
+        routes: [],
+        dateFrom: undefined,
+        dateTo: undefined,
+        vendors: ['ESP', 'Angkasa'],
+      },
+    )
   })
 })

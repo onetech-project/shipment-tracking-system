@@ -64,6 +64,9 @@ export interface PnlRouteFilter {
   routes?: RoutePair[]
   dateFrom?: string // YYYY-MM-DD
   dateTo?: string // YYYY-MM-DD, inclusive
+  // Raw vendor names, as stored in v_pnl_to.vendor. Unlike routes and dates, this narrows the
+  // OUTER aggregate rather than the EXISTS that selects AWBs — see getAwbDrilldown.
+  vendors?: string[]
 }
 
 export interface PnlToRow {
@@ -465,6 +468,16 @@ export class PnlService {
          )`
       : ''
 
+    // Vendor is the one filter that belongs in the OUTER predicate. The route and date conditions
+    // above sit inside an EXISTS on purpose: they decide which AWBs are listed while the aggregate
+    // still sums the whole AWB, because the cost columns are MAX(cost_*_awb) over it. Vendor is
+    // different — v_pnl_to.vendor comes from the AWB's booking, so it is constant across an AWB's
+    // TOs, and the outer predicate is what has the same scope as the vendor column whose cell was
+    // clicked. Putting it inside the EXISTS would produce a third number nobody asked for.
+    const vendorWhere = route?.vendors?.length
+      ? `AND v.vendor = ANY(${bind(route.vendors)}::text[])`
+      : ''
+
     const offset = (page - 1) * limit
     const filterParams = [...params, ...routeParams]
     const dataParams = [...filterParams, limit, offset]
@@ -505,6 +518,7 @@ export class PnlService {
         FROM v_pnl_to v
         WHERE ${where}
         ${routeWhere}
+        ${vendorWhere}
         GROUP BY awb, vendor, airline
         ORDER BY SUM(revenue_total) DESC NULLS LAST
         LIMIT $${p + 1} OFFSET $${p + 2}
@@ -512,7 +526,7 @@ export class PnlService {
         dataParams,
       ),
       this.dataSource.query(
-        `SELECT COUNT(DISTINCT awb)::int AS total FROM v_pnl_to v WHERE ${where} ${routeWhere}`,
+        `SELECT COUNT(DISTINCT awb)::int AS total FROM v_pnl_to v WHERE ${where} ${routeWhere} ${vendorWhere}`,
         countParams,
       ),
     ])

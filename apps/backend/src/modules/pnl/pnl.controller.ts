@@ -55,11 +55,18 @@ export class PnlController {
     @Query('routes') routes?: string,
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
+    // Repeats, because a vendor group column carries many vendors and a vendor name may contain
+    // any punctuation a delimiter would use.
+    @Query('vendor') vendor?: string | string[],
   ) {
+    const vendors = parseVendorNames(vendor)
     return this.pnlService.getAwbDrilldown(page, limit, cycle, start, end, basis, {
       routes: parseRoutePairs(routes),
       dateFrom,
       dateTo,
+      // Omitted rather than sent empty, so an untouched drilldown produces exactly the filter shape
+      // it produced before vendors existed — which is also what the existing specs pin.
+      ...(vendors.length ? { vendors } : {}),
     })
   }
 

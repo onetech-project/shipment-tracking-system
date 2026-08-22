@@ -329,6 +329,47 @@ describe('PnlService', () => {
       expect(normalized).toContain('AND EXISTS ( SELECT 1 FROM v_pnl_to m WHERE m.awb = v.awb')
     })
 
+    it('filters by vendor in the outer predicate, not inside the route EXISTS', async () => {
+      dataSource.query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: '0' }])
+
+      await service.getAwbDrilldown(1, 50, '2026-05-1H', undefined, undefined, undefined, {
+        routes: [{ origin: 'Jabo', dest: 'Denpasar' }],
+        vendors: ['ESP', 'Angkasa'],
+      })
+
+      const dataSql = (dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')
+      // The outer alias is `v`. Inside the EXISTS the alias is `m`, and a vendor predicate there
+      // would only decide WHICH AWBs are listed while the outer aggregate still summed every
+      // vendor's TOs — a third question nobody asked.
+      expect(dataSql).toContain('AND v.vendor = ANY(')
+      expect(dataSql).not.toContain('m.vendor')
+
+      const dataParams = dataSource.query.mock.calls[0][1] as unknown[]
+      expect(dataParams).toContain(dataParams.find((p) => Array.isArray(p) && p[0] === 'ESP'))
+    })
+
+    it('applies the same vendor predicate to the count query, so paging stays consistent', async () => {
+      dataSource.query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: '0' }])
+
+      await service.getAwbDrilldown(1, 50, '2026-05-1H', undefined, undefined, undefined, {
+        vendors: ['ESP'],
+      })
+
+      const countSql = (dataSource.query.mock.calls[1][0] as string).replace(/\s+/g, ' ')
+      expect(countSql).toContain('AND v.vendor = ANY(')
+    })
+
+    it('leaves the query untouched when no vendor is given', async () => {
+      dataSource.query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: '0' }])
+
+      await service.getAwbDrilldown(1, 50, '2026-05-1H', undefined, undefined, undefined, {
+        routes: [{ origin: 'Jabo', dest: 'Denpasar' }],
+      })
+
+      const dataSql = dataSource.query.mock.calls[0][0] as string
+      expect(dataSql).not.toContain('v.vendor = ANY')
+    })
+
     it('emits no route condition at all when no routes are selected', async () => {
       dataSource.query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: '0' }])
 
