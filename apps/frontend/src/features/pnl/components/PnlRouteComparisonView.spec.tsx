@@ -344,11 +344,11 @@ it('renders the comparison table from a real payload via toRouteComparisonTable'
   fireEvent.click(screen.getByLabelText(/Sumatera/))
 
   const table = screen.getByRole('table')
-  // Each group name must appear twice: once as the Revenue block header, once as the Cost block
-  // header. A prop-shape regression (e.g. passing raw data instead of toRouteComparisonTable(data))
-  // would either throw or leave these headers empty.
-  expect(within(table).getAllByText('Kalimantan')).toHaveLength(2)
-  expect(within(table).getAllByText('Sumatera')).toHaveLength(2)
+  // Each group name must appear three times: once as the Revenue block header, once as the Cost
+  // block header, once as the Margin block header. A prop-shape regression (e.g. passing raw data
+  // instead of toRouteComparisonTable(data)) would either throw or leave these headers empty.
+  expect(within(table).getAllByText('Kalimantan')).toHaveLength(3)
+  expect(within(table).getAllByText('Sumatera')).toHaveLength(3)
 
   // A known body value from the payload, formatted by the real table component.
   expect(screen.getByTestId('revenue-2026-05-01-g1')).toHaveTextContent('1.500.000')
@@ -362,9 +362,9 @@ it('renders the comparison table from a real payload via toRouteComparisonTable'
 })
 
 // Finding 2: Revenue here is SUM(revenue_total), gross — revenue_discount is never subtracted —
-// while Daily Report's Margin does subtract it. Revenue sits right beside Cost in this table, so
-// without a caption the obvious (wrong) reading is to subtract one column from the other.
-it('captions the table to say Revenue is gross and not meant to be subtracted from Cost', () => {
+// while Margin is net of discount. Now that Margin sits beside Revenue and Cost in this table,
+// without a caption the obvious (wrong) reading is that Revenue − Cost should equal Margin.
+it('captions the table to say Revenue is gross, so Revenue minus Cost does not equal Margin', () => {
   ;(usePnlRouteComparison as jest.Mock).mockReturnValue({
     data: comparisonData,
     isLoading: false,
@@ -376,7 +376,7 @@ it('captions the table to say Revenue is gross and not meant to be subtracted fr
   fireEvent.click(screen.getByLabelText(/Kalimantan/))
 
   expect(screen.getByText(/bruto/i)).toBeInTheDocument()
-  expect(screen.getByText(/tidak dimaksudkan untuk dikurangkan/i)).toBeInTheDocument()
+  expect(screen.getByText(/tidak sama dengan Margin/i)).toBeInTheDocument()
 })
 
 it('sends selected group picks to usePnlRouteComparison in click order, moving a reselected group to the end', () => {

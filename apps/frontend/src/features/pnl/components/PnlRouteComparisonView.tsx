@@ -151,12 +151,13 @@ export function PnlRouteComparisonView({ filter, onCellClick }: PnlRouteComparis
         </div>
       ) : data ? (
         <div className="space-y-2">
-          {/* Revenue is SUM(revenue_total), gross — revenue_discount is never subtracted. That is
-              intentional, but Revenue sits right next to Cost, so without this note the obvious
-              (wrong) mental move is to subtract one column from the other. */}
+          {/* Revenue is SUM(revenue_total), gross — revenue_discount is never subtracted, while
+              Margin is net of discount. Now that Margin sits right next to Revenue and Cost, the
+              obvious (wrong) mental move is to expect Revenue − Cost to equal Margin. */}
           <p className="text-xs text-muted-foreground">
-            Kolom Revenue di sini bruto (belum dikurangi discount), berbeda dari Margin di tab Daily
-            Report. Revenue dan Cost tidak dimaksudkan untuk dikurangkan satu sama lain.
+            Kolom Revenue di sini bruto (belum dikurangi discount), sama seperti tab Daily Report.
+            Margin sudah dikurangi discount, jadi Revenue − Cost tidak sama dengan Margin —
+            selisihnya adalah discount.
           </p>
           <PnlComparisonTable
             model={toRouteComparisonTable(data)}

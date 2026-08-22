@@ -22,6 +22,16 @@ interface PnlComparisonTableProps<TColumn extends ComparisonColumn> {
 // The Total footer row expands like a body row; this is the key it occupies in the open set.
 const FOOTER_KEY = '__footer__'
 
+// The three value blocks, in render order. Every place that emits value cells loops over this, so
+// body rows, detail rows and footer rows can never disagree about how wide a row is.
+const FIELDS = ['revenue', 'cost', 'margin'] as const
+type Field = (typeof FIELDS)[number]
+
+function valueClass(field: Field, value: number | null): string {
+  // Only margin can meaningfully be negative; revenue and cost are sums of non-negative amounts.
+  return field === 'margin' && value != null && value < 0 ? 'text-red-600 dark:text-red-400' : ''
+}
+
 // A missing value is marked, not left blank: an empty cell and a real 0 read the same at a glance,
 // and a clickable cell needs something to aim at. Same rule as PnlMatrixTable.
 function formatValue(value: number | null): string {
@@ -98,7 +108,7 @@ export function PnlComparisonTable<TColumn extends ComparisonColumn>({
           {label}
         </td>
         {Array.from({ length: groupCount }, (_, i) => (
-          <td key={`rev-${i}`} className="border-b border-l" />
+          <td key={`blank-revenue-${i}`} className="border-b border-l" />
         ))}
         {components[componentKey].map((value, i) => (
           <td
@@ -107,6 +117,9 @@ export function PnlComparisonTable<TColumn extends ComparisonColumn>({
           >
             {formatValue(value)}
           </td>
+        ))}
+        {Array.from({ length: groupCount }, (_, i) => (
+          <td key={`blank-margin-${i}`} className="border-b border-l" />
         ))}
       </tr>
     ))
@@ -135,6 +148,12 @@ export function PnlComparisonTable<TColumn extends ComparisonColumn>({
               >
                 Cost
               </th>
+              <th
+                colSpan={groupCount}
+                className="border-b border-l bg-amber-100 px-3 py-1.5 text-center font-semibold dark:bg-amber-950/40"
+              >
+                Margin
+              </th>
             </tr>
             <tr>
               {model.columns.map((column) => (
@@ -148,6 +167,14 @@ export function PnlComparisonTable<TColumn extends ComparisonColumn>({
               {model.columns.map((column) => (
                 <th
                   key={`cost-${column.id}`}
+                  className="whitespace-nowrap border-b border-l px-3 py-2 text-right font-medium text-muted-foreground"
+                >
+                  {column.name}
+                </th>
+              ))}
+              {model.columns.map((column) => (
+                <th
+                  key={`margin-${column.id}`}
                   className="whitespace-nowrap border-b border-l px-3 py-2 text-right font-medium text-muted-foreground"
                 >
                   {column.name}
@@ -173,10 +200,12 @@ export function PnlComparisonTable<TColumn extends ComparisonColumn>({
                       onToggle={() => toggle(row.rowKey)}
                       className={striped ? 'bg-muted/30' : 'bg-card'}
                     />
-                    {(['revenue', 'cost'] as const).flatMap((field) =>
+                    {FIELDS.flatMap((field) =>
                       row[field].map((value, i) => {
                         const warning = row.warnings[i]
-                        const tint = hasWarning(warning) ? WARNING_TINT : ''
+                        // A warning tint outranks the negative-margin colour: an unreliable number
+                        // should not be read as a confident loss.
+                        const tint = hasWarning(warning) ? WARNING_TINT : valueClass(field, value)
                         const testId = `${field}-${row.rowKey}-${model.columns[i].id}`
                         return onCellClick ? (
                           <td key={testId} className={`border-b border-l p-0 ${tint}`}>
@@ -225,24 +254,21 @@ export function PnlComparisonTable<TColumn extends ComparisonColumn>({
                       {footerRow.label}
                     </td>
                   )}
-                  {footerRow.revenue.map((value, ci) => (
-                    <td
-                      key={`rev-${ci}`}
-                      title={warningTooltip(footerRow.warnings?.[ci])}
-                      className={`whitespace-nowrap border-b border-l px-3 py-1.5 text-right ${hasWarning(footerRow.warnings?.[ci]) ? WARNING_TINT : ''}`}
-                    >
-                      {formatValue(value)}
-                    </td>
-                  ))}
-                  {footerRow.cost.map((value, ci) => (
-                    <td
-                      key={`cost-${ci}`}
-                      title={warningTooltip(footerRow.warnings?.[ci])}
-                      className={`whitespace-nowrap border-b border-l px-3 py-1.5 text-right ${hasWarning(footerRow.warnings?.[ci]) ? WARNING_TINT : ''}`}
-                    >
-                      {formatValue(value)}
-                    </td>
-                  ))}
+                  {FIELDS.flatMap((field) =>
+                    footerRow[field].map((value, ci) => (
+                      <td
+                        key={`${field}-${ci}`}
+                        title={warningTooltip(footerRow.warnings?.[ci])}
+                        className={`whitespace-nowrap border-b border-l px-3 py-1.5 text-right ${
+                          hasWarning(footerRow.warnings?.[ci])
+                            ? WARNING_TINT
+                            : valueClass(field, value)
+                        }`}
+                      >
+                        {formatValue(value)}
+                      </td>
+                    )),
+                  )}
                 </tr>
                 {footerRow.components &&
                   openRows.has(FOOTER_KEY) &&

@@ -123,7 +123,8 @@ it('renders a Revenue and a Cost block header spanning the group columns', () =>
 
   expect(screen.getByText('Revenue')).toHaveAttribute('colspan', '2')
   expect(screen.getByText('Cost')).toHaveAttribute('colspan', '2')
-  expect(screen.getAllByText('Kalimantan')).toHaveLength(2) // once under each block
+  expect(screen.getByText('Margin')).toHaveAttribute('colspan', '2')
+  expect(screen.getAllByText('Kalimantan')).toHaveLength(3) // once under each block
 })
 
 it('renders a missing cell as an em-dash and a real zero as 0', () => {
@@ -181,12 +182,14 @@ it('leaves the Revenue-block cells of an expanded detail row empty', () => {
   for (const key of ['costSmu', 'costRa', 'costSgOut', 'costSgIn']) {
     const row = screen.getByTestId(`detail-2026-05-01-${key}`)
     const cells = row.querySelectorAll('td')
-    // label, 2 blank Revenue-block cells, 2 filled Cost-block cells
-    expect(cells).toHaveLength(5)
+    // label, 2 blank Revenue-block cells, 2 filled Cost-block cells, 2 blank Margin-block cells
+    expect(cells).toHaveLength(7)
     expect(cells[1]).toHaveTextContent('')
     expect(cells[2]).toHaveTextContent('')
     expect(cells[3]).not.toHaveTextContent('')
     expect(cells[4]).not.toHaveTextContent('')
+    expect(cells[5]).toHaveTextContent('')
+    expect(cells[6]).toHaveTextContent('')
   }
 })
 
@@ -302,6 +305,39 @@ it('paints both blocks of the Total footer row amber for a warned column, and le
   expect(revenueClean.className).not.toContain('bg-amber-100')
   expect(costWarned.className).toContain('bg-amber-100')
   expect(costClean.className).not.toContain('bg-amber-100')
+})
+
+it('renders a Margin block and keeps every row 1 + 3N cells wide', async () => {
+  render(<PnlComparisonTable model={baseModel()} firstColumnHeader={firstColumnHeader} cellHint={cellHint} />)
+
+  expect(screen.getByRole('columnheader', { name: 'Margin' })).toBeInTheDocument()
+  expect(screen.getByTestId('margin-2026-05-01-g1')).toHaveTextContent('200')
+
+  // Two columns in the fixture, so every row is 1 + 3*2 = 7 cells.
+  const bodyRow = screen.getByTestId('row-2026-05-01')
+  expect(bodyRow.querySelectorAll('td')).toHaveLength(7)
+
+  // Expand the Total footer row and check a detail row is padded to the same width.
+  await userEvent.click(screen.getByRole('button', { name: 'Rincian cost Total' }))
+  const detail = screen.getByTestId('detail-__footer__-costSmu')
+  expect(detail.querySelectorAll('td')).toHaveLength(7)
+})
+
+it('colours a negative margin red and lets a warning tint win over it', () => {
+  const model = baseModel()
+  // g1 on 2026-05-01 carries no warning (issues: [], incompleteTos: 0), so red should show cleanly.
+  model.rows[0].margin = [-50, null]
+  // g1 on 2026-05-02 carries a real warning (incompleteTos: 3) alongside a negative margin — the
+  // tint must win so an unreliable number never reads as a confident loss.
+  model.rows[1].margin = [-30, 500]
+
+  render(<PnlComparisonTable model={model} firstColumnHeader={firstColumnHeader} cellHint={cellHint} />)
+
+  expect(screen.getByTestId('margin-2026-05-01-g1').className).toContain('text-red')
+
+  const warnedNegativeCell = screen.getByTestId('margin-2026-05-02-g1').closest('td')!
+  expect(warnedNegativeCell.className).toContain('bg-amber-100')
+  expect(warnedNegativeCell.className).not.toContain('text-red')
 })
 
 it('labels the first column from a prop and hands the row key to the click handler', async () => {
