@@ -13,7 +13,7 @@ const mockService = {
   getAwbDrilldown: jest.fn(),
   getDataQuality: jest.fn(),
   getDailyMatrix: jest.fn(),
-  getGroupComparison: jest.fn(),
+  getRouteComparison: jest.fn(),
 }
 
 describe('PnlController', () => {
@@ -107,14 +107,14 @@ describe('PnlController', () => {
     )
   })
 
-  describe('getGroupComparison', () => {
+  describe('getRouteComparison', () => {
     it('parses mixed group and route descriptors in pick order', async () => {
-      await controller.getGroupComparison(
+      await controller.getRouteComparison(
         `g:11111111-1111-4111-8111-111111111111,r:Jabo|Denpasar`,
         '2026-05-1H',
       )
 
-      expect(mockService.getGroupComparison).toHaveBeenCalledWith(
+      expect(mockService.getRouteComparison).toHaveBeenCalledWith(
         [
           { kind: 'group', id: '11111111-1111-4111-8111-111111111111' },
           { kind: 'route', origin: 'Jabo', dest: 'Denpasar' },
@@ -127,9 +127,9 @@ describe('PnlController', () => {
     })
 
     it('sends an empty pick list when the columns param is absent', async () => {
-      await controller.getGroupComparison(undefined, '2026-05-1H')
+      await controller.getRouteComparison(undefined, '2026-05-1H')
 
-      expect(mockService.getGroupComparison).toHaveBeenCalledWith(
+      expect(mockService.getRouteComparison).toHaveBeenCalledWith(
         [], '2026-05-1H', undefined, undefined, undefined,
       )
     })
@@ -140,7 +140,7 @@ describe('route aliases', () => {
   it('serves the comparison endpoint under both the new and the legacy path', () => {
     const paths = Reflect.getMetadata(
       PATH_METADATA,
-      PnlController.prototype.getGroupComparison,
+      PnlController.prototype.getRouteComparison,
     )
 
     expect(paths).toEqual(

@@ -9,7 +9,7 @@ import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom'
 import { PnlComparisonTable } from './PnlComparisonTable'
 import { ComparisonTableModel } from '../utils/comparison'
-import { PnlGroupComparisonColumn } from '../hooks/usePnl'
+import { PnlRouteComparisonColumn } from '../hooks/usePnl'
 
 // Matches what PnlRouteComparisonView actually passes, so the existing tests below keep
 // exercising the route tab's real header/hint text rather than a stand-in.
@@ -44,8 +44,8 @@ const columns = [
 ]
 
 function baseModel(
-  overrides: Partial<ComparisonTableModel<PnlGroupComparisonColumn>> = {},
-): ComparisonTableModel<PnlGroupComparisonColumn> {
+  overrides: Partial<ComparisonTableModel<PnlRouteComparisonColumn>> = {},
+): ComparisonTableModel<PnlRouteComparisonColumn> {
   return {
     columns,
     rows: [

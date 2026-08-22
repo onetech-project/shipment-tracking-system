@@ -170,13 +170,13 @@ export class PnlController {
   // frontend that has not yet been redeployed keeps working — frontend and backend roll out in
   // parallel. Remove the legacy entry only after the release carrying the rename is fully out.
   @Get(['breakdown/route-comparison', 'breakdown/group-comparison'])
-  getGroupComparison(
+  getRouteComparison(
     @Query('columns') columns?: string,
     @Query('cycle') cycle?: string,
     @Query('start') start?: string,
     @Query('end') end?: string,
     @Query('basis') basis?: string,
   ) {
-    return this.pnlService.getGroupComparison(parseColumnPicks(columns), cycle, start, end, basis)
+    return this.pnlService.getRouteComparison(parseColumnPicks(columns), cycle, start, end, basis)
   }
 }

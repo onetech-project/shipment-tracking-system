@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { PnlRouteComparisonView } from './PnlRouteComparisonView'
-import { PnlColumnPick, PnlFilter, PnlGroupComparison, PnlRouteFilter } from '../hooks/usePnl'
+import { PnlColumnPick, PnlFilter, PnlRouteComparison, PnlRouteFilter } from '../hooks/usePnl'
 import { RouteGroup } from '@/features/route-groups/types'
 
 jest.mock('../hooks/usePnl', () => ({
@@ -104,7 +104,7 @@ it('passes a clicked cell up as a route filter for that column and date', () => 
           }
         : { id: `r:${p.origin}|${p.dest}`, name: `CGK → ${p.dest}`, routeCount: 1, kind: 'route' as const, routes: [route(p.dest)] },
     )
-    const data: PnlGroupComparison = {
+    const data: PnlRouteComparison = {
       columns,
       rows: [{ date: '2026-05-01', cells: columns.map(() => ({
         revenue: 1000,
@@ -275,7 +275,7 @@ it('tells the user loading Route Groups failed, distinct from the empty-groups m
 // with no shipments that day), and a footer with both a Total and an Avg / Day entry. This is the
 // only test that lets data flow through toRouteComparisonTable into the real PnlComparisonTable —
 // every other test in this file mocks usePnlRouteComparison with data: undefined.
-const comparisonData: PnlGroupComparison = {
+const comparisonData: PnlRouteComparison = {
   columns: [
     { id: 'g1', name: 'Kalimantan', routeCount: 2, kind: 'group', routes: [route('Balikpapan'), route('Batam')] },
     { id: 'g2', name: 'Sumatera', routeCount: 1, kind: 'group', routes: [route('Batam')] },

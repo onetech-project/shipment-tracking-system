@@ -4,9 +4,9 @@ import {
   COST_COMPONENTS,
   routeFromComparisonCell,
 } from './routeComparison'
-import { PnlGroupComparison, PnlGroupComparisonCell, PnlGroupComparisonColumn } from '../hooks/usePnl'
+import { PnlRouteComparison, PnlRouteComparisonCell, PnlRouteComparisonColumn } from '../hooks/usePnl'
 
-const cell = (over: Partial<PnlGroupComparisonCell> = {}): PnlGroupComparisonCell => ({
+const cell = (over: Partial<PnlRouteComparisonCell> = {}): PnlRouteComparisonCell => ({
   revenue: 0,
   cost: 0,
   margin: 0,
@@ -19,7 +19,7 @@ const cell = (over: Partial<PnlGroupComparisonCell> = {}): PnlGroupComparisonCel
   ...over,
 })
 
-const data: PnlGroupComparison = {
+const data: PnlRouteComparison = {
   columns: [
     { id: 'g1', name: 'Kalimantan', routeCount: 3, kind: 'group', routes: [] },
     { id: 'g2', name: 'Sumatera', routeCount: 2, kind: 'group', routes: [] },
@@ -154,7 +154,7 @@ describe('overlappingRoutes', () => {
   const aceh = { origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' }
   const medan = { origin: 'Jabo', originLabel: 'CGK', dest: 'Medan' }
 
-  const column = (over: Partial<PnlGroupComparisonColumn>): PnlGroupComparisonColumn => ({
+  const column = (over: Partial<PnlRouteComparisonColumn>): PnlRouteComparisonColumn => ({
     id: 'g1', name: 'Kalimantan', routeCount: 1, kind: 'group', routes: [aceh], ...over,
   })
 

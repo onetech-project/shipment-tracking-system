@@ -183,7 +183,7 @@ export interface PnlDailyMatrix {
   periodDays: number
 }
 
-export interface PnlGroupComparisonColumn {
+export interface PnlRouteComparisonColumn {
   // A group column's id is its uuid; a route column's is `r:<origin>|<dest>`, which is also the
   // descriptor the frontend sends back, so the id round-trips.
   id: string
@@ -196,7 +196,7 @@ export interface PnlGroupComparisonColumn {
   routes: { origin: string; originLabel: string; dest: string }[]
 }
 
-export interface PnlGroupComparisonCell {
+export interface PnlRouteComparisonCell {
   revenue: number
   cost: number
   // revenue_total - revenue_discount - cost_to, exactly the expression getDailyMatrix uses, so the
@@ -218,12 +218,12 @@ export interface PnlGroupComparisonCell {
   issues: PnlCellIssue[] // empty = clean; never null, so the frontend has one shape to read
 }
 
-export interface PnlGroupComparisonRow {
+export interface PnlRouteComparisonRow {
   date: string // YYYY-MM-DD
-  cells: (PnlGroupComparisonCell | null)[] // index-aligned with columns; null = no shipment at all
+  cells: (PnlRouteComparisonCell | null)[] // index-aligned with columns; null = no shipment at all
 }
 
-export interface PnlGroupComparisonFooter {
+export interface PnlRouteComparisonFooter {
   totalRevenue: number
   totalCost: number
   totalMargin: number
@@ -239,10 +239,10 @@ export interface PnlGroupComparisonFooter {
   issues: PnlCellIssue[]
 }
 
-export interface PnlGroupComparison {
-  columns: PnlGroupComparisonColumn[]
-  rows: PnlGroupComparisonRow[]
-  footer: PnlGroupComparisonFooter[] // index-aligned with columns
+export interface PnlRouteComparison {
+  columns: PnlRouteComparisonColumn[]
+  rows: PnlRouteComparisonRow[]
+  footer: PnlRouteComparisonFooter[] // index-aligned with columns
   periodDays: number
 }
 
@@ -998,13 +998,13 @@ export class PnlService {
   // Overlap is deliberate: a TO on a route held by three columns lands in all three. Each column
   // is an independent question, the columns are not a partition of the period, and they therefore
   // do not sum to a period total.
-  async getGroupComparison(
+  async getRouteComparison(
     picks: ColumnPick[],
     cyclePeriod?: string,
     startDate?: string,
     endDate?: string,
     basis?: string,
-  ): Promise<PnlGroupComparison> {
+  ): Promise<PnlRouteComparison> {
     const dates = calendarDatesForFilter(cyclePeriod, startDate, endDate)
     const periodDays = Math.max(1, dates.length)
 
@@ -1045,7 +1045,7 @@ export class PnlService {
 
     // A group that was deleted between the picker loading and this request is dropped rather than
     // rendered as a permanently empty column with no name to explain itself.
-    const columns: PnlGroupComparisonColumn[] = picks.flatMap((pick): PnlGroupComparisonColumn[] => {
+    const columns: PnlRouteComparisonColumn[] = picks.flatMap((pick): PnlRouteComparisonColumn[] => {
       if (pick.kind === 'group') {
         if (!groupNames.has(pick.id)) return []
         const routes = groupRoutes.get(pick.id) ?? []
@@ -1155,7 +1155,7 @@ export class PnlService {
       r.d == null ? String(r.col_idx) : null,
     )
 
-    const rows: PnlGroupComparisonRow[] = dates.map((date) => ({
+    const rows: PnlRouteComparisonRow[] = dates.map((date) => ({
       date,
       cells: columns.map(() => null),
     }))
@@ -1178,7 +1178,7 @@ export class PnlService {
       }
     }
 
-    const footer: PnlGroupComparisonFooter[] = columns.map((_column, ci) => {
+    const footer: PnlRouteComparisonFooter[] = columns.map((_column, ci) => {
       let totalRevenue = 0
       let totalCost = 0
       let totalMargin = 0

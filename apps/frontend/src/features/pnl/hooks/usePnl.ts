@@ -198,7 +198,7 @@ export interface PnlDailyMatrix {
   periodDays: number
 }
 
-export interface PnlGroupComparisonColumn {
+export interface PnlRouteComparisonColumn {
   // A group column's id is its uuid; a route column's is `r:<origin>|<dest>`.
   id: string
   name: string
@@ -220,7 +220,7 @@ export function columnsToParam(picks: PnlColumnPick[]): string {
     .join(',')
 }
 
-export interface PnlGroupComparisonCell {
+export interface PnlRouteComparisonCell {
   revenue: number
   cost: number
   margin: number
@@ -232,12 +232,12 @@ export interface PnlGroupComparisonCell {
   issues: PnlCellIssue[]
 }
 
-export interface PnlGroupComparisonRow {
+export interface PnlRouteComparisonRow {
   date: string
-  cells: (PnlGroupComparisonCell | null)[]
+  cells: (PnlRouteComparisonCell | null)[]
 }
 
-export interface PnlGroupComparisonFooter {
+export interface PnlRouteComparisonFooter {
   totalRevenue: number
   totalCost: number
   totalMargin: number
@@ -252,10 +252,10 @@ export interface PnlGroupComparisonFooter {
   issues: PnlCellIssue[]
 }
 
-export interface PnlGroupComparison {
-  columns: PnlGroupComparisonColumn[]
-  rows: PnlGroupComparisonRow[]
-  footer: PnlGroupComparisonFooter[]
+export interface PnlRouteComparison {
+  columns: PnlRouteComparisonColumn[]
+  rows: PnlRouteComparisonRow[]
+  footer: PnlRouteComparisonFooter[]
   periodDays: number
 }
 
@@ -464,7 +464,7 @@ export function usePnlDailyMatrix(filter: PnlFilter | undefined) {
 // Disabled until at least one column is picked, so an untouched tab makes no request at all.
 // picks is part of the query key, so re-picking refetches without a manual invalidate.
 export function usePnlRouteComparison(filter: PnlFilter | undefined, picks: PnlColumnPick[]) {
-  return useQuery<PnlGroupComparison>({
+  return useQuery<PnlRouteComparison>({
     queryKey: ['pnl', 'route-comparison', filter, picks],
     queryFn: () =>
       apiClient

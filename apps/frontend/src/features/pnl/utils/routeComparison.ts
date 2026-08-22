@@ -1,4 +1,4 @@
-import { PnlGroupComparison, PnlGroupComparisonColumn, PnlRouteFilter } from '../hooks/usePnl'
+import { PnlRouteComparison, PnlRouteComparisonColumn, PnlRouteFilter } from '../hooks/usePnl'
 import { displayRouteLabel } from './routeLabels'
 import { formatDayLabel } from './dailyMatrix'
 import {
@@ -14,8 +14,8 @@ export type { CostComponentKey } from './comparison'
 export { COST_COMPONENTS } from './comparison'
 
 export function toRouteComparisonTable(
-  data: PnlGroupComparison,
-): ComparisonTableModel<PnlGroupComparisonColumn> {
+  data: PnlRouteComparison,
+): ComparisonTableModel<PnlRouteComparisonColumn> {
   const rows: ComparisonRowModel[] = data.rows.map((row) => {
     const components = emptyComponents()
     for (const { key } of COST_COMPONENTS) {
@@ -74,7 +74,7 @@ export function toRouteComparisonTable(
 // partition. Computed from the response columns rather than the saved groups, so a bare route that
 // duplicates a group member is caught by the same code.
 export function overlappingRoutes(
-  columns: PnlGroupComparisonColumn[],
+  columns: PnlRouteComparisonColumn[],
 ): { route: string; groupNames: string[] }[] {
   const byRoute = new Map<string, string[]>()
   for (const column of columns) {
@@ -93,7 +93,7 @@ export function overlappingRoutes(
 // A clicked comparison cell as an AWB drilldown filter. A group column carries every route it
 // aggregates, so the drilldown answers exactly the question the cell did — for that one day.
 export function routeFromComparisonCell(
-  column: PnlGroupComparisonColumn,
+  column: PnlRouteComparisonColumn,
   date: string,
 ): PnlRouteFilter {
   return {

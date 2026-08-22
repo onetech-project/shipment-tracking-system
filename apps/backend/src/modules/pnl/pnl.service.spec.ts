@@ -768,8 +768,8 @@ describe('PnlService', () => {
     })
   })
 
-  describe('getGroupComparison', () => {
-    // Real-shaped UUIDs, not 'g1'/'g2': group ids round-trip as-is into PnlGroupComparisonColumn.id.
+  describe('getRouteComparison', () => {
+    // Real-shaped UUIDs, not 'g1'/'g2': group ids round-trip as-is into PnlRouteComparisonColumn.id.
     const G1 = '11111111-1111-4111-8111-111111111111'
     const G2 = '22222222-2222-4222-8222-222222222222'
 
@@ -811,7 +811,7 @@ describe('PnlService', () => {
     const route = (origin: string, dest: string) => ({ kind: 'route' as const, origin, dest })
 
     it('returns nothing and touches no database when nothing is selected', async () => {
-      const result = await service.getGroupComparison([], '2026-05-1H')
+      const result = await service.getRouteComparison([], '2026-05-1H')
 
       expect(dataSource.query).not.toHaveBeenCalled()
       expect(result).toEqual({ columns: [], rows: [], footer: [], periodDays: 15 })
@@ -826,7 +826,7 @@ describe('PnlService', () => {
         [],
       )
 
-      const result = await service.getGroupComparison(
+      const result = await service.getRouteComparison(
         [group(G1), route('Jabo', 'Denpasar'), group(G2)],
         '2026-05-1H',
       )
@@ -850,7 +850,7 @@ describe('PnlService', () => {
         [],
       )
 
-      const result = await service.getGroupComparison(
+      const result = await service.getRouteComparison(
         [group(G1), route('Surabaya', 'Denpasar')],
         '2026-05-1H',
       )
@@ -869,7 +869,7 @@ describe('PnlService', () => {
     it('drops a group id that no longer exists rather than rendering an empty column', async () => {
       mockQueries([], [])
 
-      const result = await service.getGroupComparison([group(G1)], '2026-05-1H')
+      const result = await service.getRouteComparison([group(G1)], '2026-05-1H')
 
       expect(result.columns).toEqual([])
     })
@@ -877,7 +877,7 @@ describe('PnlService', () => {
     it('skips the group query entirely when only bare routes are picked', async () => {
       dataSource.query.mockResolvedValueOnce([]).mockResolvedValueOnce([])
 
-      await service.getGroupComparison([route('Jabo', 'Aceh')], '2026-05-1H')
+      await service.getRouteComparison([route('Jabo', 'Aceh')], '2026-05-1H')
 
       // Two calls, not three: there is no group to resolve.
       expect(dataSource.query).toHaveBeenCalledTimes(2)
@@ -886,7 +886,7 @@ describe('PnlService', () => {
     it('joins the facts to a per-column route list rather than to route_group_routes', async () => {
       mockQueries([groupRoute({})], [])
 
-      await service.getGroupComparison([group(G1)], '2026-05-1H')
+      await service.getRouteComparison([group(G1)], '2026-05-1H')
 
       const factSql = (dataSource.query.mock.calls[1][0] as string).replace(/\s+/g, ' ')
       expect(factSql).toContain('WITH col_routes(col_idx, origin_station, dest_station) AS')
@@ -898,7 +898,7 @@ describe('PnlService', () => {
     it('returns a calendar-complete set of rows for a 1H cycle', async () => {
       mockQueries([groupRoute({})], [])
 
-      const result = await service.getGroupComparison([group(G1)], '2026-05-1H')
+      const result = await service.getRouteComparison([group(G1)], '2026-05-1H')
 
       expect(result.rows).toHaveLength(15)
       expect(result.rows[0].date).toBe('2026-05-01')
@@ -926,7 +926,7 @@ describe('PnlService', () => {
         ],
       )
 
-      const cell = (await service.getGroupComparison([group(G1)], '2026-05-1H')).rows[0].cells[0]!
+      const cell = (await service.getRouteComparison([group(G1)], '2026-05-1H')).rows[0].cells[0]!
 
       expect(cell).toEqual({
         revenue: 0,
@@ -953,7 +953,7 @@ describe('PnlService', () => {
       )
 
       const row = (
-        await service.getGroupComparison([group(G1), route('Jabo', 'Aceh')], '2026-05-1H')
+        await service.getRouteComparison([group(G1), route('Jabo', 'Aceh')], '2026-05-1H')
       ).rows[0]
 
       expect(row.cells[0]!.revenue).toBe(1000)
@@ -987,7 +987,7 @@ describe('PnlService', () => {
         ],
       )
 
-      const footer = (await service.getGroupComparison([group(G1)], '2026-05-1H')).footer[0]
+      const footer = (await service.getRouteComparison([group(G1)], '2026-05-1H')).footer[0]
 
       expect(footer).toEqual({
         totalRevenue: 3000,
@@ -1008,7 +1008,7 @@ describe('PnlService', () => {
     it('drops fact rows for dates outside the period rather than throwing', async () => {
       mockQueries([groupRoute({})], [fact({ d: '2026-06-01', revenue: '999' })])
 
-      const result = await service.getGroupComparison([group(G1)], '2026-05-1H')
+      const result = await service.getRouteComparison([group(G1)], '2026-05-1H')
 
       expect(result.rows.every((r) => r.cells[0] === null)).toBe(true)
       expect(result.footer[0].totalRevenue).toBe(0)
@@ -1025,7 +1025,7 @@ describe('PnlService', () => {
         ],
       )
 
-      const result = await service.getGroupComparison([group(G1)], '2026-05-1H')
+      const result = await service.getRouteComparison([group(G1)], '2026-05-1H')
 
       expect(result.rows[0].cells[0]!.issues).toEqual([
         { issue: 'no_booking', awbs: 3 },
@@ -1037,7 +1037,7 @@ describe('PnlService', () => {
     it('gives a clean cell and a clean footer an empty issue list rather than null', async () => {
       mockQueries([groupRoute({})], [fact({ revenue: '1000', cost: '800' })], [])
 
-      const result = await service.getGroupComparison([group(G1)], '2026-05-1H')
+      const result = await service.getRouteComparison([group(G1)], '2026-05-1H')
 
       expect(result.rows[0].cells[0]!.issues).toEqual([])
       expect(result.footer[0].issues).toEqual([])
@@ -1066,7 +1066,7 @@ describe('PnlService', () => {
         .mockResolvedValueOnce(factRows)
         .mockResolvedValueOnce([])
 
-      const result = await service.getGroupComparison(
+      const result = await service.getRouteComparison(
         [{ kind: 'group', id: 'g1' }],
         '2026-05-1H',
         undefined,
@@ -1085,7 +1085,7 @@ describe('PnlService', () => {
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([])
 
-      await service.getGroupComparison(
+      await service.getRouteComparison(
         [{ kind: 'group', id: 'g1' }],
         '2026-05-1H',
         undefined,
