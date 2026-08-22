@@ -149,7 +149,7 @@ export function PnlRouteComparisonView({ filter, picks, onPicksChange, onCellCli
       {picks.length === 0 ? (
         <div className="rounded-lg border bg-card p-8 text-center">
           <p className="text-sm text-muted-foreground">
-            Pilih minimal satu group atau rute untuk melihat perbandingan.
+            Pilih minimal satu Route Group atau rute untuk melihat perbandingan.
           </p>
         </div>
       ) : isLoading ? (

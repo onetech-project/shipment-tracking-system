@@ -39,8 +39,8 @@ function formatValue(value: number | null): string {
   return num(Math.round(value))
 }
 
-// Revenue and Cost cells now do the same thing — drill into the AWBs behind them — so they share
-// one title rather than two near-identical strings that could drift.
+// Revenue, Cost and Margin cells all do the same thing — drill into the AWBs behind them — so they
+// share one title rather than near-identical strings that could drift.
 function cellTitle(hint: string, warning: CellWarning | undefined): string {
   const tooltip = warningTooltip(warning)
   return tooltip ? `${hint} — ${tooltip}` : hint
@@ -82,7 +82,7 @@ export function PnlComparisonTable<TColumn extends ComparisonColumn>({
   onCellClick,
 }: PnlComparisonTableProps<TColumn>) {
   const [openRows, setOpenRows] = useState<Set<string>>(new Set())
-  const groupCount = model.columns.length
+  const columnCount = model.columns.length
 
   const toggle = (key: string) =>
     setOpenRows((prev) => {
@@ -92,7 +92,8 @@ export function PnlComparisonTable<TColumn extends ComparisonColumn>({
       return next
     })
 
-  // One detail row per component, spanning the Revenue block (blank) and the Cost block (filled).
+  // One detail row per component, spanning the Revenue block (blank), the Cost block (filled) and
+  // the Margin block (blank).
   const detailRows = (
     key: string,
     components: Record<string, (number | null)[]>,
@@ -107,18 +108,18 @@ export function PnlComparisonTable<TColumn extends ComparisonColumn>({
         <td className="sticky left-0 z-10 whitespace-nowrap border-b border-r bg-card px-3 py-1 pl-6 text-xs text-muted-foreground">
           {label}
         </td>
-        {Array.from({ length: groupCount }, (_, i) => (
+        {Array.from({ length: columnCount }, (_, i) => (
           <td key={`blank-revenue-${i}`} className="border-b border-l" />
         ))}
-        {components[componentKey].map((value, i) => (
+        {Array.from({ length: columnCount }, (_, i) => (
           <td
             key={`cost-${i}`}
             className="whitespace-nowrap border-b border-l px-3 py-1 text-right text-xs text-muted-foreground"
           >
-            {formatValue(value)}
+            {formatValue(components[componentKey][i] ?? null)}
           </td>
         ))}
-        {Array.from({ length: groupCount }, (_, i) => (
+        {Array.from({ length: columnCount }, (_, i) => (
           <td key={`blank-margin-${i}`} className="border-b border-l" />
         ))}
       </tr>
@@ -137,20 +138,20 @@ export function PnlComparisonTable<TColumn extends ComparisonColumn>({
                 {firstColumnHeader}
               </th>
               <th
-                colSpan={groupCount}
+                colSpan={columnCount}
                 className="border-b border-l bg-green-100 px-3 py-1.5 text-center font-semibold dark:bg-green-950/40"
               >
                 Revenue
               </th>
               <th
-                colSpan={groupCount}
+                colSpan={columnCount}
                 className="border-b border-l bg-blue-100 px-3 py-1.5 text-center font-semibold dark:bg-blue-950/40"
               >
                 Cost
               </th>
               <th
-                colSpan={groupCount}
-                className="border-b border-l bg-amber-100 px-3 py-1.5 text-center font-semibold dark:bg-amber-950/40"
+                colSpan={columnCount}
+                className="border-b border-l bg-violet-100 px-3 py-1.5 text-center font-semibold dark:bg-violet-950/40"
               >
                 Margin
               </th>

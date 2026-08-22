@@ -991,8 +991,8 @@ export class PnlService {
     return { columns, rows, footer, periodDays }
   }
 
-  // Revenue and cost per calendar day for each selected comparison column, behind the
-  // "Group Comparison" tab. A column is either a saved route group or a single route the user
+  // Revenue, cost and margin per calendar day for each selected comparison column, behind the
+  // "Route Comparison" tab. A column is either a saved route group or a single route the user
   // picked ad hoc; both reduce to a list of origin→destination pairs, so both take the same path.
   //
   // Overlap is deliberate: a TO on a route held by three columns lands in all three. Each column

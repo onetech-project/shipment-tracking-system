@@ -77,7 +77,7 @@ beforeEach(() => {
 it('asks the user to pick a group before showing any table', () => {
   renderView()
 
-  expect(screen.getByText(/pilih minimal satu group/i)).toBeInTheDocument()
+  expect(screen.getByText(/pilih minimal satu route group/i)).toBeInTheDocument()
   expect(screen.queryByRole('table')).not.toBeInTheDocument()
 })
 
@@ -452,7 +452,7 @@ it('sends groups and routes in the order they were picked', () => {
 
 it('prompts for a pick when nothing is selected', () => {
   renderView()
-  expect(screen.getByText('Pilih minimal satu group atau rute untuk melihat perbandingan.')).toBeInTheDocument()
+  expect(screen.getByText('Pilih minimal satu Route Group atau rute untuk melihat perbandingan.')).toBeInTheDocument()
 })
 
 // Picks are lifted to the page (Task 7) and now outlive the component, so a group deleted while

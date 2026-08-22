@@ -1,9 +1,9 @@
 import {
   toRouteComparisonTable,
   overlappingRoutes,
-  COST_COMPONENTS,
   routeFromComparisonCell,
 } from './routeComparison'
+import { COST_COMPONENTS } from './comparison'
 import { PnlRouteComparison, PnlRouteComparisonCell, PnlRouteComparisonColumn } from '../hooks/usePnl'
 
 const cell = (over: Partial<PnlRouteComparisonCell> = {}): PnlRouteComparisonCell => ({

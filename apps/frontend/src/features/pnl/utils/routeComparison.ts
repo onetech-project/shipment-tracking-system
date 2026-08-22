@@ -10,9 +10,6 @@ import {
   emptyComponents,
 } from './comparison'
 
-export type { CostComponentKey } from './comparison'
-export { COST_COMPONENTS } from './comparison'
-
 export function toRouteComparisonTable(
   data: PnlRouteComparison,
 ): ComparisonTableModel<PnlRouteComparisonColumn> {

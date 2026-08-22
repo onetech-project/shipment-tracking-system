@@ -89,10 +89,7 @@ function PnlPageContent() {
   // Lifted out of PnlRouteComparisonView so switching tabs does not discard the selection: the
   // tab is rendered by a ternary below, so leaving it unmounts the component outright. Deliberately
   // NOT cleared by the period effect below — a pick carries no date, unlike drilldownRoute.
-  // vendorPicks is unused for now — it shapes the container for a future Vendor Comparison tab.
   const [routePicks, setRoutePicks] = useState<PnlColumnPick[]>([])
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [vendorPicks, setVendorPicks] = useState<PnlColumnPick[]>([])
 
   useEffect(() => {
     if (cycles && cycles.length > 0 && (!cycle || !cycles.includes(cycle))) {
