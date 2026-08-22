@@ -56,8 +56,9 @@ export class PnlController {
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
     // Repeats, because a vendor group column carries many vendors and a vendor name may contain
-    // any punctuation a delimiter would use.
-    @Query('vendor') vendor?: string | string[],
+    // any punctuation a delimiter would use. Past qs's arrayLimit of 20 occurrences it arrives as
+    // a plain object keyed by index rather than an array — see parseVendorNames.
+    @Query('vendor') vendor?: string | string[] | Record<string, unknown>,
   ) {
     const vendors = parseVendorNames(vendor)
     return this.pnlService.getAwbDrilldown(page, limit, cycle, start, end, basis, {
@@ -193,11 +194,12 @@ export class PnlController {
   // it — this endpoint would then stop requiring read.pnl. The read.vendor_group gate is a UI-side
   // gate on the tab; what is genuinely guarded server-side is /vendor-groups itself.
   //
-  // `columns` repeats: qs gives a string for one occurrence and an array for two or more, so the
-  // parameter is typed for both and the parser normalises before iterating.
+  // `columns` repeats: qs gives a string for one occurrence, an array for two or more, and — past
+  // qs's arrayLimit of 20 occurrences — a plain object keyed by index. The parameter is typed for
+  // all three shapes and the parser normalises before iterating.
   @Get('breakdown/vendor-comparison')
   getVendorComparison(
-    @Query('columns') columns?: string | string[],
+    @Query('columns') columns?: string | string[] | Record<string, unknown>,
     @Query('cycle') cycle?: string,
     @Query('start') start?: string,
     @Query('end') end?: string,

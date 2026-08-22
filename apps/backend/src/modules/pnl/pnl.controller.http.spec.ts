@@ -119,4 +119,54 @@ describe('PnlController query-string parsing (HTTP)', () => {
       },
     )
   })
+
+  // qs's default arrayLimit is 20: a plain repeated key past that count arrives as an object
+  // (`{0: ..., 1: ..., ...}`), not an array. A 20-occurrence case cannot catch a parser that
+  // assumes "always an array or a string" — only the 21st occurrence crosses that boundary.
+  it('reads a vendor param repeated 21 times, past qs\'s arrayLimit', async () => {
+    const names = Array.from({ length: 21 }, (_, i) => `Vendor${i}`)
+    const qs = names.map((name) => `vendor=${encodeURIComponent(name)}`).join('&')
+
+    await request(app.getHttpServer())
+      .get('/pnl/awb-drilldown')
+      .query({ cycle: '2026-05-1H' })
+      .query(qs)
+      .expect(200)
+
+    expect(mockService.getAwbDrilldown).toHaveBeenCalledWith(
+      1,
+      50,
+      '2026-05-1H',
+      undefined,
+      undefined,
+      undefined,
+      {
+        routes: [],
+        dateFrom: undefined,
+        dateTo: undefined,
+        vendors: names,
+      },
+    )
+  })
+
+  // Same qs boundary on `columns`. Distinct picks would also hit MAX_VENDOR_COLUMNS (12) at that
+  // count, which is a different code path — repeating the *same* descriptor 21 times isolates the
+  // parsing boundary from the column-count limit, since parseVendorColumnPicks dedupes first.
+  it('reads a columns param repeated 21 times, past qs\'s arrayLimit', async () => {
+    const qs = Array.from({ length: 21 }, () => 'columns=v%3AESP').join('&')
+
+    await request(app.getHttpServer())
+      .get('/pnl/breakdown/vendor-comparison')
+      .query({ cycle: '2026-05-1H' })
+      .query(qs)
+      .expect(200)
+
+    expect(mockService.getVendorComparison).toHaveBeenCalledWith(
+      [{ kind: 'vendor', name: 'ESP' }],
+      '2026-05-1H',
+      undefined,
+      undefined,
+      undefined,
+    )
+  })
 })

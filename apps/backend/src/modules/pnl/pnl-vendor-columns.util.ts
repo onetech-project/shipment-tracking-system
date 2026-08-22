@@ -12,6 +12,12 @@ import { BadRequestException } from '@nestjs/common'
  * when it appears twice or more, so every entry point here normalises before iterating. Without
  * that, the single-column case — the first thing any user does — iterates a string one character
  * at a time.
+ *
+ * qs also caps how many entries it will build into an array — `arrayLimit: 20` by default — and
+ * this applies to a plain repeated key, not just bracketed indices. At the 21st occurrence of the
+ * same key it gives up on the array and hands back a plain object (`{0: ..., 1: ..., ...}`)
+ * instead. `toArray` has to unwrap that shape too, or the 21st-and-beyond case is silently
+ * discarded instead of parsed.
  */
 
 export type VendorColumnPick =
@@ -24,11 +30,17 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // a readability limit as much as a cost one.
 export const MAX_VENDOR_COLUMNS = 12
 
-function toArray(raw?: string | string[]): string[] {
-  return Array.isArray(raw) ? raw : raw == null ? [] : [raw]
+function toArray(raw?: string | string[] | Record<string, unknown>): string[] {
+  if (raw == null) return []
+  if (Array.isArray(raw)) return raw as string[]
+  // qs returns an object, not an array, once a repeated param exceeds arrayLimit (20).
+  if (typeof raw === 'object') return Object.values(raw) as string[]
+  return [raw]
 }
 
-export function parseVendorColumnPicks(raw?: string | string[]): VendorColumnPick[] {
+export function parseVendorColumnPicks(
+  raw?: string | string[] | Record<string, unknown>,
+): VendorColumnPick[] {
   const seen = new Set<string>()
   const picks: VendorColumnPick[] = []
 
@@ -73,7 +85,7 @@ export function parseVendorColumnPicks(raw?: string | string[]): VendorColumnPic
 
 // The drilldown's vendor filter. A group column carries many vendors, so this param repeats too.
 // Unknown names are passed through: they simply match no rows, which is the honest answer.
-export function parseVendorNames(raw?: string | string[]): string[] {
+export function parseVendorNames(raw?: string | string[] | Record<string, unknown>): string[] {
   const seen = new Set<string>()
   const names: string[] = []
   for (const value of toArray(raw)) {
