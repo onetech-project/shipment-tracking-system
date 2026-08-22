@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect } from 'react'
 import Link from 'next/link'
 import { MultiRouteFilter } from '@/components/shared/multi-route-filter'
 import { useAvailableRoutes, useRouteGroups } from '@/features/route-groups/hooks/useRouteGroups'
@@ -11,12 +11,14 @@ import { PnlComparisonTable } from './PnlComparisonTable'
 
 interface PnlRouteComparisonViewProps {
   filter: PnlFilter
+  // Lifted to the page (Task 7) so switching tabs — which unmounts this view — does not discard
+  // the selection. Pick order is column order, so the array is appended to rather than re-sorted.
+  picks: PnlColumnPick[]
+  onPicksChange: (next: PnlColumnPick[]) => void
   onCellClick?: (route: PnlRouteFilter) => void
 }
 
-export function PnlRouteComparisonView({ filter, onCellClick }: PnlRouteComparisonViewProps) {
-  // Pick order is column order, so the array is appended to rather than re-sorted.
-  const [picks, setPicks] = useState<PnlColumnPick[]>([])
+export function PnlRouteComparisonView({ filter, picks, onPicksChange, onCellClick }: PnlRouteComparisonViewProps) {
   const {
     data: groups,
     isLoading: isLoadingGroups,
@@ -29,26 +31,36 @@ export function PnlRouteComparisonView({ filter, onCellClick }: PnlRouteComparis
   const routeIndex = buildRouteLabelIndex(availableRoutes ?? [])
   const pickedRoutes = picks.flatMap((p) => (p.kind === 'route' ? [{ origin: p.origin, dest: p.dest }] : []))
 
+  // Picks now outlive the component, so a group deleted while the user was on another tab would
+  // otherwise keep a checkbox pointing at nothing. The `!groups` guard is load-bearing:
+  // useRouteGroups has no initialData and react-query's default 5-minute gcTime means an undefined
+  // list is the normal state after a few minutes away — pruning then would wipe the selection this
+  // whole feature exists to keep. Raw route picks are never pruned; a route with no data in the
+  // current period is a legitimate, informative empty column.
+  useEffect(() => {
+    if (!groups) return
+    const pruned = picks.filter((p) => p.kind !== 'group' || groups.some((g) => g.id === p.id))
+    if (pruned.length !== picks.length) onPicksChange(pruned)
+  }, [groups, picks, onPicksChange])
+
   const toggleGroup = (id: string) =>
-    setPicks((prev) =>
-      prev.some((p) => p.kind === 'group' && p.id === id)
-        ? prev.filter((p) => !(p.kind === 'group' && p.id === id))
-        : [...prev, { kind: 'group', id }],
+    onPicksChange(
+      picks.some((p) => p.kind === 'group' && p.id === id)
+        ? picks.filter((p) => !(p.kind === 'group' && p.id === id))
+        : [...picks, { kind: 'group', id }],
     )
 
   // Routes are replaced wholesale by the dropdown, but the group picks keep their relative order:
   // dropping and re-adding every pick would silently reshuffle the columns.
   const setRouteLabels = (labels: string[]) => {
     const next = routesForLabels(labels, routeIndex)
-    setPicks((prev) => {
-      const kept = prev.filter(
-        (p) => p.kind === 'group' || next.some((r) => r.origin === p.origin && r.dest === p.dest),
-      )
-      const added = next
-        .filter((r) => !prev.some((p) => p.kind === 'route' && p.origin === r.origin && p.dest === r.dest))
-        .map((r) => ({ kind: 'route' as const, origin: r.origin, dest: r.dest }))
-      return [...kept, ...added]
-    })
+    const kept = picks.filter(
+      (p) => p.kind === 'group' || next.some((r) => r.origin === p.origin && r.dest === p.dest),
+    )
+    const added = next
+      .filter((r) => !picks.some((p) => p.kind === 'route' && p.origin === r.origin && p.dest === r.dest))
+      .map((r) => ({ kind: 'route' as const, origin: r.origin, dest: r.dest }))
+    onPicksChange([...kept, ...added])
   }
 
   const overlaps = overlappingRoutes(data?.columns ?? [])

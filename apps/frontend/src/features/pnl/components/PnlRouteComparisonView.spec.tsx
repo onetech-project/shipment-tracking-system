@@ -1,8 +1,9 @@
-import React from 'react'
-import { render, screen, fireEvent, within } from '@testing-library/react'
+import React, { useState } from 'react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { PnlRouteComparisonView } from './PnlRouteComparisonView'
 import { PnlColumnPick, PnlFilter, PnlGroupComparison, PnlRouteFilter } from '../hooks/usePnl'
+import { RouteGroup } from '@/features/route-groups/types'
 
 jest.mock('../hooks/usePnl', () => ({
   ...jest.requireActual('../hooks/usePnl'),
@@ -21,8 +22,37 @@ const filter: PnlFilter = { mode: 'cycle', cycle: '2026-05-1H', basis: 'ata_vend
 
 const route = (dest: string) => ({ origin: 'Jabo', originLabel: 'CGK', dest })
 
-function renderView(props: { onCellClick?: (route: PnlRouteFilter) => void } = {}) {
-  render(<PnlRouteComparisonView filter={filter} {...props} />)
+// The real view no longer owns `picks` — it is lifted to the page (Task 7) so a tab switch does
+// not discard the selection. Most of this file's tests care about the interactive behaviour
+// (click a checkbox, see the table react), so this helper reproduces the page's role: a tiny
+// stateful wrapper that holds `picks` and passes it straight back down, unless a test supplies its
+// own `picks`/`onPicksChange` to inspect the controlled contract directly (the pruning tests below).
+function renderView(
+  props: {
+    filter?: PnlFilter
+    groups?: RouteGroup[]
+    picks?: PnlColumnPick[]
+    onPicksChange?: (next: PnlColumnPick[]) => void
+    onCellClick?: (route: PnlRouteFilter) => void
+  } = {},
+) {
+  if ('groups' in props) {
+    ;(useRouteGroups as jest.Mock).mockReturnValue({ data: props.groups, isLoading: false })
+  }
+
+  function Stateful() {
+    const [picks, setPicks] = useState<PnlColumnPick[]>(props.picks ?? [])
+    return (
+      <PnlRouteComparisonView
+        filter={props.filter ?? filter}
+        picks={picks}
+        onPicksChange={props.onPicksChange ?? setPicks}
+        onCellClick={props.onCellClick}
+      />
+    )
+  }
+
+  render(<Stateful />)
 }
 
 beforeEach(() => {
@@ -45,14 +75,14 @@ beforeEach(() => {
 })
 
 it('asks the user to pick a group before showing any table', () => {
-  render(<PnlRouteComparisonView filter={filter} />)
+  renderView()
 
   expect(screen.getByText(/pilih minimal satu group/i)).toBeInTheDocument()
   expect(screen.queryByRole('table')).not.toBeInTheDocument()
 })
 
 it('lists every group as a checkbox with its route count', () => {
-  render(<PnlRouteComparisonView filter={filter} />)
+  renderView()
 
   expect(screen.getByLabelText(/Kalimantan/)).toBeInTheDocument()
   expect(screen.getByLabelText(/Sumatera/)).toBeInTheDocument()
@@ -154,7 +184,7 @@ it('warns when a picked group and a picked route share a route', () => {
     )
     return { data: { columns, rows: [], footer: [], periodDays: 0 }, isLoading: false, isError: false, refetch: jest.fn() }
   })
-  render(<PnlRouteComparisonView filter={filter} />)
+  renderView()
 
   // Before the route pick there is only one column, so no overlap is possible yet.
   fireEvent.click(screen.getByLabelText(/Kalimantan/))
@@ -197,7 +227,7 @@ it('does not warn when the selected groups are disjoint', () => {
     )
     return { data: { columns, rows: [], footer: [], periodDays: 0 }, isLoading: false, isError: false, refetch: jest.fn() }
   })
-  render(<PnlRouteComparisonView filter={filter} />)
+  renderView()
 
   fireEvent.click(screen.getByLabelText(/A/))
   fireEvent.click(screen.getByLabelText(/B/))
@@ -208,7 +238,7 @@ it('does not warn when the selected groups are disjoint', () => {
 it('tells the user when no groups and no routes exist yet', () => {
   ;(useRouteGroups as jest.Mock).mockReturnValue({ data: [], isLoading: false })
   ;(useAvailableRoutes as jest.Mock).mockReturnValue({ data: [] })
-  render(<PnlRouteComparisonView filter={filter} />)
+  renderView()
 
   expect(screen.getByText(/belum ada route group/i)).toBeInTheDocument()
 })
@@ -217,7 +247,7 @@ it('tells the user when no groups and no routes exist yet', () => {
 // when there is genuinely nothing to pick from.
 it('still renders the picker when there are no groups but there are routes', () => {
   ;(useRouteGroups as jest.Mock).mockReturnValue({ data: [], isLoading: false })
-  render(<PnlRouteComparisonView filter={filter} />)
+  renderView()
 
   expect(screen.queryByText(/belum ada route group/i)).not.toBeInTheDocument()
   expect(screen.getByText('Rute')).toBeInTheDocument()
@@ -234,7 +264,7 @@ it('tells the user loading Route Groups failed, distinct from the empty-groups m
     isError: true,
     refetch: jest.fn(),
   })
-  render(<PnlRouteComparisonView filter={filter} />)
+  renderView()
 
   expect(screen.queryByText(/belum ada route group/i)).not.toBeInTheDocument()
   expect(screen.queryByRole('link', { name: /buat satu dulu/i })).not.toBeInTheDocument()
@@ -336,7 +366,7 @@ it('renders the comparison table from a real payload via toRouteComparisonTable'
     isError: false,
     refetch: jest.fn(),
   })
-  render(<PnlRouteComparisonView filter={filter} />)
+  renderView()
 
   // Selecting groups only drives the mocked hook's arguments here — its return value is fixed
   // above — but the table only renders once selectedIds is non-empty.
@@ -371,7 +401,7 @@ it('captions the table to say Revenue is gross, so Revenue minus Cost does not e
     isError: false,
     refetch: jest.fn(),
   })
-  render(<PnlRouteComparisonView filter={filter} />)
+  renderView()
 
   fireEvent.click(screen.getByLabelText(/Kalimantan/))
 
@@ -380,7 +410,7 @@ it('captions the table to say Revenue is gross, so Revenue minus Cost does not e
 })
 
 it('sends selected group picks to usePnlRouteComparison in click order, moving a reselected group to the end', () => {
-  render(<PnlRouteComparisonView filter={filter} />)
+  renderView()
 
   const latestPicks = () => {
     const calls = (usePnlRouteComparison as jest.Mock).mock.calls
@@ -423,4 +453,32 @@ it('sends groups and routes in the order they were picked', () => {
 it('prompts for a pick when nothing is selected', () => {
   renderView()
   expect(screen.getByText('Pilih minimal satu group atau rute untuk melihat perbandingan.')).toBeInTheDocument()
+})
+
+// Picks are lifted to the page (Task 7) and now outlive the component, so a group deleted while
+// the user was on another tab must be pruned once the list reloads. But `groups` starts undefined
+// on every mount — react-query has no initialData here and its default gcTime is 5 minutes, so an
+// undefined list is the normal state after a few minutes away, not evidence the group is gone.
+// These two renderView calls bypass the Stateful wrapper's own picks state (by supplying
+// onPicksChange directly) so the assertions read the real component's calls, not a re-render echo.
+it('prunes picks for groups that no longer exist, but only once the list has loaded', async () => {
+  const onPicksChange = jest.fn()
+
+  // groups undefined = cold react-query cache, which is the normal state after >5 minutes on
+  // another tab. Pruning here would delete the very picks this feature exists to preserve.
+  renderView({ groups: undefined, picks: [{ kind: 'group', id: 'gone' }], onPicksChange })
+  expect(onPicksChange).not.toHaveBeenCalled()
+
+  renderView({
+    groups: [{ id: 'g1', name: 'Group 1', description: null, routes: [] }],
+    picks: [{ kind: 'group', id: 'gone' }],
+    onPicksChange,
+  })
+  await waitFor(() => expect(onPicksChange).toHaveBeenCalledWith([]))
+})
+
+it('keeps a raw route pick that has no data in the current period', () => {
+  const onPicksChange = jest.fn()
+  renderView({ groups: [], picks: [{ kind: 'route', origin: 'Jakarta', dest: 'SUB' }], onPicksChange })
+  expect(onPicksChange).not.toHaveBeenCalled()
 })

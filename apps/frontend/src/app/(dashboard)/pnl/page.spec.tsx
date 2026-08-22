@@ -65,13 +65,28 @@ const COMPARISON_CELL_ROUTE: PnlRouteFilter = {
 }
 
 // A minimal stand-in for the real comparison table: one button that fires the same
-// onCellClick(route) callback a real value-cell click would (already projected to a route filter).
+// onCellClick(route) callback a real value-cell click would (already projected to a route filter),
+// plus a node reporting the `picks` prop it was handed — the page now owns that state (Task 7), so
+// this mock has to echo it back or the lifted state would be unobservable from this spec.
 jest.mock('@/features/pnl/components/PnlRouteComparisonView', () => ({
   PnlRouteComparisonView: ({
+    picks,
+    onPicksChange,
     onCellClick,
   }: {
+    picks: { kind: string }[]
+    onPicksChange?: (next: { kind: string }[]) => void
     onCellClick?: (route: PnlRouteFilter) => void
-  }) => <button onClick={() => onCellClick?.(COMPARISON_CELL_ROUTE)}>comparison-cell</button>,
+  }) => (
+    <div>
+      <div data-testid="route-comparison-view">{`picks:${picks.length}`}</div>
+      {/* Drives the page's lifted state the same way a real checkbox click would, so the
+          persistence test below can prove the count survives a tab switch rather than just
+          observing the untouched initial value. */}
+      <button onClick={() => onPicksChange?.([...picks, { kind: 'route' }])}>add-pick</button>
+      <button onClick={() => onCellClick?.(COMPARISON_CELL_ROUTE)}>comparison-cell</button>
+    </div>
+  ),
 }))
 
 import PnlPage from './page'
@@ -205,5 +220,24 @@ describe('PnlPage Route Comparison tab gating', () => {
     renderPage({ permissions: ['read.pnl', 'read.route_group'] })
 
     expect(screen.getByRole('button', { name: 'Route Comparison' })).toBeInTheDocument()
+  })
+
+  // The tabs are rendered by a ternary, so switching away from Route Comparison unmounts it. Before
+  // this state was lifted to the page, that meant the view's own `picks` reset to empty on
+  // remount — so this test drives a pick through the mock (rather than only checking the untouched
+  // initial value) to actually prove the count survives the round trip.
+  it('keeps the comparison picks when the user leaves the tab and comes back', () => {
+    renderPage({ permissions: ['read.pnl', 'read.route_group'] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Route Comparison' }))
+    expect(screen.getByTestId('route-comparison-view')).toHaveTextContent('picks:0')
+
+    fireEvent.click(screen.getByRole('button', { name: 'add-pick' }))
+    expect(screen.getByTestId('route-comparison-view')).toHaveTextContent('picks:1')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Daily Report' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Route Comparison' }))
+
+    expect(screen.getByTestId('route-comparison-view')).toHaveTextContent('picks:1')
   })
 })

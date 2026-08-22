@@ -7,6 +7,7 @@ import { usePermissions } from '@/shared/hooks/use-permissions'
 import {
   usePnlCycles,
   usePnlSummary,
+  PnlColumnPick,
   PnlFilter,
   PnlRouteFilter,
   PnlDailyMatrixColumn,
@@ -84,6 +85,14 @@ function PnlPageContent() {
   const [view, setView] = useState<PnlView>('estimate')
   const [drilldownRoute, setDrilldownRoute] = useState<PnlRouteFilter>({})
   const drilldownRef = useRef<HTMLDivElement>(null)
+
+  // Lifted out of PnlRouteComparisonView so switching tabs does not discard the selection: the
+  // tab is rendered by a ternary below, so leaving it unmounts the component outright. Deliberately
+  // NOT cleared by the period effect below — a pick carries no date, unlike drilldownRoute.
+  // vendorPicks is unused for now — it shapes the container for a future Vendor Comparison tab.
+  const [routePicks, setRoutePicks] = useState<PnlColumnPick[]>([])
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [vendorPicks, setVendorPicks] = useState<PnlColumnPick[]>([])
 
   useEffect(() => {
     if (cycles && cycles.length > 0 && (!cycle || !cycles.includes(cycle))) {
@@ -284,7 +293,12 @@ function PnlPageContent() {
       ) : view === 'routes' ? (
         filter &&
         hasPermission('read.route_group') && (
-          <PnlRouteComparisonView filter={filter} onCellClick={applyDrilldownRoute} />
+          <PnlRouteComparisonView
+            filter={filter}
+            picks={routePicks}
+            onPicksChange={setRoutePicks}
+            onCellClick={applyDrilldownRoute}
+          />
         )
       ) : (
         <>
