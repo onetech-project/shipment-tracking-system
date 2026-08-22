@@ -1098,7 +1098,9 @@ describe('PnlService', () => {
       // whitespace in the SQL literal cannot make the assertion pass or fail by accident.
       const normalised = factSql.replace(/\s+/g, ' ')
       expect(normalised).toContain('COALESCE(SUM(v.revenue_total), 0) AS revenue')
-      expect(normalised).toContain('- COALESCE(SUM(v.revenue_discount), 0) - COALESCE(SUM(v.cost_to), 0) AS margin')
+      expect(normalised).toContain(
+        'COALESCE(SUM(v.revenue_total), 0) - COALESCE(SUM(v.revenue_discount), 0) - COALESCE(SUM(v.cost_to), 0) AS margin',
+      )
     })
   })
 })
