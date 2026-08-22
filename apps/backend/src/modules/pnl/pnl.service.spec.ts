@@ -1332,6 +1332,103 @@ describe('PnlService', () => {
       expect(factParams[2]).toEqual(['ESP', 'Angkasa', 'Kargo'])
     })
 
+    it('totals every cell in the column and divides the averages by routes with data', async () => {
+      mockFactQueries([
+        fact({
+          dest_station: 'Denpasar',
+          revenue: '1000',
+          cost: '600',
+          margin: '385',
+          cost_smu: '400',
+          cost_ra: '100',
+          cost_sg_out: '50',
+          cost_sg_in: '50',
+          incomplete_tos: '1',
+        }),
+        fact({
+          dest_station: 'Aceh',
+          revenue: '500',
+          cost: '200',
+          margin: '292.5',
+          cost_smu: '150',
+          cost_ra: '25',
+          cost_sg_out: '15',
+          cost_sg_in: '10',
+          incomplete_tos: '2',
+        }),
+      ])
+
+      const result = await service.getVendorComparison([group(VG1)], '2026-05-1H')
+
+      expect(result.footer[0]).toMatchObject({
+        totalRevenue: 1500,
+        totalCost: 800,
+        totalMargin: 677.5,
+        totalCostSmu: 550,
+        totalCostRa: 125,
+        totalCostSgOut: 65,
+        totalCostSgIn: 60,
+        incompleteTos: 3,
+        routesWithData: 2,
+        avgRevenuePerRoute: 750,
+        avgCostPerRoute: 400,
+        avgMarginPerRoute: 338.75,
+      })
+    })
+
+    // Non-null, not non-zero. A route that flew and made exactly nothing is still a route this
+    // column covered; dividing it away would quietly inflate every average.
+    it('counts a zero-valued cell as a route with data', async () => {
+      mockFactQueries([
+        fact({ dest_station: 'Denpasar', revenue: '1000', cost: '400', margin: '585' }),
+        fact({ dest_station: 'Aceh', revenue: '0', cost: '0', margin: '0' }),
+      ])
+
+      const result = await service.getVendorComparison([group(VG1)], '2026-05-1H')
+
+      expect(result.footer[0].routesWithData).toBe(2)
+      expect(result.footer[0].avgRevenuePerRoute).toBe(500)
+    })
+
+    it('reports null averages, not NaN or Infinity, when the column has no data at all', async () => {
+      mockFactQueries([])
+
+      const result = await service.getVendorComparison([group(VG1)], '2026-05-1H')
+
+      expect(result.footer[0].routesWithData).toBe(0)
+      expect(result.footer[0].avgRevenuePerRoute).toBeNull()
+      expect(result.footer[0].avgCostPerRoute).toBeNull()
+      expect(result.footer[0].avgMarginPerRoute).toBeNull()
+    })
+
+    it('reports how much of the period revenue the picked vendors account for', async () => {
+      mockFactQueries([], [], { revenue_period: '10000', revenue_in_columns: '3020' })
+
+      const result = await service.getVendorComparison([group(VG1)], '2026-05-1H')
+
+      expect(result.coverage).toEqual({ revenueInColumns: 3020, revenuePeriod: 10000 })
+    })
+
+    it('measures coverage against the deduped union of vendors, not the sum of the columns', async () => {
+      // ESP sits in the group and is also picked bare. Summing the columns would count its revenue
+      // twice and could report more than 100% coverage.
+      dataSource.query
+        .mockResolvedValueOnce([{ id: VG1, name: 'Vendor Utama', vendor: 'ESP' }])
+        .mockResolvedValueOnce([{ origin_station: 'Jabo', dest_station: 'Denpasar' }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ revenue_period: '10000', revenue_in_columns: '3020' }])
+
+      await service.getVendorComparison([group(VG1), vendor('ESP')], '2026-05-1H')
+
+      const coverageParams = dataSource.query.mock.calls[4][1] as unknown[]
+      expect(coverageParams[1]).toEqual(['ESP'])
+      // Scoped by the same station guard as the table, so the banner describes exactly the rows
+      // the table could have shown.
+      const coverageSql = (dataSource.query.mock.calls[4][0] as string).replace(/\s+/g, ' ')
+      expect(coverageSql).toContain('AND v.origin_station IS NOT NULL')
+    })
+
     it('makes no database call at all when nothing was picked', async () => {
       const result = await service.getVendorComparison([], '2026-05-1H')
 

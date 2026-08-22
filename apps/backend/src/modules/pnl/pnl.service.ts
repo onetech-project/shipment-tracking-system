@@ -1407,7 +1407,7 @@ export class PnlService {
     // meaning is "this TO has no station". Without the guard such a row is byte-identical to the
     // super-aggregate and indexIssueRows files it as a second footer, double-counting the column's
     // issue AWBs. Zero such rows exist right now, so the bug would be latent, not visible.
-    const [factRows, issueRows] = await Promise.all([
+    const [factRows, issueRows, coverageRows] = await Promise.all([
       this.dataSource.query(
         `
         ${colVendorsCte}
@@ -1460,6 +1460,24 @@ export class PnlService {
         `,
         colParams,
       ),
+      // The deduped union of every picked vendor: two columns holding the same vendor must not push
+      // the covered share above 100%. Scoped by the same station guard as the table above, so the
+      // banner describes exactly the rows the table could show — a TO with a vendor but no station
+      // mapping is excluded from both.
+      this.dataSource.query(
+        `
+        SELECT
+          COALESCE(SUM(v.revenue_total), 0)                              AS revenue_period,
+          COALESCE(SUM(v.revenue_total) FILTER (
+            WHERE v.vendor = ANY($${p + 1}::text[])
+              AND v.origin_station IS NOT NULL
+              AND v.dest_station   IS NOT NULL
+          ), 0)                                                          AS revenue_in_columns
+        FROM v_pnl_to v
+        WHERE ${where}
+        `,
+        [...params, [...new Set(colVendors)]],
+      ),
     ])
 
     const cellIssues = indexIssueRows(issueRows as Record<string, unknown>[], (r) =>
@@ -1490,22 +1508,60 @@ export class PnlService {
       }
     }
 
-    const footer: PnlVendorComparisonFooter[] = columns.map((_column, ci) => ({
-      totalRevenue: 0,
-      totalCost: 0,
-      totalMargin: 0,
-      totalCostSmu: 0,
-      totalCostRa: 0,
-      totalCostSgOut: 0,
-      totalCostSgIn: 0,
-      routesWithData: 0,
-      avgRevenuePerRoute: null,
-      avgCostPerRoute: null,
-      avgMarginPerRoute: null,
-      incompleteTos: 0,
-      issues: columnIssues.get(String(ci)) ?? [],
-    }))
+    const footer: PnlVendorComparisonFooter[] = columns.map((_column, ci) => {
+      let totalRevenue = 0
+      let totalCost = 0
+      let totalMargin = 0
+      let totalCostSmu = 0
+      let totalCostRa = 0
+      let totalCostSgOut = 0
+      let totalCostSgIn = 0
+      let incompleteTos = 0
+      // Non-null, not non-zero: a route that flew and made exactly nothing is still a route this
+      // column covered, and dividing it away would inflate the average.
+      let routesWithData = 0
+      for (const row of rows) {
+        const cell = row.cells[ci]
+        if (!cell) continue
+        routesWithData += 1
+        totalRevenue += cell.revenue
+        totalCost += cell.cost
+        totalMargin += cell.margin
+        totalCostSmu += cell.costSmu
+        totalCostRa += cell.costRa
+        totalCostSgOut += cell.costSgOut
+        totalCostSgIn += cell.costSgIn
+        incompleteTos += cell.incompleteTos
+      }
+      // null, not 0 and not NaN: "no routes to average over" is a different statement from "the
+      // average is zero", and the client renders the first as an em dash.
+      const perRoute = (total: number) => (routesWithData > 0 ? total / routesWithData : null)
+      return {
+        totalRevenue,
+        totalCost,
+        totalMargin,
+        totalCostSmu,
+        totalCostRa,
+        totalCostSgOut,
+        totalCostSgIn,
+        routesWithData,
+        avgRevenuePerRoute: perRoute(totalRevenue),
+        avgCostPerRoute: perRoute(totalCost),
+        avgMarginPerRoute: perRoute(totalMargin),
+        incompleteTos,
+        issues: columnIssues.get(String(ci)) ?? [],
+      }
+    })
 
-    return { columns, rows, footer, coverage: { revenueInColumns: 0, revenuePeriod: 0 } }
+    const coverageRow = (coverageRows as Record<string, string>[])[0]
+    return {
+      columns,
+      rows,
+      footer,
+      coverage: {
+        revenueInColumns: Number(coverageRow?.revenue_in_columns ?? 0),
+        revenuePeriod: Number(coverageRow?.revenue_period ?? 0),
+      },
+    }
   }
 }
