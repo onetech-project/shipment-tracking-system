@@ -2,16 +2,21 @@
 
 import React, { useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { COST_COMPONENTS, ComparisonTableModel } from '../utils/comparison'
+import { COST_COMPONENTS, ComparisonColumn, ComparisonTableModel } from '../utils/comparison'
 import { num } from '../utils/format'
 import { CellWarning, hasWarning, warningTooltip, WARNING_TINT } from '../utils/cellWarning'
-import { PnlGroupComparisonColumn } from '../hooks/usePnl'
 
-interface PnlComparisonTableProps {
-  model: ComparisonTableModel<PnlGroupComparisonColumn>
+interface PnlComparisonTableProps<TColumn extends ComparisonColumn> {
+  model: ComparisonTableModel<TColumn>
+  // 'Date' on the route axis, 'Route' on the vendor axis.
+  firstColumnHeader: string
+  // What a clickable cell drills into. The route tab's cells are one day; the vendor tab's cells
+  // span the whole period, so a single hardcoded sentence would be false on one of them.
+  cellHint: string
   // When given, every value cell becomes a button — including empty ones, which are a valid answer
   // ("nothing flew these routes that day"). Footer cells stay inert: they span the whole period.
-  onCellClick?: (column: PnlGroupComparisonColumn, date: string) => void
+  // The second argument is the opaque rowKey; only the caller knows what it means.
+  onCellClick?: (column: TColumn, rowKey: string) => void
 }
 
 // The Total footer row expands like a body row; this is the key it occupies in the open set.
@@ -26,15 +31,14 @@ function formatValue(value: number | null): string {
 
 // Revenue and Cost cells now do the same thing — drill into the AWBs behind them — so they share
 // one title rather than two near-identical strings that could drift.
-function cellTitle(warning: CellWarning | undefined): string {
-  const hint = 'Lihat AWB kolom ini pada tanggal ini'
+function cellTitle(hint: string, warning: CellWarning | undefined): string {
   const tooltip = warningTooltip(warning)
   return tooltip ? `${hint} — ${tooltip}` : hint
 }
 
-// The expand toggle lives on the date, not on a cost cell: the detail rows it opens always covered
-// every column, so a per-cell toggle claimed a scope it never had.
-function DateCell({
+// The expand toggle lives on the row header, not on a cost cell: the detail rows it opens always
+// covered every column, so a per-cell toggle claimed a scope it never had.
+function RowHeaderCell({
   label,
   open,
   onToggle,
@@ -61,7 +65,12 @@ function DateCell({
   )
 }
 
-export function PnlComparisonTable({ model, onCellClick }: PnlComparisonTableProps) {
+export function PnlComparisonTable<TColumn extends ComparisonColumn>({
+  model,
+  firstColumnHeader,
+  cellHint,
+  onCellClick,
+}: PnlComparisonTableProps<TColumn>) {
   const [openRows, setOpenRows] = useState<Set<string>>(new Set())
   const groupCount = model.columns.length
 
@@ -112,7 +121,7 @@ export function PnlComparisonTable({ model, onCellClick }: PnlComparisonTablePro
                 rowSpan={2}
                 className="sticky left-0 z-20 border-b border-r bg-card px-3 py-2 text-left font-medium"
               >
-                Date
+                {firstColumnHeader}
               </th>
               <th
                 colSpan={groupCount}
@@ -158,7 +167,7 @@ export function PnlComparisonTable({ model, onCellClick }: PnlComparisonTablePro
                     data-testid={`row-${row.rowKey}`}
                     className={striped ? 'bg-muted/30' : ''}
                   >
-                    <DateCell
+                    <RowHeaderCell
                       label={row.rowLabel}
                       open={openRows.has(row.rowKey)}
                       onToggle={() => toggle(row.rowKey)}
@@ -174,7 +183,7 @@ export function PnlComparisonTable({ model, onCellClick }: PnlComparisonTablePro
                             <button
                               type="button"
                               data-testid={testId}
-                              title={cellTitle(warning)}
+                              title={cellTitle(cellHint, warning)}
                               className="w-full px-3 py-1.5 text-right hover:bg-primary/10"
                               onClick={() => onCellClick(model.columns[i], row.rowKey)}
                             >
@@ -205,7 +214,7 @@ export function PnlComparisonTable({ model, onCellClick }: PnlComparisonTablePro
               <React.Fragment key={footerRow.label}>
                 <tr className={i === 0 ? 'border-t-2 font-semibold' : 'font-semibold'}>
                   {footerRow.components ? (
-                    <DateCell
+                    <RowHeaderCell
                       label={footerRow.label}
                       open={openRows.has(FOOTER_KEY)}
                       onToggle={() => toggle(FOOTER_KEY)}

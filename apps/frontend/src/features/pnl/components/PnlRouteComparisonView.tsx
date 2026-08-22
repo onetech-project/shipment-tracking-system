@@ -160,9 +160,11 @@ export function PnlRouteComparisonView({ filter, onCellClick }: PnlRouteComparis
           </p>
           <PnlComparisonTable
             model={toRouteComparisonTable(data)}
+            firstColumnHeader="Date"
+            cellHint="Lihat AWB kolom ini pada tanggal ini"
             onCellClick={
               onCellClick
-                ? (column, date) => onCellClick(routeFromComparisonCell(column, date))
+                ? (column, rowKey) => onCellClick(routeFromComparisonCell(column, rowKey))
                 : undefined
             }
           />
