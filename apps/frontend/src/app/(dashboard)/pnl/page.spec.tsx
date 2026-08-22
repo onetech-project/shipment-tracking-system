@@ -89,6 +89,34 @@ jest.mock('@/features/pnl/components/PnlRouteComparisonView', () => ({
   ),
 }))
 
+const VENDOR_CELL_ROUTE: PnlRouteFilter = {
+  routes: [{ origin: 'Jabo', dest: 'Denpasar' }],
+  vendors: ['ESP'],
+  dateFrom: '2026-05-01',
+  dateTo: '2026-05-15',
+}
+
+// Same shape of mock as PnlRouteComparisonView above: renders the `picks` prop it was handed (the
+// page owns this state, so the mock has to echo it back or the lifted state would be unobservable
+// from this spec) and offers a fake cell that fires onCellClick with a route already projected.
+jest.mock('@/features/pnl/components/PnlVendorComparisonView', () => ({
+  PnlVendorComparisonView: ({
+    picks,
+    onPicksChange,
+    onCellClick,
+  }: {
+    picks: { kind: string }[]
+    onPicksChange: (next: { kind: string; name: string }[]) => void
+    onCellClick?: (route: PnlRouteFilter) => void
+  }) => (
+    <div data-testid="vendor-comparison-view">
+      <span data-testid="vendor-picks">{`picks:${picks.length}`}</span>
+      <button onClick={() => onPicksChange([{ kind: 'vendor', name: 'ESP' }])}>pick-vendor</button>
+      <button onClick={() => onCellClick?.(VENDOR_CELL_ROUTE)}>vendor-cell</button>
+    </div>
+  ),
+}))
+
 import PnlPage from './page'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
@@ -239,5 +267,98 @@ describe('PnlPage Route Comparison tab gating', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Route Comparison' }))
 
     expect(screen.getByTestId('route-comparison-view')).toHaveTextContent('picks:1')
+  })
+})
+
+describe('PnlPage Vendor Comparison tab', () => {
+  beforeAll(() => {
+    window.requestAnimationFrame = jest.fn()
+    Element.prototype.scrollIntoView = jest.fn()
+  })
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    ;(useRouter as jest.Mock).mockReturnValue({ replace: jest.fn() })
+    ;(usePnlCycles as jest.Mock).mockReturnValue({
+      data: ['2026-05-1H'],
+      isLoading: false,
+      isError: false,
+      refetch: jest.fn(),
+    })
+    ;(usePnlSummary as jest.Mock).mockReturnValue({
+      data: {
+        label: '2026-05-1H',
+        totalTos: 0,
+        totalAwbs: 0,
+        totalRevenue: 0,
+        totalDiscount: 0,
+        totalCost: 0,
+        grossProfit: 0,
+        grossMarginPct: 0,
+      },
+      isLoading: false,
+      isError: false,
+      refetch: jest.fn(),
+    })
+  })
+
+  it('hides the tab from a user without read.vendor_group', () => {
+    renderPage({ permissions: ['read.pnl', 'read.route_group'] })
+
+    expect(screen.queryByRole('button', { name: 'Vendor Comparison' })).not.toBeInTheDocument()
+  })
+
+  it('shows the tab to a user with read.vendor_group', () => {
+    renderPage({ permissions: ['read.pnl', 'read.vendor_group'] })
+
+    expect(screen.getByRole('button', { name: 'Vendor Comparison' })).toBeInTheDocument()
+  })
+
+  it('keeps the vendor picks when the user leaves the tab and comes back', () => {
+    renderPage({ permissions: ['read.pnl', 'read.vendor_group'] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Vendor Comparison' }))
+    expect(screen.getByTestId('vendor-picks')).toHaveTextContent('picks:0')
+
+    // Drive the page's lifted state through the mock, then leave and return.
+    fireEvent.click(screen.getByRole('button', { name: 'pick-vendor' }))
+    expect(screen.getByTestId('vendor-picks')).toHaveTextContent('picks:1')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Daily Report' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Vendor Comparison' }))
+
+    expect(screen.getByTestId('vendor-picks')).toHaveTextContent('picks:1')
+  })
+
+  it('switches to Estimated and applies a clicked vendor cell as the drilldown route', () => {
+    renderPage({ permissions: ['read.pnl', 'read.vendor_group'] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Vendor Comparison' }))
+    fireEvent.click(screen.getByRole('button', { name: 'vendor-cell' }))
+
+    expect(screen.getByText('Estimated').className).toContain('bg-primary')
+    expect(screen.getByTestId('drilldown-route')).toHaveTextContent(
+      JSON.stringify(VENDOR_CELL_ROUTE),
+    )
+  })
+
+  // flex-wrap alone would leave the first button of the wrapped row drawing a border-l against
+  // nothing, with no border-t between the two rows. The row is a gapped pill row instead.
+  it('renders the five tabs as a wrapping gapped pill row, with no leftover separators', () => {
+    const { container } = renderPage({
+      permissions: ['read.pnl', 'read.route_group', 'read.vendor_group'],
+    })
+
+    const row = container.querySelector('[data-testid="pnl-view-tabs"]')!
+    expect(row.className).toContain('flex-wrap')
+    expect(row.className).toContain('gap-2')
+    expect(row.className).not.toContain('overflow-hidden')
+
+    const buttons = Array.from(row.querySelectorAll('button'))
+    expect(buttons).toHaveLength(5)
+    for (const button of buttons) {
+      expect(button.className).toContain('rounded-md border')
+      expect(button.className).not.toContain('border-l')
+    }
   })
 })

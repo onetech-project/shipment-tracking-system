@@ -8,6 +8,7 @@ import {
   usePnlCycles,
   usePnlSummary,
   PnlColumnPick,
+  PnlVendorPick,
   PnlFilter,
   PnlRouteFilter,
   PnlDailyMatrixColumn,
@@ -15,7 +16,7 @@ import {
   DEFAULT_DATE_BASIS,
   BASIS_LABELS,
 } from '@/features/pnl/hooks/usePnl'
-import { ROUTE_COMPARISON_LABEL } from '@/features/pnl/constants'
+import { ROUTE_COMPARISON_LABEL, VENDOR_COMPARISON_LABEL } from '@/features/pnl/constants'
 import { routeFromCell } from '@/features/pnl/utils/dailyMatrix'
 import { PnlKpiCards, PnlKpiKey } from '@/features/pnl/components/PnlKpiCards'
 import { PnlDailyMarginChart } from '@/features/pnl/components/PnlDailyMarginChart'
@@ -25,6 +26,7 @@ import { PnlDataQuality } from '@/features/pnl/components/PnlDataQuality'
 import { PnlFormulaPanel } from '@/features/pnl/components/PnlFormulaPanel'
 import { PnlDailyMatrixView } from '@/features/pnl/components/PnlDailyMatrixView'
 import { PnlRouteComparisonView } from '@/features/pnl/components/PnlRouteComparisonView'
+import { PnlVendorComparisonView } from '@/features/pnl/components/PnlVendorComparisonView'
 import { SettlementView } from '@/features/pnl-settlement/components/SettlementView'
 
 function PnlSkeleton() {
@@ -63,13 +65,14 @@ const BASIS_OPTIONS: { value: DateBasis; label: string }[] = (
   ['ata_vendor_wh_destination', 'atd_origin', 'completed_time'] satisfies DateBasis[]
 ).map((value) => ({ value, label: BASIS_LABELS[value] }))
 
-type PnlView = 'estimate' | 'actual' | 'daily' | 'routes'
+type PnlView = 'estimate' | 'actual' | 'daily' | 'routes' | 'vendors'
 
 const VIEW_SUBTITLE: Record<PnlView, string> = {
   estimate: 'Estimated P&L based on arrival date — not yet billed',
   actual: 'Actual revenue from settled invoices vs estimate',
   daily: 'Daily revenue and profit margin per origin and destination',
   routes: 'Revenue, cost and margin per date, compared across routes and route groups',
+  vendors: 'Revenue, cost and margin per route, compared across vendors and vendor groups',
 }
 
 function PnlPageContent() {
@@ -91,6 +94,11 @@ function PnlPageContent() {
   // NOT cleared by the period effect below — a pick carries no date, unlike drilldownRoute.
   const [routePicks, setRoutePicks] = useState<PnlColumnPick[]>([])
 
+  // Lifted out of PnlVendorComparisonView for the same reason routePicks is: the tab is rendered
+  // by a ternary below, so leaving it unmounts the component outright. Deliberately NOT cleared by
+  // the period effect — a pick carries no date, unlike drilldownRoute.
+  const [vendorPicks, setVendorPicks] = useState<PnlVendorPick[]>([])
+
   useEffect(() => {
     if (cycles && cycles.length > 0 && (!cycle || !cycles.includes(cycle))) {
       setCycle(cycles[0])
@@ -109,6 +117,15 @@ function PnlPageContent() {
   // button, such as a persisted or URL-driven value).
   useEffect(() => {
     if (view === 'routes' && !hasPermission('read.route_group')) {
+      setView('estimate')
+    }
+  }, [view, hasPermission])
+
+  // Same backstop as the route tab above: the button is the only way `view` becomes 'vendors'
+  // today, but a future URL- or storage-driven value must not be able to park a user on a view
+  // whose picker they are not allowed to load.
+  useEffect(() => {
+    if (view === 'vendors' && !hasPermission('read.vendor_group')) {
       setView('estimate')
     }
   }, [view, hasPermission])
@@ -161,31 +178,43 @@ function PnlPageContent() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">P&amp;L Analysis</h1>
           <p className="text-muted-foreground text-sm">{VIEW_SUBTITLE[view]}</p>
-          <div className="mt-2 flex w-fit rounded-md border text-sm overflow-hidden">
+          {/* A gapped pill row, not a segmented control. Five tabs no longer fit on one line at
+              narrow widths, and merely adding flex-wrap to the old segmented control leaves the
+              first button of the wrapped row drawing a border-l against nothing, with no border-t
+              separating the rows. Each button owns its whole border instead. */}
+          <div data-testid="pnl-view-tabs" className="mt-2 flex flex-wrap gap-2 text-sm">
             <button
-              className={`px-3 py-1.5 ${view === 'estimate' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+              className={`rounded-md border px-3 py-1.5 ${view === 'estimate' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
               onClick={() => setView('estimate')}
             >
               Estimated
             </button>
             <button
-              className={`px-3 py-1.5 border-l ${view === 'actual' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+              className={`rounded-md border px-3 py-1.5 ${view === 'actual' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
               onClick={() => setView('actual')}
             >
               Actual vs Estimate
             </button>
             <button
-              className={`px-3 py-1.5 border-l ${view === 'daily' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+              className={`rounded-md border px-3 py-1.5 ${view === 'daily' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
               onClick={() => setView('daily')}
             >
               Daily Report
             </button>
             {hasPermission('read.route_group') && (
               <button
-                className={`px-3 py-1.5 border-l ${view === 'routes' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+                className={`rounded-md border px-3 py-1.5 ${view === 'routes' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
                 onClick={() => setView('routes')}
               >
                 {ROUTE_COMPARISON_LABEL}
+              </button>
+            )}
+            {hasPermission('read.vendor_group') && (
+              <button
+                className={`rounded-md border px-3 py-1.5 ${view === 'vendors' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+                onClick={() => setView('vendors')}
+              >
+                {VENDOR_COMPARISON_LABEL}
               </button>
             )}
           </div>
@@ -294,6 +323,16 @@ function PnlPageContent() {
             filter={filter}
             picks={routePicks}
             onPicksChange={setRoutePicks}
+            onCellClick={applyDrilldownRoute}
+          />
+        )
+      ) : view === 'vendors' ? (
+        filter &&
+        hasPermission('read.vendor_group') && (
+          <PnlVendorComparisonView
+            filter={filter}
+            picks={vendorPicks}
+            onPicksChange={setVendorPicks}
             onCellClick={applyDrilldownRoute}
           />
         )
