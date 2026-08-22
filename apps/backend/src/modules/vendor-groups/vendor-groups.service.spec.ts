@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common'
+import { ConflictException, NotFoundException } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import { DataSource, EntityManager } from 'typeorm'
 import { getRepositoryToken } from '@nestjs/typeorm'
@@ -311,9 +311,59 @@ describe('VendorGroupsService', () => {
     it('throws when the group does not exist', async () => {
       groupRepo.findOne.mockResolvedValueOnce(null)
 
-      await expect(service.update('missing', { name: 'X' })).rejects.toThrow(
-        'Vendor group not found',
-      )
+      const rejection = service.update('missing', { name: 'X' })
+
+      await expect(rejection).rejects.toThrow('Vendor group not found')
+      await expect(rejection).rejects.toBeInstanceOf(NotFoundException)
+    })
+
+    // Mirrors create's "rejects a duplicate name with a conflict": here the pre-check itself throws,
+    // rather than racing into the 23505 catch below.
+    it('rejects a duplicate name with a conflict', async () => {
+      groupRepo.findOne
+        .mockResolvedValueOnce({ id: 'vg1', name: 'Maskapai' })
+        .mockResolvedValueOnce({ id: 'vg2', name: 'Kargo' })
+
+      const rejection = service.update('vg1', { name: 'Kargo' })
+
+      await expect(rejection).rejects.toThrow('A vendor group named "Kargo" already exists')
+      await expect(rejection).rejects.toBeInstanceOf(ConflictException)
+      expect(dataSource.transaction).not.toHaveBeenCalled()
+    })
+
+    // The `dto.name !== existing.name` half of the pre-check guard exists precisely so a self-rename
+    // never races against its own row. Pinning the findOne call count makes deleting that half of the
+    // guard fail this test even though assertNameFree's default (unmocked) lookup wouldn't itself throw.
+    it('does not run the conflict pre-check on a self-rename', async () => {
+      groupRepo.findOne.mockResolvedValueOnce({
+        id: 'vg1',
+        name: 'Maskapai',
+        description: 'pulau',
+      })
+      dataSource.query.mockResolvedValueOnce([
+        { id: 'vg1', name: 'Maskapai', description: 'pulau', vendor: null },
+      ])
+
+      const result = await service.update('vg1', { name: 'Maskapai' })
+
+      expect(groupRepo.findOne).toHaveBeenCalledTimes(1)
+      expect(result.name).toBe('Maskapai')
+    })
+
+    // replaceVendors is gated by `if (dto.vendors)`; a name-only patch must leave membership rows
+    // alone rather than deleting and re-inserting an empty set.
+    it('leaves vendor_group_vendors untouched on a name-only update', async () => {
+      groupRepo.findOne
+        .mockResolvedValueOnce({ id: 'vg1', name: 'Lama', description: null })
+        .mockResolvedValueOnce(null)
+      dataSource.query.mockResolvedValueOnce([
+        { id: 'vg1', name: 'Baru', description: null, vendor: null },
+      ])
+
+      await service.update('vg1', { name: 'Baru' })
+
+      expect(txVendorRepo.delete).not.toHaveBeenCalled()
+      expect(txVendorRepo.insert).not.toHaveBeenCalled()
     })
 
     it('replaces the vendors without touching name/description when only vendors are given', async () => {
@@ -434,7 +484,10 @@ describe('VendorGroupsService', () => {
     it('throws when the group does not exist', async () => {
       groupRepo.findOne.mockResolvedValueOnce(null)
 
-      await expect(service.remove('missing')).rejects.toThrow('Vendor group not found')
+      const rejection = service.remove('missing')
+
+      await expect(rejection).rejects.toThrow('Vendor group not found')
+      await expect(rejection).rejects.toBeInstanceOf(NotFoundException)
     })
 
     it('deletes the group by id', async () => {
