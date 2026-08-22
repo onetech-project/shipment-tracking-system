@@ -1380,7 +1380,117 @@ export class PnlService {
       cells: columns.map(() => null),
     }))
 
-    const footer: PnlVendorComparisonFooter[] = columns.map(() => ({
+    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate, 'v.')
+
+    // One entry per (column, vendor) pair, flattened into two parallel arrays. UNNEST zips them
+    // back into the mapping table both queries below join against. Flattening into a single list
+    // would let a vendor from one column answer for another.
+    const colIdx: number[] = []
+    const colVendors: string[] = []
+    columns.forEach((column, index) => {
+      for (const vendorName of column.vendors) {
+        colIdx.push(index)
+        colVendors.push(vendorName)
+      }
+    })
+
+    const p = params.length
+    const colVendorsCte = `
+      WITH col_vendors(col_idx, vendor) AS (
+        SELECT * FROM UNNEST($${p + 1}::int[], $${p + 2}::text[])
+      )`
+    const colParams = [...params, colIdx, colVendors]
+
+    // Both queries carry `AND v.origin_station IS NOT NULL AND v.dest_station IS NOT NULL`, and it
+    // is load-bearing rather than defensive. The footer half of the GROUPING SETS below identifies
+    // itself by a NULL origin_station — and `station_mapping_missing` is an issue whose entire
+    // meaning is "this TO has no station". Without the guard such a row is byte-identical to the
+    // super-aggregate and indexIssueRows files it as a second footer, double-counting the column's
+    // issue AWBs. Zero such rows exist right now, so the bug would be latent, not visible.
+    const [factRows, issueRows] = await Promise.all([
+      this.dataSource.query(
+        `
+        ${colVendorsCte}
+        SELECT
+          v.origin_station                                             AS origin_station,
+          v.dest_station                                               AS dest_station,
+          cv.col_idx                                                   AS col_idx,
+          COALESCE(SUM(v.revenue_total), 0)                            AS revenue,
+          COALESCE(SUM(v.cost_to), 0)                                  AS cost,
+          COALESCE(SUM(v.revenue_total), 0)
+            - COALESCE(SUM(v.revenue_discount), 0)
+            - COALESCE(SUM(v.cost_to), 0)                              AS margin,
+          COALESCE(SUM(v.cost_smu_awb    * v.weight_share)
+                   FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_smu,
+          COALESCE(SUM(v.cost_ra_awb     * v.weight_share)
+                   FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_ra,
+          COALESCE(SUM(v.cost_sg_out_awb * v.weight_share)
+                   FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_sg_out,
+          COALESCE(SUM(COALESCE(v.cost_sg_in_to, 0))
+                   FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_sg_in,
+          COUNT(*) FILTER (WHERE v.cost_to IS NULL)::int               AS incomplete_tos
+        FROM v_pnl_to v
+        JOIN col_vendors cv ON cv.vendor = v.vendor
+        WHERE ${where}
+          AND v.origin_station IS NOT NULL
+          AND v.dest_station   IS NOT NULL
+        GROUP BY 1, 2, 3
+        `,
+        colParams,
+      ),
+      this.dataSource.query(
+        `
+        ${colVendorsCte}, issue_rows AS (
+          SELECT
+            v.origin_station AS origin_station,
+            v.dest_station   AS dest_station,
+            cv.col_idx       AS col_idx,
+            v.issue          AS issue,
+            v.awb            AS awb
+          FROM v_pnl_to v
+          JOIN col_vendors cv ON cv.vendor = v.vendor
+          WHERE ${where}
+            AND v.origin_station IS NOT NULL
+            AND v.dest_station   IS NOT NULL
+            AND v.issue IS NOT NULL
+        )
+        SELECT origin_station, dest_station, col_idx, issue, COUNT(DISTINCT awb)::int AS awbs
+        FROM issue_rows
+        GROUP BY GROUPING SETS ((origin_station, dest_station, col_idx, issue), (col_idx, issue))
+        `,
+        colParams,
+      ),
+    ])
+
+    const cellIssues = indexIssueRows(issueRows as Record<string, unknown>[], (r) =>
+      r.origin_station == null ? null : `${r.origin_station}|${r.dest_station}|${r.col_idx}`,
+    )
+    const columnIssues = indexIssueRows(issueRows as Record<string, unknown>[], (r) =>
+      r.origin_station == null ? String(r.col_idx) : null,
+    )
+
+    // Station names are guaranteed free of '|' (the same guarantee that lets the route params use
+    // a flat delimited encoding), so this composite key cannot collide.
+    const rowIndex = new Map(rows.map((r, i) => [`${r.origin}|${r.dest}`, i]))
+
+    for (const factRow of factRows as Record<string, string>[]) {
+      const ci = Number(factRow.col_idx)
+      const ri = rowIndex.get(`${factRow.origin_station}|${factRow.dest_station}`)
+      if (!Number.isInteger(ci) || ci < 0 || ci >= columns.length || ri === undefined) continue
+      rows[ri].cells[ci] = {
+        revenue: Number(factRow.revenue),
+        cost: Number(factRow.cost),
+        margin: Number(factRow.margin),
+        costSmu: Number(factRow.cost_smu),
+        costRa: Number(factRow.cost_ra),
+        costSgOut: Number(factRow.cost_sg_out),
+        costSgIn: Number(factRow.cost_sg_in),
+        incompleteTos: Number(factRow.incomplete_tos),
+        issues: cellIssues.get(`${factRow.origin_station}|${factRow.dest_station}|${ci}`) ?? [],
+      }
+    }
+
+    const footer: PnlVendorComparisonFooter[] = columns.map((_column, ci) => ({
       totalRevenue: 0,
       totalCost: 0,
       totalMargin: 0,
@@ -1393,7 +1503,7 @@ export class PnlService {
       avgCostPerRoute: null,
       avgMarginPerRoute: null,
       incompleteTos: 0,
-      issues: [],
+      issues: columnIssues.get(String(ci)) ?? [],
     }))
 
     return { columns, rows, footer, coverage: { revenueInColumns: 0, revenuePeriod: 0 } }

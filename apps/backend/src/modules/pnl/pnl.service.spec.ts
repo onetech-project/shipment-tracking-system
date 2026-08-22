@@ -1199,6 +1199,139 @@ describe('PnlService', () => {
       expect(result.rows[0].originLabel).toBe('CGK')
     })
 
+    const fact = (over: Partial<Record<string, string>>) => ({
+      origin_station: 'Jabo',
+      dest_station: 'Denpasar',
+      col_idx: '0',
+      revenue: '0',
+      cost: '0',
+      margin: '0',
+      cost_smu: '0',
+      cost_ra: '0',
+      cost_sg_out: '0',
+      cost_sg_in: '0',
+      incomplete_tos: '0',
+      ...over,
+    })
+
+    // Query order once facts exist: group members, stations, facts, issues, coverage.
+    function mockFactQueries(
+      facts: Record<string, string>[],
+      issues: Record<string, unknown>[] = [],
+      coverage: Record<string, string> = { revenue_period: '0', revenue_in_columns: '0' },
+    ) {
+      dataSource.query
+        .mockResolvedValueOnce([{ id: VG1, name: 'Vendor Utama', vendor: 'ESP' }])
+        .mockResolvedValueOnce([
+          { origin_station: 'Jabo', dest_station: 'Denpasar' },
+          { origin_station: 'Jabo', dest_station: 'Aceh' },
+        ])
+        .mockResolvedValueOnce(facts)
+        .mockResolvedValueOnce(issues)
+        .mockResolvedValueOnce([coverage])
+    }
+
+    it('lands each fact row on its own route and column, leaving the rest null', async () => {
+      mockFactQueries([
+        fact({ revenue: '1000', cost: '600', margin: '385', cost_smu: '600', incomplete_tos: '2' }),
+      ])
+
+      const result = await service.getVendorComparison([group(VG1)], '2026-05-1H')
+
+      expect(result.rows[0].cells[0]).toEqual({
+        revenue: 1000,
+        cost: 600,
+        margin: 385,
+        costSmu: 600,
+        costRa: 0,
+        costSgOut: 0,
+        costSgIn: 0,
+        incompleteTos: 2,
+        issues: [],
+      })
+      // 'Jabo|Aceh' had no fact row: null, which is distinct from a real zero.
+      expect(result.rows[1].cells[0]).toBeNull()
+    })
+
+    it('selects gross revenue and the Daily Report margin expression', async () => {
+      mockFactQueries([])
+
+      await service.getVendorComparison([group(VG1)], '2026-05-1H')
+
+      // Call 2 is the fact query (0 = group members, 1 = stations). Normalised to one line so
+      // whitespace in the SQL literal cannot make this pass or fail by accident.
+      const factSql = (dataSource.query.mock.calls[2][0] as string).replace(/\s+/g, ' ')
+      expect(factSql).toContain('COALESCE(SUM(v.revenue_total), 0) AS revenue')
+      expect(factSql).toContain(
+        '- COALESCE(SUM(v.revenue_discount), 0) - COALESCE(SUM(v.cost_to), 0) AS margin',
+      )
+    })
+
+    it('prorates the three AWB-grain components but not cost_sg_in_to', async () => {
+      mockFactQueries([])
+
+      await service.getVendorComparison([group(VG1)], '2026-05-1H')
+
+      const factSql = (dataSource.query.mock.calls[2][0] as string).replace(/\s+/g, ' ')
+      expect(factSql).toContain('SUM(v.cost_smu_awb * v.weight_share)')
+      expect(factSql).toContain('SUM(v.cost_ra_awb * v.weight_share)')
+      expect(factSql).toContain('SUM(v.cost_sg_out_awb * v.weight_share)')
+      // cost_sg_in_to already multiplies by weight_share inside the view definition. Multiplying
+      // again would square the share and silently understate SG In on every multi-TO AWB.
+      expect(factSql).toContain('SUM(COALESCE(v.cost_sg_in_to, 0))')
+      expect(factSql).not.toContain('cost_sg_in_to * v.weight_share')
+    })
+
+    // A behavioural test cannot see this: with the guard in place no station-less row ever comes
+    // back, and without it the JS keying has no way to tell a station_mapping_missing row from the
+    // GROUPING SETS super-aggregate. The guard itself is the assertion.
+    it('guards both queries against null stations so an issue row cannot pose as the footer', async () => {
+      mockFactQueries([])
+
+      await service.getVendorComparison([group(VG1)], '2026-05-1H')
+
+      for (const callIndex of [2, 3]) {
+        const sql = (dataSource.query.mock.calls[callIndex][0] as string).replace(/\s+/g, ' ')
+        expect(sql).toContain('AND v.origin_station IS NOT NULL')
+        expect(sql).toContain('AND v.dest_station IS NOT NULL')
+      }
+    })
+
+    it('attaches per-cell issues to their own route and column', async () => {
+      mockFactQueries(
+        [fact({ revenue: '1000', cost: '600', margin: '385' })],
+        [
+          { origin_station: 'Jabo', dest_station: 'Denpasar', col_idx: '0', issue: 'no_booking', awbs: '3' },
+          // A null origin_station marks the column-wide grouping set, not a route row.
+          { origin_station: null, dest_station: null, col_idx: '0', issue: 'no_booking', awbs: '7' },
+        ],
+      )
+
+      const result = await service.getVendorComparison([group(VG1)], '2026-05-1H')
+
+      expect(result.rows[0].cells[0]!.issues).toEqual([{ issue: 'no_booking', awbs: 3 }])
+      expect(result.footer[0].issues).toEqual([{ issue: 'no_booking', awbs: 7 }])
+    })
+
+    it('zips columns to vendors as two parallel arrays, so one vendor cannot leak across columns', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([
+          { id: VG1, name: 'Vendor Utama', vendor: 'ESP' },
+          { id: VG1, name: 'Vendor Utama', vendor: 'Angkasa' },
+        ])
+        .mockResolvedValueOnce([{ origin_station: 'Jabo', dest_station: 'Denpasar' }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ revenue_period: '0', revenue_in_columns: '0' }])
+
+      await service.getVendorComparison([group(VG1), vendor('Kargo')], '2026-05-1H')
+
+      const factParams = dataSource.query.mock.calls[2][1] as unknown[]
+      // ['2026-05-1H', colIdx[], colVendors[]] — index 0 and 1 pair up positionally.
+      expect(factParams[1]).toEqual([0, 0, 1])
+      expect(factParams[2]).toEqual(['ESP', 'Angkasa', 'Kargo'])
+    })
+
     it('makes no database call at all when nothing was picked', async () => {
       const result = await service.getVendorComparison([], '2026-05-1H')
 
