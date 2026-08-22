@@ -865,9 +865,6 @@ In `PnlComparisonTable.tsx`, add near `FOOTER_KEY`:
 const FIELDS = ['revenue', 'cost', 'margin'] as const
 type Field = (typeof FIELDS)[number]
 
-// Blank blocks a detail row pads with: a cost component has no revenue and no margin of its own.
-const BLANK_BLOCKS: Field[] = ['revenue', 'margin']
-
 function valueClass(field: Field, value: number | null): string {
   // Only margin can meaningfully be negative; revenue and cost are sums of non-negative amounts.
   return field === 'margin' && value != null && value < 0 ? 'text-red-600 dark:text-red-400' : ''
@@ -886,7 +883,7 @@ Replace the body flatMap (`:168`) with:
                         const testId = `${field}-${row.rowKey}-${model.columns[i].id}`
 ```
 
-Replace the detail row's single blank block (`:92-94`) with a loop over `BLANK_BLOCKS`, keeping the filled cost block between them:
+Replace the detail row's single blank block (`:92-94`) with **two** blank blocks — one before the cost block and one after — so a detail row stays exactly as wide as a body row. They are written out literally rather than looped, because the two blanks are not adjacent: the filled cost block sits between them, and a loop would have to special-case the middle.
 
 ```tsx
         <td className="sticky left-0 z-10 whitespace-nowrap border-b border-r bg-card px-3 py-1 pl-6 text-xs text-muted-foreground">
