@@ -1,13 +1,13 @@
 /**
- * Unit tests for PnlGroupComparisonTable. The model is hand-built rather than produced by
+ * Unit tests for PnlComparisonTable. The model is hand-built rather than produced by
  * toComparisonTable, so these tests isolate the renderer from the projection (covered in
- * groupComparison.spec.ts).
+ * routeComparison.spec.ts).
  */
 import React from 'react'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
-import { PnlGroupComparisonTable } from './PnlGroupComparisonTable'
-import { ComparisonTableModel } from '../utils/groupComparison'
+import { PnlComparisonTable } from './PnlComparisonTable'
+import { ComparisonTableModel } from '../utils/routeComparison'
 
 // Task 13 turns the footer cost cell into a plain <td> (no button), so locating it by row label
 // and cell position — the same style PnlMatrixTable.spec.tsx uses — survives that rework, unlike a
@@ -104,7 +104,7 @@ function baseModel(overrides: Partial<ComparisonTableModel> = {}): ComparisonTab
 }
 
 it('renders a Revenue and a Cost block header spanning the group columns', () => {
-  render(<PnlGroupComparisonTable model={baseModel()} />)
+  render(<PnlComparisonTable model={baseModel()} />)
 
   expect(screen.getByText('Revenue')).toHaveAttribute('colspan', '2')
   expect(screen.getByText('Cost')).toHaveAttribute('colspan', '2')
@@ -112,7 +112,7 @@ it('renders a Revenue and a Cost block header spanning the group columns', () =>
 })
 
 it('renders a missing cell as an em-dash and a real zero as 0', () => {
-  render(<PnlGroupComparisonTable model={baseModel()} />)
+  render(<PnlComparisonTable model={baseModel()} />)
 
   const firstRow = screen.getByTestId('row-2026-05-01')
   expect(within(firstRow).getAllByText('—').length).toBeGreaterThan(0)
@@ -124,14 +124,14 @@ it('renders a missing cell as an em-dash and a real zero as 0', () => {
 it('expands the cost detail from a chevron on the date, not from a cost cell', () => {
   // The detail rows always covered every column, so the toggle belongs to the row. Leaving it on
   // a cost cell would make one column's cell silently control all of them.
-  render(<PnlGroupComparisonTable model={baseModel()} />)
+  render(<PnlComparisonTable model={baseModel()} />)
   expect(screen.queryByTestId('detail-2026-05-01-costSmu')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Rincian cost 1-May-2026' }))
   expect(screen.getByTestId('detail-2026-05-01-costSmu')).toBeInTheDocument()
 })
 
 it('expands the detail row into the four components for every group', () => {
-  render(<PnlGroupComparisonTable model={baseModel()} />)
+  render(<PnlComparisonTable model={baseModel()} />)
 
   expect(screen.queryByTestId('detail-2026-05-01-costSmu')).not.toBeInTheDocument()
 
@@ -159,7 +159,7 @@ it('expands the detail row into the four components for every group', () => {
 })
 
 it('leaves the Revenue-block cells of an expanded detail row empty', () => {
-  render(<PnlGroupComparisonTable model={baseModel()} />)
+  render(<PnlComparisonTable model={baseModel()} />)
 
   fireEvent.click(screen.getByRole('button', { name: 'Rincian cost 1-May-2026' }))
 
@@ -176,7 +176,7 @@ it('leaves the Revenue-block cells of an expanded detail row empty', () => {
 })
 
 it('collapses again on a second click', () => {
-  render(<PnlGroupComparisonTable model={baseModel()} />)
+  render(<PnlComparisonTable model={baseModel()} />)
 
   fireEvent.click(screen.getByRole('button', { name: 'Rincian cost 1-May-2026' }))
   fireEvent.click(screen.getByRole('button', { name: 'Rincian cost 1-May-2026' }))
@@ -185,7 +185,7 @@ it('collapses again on a second click', () => {
 })
 
 it('keeps several dates open at once, each showing its own values', () => {
-  render(<PnlGroupComparisonTable model={baseModel()} />)
+  render(<PnlComparisonTable model={baseModel()} />)
 
   fireEvent.click(screen.getByRole('button', { name: 'Rincian cost 1-May-2026' }))
   fireEvent.click(screen.getByRole('button', { name: 'Rincian cost 2-May-2026' }))
@@ -204,7 +204,7 @@ it('keeps several dates open at once, each showing its own values', () => {
 
 it('reports the column and date behind a clicked revenue or cost cell', () => {
   const onCellClick = jest.fn()
-  render(<PnlGroupComparisonTable model={baseModel()} onCellClick={onCellClick} />)
+  render(<PnlComparisonTable model={baseModel()} onCellClick={onCellClick} />)
 
   fireEvent.click(screen.getByTestId('revenue-2026-05-01-g1'))
   expect(onCellClick).toHaveBeenLastCalledWith(columns[0], '2026-05-01')
@@ -214,25 +214,25 @@ it('reports the column and date behind a clicked revenue or cost cell', () => {
 })
 
 it('leaves the value cells inert when no handler is given', () => {
-  render(<PnlGroupComparisonTable model={baseModel()} />)
+  render(<PnlComparisonTable model={baseModel()} />)
   expect(screen.getByTestId('revenue-2026-05-01-g1').tagName).toBe('TD')
 })
 
 it('never turns a footer value into a drilldown button', () => {
   // The footer spans the whole period; the Total chevron is the only button it owns.
-  render(<PnlGroupComparisonTable model={baseModel()} onCellClick={jest.fn()} />)
+  render(<PnlComparisonTable model={baseModel()} onCellClick={jest.fn()} />)
   expect(screen.queryByTestId('cost-__footer__-g1')).not.toBeInTheDocument()
 })
 
 it('still explains a warning through the clickable cell title', () => {
-  render(<PnlGroupComparisonTable model={baseModel()} onCellClick={jest.fn()} />)
+  render(<PnlComparisonTable model={baseModel()} onCellClick={jest.fn()} />)
   expect(screen.getByTestId('cost-2026-05-02-g1').getAttribute('title')).toBe(
     'Lihat AWB kolom ini pada tanggal ini — 3 TO belum ada cost',
   )
 })
 
 it('marks a cost cell that contains uncosted TOs', () => {
-  render(<PnlGroupComparisonTable model={baseModel()} />)
+  render(<PnlComparisonTable model={baseModel()} />)
 
   expect(screen.getByTestId('cost-2026-05-02-g1')).toHaveAttribute(
     'title',
@@ -241,7 +241,7 @@ it('marks a cost cell that contains uncosted TOs', () => {
 })
 
 it('expands the Total footer row from its own chevron', () => {
-  render(<PnlGroupComparisonTable model={baseModel()} />)
+  render(<PnlComparisonTable model={baseModel()} />)
   fireEvent.click(screen.getByRole('button', { name: 'Rincian cost Total' }))
   expect(screen.getByTestId('detail-__footer__-costSmu')).toBeInTheDocument()
 
@@ -250,14 +250,14 @@ it('expands the Total footer row from its own chevron', () => {
 })
 
 it('paints a warned cost cell amber', () => {
-  render(<PnlGroupComparisonTable model={baseModel()} />)
+  render(<PnlComparisonTable model={baseModel()} />)
   expect(screen.getByTestId('cost-2026-05-02-g1').closest('td')!.className).toContain(
     'bg-amber-100',
   )
 })
 
 it('leaves a clean cost cell untinted', () => {
-  render(<PnlGroupComparisonTable model={baseModel()} />)
+  render(<PnlComparisonTable model={baseModel()} />)
   expect(screen.getByTestId('cost-2026-05-02-g2').closest('td')!.className).not.toContain(
     'bg-amber-100',
   )
@@ -268,7 +268,7 @@ it('leaves a clean cost cell untinted', () => {
 // button (the amber class stays on the <td>), so the class is reached via .closest('td') — the
 // tripwire this test exists for still fires if the tint were ever moved onto the button instead.
 it('paints a warned revenue cell amber and leaves a clean one untinted', () => {
-  render(<PnlGroupComparisonTable model={baseModel()} onCellClick={jest.fn()} />)
+  render(<PnlComparisonTable model={baseModel()} onCellClick={jest.fn()} />)
   expect(screen.getByTestId('revenue-2026-05-02-g1').closest('td')!.className).toContain(
     'bg-amber-100',
   )
@@ -281,7 +281,7 @@ it('paints a warned revenue cell amber and leaves a clean one untinted', () => {
 // (g2) in warnings[0]/warnings[1] — same values the body-cost test above exercises for the same
 // date, so this checks the footer gets the same amber treatment on both blocks, not just the body.
 it('paints both blocks of the Total footer row amber for a warned column, and leaves a clean column untinted', () => {
-  const { container } = render(<PnlGroupComparisonTable model={baseModel()} />)
+  const { container } = render(<PnlComparisonTable model={baseModel()} />)
   const [revenueWarned, revenueClean, costWarned, costClean] = footerRow(container, 'Total')
   expect(revenueWarned.className).toContain('bg-amber-100')
   expect(revenueClean.className).not.toContain('bg-amber-100')

@@ -4,17 +4,17 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { MultiRouteFilter } from '@/components/shared/multi-route-filter'
 import { useAvailableRoutes, useRouteGroups } from '@/features/route-groups/hooks/useRouteGroups'
-import { PnlColumnPick, PnlFilter, PnlRouteFilter, usePnlGroupComparison } from '../hooks/usePnl'
+import { PnlColumnPick, PnlFilter, PnlRouteFilter, usePnlRouteComparison } from '../hooks/usePnl'
 import { buildRouteLabelIndex, labelsForRoutes, routesForLabels } from '../utils/routeLabels'
-import { overlappingRoutes, routeFromComparisonCell, toComparisonTable } from '../utils/groupComparison'
-import { PnlGroupComparisonTable } from './PnlGroupComparisonTable'
+import { overlappingRoutes, routeFromComparisonCell, toComparisonTable } from '../utils/routeComparison'
+import { PnlComparisonTable } from './PnlComparisonTable'
 
-interface PnlGroupComparisonViewProps {
+interface PnlRouteComparisonViewProps {
   filter: PnlFilter
   onCellClick?: (route: PnlRouteFilter) => void
 }
 
-export function PnlGroupComparisonView({ filter, onCellClick }: PnlGroupComparisonViewProps) {
+export function PnlRouteComparisonView({ filter, onCellClick }: PnlRouteComparisonViewProps) {
   // Pick order is column order, so the array is appended to rather than re-sorted.
   const [picks, setPicks] = useState<PnlColumnPick[]>([])
   const {
@@ -24,7 +24,7 @@ export function PnlGroupComparisonView({ filter, onCellClick }: PnlGroupComparis
     refetch: refetchGroups,
   } = useRouteGroups()
   const { data: availableRoutes } = useAvailableRoutes()
-  const { data, isLoading, isError, refetch } = usePnlGroupComparison(filter, picks)
+  const { data, isLoading, isError, refetch } = usePnlRouteComparison(filter, picks)
 
   const routeIndex = buildRouteLabelIndex(availableRoutes ?? [])
   const pickedRoutes = picks.flatMap((p) => (p.kind === 'route' ? [{ origin: p.origin, dest: p.dest }] : []))
@@ -95,7 +95,7 @@ export function PnlGroupComparisonView({ filter, onCellClick }: PnlGroupComparis
       <div className="rounded-lg border bg-card p-4">
         {(groups ?? []).length > 0 && (
           <>
-            <p className="mb-2 text-sm font-medium">Group</p>
+            <p className="mb-2 text-sm font-medium">Route Group</p>
             <div className="flex flex-wrap gap-x-6 gap-y-2">
               {(groups ?? []).map((group) => (
                 <label key={group.id} className="flex items-center gap-2 text-sm">
@@ -158,7 +158,7 @@ export function PnlGroupComparisonView({ filter, onCellClick }: PnlGroupComparis
             Kolom Revenue di sini bruto (belum dikurangi discount), berbeda dari Margin di tab Daily
             Report. Revenue dan Cost tidak dimaksudkan untuk dikurangkan satu sama lain.
           </p>
-          <PnlGroupComparisonTable
+          <PnlComparisonTable
             model={toComparisonTable(data)}
             onCellClick={
               onCellClick

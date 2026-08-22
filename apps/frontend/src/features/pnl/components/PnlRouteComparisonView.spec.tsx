@@ -1,12 +1,12 @@
 import React from 'react'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
-import { PnlGroupComparisonView } from './PnlGroupComparisonView'
+import { PnlRouteComparisonView } from './PnlRouteComparisonView'
 import { PnlColumnPick, PnlFilter, PnlGroupComparison, PnlRouteFilter } from '../hooks/usePnl'
 
 jest.mock('../hooks/usePnl', () => ({
   ...jest.requireActual('../hooks/usePnl'),
-  usePnlGroupComparison: jest.fn(),
+  usePnlRouteComparison: jest.fn(),
 }))
 jest.mock('@/features/route-groups/hooks/useRouteGroups', () => ({
   useRouteGroups: jest.fn(),
@@ -14,7 +14,7 @@ jest.mock('@/features/route-groups/hooks/useRouteGroups', () => ({
 }))
 
 import * as hooks from '../hooks/usePnl'
-import { usePnlGroupComparison } from '../hooks/usePnl'
+import { usePnlRouteComparison } from '../hooks/usePnl'
 import { useRouteGroups, useAvailableRoutes } from '@/features/route-groups/hooks/useRouteGroups'
 
 const filter: PnlFilter = { mode: 'cycle', cycle: '2026-05-1H', basis: 'ata_vendor_wh_destination' }
@@ -22,7 +22,7 @@ const filter: PnlFilter = { mode: 'cycle', cycle: '2026-05-1H', basis: 'ata_vend
 const route = (dest: string) => ({ origin: 'Jabo', originLabel: 'CGK', dest })
 
 function renderView(props: { onCellClick?: (route: PnlRouteFilter) => void } = {}) {
-  render(<PnlGroupComparisonView filter={filter} {...props} />)
+  render(<PnlRouteComparisonView filter={filter} {...props} />)
 }
 
 beforeEach(() => {
@@ -36,7 +36,7 @@ beforeEach(() => {
   ;(useAvailableRoutes as jest.Mock).mockReturnValue({
     data: [{ origin: 'Jabo', originLabel: 'CGK', dest: 'Denpasar', hasData: true }],
   })
-  ;(usePnlGroupComparison as jest.Mock).mockReturnValue({
+  ;(usePnlRouteComparison as jest.Mock).mockReturnValue({
     data: undefined,
     isLoading: false,
     isError: false,
@@ -45,21 +45,21 @@ beforeEach(() => {
 })
 
 it('asks the user to pick a group before showing any table', () => {
-  render(<PnlGroupComparisonView filter={filter} />)
+  render(<PnlRouteComparisonView filter={filter} />)
 
   expect(screen.getByText(/pilih minimal satu group/i)).toBeInTheDocument()
   expect(screen.queryByRole('table')).not.toBeInTheDocument()
 })
 
 it('lists every group as a checkbox with its route count', () => {
-  render(<PnlGroupComparisonView filter={filter} />)
+  render(<PnlRouteComparisonView filter={filter} />)
 
   expect(screen.getByLabelText(/Kalimantan/)).toBeInTheDocument()
   expect(screen.getByLabelText(/Sumatera/)).toBeInTheDocument()
 })
 
 it('passes a clicked cell up as a route filter for that column and date', () => {
-  ;(usePnlGroupComparison as jest.Mock).mockImplementation((_filter: PnlFilter, picks: PnlColumnPick[]) => {
+  ;(usePnlRouteComparison as jest.Mock).mockImplementation((_filter: PnlFilter, picks: PnlColumnPick[]) => {
     if (picks.length === 0) {
       return { data: undefined, isLoading: false, isError: false, refetch: jest.fn() }
     }
@@ -128,7 +128,7 @@ it('warns when a picked group and a picked route share a route', () => {
       { origin: 'Jabo', originLabel: 'CGK', dest: 'Balikpapan', hasData: true },
     ],
   })
-  ;(usePnlGroupComparison as jest.Mock).mockImplementation((_filter: PnlFilter, picks: PnlColumnPick[]) => {
+  ;(usePnlRouteComparison as jest.Mock).mockImplementation((_filter: PnlFilter, picks: PnlColumnPick[]) => {
     if (picks.length === 0) {
       return { data: undefined, isLoading: false, isError: false, refetch: jest.fn() }
     }
@@ -151,7 +151,7 @@ it('warns when a picked group and a picked route share a route', () => {
     )
     return { data: { columns, rows: [], footer: [], periodDays: 0 }, isLoading: false, isError: false, refetch: jest.fn() }
   })
-  render(<PnlGroupComparisonView filter={filter} />)
+  render(<PnlRouteComparisonView filter={filter} />)
 
   // Before the route pick there is only one column, so no overlap is possible yet.
   fireEvent.click(screen.getByLabelText(/Kalimantan/))
@@ -183,7 +183,7 @@ it('does not warn when the selected groups are disjoint', () => {
   })
   const routesById: Record<string, ReturnType<typeof route>[]> = { g1: [route('Aceh')], g2: [route('Batam')] }
   const namesById: Record<string, string> = { g1: 'A', g2: 'B' }
-  ;(usePnlGroupComparison as jest.Mock).mockImplementation((_filter: PnlFilter, picks: PnlColumnPick[]) => {
+  ;(usePnlRouteComparison as jest.Mock).mockImplementation((_filter: PnlFilter, picks: PnlColumnPick[]) => {
     if (picks.length === 0) {
       return { data: undefined, isLoading: false, isError: false, refetch: jest.fn() }
     }
@@ -194,7 +194,7 @@ it('does not warn when the selected groups are disjoint', () => {
     )
     return { data: { columns, rows: [], footer: [], periodDays: 0 }, isLoading: false, isError: false, refetch: jest.fn() }
   })
-  render(<PnlGroupComparisonView filter={filter} />)
+  render(<PnlRouteComparisonView filter={filter} />)
 
   fireEvent.click(screen.getByLabelText(/A/))
   fireEvent.click(screen.getByLabelText(/B/))
@@ -205,7 +205,7 @@ it('does not warn when the selected groups are disjoint', () => {
 it('tells the user when no groups and no routes exist yet', () => {
   ;(useRouteGroups as jest.Mock).mockReturnValue({ data: [], isLoading: false })
   ;(useAvailableRoutes as jest.Mock).mockReturnValue({ data: [] })
-  render(<PnlGroupComparisonView filter={filter} />)
+  render(<PnlRouteComparisonView filter={filter} />)
 
   expect(screen.getByText(/belum ada route group/i)).toBeInTheDocument()
 })
@@ -214,7 +214,7 @@ it('tells the user when no groups and no routes exist yet', () => {
 // when there is genuinely nothing to pick from.
 it('still renders the picker when there are no groups but there are routes', () => {
   ;(useRouteGroups as jest.Mock).mockReturnValue({ data: [], isLoading: false })
-  render(<PnlGroupComparisonView filter={filter} />)
+  render(<PnlRouteComparisonView filter={filter} />)
 
   expect(screen.queryByText(/belum ada route group/i)).not.toBeInTheDocument()
   expect(screen.getByText('Rute')).toBeInTheDocument()
@@ -231,7 +231,7 @@ it('tells the user loading Route Groups failed, distinct from the empty-groups m
     isError: true,
     refetch: jest.fn(),
   })
-  render(<PnlGroupComparisonView filter={filter} />)
+  render(<PnlRouteComparisonView filter={filter} />)
 
   expect(screen.queryByText(/belum ada route group/i)).not.toBeInTheDocument()
   expect(screen.queryByRole('link', { name: /buat satu dulu/i })).not.toBeInTheDocument()
@@ -240,8 +240,8 @@ it('tells the user loading Route Groups failed, distinct from the empty-groups m
 
 // A realistic backend payload: two columns, two date rows (one row has a null cell for a group
 // with no shipments that day), and a footer with both a Total and an Avg / Day entry. This is the
-// only test that lets data flow through toComparisonTable into the real PnlGroupComparisonTable —
-// every other test in this file mocks usePnlGroupComparison with data: undefined.
+// only test that lets data flow through toComparisonTable into the real PnlComparisonTable —
+// every other test in this file mocks usePnlRouteComparison with data: undefined.
 const comparisonData: PnlGroupComparison = {
   columns: [
     { id: 'g1', name: 'Kalimantan', routeCount: 2, kind: 'group', routes: [route('Balikpapan'), route('Batam')] },
@@ -320,13 +320,13 @@ const comparisonData: PnlGroupComparison = {
 }
 
 it('renders the comparison table from a real payload via toComparisonTable', () => {
-  ;(usePnlGroupComparison as jest.Mock).mockReturnValue({
+  ;(usePnlRouteComparison as jest.Mock).mockReturnValue({
     data: comparisonData,
     isLoading: false,
     isError: false,
     refetch: jest.fn(),
   })
-  render(<PnlGroupComparisonView filter={filter} />)
+  render(<PnlRouteComparisonView filter={filter} />)
 
   // Selecting groups only drives the mocked hook's arguments here — its return value is fixed
   // above — but the table only renders once selectedIds is non-empty.
@@ -355,13 +355,13 @@ it('renders the comparison table from a real payload via toComparisonTable', () 
 // while Daily Report's Margin does subtract it. Revenue sits right beside Cost in this table, so
 // without a caption the obvious (wrong) reading is to subtract one column from the other.
 it('captions the table to say Revenue is gross and not meant to be subtracted from Cost', () => {
-  ;(usePnlGroupComparison as jest.Mock).mockReturnValue({
+  ;(usePnlRouteComparison as jest.Mock).mockReturnValue({
     data: comparisonData,
     isLoading: false,
     isError: false,
     refetch: jest.fn(),
   })
-  render(<PnlGroupComparisonView filter={filter} />)
+  render(<PnlRouteComparisonView filter={filter} />)
 
   fireEvent.click(screen.getByLabelText(/Kalimantan/))
 
@@ -369,11 +369,11 @@ it('captions the table to say Revenue is gross and not meant to be subtracted fr
   expect(screen.getByText(/tidak dimaksudkan untuk dikurangkan/i)).toBeInTheDocument()
 })
 
-it('sends selected group picks to usePnlGroupComparison in click order, moving a reselected group to the end', () => {
-  render(<PnlGroupComparisonView filter={filter} />)
+it('sends selected group picks to usePnlRouteComparison in click order, moving a reselected group to the end', () => {
+  render(<PnlRouteComparisonView filter={filter} />)
 
   const latestPicks = () => {
-    const calls = (usePnlGroupComparison as jest.Mock).mock.calls
+    const calls = (usePnlRouteComparison as jest.Mock).mock.calls
     return calls[calls.length - 1][1]
   }
 
@@ -404,7 +404,7 @@ it('sends groups and routes in the order they were picked', () => {
   fireEvent.click(screen.getByRole('button', { expanded: false }))
   fireEvent.click(screen.getByRole('checkbox', { name: /Jabo → Denpasar/ }))
 
-  expect(hooks.usePnlGroupComparison).toHaveBeenLastCalledWith(filter, [
+  expect(hooks.usePnlRouteComparison).toHaveBeenLastCalledWith(filter, [
     { kind: 'group', id: 'g1' },
     { kind: 'route', origin: 'Jabo', dest: 'Denpasar' },
   ])

@@ -12,6 +12,11 @@ export const BASIS_LABELS: Record<DateBasis, string> = {
   completed_time: 'Completed time',
 }
 
+// Exported so a rename touches one place. Lives here rather than in page.tsx because Next's App
+// Router only allows a page.tsx to export `default` and a fixed whitelist (metadata,
+// generateStaticParams, ...) — any other named export fails the generated page type check.
+export const ROUTE_COMPARISON_LABEL = 'Route Comparison'
+
 export interface PnlRoutePair {
   origin: string // raw v_pnl_to value, e.g. 'Jabo'
   dest: string // already a city name, e.g. 'Denpasar'
@@ -460,12 +465,12 @@ export function usePnlDailyMatrix(filter: PnlFilter | undefined) {
 
 // Disabled until at least one column is picked, so an untouched tab makes no request at all.
 // picks is part of the query key, so re-picking refetches without a manual invalidate.
-export function usePnlGroupComparison(filter: PnlFilter | undefined, picks: PnlColumnPick[]) {
+export function usePnlRouteComparison(filter: PnlFilter | undefined, picks: PnlColumnPick[]) {
   return useQuery<PnlGroupComparison>({
-    queryKey: ['pnl', 'group-comparison', filter, picks],
+    queryKey: ['pnl', 'route-comparison', filter, picks],
     queryFn: () =>
       apiClient
-        .get('/pnl/breakdown/group-comparison', {
+        .get('/pnl/breakdown/route-comparison', {
           params: { ...filterToParams(filter!), columns: columnsToParam(picks) },
         })
         .then((r) => r.data),

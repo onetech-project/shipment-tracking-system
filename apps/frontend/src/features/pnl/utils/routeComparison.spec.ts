@@ -3,7 +3,7 @@ import {
   overlappingRoutes,
   COST_COMPONENTS,
   routeFromComparisonCell,
-} from './groupComparison'
+} from './routeComparison'
 import { PnlGroupComparison, PnlGroupComparisonCell, PnlGroupComparisonColumn } from '../hooks/usePnl'
 
 const cell = (over: Partial<PnlGroupComparisonCell> = {}): PnlGroupComparisonCell => ({

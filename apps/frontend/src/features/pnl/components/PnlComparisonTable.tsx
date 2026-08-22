@@ -3,12 +3,12 @@
 import React, { useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { formatDayLabel } from '../utils/dailyMatrix'
-import { COST_COMPONENTS, ComparisonTableModel } from '../utils/groupComparison'
+import { COST_COMPONENTS, ComparisonTableModel } from '../utils/routeComparison'
 import { num } from '../utils/format'
 import { CellWarning, hasWarning, warningTooltip, WARNING_TINT } from '../utils/cellWarning'
 import { PnlGroupComparisonColumn } from '../hooks/usePnl'
 
-interface PnlGroupComparisonTableProps {
+interface PnlComparisonTableProps {
   model: ComparisonTableModel
   // When given, every value cell becomes a button — including empty ones, which are a valid answer
   // ("nothing flew these routes that day"). Footer cells stay inert: they span the whole period.
@@ -62,7 +62,7 @@ function DateCell({
   )
 }
 
-export function PnlGroupComparisonTable({ model, onCellClick }: PnlGroupComparisonTableProps) {
+export function PnlComparisonTable({ model, onCellClick }: PnlComparisonTableProps) {
   const [openDates, setOpenDates] = useState<Set<string>>(new Set())
   const groupCount = model.columns.length
 

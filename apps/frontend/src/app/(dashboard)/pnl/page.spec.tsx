@@ -66,8 +66,8 @@ const COMPARISON_CELL_ROUTE: PnlRouteFilter = {
 
 // A minimal stand-in for the real comparison table: one button that fires the same
 // onCellClick(route) callback a real value-cell click would (already projected to a route filter).
-jest.mock('@/features/pnl/components/PnlGroupComparisonView', () => ({
-  PnlGroupComparisonView: ({
+jest.mock('@/features/pnl/components/PnlRouteComparisonView', () => ({
+  PnlRouteComparisonView: ({
     onCellClick,
   }: {
     onCellClick?: (route: PnlRouteFilter) => void
@@ -82,7 +82,7 @@ import { usePnlCycles, usePnlSummary } from '@/features/pnl/hooks/usePnl'
 
 // Shared across every describe block below: mocks useAuth/usePermissions from a plain permission
 // list (defaulting to a bare read.pnl user) and renders the page. Kept in one place so the Daily
-// Report and Group Comparison click-through tests can't drift in how they stub the auth gate.
+// Report and Route Comparison click-through tests can't drift in how they stub the auth gate.
 function renderPage({ permissions = ['read.pnl'] }: { permissions?: string[] } = {}) {
   ;(useAuth as jest.Mock).mockReturnValue({
     user: {
@@ -150,7 +150,7 @@ describe('PnlPage click-through from Daily Report to Estimated drilldown', () =>
   // tab with nothing visibly changed.
   it('switches to Estimated and applies a clicked comparison cell as the drilldown route', () => {
     renderPage({ permissions: ['read.pnl', 'read.route_group'] })
-    fireEvent.click(screen.getByRole('button', { name: 'Group Comparison' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Route Comparison' }))
     fireEvent.click(screen.getByRole('button', { name: 'comparison-cell' }))
 
     expect(screen.getByText('Estimated').className).toContain('bg-primary')
@@ -166,9 +166,9 @@ describe('PnlPage click-through from Daily Report to Estimated drilldown', () =>
 
 // Finding 1: without this gate, a user who cannot read route groups still saw the tab button and,
 // behind it, a false "no groups exist, go create one" message linking to a page that immediately
-// redirects them away. The tab button is the only way `view` can become 'groups' in this page, so
+// redirects them away. The tab button is the only way `view` can become 'routes' in this page, so
 // hiding it is what actually keeps such a user off the view — not just a cosmetic omission.
-describe('PnlPage Group Comparison tab gating', () => {
+describe('PnlPage Route Comparison tab gating', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     ;(useRouter as jest.Mock).mockReturnValue({ replace: jest.fn() })
@@ -195,15 +195,15 @@ describe('PnlPage Group Comparison tab gating', () => {
     })
   })
 
-  it('hides the Group Comparison tab for a user without read.route_group', () => {
+  it('hides the Route Comparison tab for a user without read.route_group', () => {
     renderPage({ permissions: ['read.pnl'] })
 
-    expect(screen.queryByRole('button', { name: 'Group Comparison' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Route Comparison' })).not.toBeInTheDocument()
   })
 
-  it('shows the Group Comparison tab for a user with read.route_group', () => {
+  it('shows the Route Comparison tab for a user with read.route_group', () => {
     renderPage({ permissions: ['read.pnl', 'read.route_group'] })
 
-    expect(screen.getByRole('button', { name: 'Group Comparison' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Route Comparison' })).toBeInTheDocument()
   })
 })
