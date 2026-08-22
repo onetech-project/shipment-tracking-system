@@ -51,7 +51,7 @@ SELECT count(*) FROM (
 ) x;
 ```
 
-Filter `<> ''` ada di kedua sisi supaya angkanya terdefinisi atas himpunan yang sama dengan `available-vendors`, yang juga membuang nama kosong. Tanpa itu, TO bernama vendor `''` — yang memang ada — terhitung sebagai orphan di sini tapi tidak pernah muncul di endpoint, dan selisihnya akan terbaca sebagai bug di query union.
+Filter `<> ''` ada di kedua sisi supaya angkanya terdefinisi atas himpunan yang sama dengan `available-vendors`, yang juga membuang nama kosong. Tanpa itu, TO bernama vendor `''` akan terhitung sebagai orphan di sini tapi tidak pernah muncul di endpoint, dan selisihnya terbaca sebagai bug di query union. **Koreksi, diukur 2026-08-22:** baris seperti itu **nol** di seluruh view — draf awal spec ini menyatakan "yang memang ada" tanpa mengukurnya. Filter tetap dipasang karena murah dan menyamakan himpunan kedua angka, bukan karena kasusnya terbukti terjadi.
 
 Angkanya menentukan apakah `available-vendors` boleh master-only. Route Group aman master-only hanya karena containment-nya diukur dan dicatat ([`route-groups.service.ts:38-41`](../../../apps/backend/src/modules/route-groups/route-groups.service.ts)); vendor belum punya bukti setara.
 
@@ -509,7 +509,11 @@ Filter vendor juga harus **terlihat dan bisa dilepas**. `PnlAwbDrilldown` sekara
 ### Catatan wajib di UI
 
 1. Banner overlap kalau satu vendor ada di lebih dari satu group terpilih — analog [`overlappingRoutes`](../../../apps/frontend/src/features/pnl/utils/groupComparison.ts), banner di [`View.tsx:124-134`](../../../apps/frontend/src/features/pnl/components/PnlGroupComparisonView.tsx).
-2. Kolom tidak menjumlah ke total rute. Tiga sebabnya, dan ketiganya harus disebut: TO tanpa vendor (`vendor IS NULL` → `no_booking`); TO dengan nama vendor kosong (`''`, yang jatuh ke `smu_rate_missing`, **bukan** `no_booking`, karena kolom `vendor` tidak di-`NULLIF` saat masuk view); dan TO ber-`station_mapping_missing`, yang punya vendor dan biaya tetapi tidak punya rute sehingga disaring keluar oleh penjagaan NOT NULL.
+2. Kolom tidak menjumlah ke total rute. **Sebab utama, dan yang paling sering:** vendor lain yang tidak dicentang user — TO itu bisa muncul, tinggal dicentang. Draf awal spec ini melewatkannya sama sekali dan menyebut hanya tiga sebab data-quality, sehingga banner sempat berbunyi "tidak bisa muncul", yang salah untuk setiap pilihan parsial — yaitu pemakaian normal.
+
+   Tiga sebab data-quality tetap disebut, tapi sebagai kasus tepi: TO tanpa vendor (`vendor IS NULL` → `no_booking`); TO dengan nama vendor kosong (`''`, yang jatuh ke `smu_rate_missing`, **bukan** `no_booking`, karena kolom `vendor` tidak di-`NULLIF` saat masuk view); dan TO ber-`station_mapping_missing`, yang punya vendor dan biaya tetapi tidak punya rute sehingga disaring keluar oleh penjagaan NOT NULL.
+
+   **Diukur 2026-08-22, seluruh view:** `no_booking` 57.006 baris; `vendor = ''` **0**; `station_mapping_missing` **0**. Jadi dua dari tiga sebab data-quality itu belum pernah terjadi, sementara sebab yang dominan justru yang tidak tertulis.
 
 ### Performa
 
