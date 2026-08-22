@@ -123,10 +123,22 @@ import { usePermissions } from '@/shared/hooks/use-permissions'
 import { useRouter } from 'next/navigation'
 import { usePnlCycles, usePnlSummary } from '@/features/pnl/hooks/usePnl'
 
+// Backs usePermissions' hasPermission so a test can change what's granted *between* renders
+// (renderPage(...) then setPermissions(...) + rerender(...)) rather than only at initial mount —
+// needed to reproduce a permission being revoked live while the user sits on a gated tab, which is
+// how this app actually behaves (no re-login required for a role change to take effect).
+//
+// usePermissions is stubbed with mockImplementation (not mockReturnValue) so it's re-evaluated on
+// every render, each time reading currentPermissions fresh — a fixed mockReturnValue object would
+// keep returning the same hasPermission function/reference forever, which page.tsx's backstop
+// effects depend on to notice anything changed.
+let currentPermissions: string[] = []
+
 // Shared across every describe block below: mocks useAuth/usePermissions from a plain permission
 // list (defaulting to a bare read.pnl user) and renders the page. Kept in one place so the Daily
 // Report and Route Comparison click-through tests can't drift in how they stub the auth gate.
 function renderPage({ permissions = ['read.pnl'] }: { permissions?: string[] } = {}) {
+  currentPermissions = permissions
   ;(useAuth as jest.Mock).mockReturnValue({
     user: {
       id: '1',
@@ -138,10 +150,17 @@ function renderPage({ permissions = ['read.pnl'] }: { permissions?: string[] } =
     },
     loading: false,
   })
-  ;(usePermissions as jest.Mock).mockReturnValue({
-    hasPermission: (p: string) => permissions.includes(p),
-  })
+  ;(usePermissions as jest.Mock).mockImplementation(() => ({
+    hasPermission: (p: string) => currentPermissions.includes(p),
+  }))
   return render(<PnlPage />)
+}
+
+// Simulates a live permission change (e.g. a role edit taking effect without re-login): mutates
+// what currentHasPermission sees. Callers must follow with rerender(<PnlPage />) — mutating this
+// alone doesn't trigger React to re-render.
+function setPermissions(permissions: string[]) {
+  currentPermissions = permissions
 }
 
 describe('PnlPage click-through from Daily Report to Estimated drilldown', () => {
@@ -268,6 +287,22 @@ describe('PnlPage Route Comparison tab gating', () => {
 
     expect(screen.getByTestId('route-comparison-view')).toHaveTextContent('picks:1')
   })
+
+  // The tab button is gated on read.route_group, but nothing else stops `view` from staying
+  // 'routes' once set — this is the backstop effect in page.tsx (around line 118) that resets it.
+  // Reproduces a role change taking effect live (no re-login) while the user is already parked on
+  // the tab, which the button-click gate alone can never exercise.
+  it('resets to Estimated when read.route_group is revoked while on the Route Comparison tab', () => {
+    const { rerender } = renderPage({ permissions: ['read.pnl', 'read.route_group'] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Route Comparison' }))
+    expect(screen.getByRole('button', { name: 'Route Comparison' })).toHaveClass('bg-primary')
+
+    setPermissions(['read.pnl'])
+    rerender(<PnlPage />)
+
+    expect(screen.getByRole('button', { name: 'Estimated' })).toHaveClass('bg-primary')
+  })
 })
 
 describe('PnlPage Vendor Comparison tab', () => {
@@ -328,6 +363,21 @@ describe('PnlPage Vendor Comparison tab', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Vendor Comparison' }))
 
     expect(screen.getByTestId('vendor-picks')).toHaveTextContent('picks:1')
+  })
+
+  // Same backstop as the route tab's (page.tsx, around line 127): the tab button is gated on
+  // read.vendor_group, but nothing else stops `view` from staying 'vendors' once set. Reproduces a
+  // role change taking effect live (no re-login) while the user is already parked on the tab.
+  it('resets to Estimated when read.vendor_group is revoked while on the Vendor Comparison tab', () => {
+    const { rerender } = renderPage({ permissions: ['read.pnl', 'read.vendor_group'] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Vendor Comparison' }))
+    expect(screen.getByRole('button', { name: 'Vendor Comparison' })).toHaveClass('bg-primary')
+
+    setPermissions(['read.pnl'])
+    rerender(<PnlPage />)
+
+    expect(screen.getByRole('button', { name: 'Estimated' })).toHaveClass('bg-primary')
   })
 
   it('switches to Estimated and applies a clicked vendor cell as the drilldown route', () => {
