@@ -116,6 +116,21 @@ describe('PnlVendorComparisonView', () => {
     ).toBeInTheDocument()
   })
 
+  // The requirement is that the banner renders whenever there is data, never gated on the ratio
+  // looking low. The 30% fixture above cannot tell "always renders" apart from "renders when
+  // coverage looks bad" — a mutant wrapping the banner in `coveragePct < 50 &&` would still pass
+  // it. A high-coverage fixture is the only way to catch that.
+  it('still renders the banner when coverage is high, not just when it looks low', () => {
+    renderView({
+      picks: [{ kind: 'group', id: 'g1' }],
+      data: comparison({ coverage: { revenueInColumns: 9500, revenuePeriod: 10000 } }),
+    })
+
+    expect(
+      screen.getByText(/Kolom di bawah mencakup 95% revenue periode ini/),
+    ).toBeInTheDocument()
+  })
+
   it('falls back to a number-free sentence when an older backend sent no coverage', () => {
     const stale = comparison()
     delete (stale as Partial<PnlVendorComparison>).coverage

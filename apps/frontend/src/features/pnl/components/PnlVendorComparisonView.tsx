@@ -212,7 +212,7 @@ export function PnlVendorComparisonView({
               loses the rest. */}
           <div className="rounded-md bg-blue-50 p-2 text-xs text-blue-900 dark:bg-blue-950/40 dark:text-blue-200">
             {coveragePct != null
-              ? `Kolom di bawah mencakup ${coveragePct}% revenue periode ini. Sisanya berasal dari TO yang tidak punya vendor.`
+              ? `Kolom di bawah mencakup ${coveragePct}% revenue periode ini. Sisanya berasal dari TO yang tidak bisa muncul di kolom-kolom ini — lihat catatan di bawah.`
               : 'Kolom di bawah hanya mencakup TO yang punya vendor. Porsinya belum bisa dihitung dari response ini.'}
           </div>
 
