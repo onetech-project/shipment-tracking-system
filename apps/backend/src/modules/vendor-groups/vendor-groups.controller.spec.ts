@@ -1,7 +1,9 @@
 import { Test } from '@nestjs/testing'
+import { Permission } from '@shared/auth'
 import { VendorGroupsController } from './vendor-groups.controller'
 import { VendorGroupsService } from './vendor-groups.service'
 import { RbacGuard } from '../../common/guards/rbac.guard'
+import { PERMISSION_KEY } from '../../common/decorators/authorize.decorator'
 import { ALLOW_ALL_GUARD } from '../../test/test-helpers'
 
 describe('VendorGroupsController', () => {
@@ -56,5 +58,22 @@ describe('VendorGroupsController', () => {
   it('passes the id to remove', async () => {
     await controller.remove('vg1')
     expect(service.remove).toHaveBeenCalledWith('vg1')
+  })
+
+  // The tests above call controller methods directly, which bypasses guards entirely — they only
+  // prove delegation, not that each route is actually gated. Deleting an `@Authorize` decorator
+  // (e.g. on `remove`) would fall back to JwtAuthGuard alone and let any authenticated user hit the
+  // route, while every test above would still pass. This pins the metadata RbacGuard and
+  // buildAuthMap both read, so removing a decorator fails here instead of shipping silently.
+  it.each([
+    ['findAll', Permission.READ_VENDOR_GROUP],
+    ['getAvailableVendors', Permission.READ_VENDOR_GROUP],
+    ['create', Permission.CREATE_VENDOR_GROUP],
+    ['update', Permission.UPDATE_VENDOR_GROUP],
+    ['remove', Permission.DELETE_VENDOR_GROUP],
+  ])('gates %s on its own permission', (method, permission) => {
+    expect(Reflect.getMetadata(PERMISSION_KEY, VendorGroupsController.prototype[method])).toBe(
+      permission,
+    )
   })
 })

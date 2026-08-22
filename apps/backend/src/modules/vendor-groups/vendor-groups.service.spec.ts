@@ -148,9 +148,10 @@ describe('VendorGroupsService', () => {
         { vendor: 'GARUDA INDONESIA', has_data: true, in_master: true },
       ])
 
-      await expect(
-        service.create({ name: 'Bad', vendors: ['NOBODY AIR'] }),
-      ).rejects.toThrow('Unknown vendor: NOBODY AIR')
+      const rejection = service.create({ name: 'Bad', vendors: ['NOBODY AIR'] })
+
+      await expect(rejection).rejects.toThrow('Unknown vendor: NOBODY AIR')
+      await expect(rejection).rejects.toBeInstanceOf(ConflictException)
     })
 
     // A vendor that exists only in v_pnl_to must be accepted — that is the entire reason
@@ -181,9 +182,10 @@ describe('VendorGroupsService', () => {
         { vendor: 'GARUDA INDONESIA', has_data: true, in_master: true },
       ])
 
-      await expect(
-        service.create({ name: 'Maskapai', vendors: ['garuda indonesia'] }),
-      ).rejects.toThrow('Unknown vendor: garuda indonesia')
+      const rejection = service.create({ name: 'Maskapai', vendors: ['garuda indonesia'] })
+
+      await expect(rejection).rejects.toThrow('Unknown vendor: garuda indonesia')
+      await expect(rejection).rejects.toBeInstanceOf(ConflictException)
     })
 
     it('rejects a vendor name with leading or trailing whitespace when the trimmed form is not in the known set', async () => {
@@ -191,9 +193,10 @@ describe('VendorGroupsService', () => {
         { vendor: 'GARUDA INDONESIA', has_data: true, in_master: true },
       ])
 
-      await expect(
-        service.create({ name: 'Maskapai', vendors: [' GARUDA INDONESIA'] }),
-      ).rejects.toThrow('Unknown vendor:  GARUDA INDONESIA')
+      const rejection = service.create({ name: 'Maskapai', vendors: [' GARUDA INDONESIA'] })
+
+      await expect(rejection).rejects.toThrow('Unknown vendor:  GARUDA INDONESIA')
+      await expect(rejection).rejects.toBeInstanceOf(ConflictException)
     })
 
     it('rejects a duplicate name with a conflict', async () => {
@@ -202,9 +205,10 @@ describe('VendorGroupsService', () => {
       ])
       groupRepo.findOne.mockResolvedValueOnce({ id: 'existing', name: 'Maskapai' })
 
-      await expect(
-        service.create({ name: 'Maskapai', vendors: ['GARUDA INDONESIA'] }),
-      ).rejects.toThrow('A vendor group named "Maskapai" already exists')
+      const rejection = service.create({ name: 'Maskapai', vendors: ['GARUDA INDONESIA'] })
+
+      await expect(rejection).rejects.toThrow('A vendor group named "Maskapai" already exists')
+      await expect(rejection).rejects.toBeInstanceOf(ConflictException)
     })
 
     it('saves the group, de-dupes the vendors, and returns the created group', async () => {
@@ -270,9 +274,10 @@ describe('VendorGroupsService', () => {
         }),
       )
 
-      await expect(
-        service.create({ name: 'Maskapai', vendors: ['GARUDA INDONESIA'] }),
-      ).rejects.toThrow('A vendor group named "Maskapai" already exists')
+      const rejection = service.create({ name: 'Maskapai', vendors: ['GARUDA INDONESIA'] })
+
+      await expect(rejection).rejects.toThrow('A vendor group named "Maskapai" already exists')
+      await expect(rejection).rejects.toBeInstanceOf(ConflictException)
     })
 
     it('does not remap a 23505 from an unrelated constraint into a name conflict', async () => {
