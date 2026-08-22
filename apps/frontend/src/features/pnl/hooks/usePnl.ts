@@ -28,6 +28,9 @@ export interface PnlRouteFilter {
   routes?: PnlRoutePair[]
   dateFrom?: string // YYYY-MM-DD
   dateTo?: string // YYYY-MM-DD, inclusive
+  // Raw vendor names. Set when the drilldown was opened from a Vendor Comparison cell; the values
+  // must stay byte-identical to v_pnl_to.vendor, so nothing here trims or normalises them.
+  vendors?: string[]
 }
 
 export interface PnlStation {
@@ -259,6 +262,70 @@ export interface PnlRouteComparison {
   periodDays: number
 }
 
+export interface PnlVendorComparisonColumn {
+  // 'vg:<uuid>' | 'v:<raw name>' — the same descriptor that was sent, so the id round-trips.
+  id: string
+  name: string
+  kind: 'group' | 'vendor'
+  // The vendor names this column aggregates, straight from the response — so a clicked cell and
+  // the overlap warning both read the same list the numbers came from.
+  vendors: string[]
+  vendorCount: number
+}
+
+// One comparison column the user picked: a saved vendor group, or one raw vendor name.
+export type PnlVendorPick =
+  | { kind: 'group'; id: string }
+  | { kind: 'vendor'; name: string }
+
+// One descriptor per pick, as an ARRAY: `columns` is a repeated query param, not a delimited list.
+// Vendor names are free text and may contain ',' or '|', which is exactly why joining is wrong.
+export function vendorColumnsToParams(picks: PnlVendorPick[]): string[] {
+  return picks.map((p) => (p.kind === 'group' ? `vg:${p.id}` : `v:${p.name}`))
+}
+
+export interface PnlVendorComparisonCell {
+  revenue: number
+  cost: number
+  margin: number
+  costSmu: number
+  costRa: number
+  costSgOut: number
+  costSgIn: number
+  incompleteTos: number
+  issues: PnlCellIssue[]
+}
+
+export interface PnlVendorComparisonRow {
+  origin: string
+  originLabel: string
+  dest: string
+  cells: (PnlVendorComparisonCell | null)[]
+}
+
+export interface PnlVendorComparisonFooter {
+  totalRevenue: number
+  totalCost: number
+  totalMargin: number
+  totalCostSmu: number
+  totalCostRa: number
+  totalCostSgOut: number
+  totalCostSgIn: number
+  routesWithData: number
+  avgRevenuePerRoute: number | null
+  avgCostPerRoute: number | null
+  avgMarginPerRoute: number | null
+  incompleteTos: number
+  issues: PnlCellIssue[]
+}
+
+export interface PnlVendorComparison {
+  columns: PnlVendorComparisonColumn[]
+  rows: PnlVendorComparisonRow[]
+  footer: PnlVendorComparisonFooter[]
+  coverage: { revenueInColumns: number; revenuePeriod: number }
+}
+
 function filterToParams(filter: PnlFilter) {
   return filter.mode === 'cycle'
     ? { cycle: filter.cycle, basis: filter.basis }
@@ -306,6 +373,9 @@ export function routeToParams(route: PnlRouteFilter | undefined) {
       : {}),
     ...(route.dateFrom ? { dateFrom: route.dateFrom } : {}),
     ...(route.dateTo ? { dateTo: route.dateTo } : {}),
+    // An array under a singular key: the endpoint reads `vendor` as a repeated param, which needs
+    // paramsSerializer: { indexes: null } on the request below or axios writes `vendor[]=`.
+    ...(route.vendors?.length ? { vendor: route.vendors } : {}),
   }
 }
 
@@ -329,6 +399,10 @@ export function usePnlAwbDrilldown(
       apiClient
         .get('/pnl/awb-drilldown', {
           params: { ...filterToParams(filter!), ...routeToParams(route), page, limit },
+          // `vendor` repeats. axios's default array serializer writes `vendor[]=ESP`, which qs
+          // parses into a key named 'vendor[]' that no handler reads — the filter would vanish
+          // with no error anywhere. Scalar params are unaffected by this setting.
+          paramsSerializer: { indexes: null },
         })
         .then((r) => r.data),
     enabled: !!filter,
@@ -470,6 +544,25 @@ export function usePnlRouteComparison(filter: PnlFilter | undefined, picks: PnlC
       apiClient
         .get('/pnl/breakdown/route-comparison', {
           params: { ...filterToParams(filter!), columns: columnsToParam(picks) },
+        })
+        .then((r) => r.data),
+    enabled: !!filter && picks.length > 0,
+    staleTime: 60 * 1000,
+  })
+}
+
+// Disabled until at least one column is picked, so an untouched tab makes no request at all.
+// picks is part of the query key, so re-picking refetches without a manual invalidate.
+export function usePnlVendorComparison(filter: PnlFilter | undefined, picks: PnlVendorPick[]) {
+  return useQuery<PnlVendorComparison>({
+    queryKey: ['pnl', 'vendor-comparison', filter, picks],
+    queryFn: () =>
+      apiClient
+        .get('/pnl/breakdown/vendor-comparison', {
+          params: { ...filterToParams(filter!), columns: vendorColumnsToParams(picks) },
+          // Without this axios emits `columns[]=vg:…`, which qs parses under the key 'columns[]'
+          // and the handler never sees — every column would silently disappear.
+          paramsSerializer: { indexes: null },
         })
         .then((r) => r.data),
     enabled: !!filter && picks.length > 0,
