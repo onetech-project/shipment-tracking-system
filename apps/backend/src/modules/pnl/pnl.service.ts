@@ -1461,9 +1461,9 @@ export class PnlService {
         colParams,
       ),
       // The deduped union of every picked vendor: two columns holding the same vendor must not push
-      // the covered share above 100%. Scoped by the same station guard as the table above, so the
-      // banner describes exactly the rows the table could show — a TO with a vendor but no station
-      // mapping is excluded from both.
+      // the covered share above 100%. The station guard applies only to revenue_in_columns (to match
+      // table rows from getStations), not to revenue_period: a TO with revenue but no station mapping
+      // cannot be shown by this table, so it stays in the denominator as unexplained revenue.
       this.dataSource.query(
         `
         SELECT
