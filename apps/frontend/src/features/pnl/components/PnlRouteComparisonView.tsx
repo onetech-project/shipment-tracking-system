@@ -6,7 +6,7 @@ import { MultiRouteFilter } from '@/components/shared/multi-route-filter'
 import { useAvailableRoutes, useRouteGroups } from '@/features/route-groups/hooks/useRouteGroups'
 import { PnlColumnPick, PnlFilter, PnlRouteFilter, usePnlRouteComparison } from '../hooks/usePnl'
 import { buildRouteLabelIndex, labelsForRoutes, routesForLabels } from '../utils/routeLabels'
-import { overlappingRoutes, routeFromComparisonCell, toComparisonTable } from '../utils/routeComparison'
+import { overlappingRoutes, routeFromComparisonCell, toRouteComparisonTable } from '../utils/routeComparison'
 import { PnlComparisonTable } from './PnlComparisonTable'
 
 interface PnlRouteComparisonViewProps {
@@ -159,7 +159,7 @@ export function PnlRouteComparisonView({ filter, onCellClick }: PnlRouteComparis
             Report. Revenue dan Cost tidak dimaksudkan untuk dikurangkan satu sama lain.
           </p>
           <PnlComparisonTable
-            model={toComparisonTable(data)}
+            model={toRouteComparisonTable(data)}
             onCellClick={
               onCellClick
                 ? (column, date) => onCellClick(routeFromComparisonCell(column, date))

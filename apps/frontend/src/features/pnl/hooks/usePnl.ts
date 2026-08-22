@@ -223,6 +223,7 @@ export function columnsToParam(picks: PnlColumnPick[]): string {
 export interface PnlGroupComparisonCell {
   revenue: number
   cost: number
+  margin: number
   costSmu: number
   costRa: number
   costSgOut: number
@@ -239,12 +240,14 @@ export interface PnlGroupComparisonRow {
 export interface PnlGroupComparisonFooter {
   totalRevenue: number
   totalCost: number
+  totalMargin: number
   totalCostSmu: number
   totalCostRa: number
   totalCostSgOut: number
   totalCostSgIn: number
   avgRevenuePerDay: number
   avgCostPerDay: number
+  avgMarginPerDay: number
   incompleteTos: number
   issues: PnlCellIssue[]
 }

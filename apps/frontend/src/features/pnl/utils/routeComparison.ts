@@ -1,61 +1,38 @@
 import { PnlGroupComparison, PnlGroupComparisonColumn, PnlRouteFilter } from '../hooks/usePnl'
 import { displayRouteLabel } from './routeLabels'
-import { CellWarning } from './cellWarning'
+import { formatDayLabel } from './dailyMatrix'
+import {
+  CLEAN,
+  COST_COMPONENTS,
+  ComparisonFooterRowModel,
+  ComparisonRowModel,
+  ComparisonTableModel,
+  emptyComponents,
+} from './comparison'
 
-export type CostComponentKey = 'costSmu' | 'costRa' | 'costSgOut' | 'costSgIn'
+export type { CostComponentKey } from './comparison'
+export { COST_COMPONENTS } from './comparison'
 
-// Order and labels are fixed here so the expanded rows read the same everywhere. These four sum
-// exactly to the cost cell above them — the backend's FILTER clauses guarantee it.
-export const COST_COMPONENTS: { key: CostComponentKey; label: string }[] = [
-  { key: 'costSmu', label: 'SMU' },
-  { key: 'costRa', label: 'RA' },
-  { key: 'costSgOut', label: 'SG Out' },
-  { key: 'costSgIn', label: 'SG In' },
-]
-
-export interface ComparisonRowModel {
-  date: string
-  revenue: (number | null)[] // index-aligned with columns; null = no shipment, distinct from 0
-  cost: (number | null)[]
-  warnings: CellWarning[]
-  components: Record<CostComponentKey, (number | null)[]>
-}
-
-export interface ComparisonFooterRowModel {
-  label: string
-  revenue: (number | null)[]
-  cost: (number | null)[]
-  components: Record<CostComponentKey, (number | null)[]> | null // null = this row does not expand
-  warnings: CellWarning[] | null // null = this row has no AWBs behind it
-}
-
-export interface ComparisonTableModel {
-  columns: PnlGroupComparisonColumn[]
-  rows: ComparisonRowModel[]
-  footerRows: ComparisonFooterRowModel[]
-}
-
-function emptyComponents(): Record<CostComponentKey, (number | null)[]> {
-  return { costSmu: [], costRa: [], costSgOut: [], costSgIn: [] }
-}
-
-// An absent cell still gets a clean warning rather than being left undefined, so the renderer and
-// the tests have exactly one shape to read. Matches dailyMatrix.ts's CLEAN.
-const CLEAN: CellWarning = { issues: [], incompleteTos: 0 }
-
-export function toComparisonTable(data: PnlGroupComparison): ComparisonTableModel {
+export function toRouteComparisonTable(
+  data: PnlGroupComparison,
+): ComparisonTableModel<PnlGroupComparisonColumn> {
   const rows: ComparisonRowModel[] = data.rows.map((row) => {
     const components = emptyComponents()
     for (const { key } of COST_COMPONENTS) {
       components[key] = row.cells.map((c) => (c ? c[key] : null))
     }
     return {
-      date: row.date,
+      rowKey: row.date,
+      // Formatted here, not in the renderer: the renderer serves two axes and must not know that
+      // this one holds dates.
+      rowLabel: formatDayLabel(row.date),
       revenue: row.cells.map((c) => (c ? c.revenue : null)),
       cost: row.cells.map((c) => (c ? c.cost : null)),
+      // `issues` and `margin` are non-optional in the type, but the deploy pipeline brings backend
+      // and frontend up in parallel, so a new frontend can briefly hit an old backend whose cells
+      // lack the field. A missing margin renders as an em dash, never NaN.
+      margin: row.cells.map((c) => (c ? (c.margin ?? null) : null)),
       warnings: row.cells.map((c) =>
-        // `issues` is non-optional in the type, but the deploy pipeline brings backend and frontend
-        // up in parallel, so a new frontend can briefly hit an old backend whose cells lack the field.
         c ? { issues: c.issues ?? [], incompleteTos: c.incompleteTos } : CLEAN,
       ),
       components,
@@ -73,9 +50,8 @@ export function toComparisonTable(data: PnlGroupComparison): ComparisonTableMode
       label: 'Total',
       revenue: data.footer.map((f) => f.totalRevenue),
       cost: data.footer.map((f) => f.totalCost),
+      margin: data.footer.map((f) => f.totalMargin ?? null),
       components: totalComponents,
-      // Same rolling-deploy fallback as the per-cell warnings above: `issues` is non-optional in the
-      // type, but an old backend's footer can still lack the field during a parallel deploy.
       warnings: data.footer.map((f) => ({ issues: f.issues ?? [], incompleteTos: f.incompleteTos })),
     },
     {
@@ -83,6 +59,7 @@ export function toComparisonTable(data: PnlGroupComparison): ComparisonTableMode
       label: 'Avg / Day',
       revenue: data.footer.map((f) => f.avgRevenuePerDay),
       cost: data.footer.map((f) => f.avgCostPerDay),
+      margin: data.footer.map((f) => f.avgMarginPerDay ?? null),
       components: null,
       warnings: null,
     },

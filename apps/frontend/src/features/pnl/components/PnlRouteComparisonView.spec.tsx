@@ -79,6 +79,7 @@ it('passes a clicked cell up as a route filter for that column and date', () => 
       rows: [{ date: '2026-05-01', cells: columns.map(() => ({
         revenue: 1000,
         cost: 800,
+        margin: 200,
         costSmu: 500,
         costRa: 100,
         costSgOut: 150,
@@ -88,13 +89,15 @@ it('passes a clicked cell up as a route filter for that column and date', () => 
       })) }],
       footer: [
         {
-          totalRevenue: 1000, totalCost: 800, totalCostSmu: 500, totalCostRa: 100,
+          totalRevenue: 1000, totalCost: 800, totalMargin: 200, totalCostSmu: 500, totalCostRa: 100,
           totalCostSgOut: 150, totalCostSgIn: 50, avgRevenuePerDay: 1000, avgCostPerDay: 800,
+          avgMarginPerDay: 200,
           incompleteTos: 0, issues: [],
         },
         {
-          totalRevenue: 0, totalCost: 0, totalCostSmu: 0, totalCostRa: 0,
+          totalRevenue: 0, totalCost: 0, totalMargin: 0, totalCostSmu: 0, totalCostRa: 0,
           totalCostSgOut: 0, totalCostSgIn: 0, avgRevenuePerDay: 0, avgCostPerDay: 0,
+          avgMarginPerDay: 0,
           incompleteTos: 0, issues: [],
         },
       ],
@@ -240,7 +243,7 @@ it('tells the user loading Route Groups failed, distinct from the empty-groups m
 
 // A realistic backend payload: two columns, two date rows (one row has a null cell for a group
 // with no shipments that day), and a footer with both a Total and an Avg / Day entry. This is the
-// only test that lets data flow through toComparisonTable into the real PnlComparisonTable —
+// only test that lets data flow through toRouteComparisonTable into the real PnlComparisonTable —
 // every other test in this file mocks usePnlRouteComparison with data: undefined.
 const comparisonData: PnlGroupComparison = {
   columns: [
@@ -254,6 +257,7 @@ const comparisonData: PnlGroupComparison = {
         {
           revenue: 1500000,
           cost: 900000,
+          margin: 600000,
           costSmu: 400000,
           costRa: 300000,
           costSgOut: 100000,
@@ -270,6 +274,7 @@ const comparisonData: PnlGroupComparison = {
         {
           revenue: 2000000,
           cost: 1000000,
+          margin: 1000000,
           costSmu: 500000,
           costRa: 300000,
           costSgOut: 100000,
@@ -280,6 +285,7 @@ const comparisonData: PnlGroupComparison = {
         {
           revenue: 800000,
           cost: 400000,
+          margin: 400000,
           costSmu: 200000,
           costRa: 100000,
           costSgOut: 50000,
@@ -294,24 +300,28 @@ const comparisonData: PnlGroupComparison = {
     {
       totalRevenue: 3500000,
       totalCost: 1900000,
+      totalMargin: 1600000,
       totalCostSmu: 900000,
       totalCostRa: 600000,
       totalCostSgOut: 200000,
       totalCostSgIn: 200000,
       avgRevenuePerDay: 1750000,
       avgCostPerDay: 950000,
+      avgMarginPerDay: 800000,
       incompleteTos: 1,
       issues: [],
     },
     {
       totalRevenue: 800000,
       totalCost: 400000,
+      totalMargin: 400000,
       totalCostSmu: 200000,
       totalCostRa: 100000,
       totalCostSgOut: 50000,
       totalCostSgIn: 50000,
       avgRevenuePerDay: 800000,
       avgCostPerDay: 400000,
+      avgMarginPerDay: 400000,
       incompleteTos: 0,
       issues: [],
     },
@@ -319,7 +329,7 @@ const comparisonData: PnlGroupComparison = {
   periodDays: 2,
 }
 
-it('renders the comparison table from a real payload via toComparisonTable', () => {
+it('renders the comparison table from a real payload via toRouteComparisonTable', () => {
   ;(usePnlRouteComparison as jest.Mock).mockReturnValue({
     data: comparisonData,
     isLoading: false,
@@ -335,7 +345,7 @@ it('renders the comparison table from a real payload via toComparisonTable', () 
 
   const table = screen.getByRole('table')
   // Each group name must appear twice: once as the Revenue block header, once as the Cost block
-  // header. A prop-shape regression (e.g. passing raw data instead of toComparisonTable(data))
+  // header. A prop-shape regression (e.g. passing raw data instead of toRouteComparisonTable(data))
   // would either throw or leave these headers empty.
   expect(within(table).getAllByText('Kalimantan')).toHaveLength(2)
   expect(within(table).getAllByText('Sumatera')).toHaveLength(2)

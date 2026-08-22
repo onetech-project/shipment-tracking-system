@@ -1,13 +1,14 @@
 /**
  * Unit tests for PnlComparisonTable. The model is hand-built rather than produced by
- * toComparisonTable, so these tests isolate the renderer from the projection (covered in
+ * toRouteComparisonTable, so these tests isolate the renderer from the projection (covered in
  * routeComparison.spec.ts).
  */
 import React from 'react'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { PnlComparisonTable } from './PnlComparisonTable'
-import { ComparisonTableModel } from '../utils/routeComparison'
+import { ComparisonTableModel } from '../utils/comparison'
+import { PnlGroupComparisonColumn } from '../hooks/usePnl'
 
 // Task 13 turns the footer cost cell into a plain <td> (no button), so locating it by row label
 // and cell position — the same style PnlMatrixTable.spec.tsx uses — survives that rework, unlike a
@@ -36,7 +37,9 @@ const columns = [
   },
 ]
 
-function baseModel(overrides: Partial<ComparisonTableModel> = {}): ComparisonTableModel {
+function baseModel(
+  overrides: Partial<ComparisonTableModel<PnlGroupComparisonColumn>> = {},
+): ComparisonTableModel<PnlGroupComparisonColumn> {
   return {
     columns,
     rows: [
@@ -45,9 +48,11 @@ function baseModel(overrides: Partial<ComparisonTableModel> = {}): ComparisonTab
         // cost *components* are non-null and distinct per group — this is the date the expand
         // tests use, and a regression that only rendered the clicked group's values must be
         // visible even though the top-level g2 cost cell itself is blank.
-        date: '2026-05-01',
+        rowKey: '2026-05-01',
+        rowLabel: '1-May-2026',
         revenue: [1000, null],
         cost: [800, null],
+        margin: [200, null],
         warnings: [
           { issues: [], incompleteTos: 0 },
           { issues: [], incompleteTos: 0 },
@@ -60,9 +65,11 @@ function baseModel(overrides: Partial<ComparisonTableModel> = {}): ComparisonTab
         },
       },
       {
-        date: '2026-05-02',
+        rowKey: '2026-05-02',
+        rowLabel: '2-May-2026',
         revenue: [0, 2000],
         cost: [0, 1500],
+        margin: [0, 500],
         warnings: [
           { issues: [], incompleteTos: 3 },
           { issues: [], incompleteTos: 0 },
@@ -80,6 +87,7 @@ function baseModel(overrides: Partial<ComparisonTableModel> = {}): ComparisonTab
         label: 'Total',
         revenue: [1000, 2000],
         cost: [800, 1500],
+        margin: [200, 500],
         components: {
           costSmu: [500, 900],
           costRa: [100, 200],
@@ -95,6 +103,7 @@ function baseModel(overrides: Partial<ComparisonTableModel> = {}): ComparisonTab
         label: 'Avg / Day',
         revenue: [66, 133],
         cost: [53, 100],
+        margin: [13, 33],
         components: null,
         warnings: null,
       },

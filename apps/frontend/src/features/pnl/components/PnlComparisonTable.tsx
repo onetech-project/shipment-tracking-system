@@ -2,14 +2,13 @@
 
 import React, { useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { formatDayLabel } from '../utils/dailyMatrix'
-import { COST_COMPONENTS, ComparisonTableModel } from '../utils/routeComparison'
+import { COST_COMPONENTS, ComparisonTableModel } from '../utils/comparison'
 import { num } from '../utils/format'
 import { CellWarning, hasWarning, warningTooltip, WARNING_TINT } from '../utils/cellWarning'
 import { PnlGroupComparisonColumn } from '../hooks/usePnl'
 
 interface PnlComparisonTableProps {
-  model: ComparisonTableModel
+  model: ComparisonTableModel<PnlGroupComparisonColumn>
   // When given, every value cell becomes a button — including empty ones, which are a valid answer
   // ("nothing flew these routes that day"). Footer cells stay inert: they span the whole period.
   onCellClick?: (column: PnlGroupComparisonColumn, date: string) => void
@@ -63,11 +62,11 @@ function DateCell({
 }
 
 export function PnlComparisonTable({ model, onCellClick }: PnlComparisonTableProps) {
-  const [openDates, setOpenDates] = useState<Set<string>>(new Set())
+  const [openRows, setOpenRows] = useState<Set<string>>(new Set())
   const groupCount = model.columns.length
 
   const toggle = (key: string) =>
-    setOpenDates((prev) => {
+    setOpenRows((prev) => {
       const next = new Set(prev)
       if (next.has(key)) next.delete(key)
       else next.add(key)
@@ -154,22 +153,22 @@ export function PnlComparisonTable({ model, onCellClick }: PnlComparisonTablePro
               return (
                 // A row and its detail rows are siblings, so the pair is wrapped in a keyed
                 // Fragment — a bare <> cannot carry the key React needs inside a map.
-                <React.Fragment key={row.date}>
+                <React.Fragment key={row.rowKey}>
                   <tr
-                    data-testid={`row-${row.date}`}
+                    data-testid={`row-${row.rowKey}`}
                     className={striped ? 'bg-muted/30' : ''}
                   >
                     <DateCell
-                      label={formatDayLabel(row.date)}
-                      open={openDates.has(row.date)}
-                      onToggle={() => toggle(row.date)}
+                      label={row.rowLabel}
+                      open={openRows.has(row.rowKey)}
+                      onToggle={() => toggle(row.rowKey)}
                       className={striped ? 'bg-muted/30' : 'bg-card'}
                     />
                     {(['revenue', 'cost'] as const).flatMap((field) =>
                       row[field].map((value, i) => {
                         const warning = row.warnings[i]
                         const tint = hasWarning(warning) ? WARNING_TINT : ''
-                        const testId = `${field}-${row.date}-${model.columns[i].id}`
+                        const testId = `${field}-${row.rowKey}-${model.columns[i].id}`
                         return onCellClick ? (
                           <td key={testId} className={`border-b border-l p-0 ${tint}`}>
                             <button
@@ -177,7 +176,7 @@ export function PnlComparisonTable({ model, onCellClick }: PnlComparisonTablePro
                               data-testid={testId}
                               title={cellTitle(warning)}
                               className="w-full px-3 py-1.5 text-right hover:bg-primary/10"
-                              onClick={() => onCellClick(model.columns[i], row.date)}
+                              onClick={() => onCellClick(model.columns[i], row.rowKey)}
                             >
                               {formatValue(value)}
                             </button>
@@ -195,7 +194,7 @@ export function PnlComparisonTable({ model, onCellClick }: PnlComparisonTablePro
                       }),
                     )}
                   </tr>
-                  {openDates.has(row.date) && detailRows(row.date, row.components, striped)}
+                  {openRows.has(row.rowKey) && detailRows(row.rowKey, row.components, striped)}
                 </React.Fragment>
               )
             })}
@@ -208,7 +207,7 @@ export function PnlComparisonTable({ model, onCellClick }: PnlComparisonTablePro
                   {footerRow.components ? (
                     <DateCell
                       label={footerRow.label}
-                      open={openDates.has(FOOTER_KEY)}
+                      open={openRows.has(FOOTER_KEY)}
                       onToggle={() => toggle(FOOTER_KEY)}
                       className="bg-card text-right"
                     />
@@ -237,7 +236,7 @@ export function PnlComparisonTable({ model, onCellClick }: PnlComparisonTablePro
                   ))}
                 </tr>
                 {footerRow.components &&
-                  openDates.has(FOOTER_KEY) &&
+                  openRows.has(FOOTER_KEY) &&
                   detailRows(FOOTER_KEY, footerRow.components, false)}
               </React.Fragment>
             ))}
