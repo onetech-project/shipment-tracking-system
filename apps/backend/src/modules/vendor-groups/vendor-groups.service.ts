@@ -118,6 +118,45 @@ export class VendorGroupsService {
     return this.findOneOrThrow(groupId)
   }
 
+  async update(id: string, dto: UpdateVendorGroupDto): Promise<VendorGroup> {
+    const existing = await this.groupRepo.findOne({ where: { id } })
+    if (!existing) throw new NotFoundException('Vendor group not found')
+
+    if (dto.vendors) await this.assertVendorsExist(dto.vendors)
+    if (dto.name && dto.name !== existing.name) await this.assertNameFree(dto.name)
+
+    const patch: Partial<Pick<VendorGroupEntity, 'name' | 'description'>> = {}
+    if (dto.name) patch.name = dto.name
+    if (dto.description !== undefined) {
+      patch.description = this.normalizeDescription(dto.description)
+    }
+
+    // Nothing to write: skip the transaction rather than opening an empty BEGIN/COMMIT before the
+    // read-back below.
+    if (Object.keys(patch).length > 0 || dto.vendors) {
+      try {
+        await this.dataSource.transaction(async (manager) => {
+          if (Object.keys(patch).length > 0) {
+            await manager.getRepository(VendorGroupEntity).update(id, patch)
+          }
+          if (dto.vendors) await this.replaceVendors(manager, id, dto.vendors)
+        })
+      } catch (err: unknown) {
+        this.throwIfNameUniqueViolation(err, dto.name ?? existing.name)
+        throw err
+      }
+    }
+
+    return this.findOneOrThrow(id)
+  }
+
+  async remove(id: string): Promise<void> {
+    const existing = await this.groupRepo.findOne({ where: { id } })
+    if (!existing) throw new NotFoundException('Vendor group not found')
+    // vendor_group_vendors rows go with it via ON DELETE CASCADE.
+    await this.groupRepo.delete(id)
+  }
+
   private async findOneOrThrow(id: string): Promise<VendorGroup> {
     const group = (await this.findAll()).find((g) => g.id === id)
     if (!group) throw new NotFoundException('Vendor group not found')

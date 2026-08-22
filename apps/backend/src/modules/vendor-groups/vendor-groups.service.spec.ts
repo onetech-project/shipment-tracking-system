@@ -1,3 +1,4 @@
+import { ConflictException } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
 import { DataSource, EntityManager } from 'typeorm'
 import { getRepositoryToken } from '@nestjs/typeorm'
@@ -303,6 +304,145 @@ describe('VendorGroupsService', () => {
       ).rejects.toThrow('insert failed')
 
       expect(dataSource.transaction).toHaveBeenCalled()
+    })
+  })
+
+  describe('update', () => {
+    it('throws when the group does not exist', async () => {
+      groupRepo.findOne.mockResolvedValueOnce(null)
+
+      await expect(service.update('missing', { name: 'X' })).rejects.toThrow(
+        'Vendor group not found',
+      )
+    })
+
+    it('replaces the vendors without touching name/description when only vendors are given', async () => {
+      groupRepo.findOne.mockResolvedValueOnce({
+        id: 'vg1',
+        name: 'Maskapai',
+        description: 'pulau',
+      })
+      dataSource.query
+        .mockResolvedValueOnce([{ vendor: 'ASIA CARGO', has_data: true, in_master: true }])
+        .mockResolvedValueOnce([
+          { id: 'vg1', name: 'Maskapai', description: 'pulau', vendor: 'ASIA CARGO' },
+        ])
+
+      const result = await service.update('vg1', { vendors: ['ASIA CARGO'] })
+
+      expect(dataSource.transaction).toHaveBeenCalled()
+      expect(txGroupRepo.update).not.toHaveBeenCalled()
+      expect(txVendorRepo.delete).toHaveBeenCalledWith({ vendorGroupId: 'vg1' })
+      expect(txVendorRepo.insert).toHaveBeenCalledWith([
+        { vendorGroupId: 'vg1', vendor: 'ASIA CARGO' },
+      ])
+      expect(groupRepo.update).not.toHaveBeenCalled()
+      expect(result.name).toBe('Maskapai')
+      expect(result.description).toBe('pulau')
+    })
+
+    it('rejects an unknown vendor before writing anything', async () => {
+      groupRepo.findOne.mockResolvedValueOnce({ id: 'vg1', name: 'Maskapai', description: null })
+      dataSource.query.mockResolvedValueOnce([
+        { vendor: 'ASIA CARGO', has_data: true, in_master: true },
+      ])
+
+      const rejection = service.update('vg1', { vendors: ['NOBODY AIR'] })
+
+      await expect(rejection).rejects.toThrow('Unknown vendor: NOBODY AIR')
+      await expect(rejection).rejects.toBeInstanceOf(ConflictException)
+      expect(dataSource.transaction).not.toHaveBeenCalled()
+    })
+
+    it('normalizes description to null when explicitly cleared', async () => {
+      groupRepo.findOne.mockResolvedValueOnce({
+        id: 'vg1',
+        name: 'Maskapai',
+        description: 'pulau',
+      })
+      dataSource.query.mockResolvedValueOnce([
+        { id: 'vg1', name: 'Maskapai', description: null, vendor: null },
+      ])
+
+      await service.update('vg1', { description: null })
+
+      expect(dataSource.transaction).toHaveBeenCalled()
+      expect(txGroupRepo.update).toHaveBeenCalledWith('vg1', { description: null })
+      expect(groupRepo.update).not.toHaveBeenCalled()
+    })
+
+    it('maps a unique-name race (23505 on uq_vendor_groups_name) to the same ConflictException as the pre-check', async () => {
+      groupRepo.findOne
+        .mockResolvedValueOnce({ id: 'vg1', name: 'Lama' })
+        .mockResolvedValueOnce(null)
+      txGroupRepo.update.mockRejectedValueOnce(
+        Object.assign(new Error('duplicate key value violates unique constraint'), {
+          code: '23505',
+          constraint: 'uq_vendor_groups_name',
+        }),
+      )
+
+      const rejection = service.update('vg1', { name: 'Baru' })
+
+      await expect(rejection).rejects.toThrow('A vendor group named "Baru" already exists')
+      await expect(rejection).rejects.toBeInstanceOf(ConflictException)
+    })
+
+    it('propagates an error from the transactional vendor insert rather than swallowing it', async () => {
+      groupRepo.findOne.mockResolvedValueOnce({
+        id: 'vg1',
+        name: 'Maskapai',
+        description: 'pulau',
+      })
+      dataSource.query.mockResolvedValueOnce([
+        { vendor: 'ASIA CARGO', has_data: true, in_master: true },
+      ])
+      txVendorRepo.insert.mockRejectedValueOnce(new Error('insert failed'))
+
+      await expect(service.update('vg1', { vendors: ['ASIA CARGO'] })).rejects.toThrow(
+        'insert failed',
+      )
+
+      expect(dataSource.transaction).toHaveBeenCalled()
+    })
+
+    // An empty patch with no vendors has nothing to write, so it must not open a transaction just
+    // to read the row back.
+    it('skips the transaction entirely when the patch is empty and no vendors are given', async () => {
+      groupRepo.findOne.mockResolvedValueOnce({
+        id: 'vg1',
+        name: 'Maskapai',
+        description: 'pulau',
+      })
+      dataSource.query.mockResolvedValueOnce([
+        { id: 'vg1', name: 'Maskapai', description: 'pulau', vendor: null },
+      ])
+
+      const result = await service.update('vg1', {})
+
+      expect(dataSource.transaction).not.toHaveBeenCalled()
+      expect(result).toEqual({
+        id: 'vg1',
+        name: 'Maskapai',
+        description: 'pulau',
+        vendors: [],
+      })
+    })
+  })
+
+  describe('remove', () => {
+    it('throws when the group does not exist', async () => {
+      groupRepo.findOne.mockResolvedValueOnce(null)
+
+      await expect(service.remove('missing')).rejects.toThrow('Vendor group not found')
+    })
+
+    it('deletes the group by id', async () => {
+      groupRepo.findOne.mockResolvedValueOnce({ id: 'vg1', name: 'Maskapai' })
+
+      await service.remove('vg1')
+
+      expect(groupRepo.delete).toHaveBeenCalledWith('vg1')
     })
   })
 })
