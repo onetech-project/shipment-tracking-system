@@ -123,3 +123,52 @@ it('keeps a vendor name with surrounding whitespace untouched end to end', () =>
 
   expect(onChange).toHaveBeenCalledWith(['  ASIA CARGO '])
 })
+
+// A name in `value` that `vendors` no longer lists — e.g. a sheet re-sync dropped it. Without a row
+// for it, `toggle` (the only way to mutate `selected`) can never reach it, and the service
+// re-validates the whole array on every save, so the group becomes permanently un-editable. It has
+// to render, be tickable, and be flagged as distinct from the rest of the list.
+describe('an orphaned selection no longer in the vendor list', () => {
+  it('renders with its own checkbox, already checked', () => {
+    render(<VendorPicker vendors={vendors} value={['DEFUNCT CARGO']} onChange={jest.fn()} />)
+
+    expect(screen.getByLabelText('DEFUNCT CARGO')).toBeChecked()
+  })
+
+  it('is removed from the emitted array on untick', () => {
+    const onChange = jest.fn()
+    render(
+      <VendorPicker vendors={vendors} value={['ASIA CARGO', 'DEFUNCT CARGO']} onChange={onChange} />,
+    )
+
+    fireEvent.click(screen.getByLabelText('DEFUNCT CARGO'))
+
+    expect(onChange).toHaveBeenCalledWith(['ASIA CARGO'])
+  })
+
+  it('is flagged with a marker distinct from the hasData/inMaster markers', () => {
+    render(<VendorPicker vendors={vendors} value={['DEFUNCT CARGO']} onChange={jest.fn()} />)
+
+    expect(screen.getByText('tidak ada di daftar vendor')).toBeInTheDocument()
+  })
+
+  it('does not put the orphan marker on a genuine vendor row', () => {
+    render(<VendorPicker vendors={vendors} value={['DEFUNCT CARGO']} onChange={jest.fn()} />)
+
+    const sriwijayaRow = screen.getByLabelText('Sriwijaya Air').closest('label')
+    expect(sriwijayaRow).not.toHaveTextContent('tidak ada di daftar vendor')
+  })
+
+  // A row with both hasData and inMaster false never occurs for a genuine vendor — the endpoint's
+  // union guarantees at least one is true. It only happens for an orphan, and the orphan marker
+  // must replace those two markers rather than stack alongside them.
+  it('does not also show the hasData/inMaster markers on the orphan row', () => {
+    render(<VendorPicker vendors={vendors} value={['DEFUNCT CARGO']} onChange={jest.fn()} />)
+
+    const orphanRow = screen.getByLabelText('DEFUNCT CARGO').closest('label')
+    expect(orphanRow).not.toHaveTextContent('ada data, tidak ada rate card')
+    expect(
+      orphanRow?.querySelector('[title="Belum ada TO yang memakai vendor ini"]'),
+    ).toBeNull()
+  })
+})
