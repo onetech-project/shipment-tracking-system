@@ -65,13 +65,56 @@ const COMPARISON_CELL_ROUTE: PnlRouteFilter = {
 }
 
 // A minimal stand-in for the real comparison table: one button that fires the same
-// onCellClick(route) callback a real value-cell click would (already projected to a route filter).
-jest.mock('@/features/pnl/components/PnlGroupComparisonView', () => ({
-  PnlGroupComparisonView: ({
+// onCellClick(route) callback a real value-cell click would (already projected to a route filter),
+// plus a node reporting the `picks` prop it was handed — the page now owns that state (Task 7), so
+// this mock has to echo it back or the lifted state would be unobservable from this spec.
+jest.mock('@/features/pnl/components/PnlRouteComparisonView', () => ({
+  PnlRouteComparisonView: ({
+    picks,
+    onPicksChange,
     onCellClick,
   }: {
+    picks: { kind: string }[]
+    onPicksChange?: (next: { kind: string }[]) => void
     onCellClick?: (route: PnlRouteFilter) => void
-  }) => <button onClick={() => onCellClick?.(COMPARISON_CELL_ROUTE)}>comparison-cell</button>,
+  }) => (
+    <div>
+      <div data-testid="route-comparison-view">{`picks:${picks.length}`}</div>
+      {/* Drives the page's lifted state the same way a real checkbox click would, so the
+          persistence test below can prove the count survives a tab switch rather than just
+          observing the untouched initial value. */}
+      <button onClick={() => onPicksChange?.([...picks, { kind: 'route' }])}>add-pick</button>
+      <button onClick={() => onCellClick?.(COMPARISON_CELL_ROUTE)}>comparison-cell</button>
+    </div>
+  ),
+}))
+
+const VENDOR_CELL_ROUTE: PnlRouteFilter = {
+  routes: [{ origin: 'Jabo', dest: 'Denpasar' }],
+  vendors: ['ESP'],
+  dateFrom: '2026-05-01',
+  dateTo: '2026-05-15',
+}
+
+// Same shape of mock as PnlRouteComparisonView above: renders the `picks` prop it was handed (the
+// page owns this state, so the mock has to echo it back or the lifted state would be unobservable
+// from this spec) and offers a fake cell that fires onCellClick with a route already projected.
+jest.mock('@/features/pnl/components/PnlVendorComparisonView', () => ({
+  PnlVendorComparisonView: ({
+    picks,
+    onPicksChange,
+    onCellClick,
+  }: {
+    picks: { kind: string }[]
+    onPicksChange: (next: { kind: string; name: string }[]) => void
+    onCellClick?: (route: PnlRouteFilter) => void
+  }) => (
+    <div data-testid="vendor-comparison-view">
+      <span data-testid="vendor-picks">{`picks:${picks.length}`}</span>
+      <button onClick={() => onPicksChange([{ kind: 'vendor', name: 'ESP' }])}>pick-vendor</button>
+      <button onClick={() => onCellClick?.(VENDOR_CELL_ROUTE)}>vendor-cell</button>
+    </div>
+  ),
 }))
 
 import PnlPage from './page'
@@ -80,10 +123,22 @@ import { usePermissions } from '@/shared/hooks/use-permissions'
 import { useRouter } from 'next/navigation'
 import { usePnlCycles, usePnlSummary } from '@/features/pnl/hooks/usePnl'
 
+// Backs usePermissions' hasPermission so a test can change what's granted *between* renders
+// (renderPage(...) then setPermissions(...) + rerender(...)) rather than only at initial mount —
+// needed to reproduce a permission being revoked live while the user sits on a gated tab, which is
+// how this app actually behaves (no re-login required for a role change to take effect).
+//
+// usePermissions is stubbed with mockImplementation (not mockReturnValue) so it's re-evaluated on
+// every render, each time reading currentPermissions fresh — a fixed mockReturnValue object would
+// keep returning the same hasPermission function/reference forever, which page.tsx's backstop
+// effects depend on to notice anything changed.
+let currentPermissions: string[] = []
+
 // Shared across every describe block below: mocks useAuth/usePermissions from a plain permission
 // list (defaulting to a bare read.pnl user) and renders the page. Kept in one place so the Daily
-// Report and Group Comparison click-through tests can't drift in how they stub the auth gate.
+// Report and Route Comparison click-through tests can't drift in how they stub the auth gate.
 function renderPage({ permissions = ['read.pnl'] }: { permissions?: string[] } = {}) {
+  currentPermissions = permissions
   ;(useAuth as jest.Mock).mockReturnValue({
     user: {
       id: '1',
@@ -95,10 +150,17 @@ function renderPage({ permissions = ['read.pnl'] }: { permissions?: string[] } =
     },
     loading: false,
   })
-  ;(usePermissions as jest.Mock).mockReturnValue({
-    hasPermission: (p: string) => permissions.includes(p),
-  })
+  ;(usePermissions as jest.Mock).mockImplementation(() => ({
+    hasPermission: (p: string) => currentPermissions.includes(p),
+  }))
   return render(<PnlPage />)
+}
+
+// Simulates a live permission change (e.g. a role edit taking effect without re-login): mutates
+// what currentHasPermission sees. Callers must follow with rerender(<PnlPage />) — mutating this
+// alone doesn't trigger React to re-render.
+function setPermissions(permissions: string[]) {
+  currentPermissions = permissions
 }
 
 describe('PnlPage click-through from Daily Report to Estimated drilldown', () => {
@@ -150,7 +212,7 @@ describe('PnlPage click-through from Daily Report to Estimated drilldown', () =>
   // tab with nothing visibly changed.
   it('switches to Estimated and applies a clicked comparison cell as the drilldown route', () => {
     renderPage({ permissions: ['read.pnl', 'read.route_group'] })
-    fireEvent.click(screen.getByRole('button', { name: 'Group Comparison' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Route Comparison' }))
     fireEvent.click(screen.getByRole('button', { name: 'comparison-cell' }))
 
     expect(screen.getByText('Estimated').className).toContain('bg-primary')
@@ -166,9 +228,9 @@ describe('PnlPage click-through from Daily Report to Estimated drilldown', () =>
 
 // Finding 1: without this gate, a user who cannot read route groups still saw the tab button and,
 // behind it, a false "no groups exist, go create one" message linking to a page that immediately
-// redirects them away. The tab button is the only way `view` can become 'groups' in this page, so
+// redirects them away. The tab button is the only way `view` can become 'routes' in this page, so
 // hiding it is what actually keeps such a user off the view — not just a cosmetic omission.
-describe('PnlPage Group Comparison tab gating', () => {
+describe('PnlPage Route Comparison tab gating', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     ;(useRouter as jest.Mock).mockReturnValue({ replace: jest.fn() })
@@ -195,15 +257,158 @@ describe('PnlPage Group Comparison tab gating', () => {
     })
   })
 
-  it('hides the Group Comparison tab for a user without read.route_group', () => {
+  it('hides the Route Comparison tab for a user without read.route_group', () => {
     renderPage({ permissions: ['read.pnl'] })
 
-    expect(screen.queryByRole('button', { name: 'Group Comparison' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Route Comparison' })).not.toBeInTheDocument()
   })
 
-  it('shows the Group Comparison tab for a user with read.route_group', () => {
+  it('shows the Route Comparison tab for a user with read.route_group', () => {
     renderPage({ permissions: ['read.pnl', 'read.route_group'] })
 
-    expect(screen.getByRole('button', { name: 'Group Comparison' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Route Comparison' })).toBeInTheDocument()
+  })
+
+  // The tabs are rendered by a ternary, so switching away from Route Comparison unmounts it. Before
+  // this state was lifted to the page, that meant the view's own `picks` reset to empty on
+  // remount — so this test drives a pick through the mock (rather than only checking the untouched
+  // initial value) to actually prove the count survives the round trip.
+  it('keeps the comparison picks when the user leaves the tab and comes back', () => {
+    renderPage({ permissions: ['read.pnl', 'read.route_group'] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Route Comparison' }))
+    expect(screen.getByTestId('route-comparison-view')).toHaveTextContent('picks:0')
+
+    fireEvent.click(screen.getByRole('button', { name: 'add-pick' }))
+    expect(screen.getByTestId('route-comparison-view')).toHaveTextContent('picks:1')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Daily Report' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Route Comparison' }))
+
+    expect(screen.getByTestId('route-comparison-view')).toHaveTextContent('picks:1')
+  })
+
+  // The tab button is gated on read.route_group, but nothing else stops `view` from staying
+  // 'routes' once set — this is the backstop effect in page.tsx (around line 118) that resets it.
+  // Reproduces a role change taking effect live (no re-login) while the user is already parked on
+  // the tab, which the button-click gate alone can never exercise.
+  it('resets to Estimated when read.route_group is revoked while on the Route Comparison tab', () => {
+    const { rerender } = renderPage({ permissions: ['read.pnl', 'read.route_group'] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Route Comparison' }))
+    expect(screen.getByRole('button', { name: 'Route Comparison' })).toHaveClass('bg-primary')
+
+    setPermissions(['read.pnl'])
+    rerender(<PnlPage />)
+
+    expect(screen.getByRole('button', { name: 'Estimated' })).toHaveClass('bg-primary')
+  })
+})
+
+describe('PnlPage Vendor Comparison tab', () => {
+  beforeAll(() => {
+    window.requestAnimationFrame = jest.fn()
+    Element.prototype.scrollIntoView = jest.fn()
+  })
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    ;(useRouter as jest.Mock).mockReturnValue({ replace: jest.fn() })
+    ;(usePnlCycles as jest.Mock).mockReturnValue({
+      data: ['2026-05-1H'],
+      isLoading: false,
+      isError: false,
+      refetch: jest.fn(),
+    })
+    ;(usePnlSummary as jest.Mock).mockReturnValue({
+      data: {
+        label: '2026-05-1H',
+        totalTos: 0,
+        totalAwbs: 0,
+        totalRevenue: 0,
+        totalDiscount: 0,
+        totalCost: 0,
+        grossProfit: 0,
+        grossMarginPct: 0,
+      },
+      isLoading: false,
+      isError: false,
+      refetch: jest.fn(),
+    })
+  })
+
+  it('hides the tab from a user without read.vendor_group', () => {
+    renderPage({ permissions: ['read.pnl', 'read.route_group'] })
+
+    expect(screen.queryByRole('button', { name: 'Vendor Comparison' })).not.toBeInTheDocument()
+  })
+
+  it('shows the tab to a user with read.vendor_group', () => {
+    renderPage({ permissions: ['read.pnl', 'read.vendor_group'] })
+
+    expect(screen.getByRole('button', { name: 'Vendor Comparison' })).toBeInTheDocument()
+  })
+
+  it('keeps the vendor picks when the user leaves the tab and comes back', () => {
+    renderPage({ permissions: ['read.pnl', 'read.vendor_group'] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Vendor Comparison' }))
+    expect(screen.getByTestId('vendor-picks')).toHaveTextContent('picks:0')
+
+    // Drive the page's lifted state through the mock, then leave and return.
+    fireEvent.click(screen.getByRole('button', { name: 'pick-vendor' }))
+    expect(screen.getByTestId('vendor-picks')).toHaveTextContent('picks:1')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Daily Report' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Vendor Comparison' }))
+
+    expect(screen.getByTestId('vendor-picks')).toHaveTextContent('picks:1')
+  })
+
+  // Same backstop as the route tab's (page.tsx, around line 127): the tab button is gated on
+  // read.vendor_group, but nothing else stops `view` from staying 'vendors' once set. Reproduces a
+  // role change taking effect live (no re-login) while the user is already parked on the tab.
+  it('resets to Estimated when read.vendor_group is revoked while on the Vendor Comparison tab', () => {
+    const { rerender } = renderPage({ permissions: ['read.pnl', 'read.vendor_group'] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Vendor Comparison' }))
+    expect(screen.getByRole('button', { name: 'Vendor Comparison' })).toHaveClass('bg-primary')
+
+    setPermissions(['read.pnl'])
+    rerender(<PnlPage />)
+
+    expect(screen.getByRole('button', { name: 'Estimated' })).toHaveClass('bg-primary')
+  })
+
+  it('switches to Estimated and applies a clicked vendor cell as the drilldown route', () => {
+    renderPage({ permissions: ['read.pnl', 'read.vendor_group'] })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Vendor Comparison' }))
+    fireEvent.click(screen.getByRole('button', { name: 'vendor-cell' }))
+
+    expect(screen.getByText('Estimated').className).toContain('bg-primary')
+    expect(screen.getByTestId('drilldown-route')).toHaveTextContent(
+      JSON.stringify(VENDOR_CELL_ROUTE),
+    )
+  })
+
+  // flex-wrap alone would leave the first button of the wrapped row drawing a border-l against
+  // nothing, with no border-t between the two rows. The row is a gapped pill row instead.
+  it('renders the five tabs as a wrapping gapped pill row, with no leftover separators', () => {
+    const { container } = renderPage({
+      permissions: ['read.pnl', 'read.route_group', 'read.vendor_group'],
+    })
+
+    const row = container.querySelector('[data-testid="pnl-view-tabs"]')!
+    expect(row.className).toContain('flex-wrap')
+    expect(row.className).toContain('gap-2')
+    expect(row.className).not.toContain('overflow-hidden')
+
+    const buttons = Array.from(row.querySelectorAll('button'))
+    expect(buttons).toHaveLength(5)
+    for (const button of buttons) {
+      expect(button.className).toContain('rounded-md border')
+      expect(button.className).not.toContain('border-l')
+    }
   })
 })

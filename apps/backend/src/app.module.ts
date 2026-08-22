@@ -28,6 +28,7 @@ import { PnlModule } from './modules/pnl/pnl.module'
 import { PnlSettlementModule } from './modules/pnl-settlement/pnl-settlement.module'
 import { BarhalModule } from './modules/barhal/barhal.module'
 import { RouteGroupsModule } from './modules/route-groups/route-groups.module'
+import { VendorGroupsModule } from './modules/vendor-groups/vendor-groups.module'
 
 @Module({
   imports: [
@@ -98,6 +99,7 @@ import { RouteGroupsModule } from './modules/route-groups/route-groups.module'
     BarhalModule,
     PnlSettlementModule,
     RouteGroupsModule,
+    VendorGroupsModule,
   ],
   controllers: [AppController],
   providers: [

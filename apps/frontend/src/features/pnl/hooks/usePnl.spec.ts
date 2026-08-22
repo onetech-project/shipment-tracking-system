@@ -9,7 +9,14 @@
  */
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/client'
-import { routeToParams, usePnlAwbDrilldown, PnlFilter, PnlRouteFilter, columnsToParam } from './usePnl'
+import {
+  routeToParams,
+  usePnlAwbDrilldown,
+  PnlFilter,
+  PnlRouteFilter,
+  columnsToParam,
+  vendorColumnsToParams,
+} from './usePnl'
 
 jest.mock('@tanstack/react-query', () => ({ useQuery: jest.fn() }))
 jest.mock('@/shared/api/client', () => ({
@@ -70,6 +77,9 @@ describe('usePnlAwbDrilldown HTTP contract', () => {
         page: 2,
         limit: 50,
       },
+      // `vendor` repeats on the wire; axios's default array serializer would write `vendor[]=`,
+      // which qs parses under a key called 'vendor[]' that no handler reads.
+      paramsSerializer: { indexes: null },
     })
   })
 
@@ -101,5 +111,40 @@ describe('columnsToParam', () => {
 
   it('is empty for no picks', () => {
     expect(columnsToParam([])).toBe('')
+  })
+})
+
+describe('vendorColumnsToParams', () => {
+  it('emits one descriptor per pick, splitting on the first colon only', () => {
+    expect(
+      vendorColumnsToParams([
+        { kind: 'group', id: '11111111-1111-4111-8111-111111111111' },
+        { kind: 'vendor', name: 'PT Kargo, Tbk' },
+        { kind: 'vendor', name: 'Vendor: Utama' },
+      ]),
+    ).toEqual([
+      'vg:11111111-1111-4111-8111-111111111111',
+      'v:PT Kargo, Tbk',
+      'v:Vendor: Utama',
+    ])
+  })
+
+  it('returns an array, not a joined string — the param repeats on the wire', () => {
+    expect(Array.isArray(vendorColumnsToParams([{ kind: 'vendor', name: 'ESP' }]))).toBe(true)
+  })
+})
+
+describe('routeToParams', () => {
+  it('sends vendors as an array under the singular `vendor` key the endpoint reads', () => {
+    expect(routeToParams({ vendors: ['ESP', 'Angkasa'] })).toEqual({
+      vendor: ['ESP', 'Angkasa'],
+    })
+  })
+
+  it('omits the key entirely when no vendor is selected', () => {
+    expect(routeToParams({ routes: [{ origin: 'Jabo', dest: 'Aceh' }] })).toEqual({
+      routes: 'Jabo|Aceh',
+    })
+    expect(routeToParams({ vendors: [] })).toEqual({})
   })
 })

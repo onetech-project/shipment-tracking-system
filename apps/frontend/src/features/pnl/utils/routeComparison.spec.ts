@@ -1,14 +1,15 @@
 import {
-  toComparisonTable,
+  toRouteComparisonTable,
   overlappingRoutes,
-  COST_COMPONENTS,
   routeFromComparisonCell,
-} from './groupComparison'
-import { PnlGroupComparison, PnlGroupComparisonCell, PnlGroupComparisonColumn } from '../hooks/usePnl'
+} from './routeComparison'
+import { COST_COMPONENTS } from './comparison'
+import { PnlRouteComparison, PnlRouteComparisonCell, PnlRouteComparisonColumn } from '../hooks/usePnl'
 
-const cell = (over: Partial<PnlGroupComparisonCell> = {}): PnlGroupComparisonCell => ({
+const cell = (over: Partial<PnlRouteComparisonCell> = {}): PnlRouteComparisonCell => ({
   revenue: 0,
   cost: 0,
+  margin: 0,
   costSmu: 0,
   costRa: 0,
   costSgOut: 0,
@@ -18,7 +19,7 @@ const cell = (over: Partial<PnlGroupComparisonCell> = {}): PnlGroupComparisonCel
   ...over,
 })
 
-const data: PnlGroupComparison = {
+const data: PnlRouteComparison = {
   columns: [
     { id: 'g1', name: 'Kalimantan', routeCount: 3, kind: 'group', routes: [] },
     { id: 'g2', name: 'Sumatera', routeCount: 2, kind: 'group', routes: [] },
@@ -30,6 +31,7 @@ const data: PnlGroupComparison = {
         cell({
           revenue: 1000,
           cost: 800,
+          margin: 200,
           costSmu: 500,
           costRa: 100,
           costSgOut: 150,
@@ -45,24 +47,28 @@ const data: PnlGroupComparison = {
     {
       totalRevenue: 1000,
       totalCost: 800,
+      totalMargin: 200,
       totalCostSmu: 500,
       totalCostRa: 100,
       totalCostSgOut: 150,
       totalCostSgIn: 50,
       avgRevenuePerDay: 66.6,
       avgCostPerDay: 53.3,
+      avgMarginPerDay: 13.3,
       incompleteTos: 2,
       issues: [{ issue: 'no_booking', awbs: 4 }],
     },
     {
       totalRevenue: 0,
       totalCost: 0,
+      totalMargin: 0,
       totalCostSmu: 0,
       totalCostRa: 0,
       totalCostSgOut: 0,
       totalCostSgIn: 0,
       avgRevenuePerDay: 0,
       avgCostPerDay: 0,
+      avgMarginPerDay: 0,
       incompleteTos: 0,
       issues: [],
     },
@@ -82,12 +88,12 @@ describe('COST_COMPONENTS', () => {
   })
 })
 
-describe('toComparisonTable', () => {
+describe('toRouteComparisonTable', () => {
   it('splits each row into revenue, cost and component tracks aligned with columns', () => {
-    const model = toComparisonTable(data)
+    const model = toRouteComparisonTable(data)
 
     expect(model.columns).toEqual(data.columns)
-    expect(model.rows[0].date).toBe('2026-05-01')
+    expect(model.rows[0].rowKey).toBe('2026-05-01')
     expect(model.rows[0].revenue).toEqual([1000, null])
     expect(model.rows[0].cost).toEqual([800, null])
     expect(model.rows[0].components.costSmu).toEqual([500, null])
@@ -96,18 +102,18 @@ describe('toComparisonTable', () => {
 
   // An absent cell must stay distinguishable from a real zero all the way to the renderer.
   it('keeps a missing cell as null rather than collapsing it to zero', () => {
-    const model = toComparisonTable(data)
+    const model = toRouteComparisonTable(data)
     expect(model.rows[0].revenue[1]).toBeNull()
     expect(model.rows[0].components.costRa[1]).toBeNull()
   })
 
   it('reports incomplete TOs per column as a number, defaulting to zero', () => {
-    const model = toComparisonTable(data)
+    const model = toRouteComparisonTable(data)
     expect(model.rows[0].warnings.map((w) => w.incompleteTos)).toEqual([2, 0])
   })
 
   it('builds a Total footer row that expands and an Avg / Day row that does not', () => {
-    const model = toComparisonTable(data)
+    const model = toRouteComparisonTable(data)
 
     expect(model.footerRows.map((r) => r.label)).toEqual(['Total', 'Avg / Day'])
     expect(model.footerRows[0].revenue).toEqual([1000, 0])
@@ -119,9 +125,9 @@ describe('toComparisonTable', () => {
   })
 })
 
-describe('toComparisonTable warnings', () => {
+describe('toRouteComparisonTable warnings', () => {
   it('pairs each cell issue list with its incomplete-cost count', () => {
-    const model = toComparisonTable(data)
+    const model = toRouteComparisonTable(data)
     expect(model.rows[0].warnings[0]).toEqual({
       issues: [{ issue: 'no_booking', awbs: 2 }],
       incompleteTos: 2,
@@ -129,13 +135,13 @@ describe('toComparisonTable warnings', () => {
   })
 
   it('gives an absent cell a clean warning rather than undefined', () => {
-    const model = toComparisonTable(data)
+    const model = toRouteComparisonTable(data)
     expect(model.rows[0].warnings[1]).toEqual({ issues: [], incompleteTos: 0 })
   })
 
   it('warns on the Total row but not on Avg / Day', () => {
     // An average has no set of AWBs behind it, so there is nothing for a warning to point at.
-    const model = toComparisonTable(data)
+    const model = toRouteComparisonTable(data)
     expect(model.footerRows[0].warnings?.[0]).toEqual({
       issues: [{ issue: 'no_booking', awbs: 4 }],
       incompleteTos: 2,
@@ -148,7 +154,7 @@ describe('overlappingRoutes', () => {
   const aceh = { origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' }
   const medan = { origin: 'Jabo', originLabel: 'CGK', dest: 'Medan' }
 
-  const column = (over: Partial<PnlGroupComparisonColumn>): PnlGroupComparisonColumn => ({
+  const column = (over: Partial<PnlRouteComparisonColumn>): PnlRouteComparisonColumn => ({
     id: 'g1', name: 'Kalimantan', routeCount: 1, kind: 'group', routes: [aceh], ...over,
   })
 
@@ -214,5 +220,54 @@ describe('routeFromComparisonCell', () => {
       dateFrom: '2026-05-02',
       dateTo: '2026-05-02',
     })
+  })
+})
+
+describe('toRouteComparisonTable row axis', () => {
+  it('keys rows by rowKey and carries a presentational rowLabel', () => {
+    const model = toRouteComparisonTable({
+      columns: [{ id: 'g1', name: 'Group 1', routeCount: 1, kind: 'group', routes: [] }],
+      rows: [
+        {
+          date: '2026-05-01',
+          cells: [
+            {
+              revenue: 1000,
+              cost: 600,
+              margin: 385,
+              costSmu: 600,
+              costRa: 0,
+              costSgOut: 0,
+              costSgIn: 0,
+              incompleteTos: 0,
+              issues: [],
+            },
+          ],
+        },
+      ],
+      footer: [
+        {
+          totalRevenue: 1000,
+          totalCost: 600,
+          totalMargin: 385,
+          totalCostSmu: 600,
+          totalCostRa: 0,
+          totalCostSgOut: 0,
+          totalCostSgIn: 0,
+          avgRevenuePerDay: 1000,
+          avgCostPerDay: 600,
+          avgMarginPerDay: 385,
+          incompleteTos: 0,
+          issues: [],
+        },
+      ],
+      periodDays: 1,
+    })
+
+    expect(model.rows[0].rowKey).toBe('2026-05-01')
+    // The label is already formatted — the renderer must not know this axis holds dates. The
+    // format is formatDayLabel's, unchanged: this task is a refactor, so the rendered label must
+    // be byte-identical to what the renderer produced before.
+    expect(model.rows[0].rowLabel).toBe('1-May-2026')
   })
 })

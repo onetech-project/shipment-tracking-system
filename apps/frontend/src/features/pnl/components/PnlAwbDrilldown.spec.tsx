@@ -307,3 +307,104 @@ describe('PnlAwbDrilldown route filter', () => {
     expect(onRouteChange).toHaveBeenCalledWith({})
   })
 })
+
+describe('PnlAwbDrilldown vendor filter', () => {
+  beforeEach(() => jest.clearAllMocks())
+
+  it('shows each active vendor as a chip', () => {
+    mockRows([row()])
+    render(
+      <PnlAwbDrilldown
+        filter={filter}
+        route={{ vendors: ['ESP', 'Angkasa Kargo'] }}
+        onRouteChange={jest.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId('vendor-chip-ESP')).toHaveTextContent('ESP')
+    expect(screen.getByTestId('vendor-chip-Angkasa Kargo')).toHaveTextContent('Angkasa Kargo')
+  })
+
+  it('drops one vendor without disturbing the rest of the filter', () => {
+    const onRouteChange = jest.fn()
+    mockRows([row()])
+    render(
+      <PnlAwbDrilldown
+        filter={filter}
+        route={{ vendors: ['ESP', 'Angkasa Kargo'], dateFrom: '2026-05-01' }}
+        onRouteChange={onRouteChange}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hapus filter vendor ESP' }))
+
+    expect(onRouteChange).toHaveBeenCalledWith({
+      vendors: ['Angkasa Kargo'],
+      dateFrom: '2026-05-01',
+    })
+  })
+
+  // Empty means "no filter": routeToParams drops empty fields, and an empty array would otherwise
+  // be serialised as a filter that matches nothing.
+  it('removes the key entirely when the last vendor is dropped', () => {
+    const onRouteChange = jest.fn()
+    mockRows([row()])
+    render(
+      <PnlAwbDrilldown filter={filter} route={{ vendors: ['ESP'] }} onRouteChange={onRouteChange} />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hapus filter vendor ESP' }))
+
+    expect(onRouteChange).toHaveBeenCalledWith({ vendors: undefined })
+  })
+
+  // Without this, a drilldown opened from a vendor cell would show no Reset at all, and the hidden
+  // vendor filter would survive every route and date edit because both handlers spread ...route.
+  it('turns Reset on when only vendors are set, and Reset clears them', () => {
+    const onRouteChange = jest.fn()
+    mockRows([row()])
+    render(
+      <PnlAwbDrilldown filter={filter} route={{ vendors: ['ESP'] }} onRouteChange={onRouteChange} />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset' }))
+    expect(onRouteChange).toHaveBeenCalledWith({})
+  })
+
+  it('warns that these numbers will not equal the cell that opened them', () => {
+    mockRows([row()])
+    render(
+      <PnlAwbDrilldown filter={filter} route={{ vendors: ['ESP'] }} onRouteChange={jest.fn()} />,
+    )
+
+    expect(screen.getByTestId('vendor-scope-note')).toHaveTextContent(/weight_share/)
+  })
+
+  it('says nothing about vendors when no vendor filter is active', () => {
+    mockRows([row()])
+    render(<PnlAwbDrilldown filter={filter} route={{}} onRouteChange={jest.fn()} />)
+
+    expect(screen.queryByTestId('vendor-scope-note')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument()
+  })
+
+  it('preserves vendor filter through a date edit', () => {
+    const onRouteChange = jest.fn()
+    mockRows([row()])
+    render(
+      <PnlAwbDrilldown
+        filter={filter}
+        route={{ vendors: ['ESP', 'Angkasa Kargo'], dateFrom: '2026-05-01' }}
+        onRouteChange={onRouteChange}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('Sampai'), { target: { value: '2026-05-10' } })
+
+    expect(onRouteChange).toHaveBeenCalledWith({
+      vendors: ['ESP', 'Angkasa Kargo'],
+      dateFrom: '2026-05-01',
+      dateTo: '2026-05-10',
+    })
+  })
+})

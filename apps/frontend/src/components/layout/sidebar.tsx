@@ -21,6 +21,7 @@ import {
   Menu,
   Package,
   Route,
+  Truck,
 } from 'lucide-react'
 
 interface NavLinkProps {
@@ -149,6 +150,15 @@ export function Sidebar({ onNavClick, collapsed = false, onToggleCollapse }: Sid
                 href="/route-groups"
                 icon={<Route size={16} />}
                 label="Route Group"
+                onClick={onNavClick}
+                collapsed={collapsed}
+              />
+            )}
+            {hasPermission('read.vendor_group') && (
+              <NavLink
+                href="/vendor-groups"
+                icon={<Truck size={16} />}
+                label="Vendor Group"
                 onClick={onNavClick}
                 collapsed={collapsed}
               />
