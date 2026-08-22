@@ -199,6 +199,11 @@ export interface PnlGroupComparisonColumn {
 export interface PnlGroupComparisonCell {
   revenue: number
   cost: number
+  // revenue_total - revenue_discount - cost_to, exactly the expression getDailyMatrix uses, so the
+  // same route and period reads the same in both tabs. NOT SUM(gross_profit_to): that view column
+  // is NULL-propagating while COALESCE(SUM(...)) skips NULL rows, and the two differ by ~75x on
+  // current data because most TOs have no computable cost.
+  margin: number
   // The four components are prorated to TO level, each behind the same FILTER (WHERE cost_to IS
   // NOT NULL) clause as `cost`, so they sum exactly to `cost`. Measured against the live view
   // today, the SMU and SG Out filters happen to be no-ops (every null-cost row already has a null
@@ -221,12 +226,14 @@ export interface PnlGroupComparisonRow {
 export interface PnlGroupComparisonFooter {
   totalRevenue: number
   totalCost: number
+  totalMargin: number
   totalCostSmu: number
   totalCostRa: number
   totalCostSgOut: number
   totalCostSgIn: number
   avgRevenuePerDay: number
   avgCostPerDay: number
+  avgMarginPerDay: number
   incompleteTos: number
   // Distinct AWBs for the period, from its own grouping set — NOT the sum of the day cells.
   issues: PnlCellIssue[]
@@ -1095,6 +1102,9 @@ export class PnlService {
           cr.col_idx                                                   AS col_idx,
           COALESCE(SUM(v.revenue_total), 0)                            AS revenue,
           COALESCE(SUM(v.cost_to), 0)                                  AS cost,
+          COALESCE(SUM(v.revenue_total), 0)
+            - COALESCE(SUM(v.revenue_discount), 0)
+            - COALESCE(SUM(v.cost_to), 0)                              AS margin,
           COALESCE(SUM(v.cost_smu_awb    * v.weight_share)
                    FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_smu,
           COALESCE(SUM(v.cost_ra_awb     * v.weight_share)
@@ -1158,6 +1168,7 @@ export class PnlService {
       rows[ri].cells[ci] = {
         revenue: Number(factRow.revenue),
         cost: Number(factRow.cost),
+        margin: Number(factRow.margin),
         costSmu: Number(factRow.cost_smu),
         costRa: Number(factRow.cost_ra),
         costSgOut: Number(factRow.cost_sg_out),
@@ -1170,6 +1181,7 @@ export class PnlService {
     const footer: PnlGroupComparisonFooter[] = columns.map((_column, ci) => {
       let totalRevenue = 0
       let totalCost = 0
+      let totalMargin = 0
       let totalCostSmu = 0
       let totalCostRa = 0
       let totalCostSgOut = 0
@@ -1180,6 +1192,7 @@ export class PnlService {
         if (!cell) continue
         totalRevenue += cell.revenue
         totalCost += cell.cost
+        totalMargin += cell.margin
         totalCostSmu += cell.costSmu
         totalCostRa += cell.costRa
         totalCostSgOut += cell.costSgOut
@@ -1189,6 +1202,7 @@ export class PnlService {
       return {
         totalRevenue,
         totalCost,
+        totalMargin,
         totalCostSmu,
         totalCostRa,
         totalCostSgOut,
@@ -1196,6 +1210,7 @@ export class PnlService {
         // Divided by calendar days, not by days that happened to have shipments.
         avgRevenuePerDay: totalRevenue / periodDays,
         avgCostPerDay: totalCost / periodDays,
+        avgMarginPerDay: totalMargin / periodDays,
         incompleteTos,
         issues: columnIssues.get(String(ci)) ?? [],
       }

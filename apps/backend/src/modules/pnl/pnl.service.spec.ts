@@ -789,6 +789,7 @@ describe('PnlService', () => {
       d: '2026-05-01',
       col_idx: '0',
       revenue: '0',
+      margin: '0',
       cost: '0',
       cost_smu: '0',
       cost_ra: '0',
@@ -929,6 +930,7 @@ describe('PnlService', () => {
 
       expect(cell).toEqual({
         revenue: 0,
+        margin: 0,
         cost: 14970000,
         costSmu: 12400000,
         costRa: 850000,
@@ -989,12 +991,14 @@ describe('PnlService', () => {
 
       expect(footer).toEqual({
         totalRevenue: 3000,
+        totalMargin: 0,
         totalCost: 1800,
         totalCostSmu: 1200,
         totalCostRa: 200,
         totalCostSgOut: 300,
         totalCostSgIn: 100,
         avgRevenuePerDay: 200, // 3000 / 15 calendar days, not / 2 days with data
+        avgMarginPerDay: 0,
         avgCostPerDay: 120,
         incompleteTos: 5,
         issues: [],
@@ -1037,6 +1041,64 @@ describe('PnlService', () => {
 
       expect(result.rows[0].cells[0]!.issues).toEqual([])
       expect(result.footer[0].issues).toEqual([])
+    })
+
+    it('reports margin as revenue minus discount minus cost, matching the Daily Report expression', async () => {
+      // One column, one day. revenue 1000, discount 15, cost 600 -> margin 385.
+      const factRows = [
+        {
+          d: '2026-05-01',
+          col_idx: 0,
+          revenue: '1000',
+          margin: '385',
+          cost: '600',
+          cost_smu: '600',
+          cost_ra: '0',
+          cost_sg_out: '0',
+          cost_sg_in: '0',
+          incomplete_tos: 0,
+        },
+      ]
+
+      jest
+        .spyOn(dataSource, 'query')
+        .mockResolvedValueOnce([{ id: 'g1', name: 'Group 1', origin_station: 'Jakarta', dest_station: 'SUB' }])
+        .mockResolvedValueOnce(factRows)
+        .mockResolvedValueOnce([])
+
+      const result = await service.getGroupComparison(
+        [{ kind: 'group', id: 'g1' }],
+        '2026-05-1H',
+        undefined,
+        undefined,
+        'ata_vendor_wh_destination',
+      )
+
+      expect(result.rows.find((r) => r.date === '2026-05-01')!.cells[0]!.margin).toBe(385)
+      expect(result.footer[0].totalMargin).toBe(385)
+    })
+
+    it('selects margin with the same expression the daily matrix uses', async () => {
+      const spy = jest
+        .spyOn(dataSource, 'query')
+        .mockResolvedValueOnce([{ id: 'g1', name: 'Group 1', origin_station: 'Jakarta', dest_station: 'SUB' }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      await service.getGroupComparison(
+        [{ kind: 'group', id: 'g1' }],
+        '2026-05-1H',
+        undefined,
+        undefined,
+        'ata_vendor_wh_destination',
+      )
+
+      const factSql = spy.mock.calls[1][0] as string
+      // Gross revenue is unchanged; margin nets the discount. Written as one normalised string so
+      // whitespace in the SQL literal cannot make the assertion pass or fail by accident.
+      const normalised = factSql.replace(/\s+/g, ' ')
+      expect(normalised).toContain('COALESCE(SUM(v.revenue_total), 0) AS revenue')
+      expect(normalised).toContain('- COALESCE(SUM(v.revenue_discount), 0) - COALESCE(SUM(v.cost_to), 0) AS margin')
     })
   })
 })
