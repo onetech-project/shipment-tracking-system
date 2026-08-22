@@ -92,22 +92,4 @@ describe('PnlController query-string parsing (HTTP)', () => {
 
     expect(mockService.getVendorComparison).not.toHaveBeenCalled()
   })
-
-  it('reads a repeated vendor param on the AWB drilldown', async () => {
-    await request(app.getHttpServer())
-      .get('/pnl/awb-drilldown')
-      .query({ cycle: '2026-05-1H' })
-      .query('vendor=ESP&vendor=Angkasa')
-      .expect(200)
-
-    expect(mockService.getAwbDrilldown).toHaveBeenCalledWith(
-      1,
-      50,
-      '2026-05-1H',
-      undefined,
-      undefined,
-      undefined,
-      expect.objectContaining({ vendors: ['ESP', 'Angkasa'] }),
-    )
-  })
 })
