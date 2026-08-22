@@ -387,4 +387,24 @@ describe('PnlAwbDrilldown vendor filter', () => {
     expect(screen.queryByTestId('vendor-scope-note')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Reset' })).not.toBeInTheDocument()
   })
+
+  it('preserves vendor filter through a date edit', () => {
+    const onRouteChange = jest.fn()
+    mockRows([row()])
+    render(
+      <PnlAwbDrilldown
+        filter={filter}
+        route={{ vendors: ['ESP', 'Angkasa Kargo'], dateFrom: '2026-05-01' }}
+        onRouteChange={onRouteChange}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('Sampai'), { target: { value: '2026-05-10' } })
+
+    expect(onRouteChange).toHaveBeenCalledWith({
+      vendors: ['ESP', 'Angkasa Kargo'],
+      dateFrom: '2026-05-01',
+      dateTo: '2026-05-10',
+    })
+  })
 })
