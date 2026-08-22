@@ -3464,12 +3464,13 @@ column, so one shared label could not state it truthfully."
 The tab row is currently a segmented control: `flex w-fit rounded-md border overflow-hidden` with a `border-l` separator on each button after the first. Adding `flex-wrap` alone breaks it — the first button on the wrapped row still carries `border-l` and draws a rule against nothing, and there is no `border-t` between the rows. It becomes a **gapped pill row** instead.
 
 **Files:**
-- Modify: `apps/frontend/src/app/(dashboard)/pnl/page.tsx` — imports (`:25`), state (`:84`), gate effect (`:103-107`), render branch (`:283-287`), plus two regions Plan 1 has already edited: anchor on the **declarations**, not on line numbers. The `PnlView` union / exported tab-label constants / `VIEW_SUBTITLE` block now also holds `ROUTE_COMPARISON_LABEL`, and the tab row now has a fourth button — anchor on the `Estimated` / `Actual vs Estimate` / `Daily Report` / `Route Comparison` buttons.
+- Modify: `apps/frontend/src/features/pnl/constants.ts` — append `VENDOR_COMPARISON_LABEL` (tab labels cannot live in `page.tsx`; see Step 3)
+- Modify: `apps/frontend/src/app/(dashboard)/pnl/page.tsx` — imports (`:25`), state (`:84`), gate effect (`:103-107`), render branch (`:283-287`), plus two regions Plan 1 has already edited: anchor on the **declarations**, not on line numbers. The `PnlView` union and `VIEW_SUBTITLE` moved when Plan 1 edited them, and the tab row now has a fourth button — anchor on the `Estimated` / `Actual vs Estimate` / `Daily Report` / `Route Comparison` buttons.
 - Test: `apps/frontend/src/app/(dashboard)/pnl/page.spec.tsx`
 
 **Interfaces:**
 - Consumes: Task 8's `PnlVendorPick`; Task 11's `PnlVendorComparisonView`.
-- Produces: view key `'vendors'`; exported `VENDOR_COMPARISON_LABEL`; page state `vendorPicks` / `setVendorPicks`.
+- Produces: view key `'vendors'`; `VENDOR_COMPARISON_LABEL` exported from `@/features/pnl/constants`; page state `vendorPicks` / `setVendorPicks`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -3612,14 +3613,20 @@ import { PnlVendorComparisonView } from '@/features/pnl/components/PnlVendorComp
 
 and add `PnlVendorPick` to the existing `@/features/pnl/hooks/usePnl` import list (`:7-16`), beside `PnlColumnPick`.
 
-Replace the `PnlView` union, the exported tab labels and `VIEW_SUBTITLE`. Anchor on those three declarations rather than on a line number: Plan 1 inserts `ROUTE_COMPARISON_LABEL` into this same region, so `:64-71` no longer covers only the union and the subtitles, and dropping that constant would break the `{ROUTE_COMPARISON_LABEL}` reference in Step 5.
+**The tab label does NOT go in `page.tsx`.** Next 14's App Router type-checks a page module against a fixed export whitelist (`default`, `metadata`, `generateMetadata`, `generateStaticParams`, route-segment config). Any other named export fails `tsc --noEmit` with `TS2344` against the generated `.next/types/app/(dashboard)/pnl/page.ts`. This was hit and verified during Plan 1, which is why `ROUTE_COMPARISON_LABEL` lives in `apps/frontend/src/features/pnl/constants.ts`. Add the vendor label beside it.
+
+Append to `apps/frontend/src/features/pnl/constants.ts`:
+
+```ts
+export const VENDOR_COMPARISON_LABEL = 'Vendor Comparison'
+```
+
+and add it to the existing `@/features/pnl/constants` import in `page.tsx`, beside `ROUTE_COMPARISON_LABEL`.
+
+Then, in `page.tsx`, replace the `PnlView` union and `VIEW_SUBTITLE`. Anchor on those two declarations rather than on a line number — Plan 1 has already edited this region.
 
 ```tsx
 type PnlView = 'estimate' | 'actual' | 'daily' | 'routes' | 'vendors'
-
-// Exported so a rename touches one place. The jest specs assert these exact strings.
-export const ROUTE_COMPARISON_LABEL = 'Route Comparison' // added by Plan 1 — keep it
-export const VENDOR_COMPARISON_LABEL = 'Vendor Comparison'
 
 const VIEW_SUBTITLE: Record<PnlView, string> = {
   estimate: 'Estimated P&L based on arrival date — not yet billed',
