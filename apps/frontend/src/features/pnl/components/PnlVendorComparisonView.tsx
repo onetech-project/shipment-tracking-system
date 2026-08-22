@@ -130,12 +130,23 @@ export function PnlVendorComparisonView({
   }
 
   const coverage = data?.coverage ?? null
-  const coveragePct =
+  const rawCoveragePct =
     coverage && coverage.revenuePeriod > 0
       ? Math.round((coverage.revenueInColumns / coverage.revenuePeriod) * 100)
       : null
+  // A present coverage object with a missing revenueInColumns (an older/partial backend response)
+  // divides undefined by a number, giving NaN — which is not null, so it would otherwise sail
+  // through a plain `!= null` check and print "mencakup NaN% revenue periode ini". Number.isFinite
+  // rejects both NaN and null in one guard, falling back to the same no-coverage wording below.
+  const coveragePct = Number.isFinite(rawCoveragePct) ? rawCoveragePct : null
+  // A missing divisor (no routes with data in that column) is omitted rather than defaulted to 0,
+  // per the service's own footer comment: 0 reads as a measurement ("0 rute"), not as "unknown".
   const divisorNote = (data?.columns ?? [])
-    .map((column, i) => `${column.name} = ${data?.footer[i]?.routesWithData ?? 0} rute`)
+    .map((column, i) => {
+      const routesWithData = data?.footer[i]?.routesWithData
+      return routesWithData == null ? null : `${column.name} = ${routesWithData} rute`
+    })
+    .filter((entry): entry is string => entry != null)
     .join(', ')
 
   return (
@@ -212,7 +223,7 @@ export function PnlVendorComparisonView({
               loses the rest. */}
           <div className="rounded-md bg-blue-50 p-2 text-xs text-blue-900 dark:bg-blue-950/40 dark:text-blue-200">
             {coveragePct != null
-              ? `Kolom di bawah mencakup ${coveragePct}% revenue periode ini. Sisanya berasal dari TO yang tidak bisa muncul di kolom-kolom ini — lihat catatan di bawah.`
+              ? `Kolom di bawah mencakup ${coveragePct}% revenue periode ini. Sisanya berasal dari TO di luar kolom-kolom ini — lihat catatan di bawah.`
               : 'Kolom di bawah hanya mencakup TO yang punya vendor. Porsinya belum bisa dihitung dari response ini.'}
           </div>
 
@@ -252,11 +263,12 @@ export function PnlVendorComparisonView({
             data-testid="vendor-comparison-gap-note"
             className="text-xs text-muted-foreground"
           >
-            Kolom-kolom ini tidak menjumlah ke total periode. Tiga sebabnya: TO tanpa booking
-            sehingga vendornya kosong (no_booking); TO yang nama vendornya string kosong, yang
-            jatuh ke smu_rate_missing dan bukan no_booking; dan TO ber-station_mapping_missing,
-            yang punya vendor dan biaya tetapi belum punya rute sehingga tidak muncul di baris
-            mana pun.
+            Kolom-kolom ini tidak menjumlah ke total periode. Penyebab yang paling umum: TO dari
+            vendor lain yang belum dicentang di atas — centang vendornya untuk memasukkannya. Di
+            luar itu ada beberapa kasus data yang lebih jarang: TO tanpa booking sehingga
+            vendornya kosong (no_booking); TO yang nama vendornya string kosong, yang jatuh ke
+            smu_rate_missing dan bukan no_booking; dan TO ber-station_mapping_missing, yang punya
+            vendor dan biaya tetapi belum punya rute sehingga tidak muncul di baris mana pun.
           </p>
 
           {/* Not in the task-11 brief's step-3 code — added per the task instructions: earlier

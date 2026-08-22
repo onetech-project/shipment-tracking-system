@@ -139,16 +139,44 @@ describe('PnlVendorComparisonView', () => {
     expect(screen.getByText(/hanya mencakup TO yang punya vendor/)).toBeInTheDocument()
   })
 
+  // A present coverage object with a missing revenueInColumns (e.g. a partial/older backend
+  // response) divides undefined by a number, giving NaN. NaN != null, so a bare null check would
+  // let it through and print "mencakup NaN% revenue periode ini" — this pins the Number.isFinite
+  // guard that falls back to the same number-free sentence instead.
+  it('falls back to the number-free sentence instead of printing NaN%', () => {
+    const partial = comparison()
+    delete (partial.coverage as Partial<PnlVendorComparison['coverage']>).revenueInColumns
+    renderView({ picks: [{ kind: 'group', id: 'g1' }], data: partial })
+
+    expect(screen.getByText(/hanya mencakup TO yang punya vendor/)).toBeInTheDocument()
+    expect(screen.queryByText(/NaN/)).not.toBeInTheDocument()
+  })
+
   it('names the Avg / Route divisor per column, because it differs per column', () => {
     renderView({ picks: [{ kind: 'group', id: 'g1' }] })
 
     expect(screen.getByText(/Group A = 1 rute/)).toBeInTheDocument()
   })
 
-  it('lists all three reasons the columns do not add up to the period', () => {
+  // A missing routesWithData (the footer entry does not line up with its column) must be omitted
+  // rather than defaulted to 0: "0 rute" reads as a measurement — genuinely zero routes had data —
+  // when the true answer is "unknown". Per the service's own footer comment, the rule is null, not
+  // 0 and not NaN.
+  it('omits the divisor entry entirely rather than defaulting a missing one to 0', () => {
+    const missingDivisor = comparison()
+    delete (missingDivisor.footer[0] as Partial<PnlVendorComparison['footer'][number]>)
+      .routesWithData
+    renderView({ picks: [{ kind: 'group', id: 'g1' }], data: missingDivisor })
+
+    expect(screen.queryByText(/Group A = 0 rute/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Group A = .* rute/)).not.toBeInTheDocument()
+  })
+
+  it('lists four reasons the columns do not add up to the period, led by vendors not picked', () => {
     renderView({ picks: [{ kind: 'group', id: 'g1' }] })
 
     const note = screen.getByTestId('vendor-comparison-gap-note')
+    expect(note).toHaveTextContent(/vendor lain yang belum dicentang/)
     expect(note).toHaveTextContent('no_booking')
     expect(note).toHaveTextContent('smu_rate_missing')
     expect(note).toHaveTextContent('station_mapping_missing')
