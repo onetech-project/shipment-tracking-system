@@ -41,7 +41,7 @@ Diukur pada database saat ini (`v_pnl_to`: 66.203 baris):
 
 **Konsekuensi:** Vendor Comparison memakai inner join ke daftar vendor, jadi ia hanya bisa menjelaskan sekitar sepertiga aktivitas periode. Ini bukan bug dan tidak bisa diperbaiki dari sisi tab — datanya memang belum ada booking-nya. Karena itu tab wajib membawa indikator cakupan (lihat [Indikator cakupan](#indikator-cakupan)).
 
-**Belum diukur, wajib diukur sebelum implementasi:**
+**Diukur 2026-08-22 — vendor di `v_pnl_to` yang tidak ada di `air_shipments_smu`: 0.** Union tetap dipakai apa pun angkanya: ia snapshot satu sheet sync, bukan sifat skema.
 
 ```sql
 SELECT count(*) FROM (
