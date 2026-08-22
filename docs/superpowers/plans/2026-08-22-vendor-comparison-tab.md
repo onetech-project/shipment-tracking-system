@@ -4,7 +4,7 @@
 
 **Goal:** Add a fifth PnL tab, Vendor Comparison, that compares vendor groups and single vendors side by side — rows are origin→destination routes, columns are vendors, cells carry Revenue / Cost / Margin plus the four cost components — and make a clicked cell open the AWB drilldown narrowed to that vendor and route.
 
-**Architecture:** One new read-only backend endpoint (`GET /pnl/breakdown/vendor-comparison`) built the same way `getGroupComparison` is: two `Promise.all`'d raw-SQL queries over the `v_pnl_to` materialized view (one fact query, one `GROUPING SETS` issue query) joined against an `UNNEST` mapping table, shaped into index-aligned parallel arrays. On the frontend, a new projection function feeds the *existing* `PnlComparisonTable` renderer that Plan 1 generalised, so no table markup is written twice. The AWB drilldown gains a vendor filter in its **outer** predicate and renders it as removable chips.
+**Architecture:** One new read-only backend endpoint (`GET /pnl/breakdown/vendor-comparison`) built the same way `getRouteComparison` is: two `Promise.all`'d raw-SQL queries over the `v_pnl_to` materialized view (one fact query, one `GROUPING SETS` issue query) joined against an `UNNEST` mapping table, shaped into index-aligned parallel arrays. On the frontend, a new projection function feeds the *existing* `PnlComparisonTable` renderer that Plan 1 generalised, so no table markup is written twice. The AWB drilldown gains a vendor filter in its **outer** predicate and renders it as removable chips.
 
 **Tech Stack:** NestJS 10 + raw SQL over a Postgres materialized view (`v_pnl_to`); Next.js 14 App Router + React 18 + @tanstack/react-query + axios; Jest + @testing-library/react + supertest.
 
@@ -327,7 +327,7 @@ at the cost of having to normalise qs's string-or-array result before touching i
 ### Task 2: Vendor comparison response types and column resolution
 
 **Files:**
-- Modify: `apps/backend/src/modules/pnl/pnl.service.ts` — types immediately after the closing brace of the `PnlGroupComparison` interface and before the `@Injectable()` decorator (currently `:240`, and shifted further by Plan 1 — anchor on the `@Injectable()` line, not the number), new method after `getGroupComparison`
+- Modify: `apps/backend/src/modules/pnl/pnl.service.ts` — types immediately after the closing brace of the `PnlRouteComparison` interface and before the `@Injectable()` decorator (currently `:247`/`:249` — anchor on the `@Injectable()` line, not the number), new method after `getRouteComparison`
 - Test: `apps/backend/src/modules/pnl/pnl.service.spec.ts`
 
 **Interfaces:**
@@ -458,7 +458,7 @@ Expected: FAIL — `service.getVendorComparison is not a function`.
 
 - [ ] **Step 3: Add the response types**
 
-In `apps/backend/src/modules/pnl/pnl.service.ts`, immediately after the closing brace of the `PnlGroupComparison` interface and before the `@Injectable()` decorator (currently `:240`, and shifted further by Plan 1 — anchor on the `@Injectable()` line, not the number), add:
+In `apps/backend/src/modules/pnl/pnl.service.ts`, immediately after the closing brace of the `PnlRouteComparison` interface and before the `@Injectable()` decorator (currently `:247`/`:249` — anchor on the `@Injectable()` line, not the number), add:
 
 ```ts
 export interface PnlVendorComparisonColumn {
@@ -546,7 +546,7 @@ import { VendorColumnPick } from './pnl-vendor-columns.util'
 
 - [ ] **Step 5: Add the method with columns, rows and zeroed footer**
 
-In `apps/backend/src/modules/pnl/pnl.service.ts`, at the end of the class — directly after `getGroupComparison`'s closing brace and before the class's own closing brace — add:
+In `apps/backend/src/modules/pnl/pnl.service.ts`, at the end of the class — directly after `getRouteComparison`'s closing brace and before the class's own closing brace — add:
 
 ```ts
   // Revenue, cost and margin per origin→destination route for each selected vendor column, behind
@@ -1264,7 +1264,7 @@ table reads as a decomposition of period revenue and silently loses the other tw
 `pnl.controller.spec.ts` calls controller methods directly and never builds a request, so it cannot tell a string from an array. This task adds **one** supertest case that drives a real Express request through Nest's query parsing — the only place the string-vs-array behaviour is actually observable.
 
 **Files:**
-- Modify: `apps/backend/src/modules/pnl/pnl.controller.ts:169-178` (append after `getGroupComparison`)
+- Modify: `apps/backend/src/modules/pnl/pnl.controller.ts` (append after `getRouteComparison`, which spans `:172-181`)
 - Test: `apps/backend/src/modules/pnl/pnl.controller.spec.ts`, `apps/backend/src/modules/pnl/pnl.controller.http.spec.ts` (create)
 
 **Interfaces:**
@@ -1453,7 +1453,7 @@ import { parseColumnPicks, parseRoutePairs } from './pnl-columns.util'
 import { parseVendorColumnPicks, parseVendorNames } from './pnl-vendor-columns.util'
 ```
 
-and append after `getGroupComparison` (which ends at `:178`), before the class's closing brace:
+and append after `getRouteComparison` (which ends at `:181`), before the class's closing brace:
 
 ```ts
   // No method-level @Authorize. RbacGuard resolves permissions with getAllAndOverride([handler,
@@ -2134,7 +2134,7 @@ export function usePnlAwbDrilldown(
 
 - [ ] **Step 6: Add the vendor comparison wire types**
 
-In `apps/frontend/src/features/pnl/hooks/usePnl.ts`, after the `PnlGroupComparison` interface (ends `:257`) and before `function filterToParams`, add:
+In `apps/frontend/src/features/pnl/hooks/usePnl.ts`, after the `PnlRouteComparison` interface (ends `:260`) and before `function filterToParams` (`:262`), add:
 
 ```ts
 export interface PnlVendorComparisonColumn {
