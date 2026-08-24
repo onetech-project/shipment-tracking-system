@@ -373,7 +373,7 @@ cd apps/backend && NODE_OPTIONS=--max-old-space-size=3072 npx jest src/modules/b
 
 Diharapkan: LOLOS, `Tests: 10 passed, 10 total`.
 
-Catatan: `barhal.service.ts` untuk sementara tidak bisa dikompilasi karena masih menyusun baris berbentuk lama. Itu wajar dan akan diperbaiki di Task 2 — jangan mencoba menambalnya di sini.
+Catatan: `barhal.service.ts` **tetap** dapat dikompilasi setelah task ini, karena `DataSource.query<T = any>` mengembalikan `Promise<T>` sehingga anotasi `const rows: BarhalCsvRow[]` selalu lolos typecheck berapa pun bentuk SQL-nya. Alias kolom yang belum cocok tidak akan tertangkap oleh TypeScript — itulah sebabnya Task 2 menguji string SQL secara langsung. Jangan menyentuh `barhal.service.ts` di task ini.
 
 - [ ] **Step 5: Commit**
 
@@ -508,7 +508,9 @@ Di `apps/backend/src/modules/barhal/barhal.service.spec.ts`, ganti blok `describ
 cd apps/backend && NODE_OPTIONS=--max-old-space-size=3072 npx jest src/modules/barhal/barhal.service.spec.ts --runInBand
 ```
 
-Diharapkan: GAGAL saat kompilasi ts-jest pada `barhal.service.ts`, dengan galat bertipe `Type '{ koliNumber: …; }' is not assignable to type 'BarhalCsvRow'` — service masih menyusun baris berbentuk lama dari Task 1.
+Diharapkan: GAGAL pada assertion, bukan pada kompilasi. `exportCsv` masih menyusun SQL lama, sehingga tes pertama gagal di `expect(sql).toContain('FROM barhal_koli_to t')` dengan SQL yang diterima masih memuat `FROM barhal_koli k`.
+
+Jangan berharap galat tipe di sini: `DataSource.query<T = any>` mengembalikan `Promise<T>`, jadi anotasi `const rows: BarhalCsvRow[]` lolos typecheck walaupun kolom SQL-nya tidak cocok sama sekali. Ketidakcocokan alias hanya dapat tertangkap oleh tes string SQL ini dan oleh verifikasi database di Step 7.
 
 - [ ] **Step 3: Tambahkan konstanta CTE**
 
