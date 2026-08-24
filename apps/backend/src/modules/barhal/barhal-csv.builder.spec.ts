@@ -5,6 +5,13 @@ const EXPECTED_HEADER =
   'ID Packing Kayu,Berat sebelum,Berat Setelah Packing Kayu,Kenaikan Berat,SMU,Airlines,Flight No,' +
   'STD,STA,Panjang (P),Lebar (L),Tinggi (T),Volume,Jumlah Batang Kayu'
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** Independent re-derivation of the builder's Date branch: the value's UTC calendar day. */
+function utcDayLabel(date: Date): string {
+  return `${String(date.getUTCDate()).padStart(2, '0')} ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`
+}
+
 /** A fully-populated row; each test overrides only the fields it is about. */
 function row(overrides: Partial<BarhalCsvRow> = {}): BarhalCsvRow {
   return {
@@ -97,6 +104,16 @@ describe('buildBarhalCsv', () => {
     expect(line).toContain('"BARHAL, urgent"')
   })
 
+  it('quotes Remarks containing a bare CR so the column count stays 23', () => {
+    // Records are separated by CRLF, so a lone CR inside a cell is not a record break here — but a
+    // CR-tolerant reader (older Excel, some CSV parsers) treats it as one and splits the row apart.
+    const csv = buildBarhalCsv([row({ remarks: 'BARHAL\rurgent' })])
+    const [, line] = csv.split('\r\n')
+
+    expect(line).toContain('"BARHAL\rurgent"')
+    expect(line.split(',')).toHaveLength(23)
+  })
+
   it('formats numerics returned as strings by the pg driver', () => {
     const [, line] = buildBarhalCsv([
       row({ grossWeight: '7.44', weightBefore: '15.25', weightAfter: '20', volume: '0.576', lengthCm: '120' }),
@@ -111,10 +128,39 @@ describe('buildBarhalCsv', () => {
     expect(cells[21]).toBe('0.576')
   })
 
-  it('formats a shipment date returned as a Date by the pg driver', () => {
+  it('formats a shipment date given as a UTC-midnight Date', () => {
     const [, line] = buildBarhalCsv([row({ shipmentDate: new Date(Date.UTC(2026, 5, 1)) })]).split('\r\n')
 
     expect(line.split(',')[0]).toBe('01 Jun 2026')
+  })
+
+  /**
+   * The pg driver parses a `date` column (OID 1082) into midnight in the process's LOCAL zone, so
+   * on the production container — which runs TZ=Asia/Jakarta, see apps/backend/Dockerfile — a
+   * stored 2026-06-01 arrives as the instant 2026-05-31T17:00Z. formatCsvDate reads UTC fields, so
+   * such a value renders one day early. This test pins that real behaviour instead of blessing it:
+   * it is precisely why the Date (TO) column is selected as `c.shipment_date::text`, routing
+   * shipment dates through the string branch, which has no zone to get wrong.
+   */
+  it('renders a driver-style local-midnight Date one day early, which is why the SQL casts to text', () => {
+    const originalTz = process.env.TZ
+    process.env.TZ = 'Asia/Jakarta'
+
+    try {
+      // Spelled out with its offset, so this instant is the same one the production container sees
+      // no matter which zone jest itself runs in.
+      const onContainer = new Date('2026-06-01T00:00:00+07:00')
+      const [, jakartaLine] = buildBarhalCsv([row({ shipmentDate: onContainer })]).split('\r\n')
+      expect(jakartaLine.split(',')[0]).toBe('31 May 2026')
+
+      // And the same value built the way the driver builds it — local midnight — checked against
+      // its own UTC calendar day, which keeps the assertion true in any zone.
+      const asDriverBuildsIt = new Date(2026, 5, 1)
+      const [, line] = buildBarhalCsv([row({ shipmentDate: asDriverBuildsIt })]).split('\r\n')
+      expect(line.split(',')[0]).toBe(utcDayLabel(asDriverBuildsIt))
+    } finally {
+      process.env.TZ = originalTz
+    }
   })
 
   it('emits only the header when there are no rows', () => {

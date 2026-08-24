@@ -70,9 +70,10 @@ const HEADERS = [
   'Jumlah Batang Kayu',
 ]
 
+/** A bare CR must be quoted too: CR-tolerant readers treat it as a record break and split the row. */
 function escapeCsvCell(value: unknown): string {
   const s = value === null || value === undefined ? '' : String(value)
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
 const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
