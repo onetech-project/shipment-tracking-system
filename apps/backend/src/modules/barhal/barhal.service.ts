@@ -122,8 +122,8 @@ const TO_ROUTE_JOIN = `
  * Pemilihan barisnya disamakan dengan cara v_pnl_to memilih satu booking per AWB
  * (20260711000001-pnl-dedup-booking-per-awb.ts) agar chWt Barhal dan PnL tidak saling berbeda.
  *
- * Dipakai bersama oleh recap (lewat buildScopeSql), exportCsv, dan getSmuList. Dua yang terakhir
- * tidak memanggil buildScopeSql, jadi definisinya tinggal di konstanta ini supaya tunggal.
+ * Dipakai bersama oleh recap (lewat buildScopeSql) dan getSmuList. getSmuList tidak memanggil
+ * buildScopeSql, jadi definisinya tinggal di konstanta ini supaya tunggal.
  */
 const SMU_CHWT_CTE = `
   smu_chwt AS (
@@ -1046,7 +1046,7 @@ export class BarhalService {
       SELECT
         -- ::text wajib. Driver pg mem-parse kolom \`date\` menjadi tengah malam waktu LOKAL, dan
         -- kontainer produksi berjalan pada TZ=Asia/Jakarta (Dockerfile:41), sehingga tanggal 1 Juni
-        -- sampai ke builder sebagai 31 Mei 17:00Z dan tiap baris mundur satu hari. Tiga query lain
+        -- sampai ke builder sebagai 31 Mei 17:00Z dan tiap baris mundur satu hari. Empat query lain
         -- di berkas ini sudah meng-cast; hanya export lama yang tidak.
         c.shipment_date::text    AS "shipmentDate",
         c.vendor                 AS "vendor",

@@ -793,13 +793,38 @@ describe('BarhalService', () => {
       expect(params).toEqual(['2026-06-01', '2026-06-30', 'Kosambi'])
     })
 
-    it('orders newest TO first, keeping each Koli grouped together', async () => {
+    it('orders by TO date descending, then by Koli number, then by TO number', async () => {
       dataSource.query.mockResolvedValueOnce([])
 
       await service.exportCsv({})
 
       const [sql] = dataSource.query.mock.calls[0]
       expect(sql).toContain('ORDER BY c.shipment_date DESC NULLS LAST, k.koli_number, t.to_number')
+    })
+
+    it('mengekspor tepat 22 alias berkutip yang sama persis dengan field BarhalCsvRow', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.exportCsv({})
+
+      // Kutip ganda pada alias wajib: tanpa kutip, Postgres melipat alias menjadi huruf kecil
+      // (`AS koliNumber` menjadi kolom `kolinumber`), sehingga setiap field BarhalCsvRow terbaca
+      // `undefined` di builder dan export menjadi header plus baris-baris koma kosong. Tidak ada
+      // yang gagal lebih dulu: DataSource.query<T = any> membuat anotasi tipe di exportCsv tak
+      // mengikat apa pun, jadi typecheck pun tidak menangkapnya. Tes ini satu-satunya pengikatnya.
+      const [sql] = dataSource.query.mock.calls[0]
+      const aliases = [...(sql as string).matchAll(/AS "(\w+)"/g)].map((m) => m[1])
+      // Kolom ke-23 CSV (Kenaikan Berat) diturunkan di dalam builder dan tidak punya alias SQL.
+      const expected = [
+        'shipmentDate', 'vendor', 'originName', 'destName', 'ltNumber', 'toNumber',
+        'grossWeight', 'qtyParcel', 'remarks', 'koliNumber', 'weightBefore', 'weightAfter',
+        'smuNumber', 'airlines', 'flightNo', 'std', 'sta', 'lengthCm', 'widthCm', 'heightCm',
+        'volume', 'batangKayu',
+      ]
+      // Dibandingkan sebagai himpunan terurut: alias yang hilang, salah eja, kelebihan, atau
+      // kehilangan kutipnya sama-sama membuat tes ini gagal.
+      expect([...aliases].sort()).toEqual([...expected].sort())
+      expect(aliases).toHaveLength(22)
     })
 
     it('hands the query rows to the CSV builder', async () => {
