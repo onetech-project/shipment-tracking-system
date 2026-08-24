@@ -416,6 +416,9 @@ Di `apps/backend/src/modules/barhal/barhal.service.spec.ts`, ganti blok `describ
       expect(sql).toContain('JOIN barhal_koli k ON k.id = t.koli_id')
       // Vendor and qty parcel are not generated columns — only extra_fields carries them.
       expect(sql).toContain("extra_fields->>'vendor'")
+      // Tanpa ::text, driver pg mengirim tengah malam waktu lokal dan tanggalnya mundur sehari
+      // di kontainer produksi yang ber-TZ Asia/Jakarta.
+      expect(sql).toContain('c.shipment_date::text')
       expect(sql).toContain("extra_fields->>'qty_parcel'")
       // The export no longer carries a ChWt column, so it must not pay for that CTE.
       expect(sql).not.toContain('smu_chwt')
@@ -582,7 +585,11 @@ Ganti seluruh metode `exportCsv` (baris 988–1027, dari `async exportCsv(` samp
       `
       WITH ${TO_LATEST_CTE}
       SELECT
-        c.shipment_date          AS "shipmentDate",
+        -- ::text wajib. Driver pg mem-parse kolom `date` menjadi tengah malam waktu LOKAL, dan
+        -- kontainer produksi berjalan pada TZ=Asia/Jakarta (Dockerfile:41), sehingga tanggal 1 Juni
+        -- sampai ke builder sebagai 31 Mei 17:00Z dan tiap baris mundur satu hari. Tiga query lain
+        -- di berkas ini sudah meng-cast (baris 623, 824, 963); hanya export lama yang tidak.
+        c.shipment_date::text    AS "shipmentDate",
         c.vendor                 AS "vendor",
         k.origin_name            AS "originName",
         k.dest_name              AS "destName",
