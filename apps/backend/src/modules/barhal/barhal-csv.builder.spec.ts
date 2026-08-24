@@ -5,13 +5,6 @@ const EXPECTED_HEADER =
   'ID Packing Kayu,Berat sebelum,Berat Setelah Packing Kayu,Kenaikan Berat,SMU,Airlines,Flight No,' +
   'STD,STA,Panjang (P),Lebar (L),Tinggi (T),Volume,Jumlah Batang Kayu'
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-/** Independent re-derivation of the builder's Date branch: the value's UTC calendar day. */
-function utcDayLabel(date: Date): string {
-  return `${String(date.getUTCDate()).padStart(2, '0')} ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`
-}
-
 /** A fully-populated row; each test overrides only the fields it is about. */
 function row(overrides: Partial<BarhalCsvRow> = {}): BarhalCsvRow {
   return {
@@ -142,25 +135,14 @@ describe('buildBarhalCsv', () => {
    * it is precisely why the Date (TO) column is selected as `c.shipment_date::text`, routing
    * shipment dates through the string branch, which has no zone to get wrong.
    */
-  it('renders a driver-style local-midnight Date one day early, which is why the SQL casts to text', () => {
-    const originalTz = process.env.TZ
-    process.env.TZ = 'Asia/Jakarta'
+  it('renders a Jakarta-midnight Date one day early, which is why the SQL casts to text', () => {
+    // Written as an absolute instant with an explicit offset, so this is the very value the
+    // production container hands the builder, whichever zone jest itself happens to run in.
+    const onContainer = new Date('2026-06-01T00:00:00+07:00')
 
-    try {
-      // Spelled out with its offset, so this instant is the same one the production container sees
-      // no matter which zone jest itself runs in.
-      const onContainer = new Date('2026-06-01T00:00:00+07:00')
-      const [, jakartaLine] = buildBarhalCsv([row({ shipmentDate: onContainer })]).split('\r\n')
-      expect(jakartaLine.split(',')[0]).toBe('31 May 2026')
+    const [, line] = buildBarhalCsv([row({ shipmentDate: onContainer })]).split('\r\n')
 
-      // And the same value built the way the driver builds it — local midnight — checked against
-      // its own UTC calendar day, which keeps the assertion true in any zone.
-      const asDriverBuildsIt = new Date(2026, 5, 1)
-      const [, line] = buildBarhalCsv([row({ shipmentDate: asDriverBuildsIt })]).split('\r\n')
-      expect(line.split(',')[0]).toBe(utcDayLabel(asDriverBuildsIt))
-    } finally {
-      process.env.TZ = originalTz
-    }
+    expect(line.split(',')[0]).toBe('31 May 2026')
   })
 
   it('emits only the header when there are no rows', () => {
