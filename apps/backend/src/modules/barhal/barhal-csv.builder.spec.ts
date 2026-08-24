@@ -42,7 +42,7 @@ describe('buildBarhalCsv', () => {
     expect(line).toBe(
       '01 Jun 2026,ESP,Kosambi,Badung,LT1Q511GUY9S1,TO20260601ABCDE,7.4,1,BARHAL,' +
         '1Jun-Kosambi-Badung-Barhal1,15.0,20.0,5.0,990-12345678,Garuda,GA-712,' +
-        '01 Jun 2026 14:30,01 Jun 2026 16:45,120,80,60,0.576,4',
+        '01 Jun 2026 14:30,01 Jun 2026 16:45,120,80,60,0.58,4',
     )
   })
 
@@ -139,7 +139,8 @@ describe('buildBarhalCsv', () => {
     expect(cells[11]).toBe('20.0')
     expect(cells[12]).toBe('4.8')
     expect(cells[18]).toBe('120')
-    expect(cells[21]).toBe('0.576')
+    // Rounded to two decimals, as the dashboard renders it.
+    expect(cells[21]).toBe('0.58')
   })
 
   it('formats a shipment date given as a UTC-midnight Date', () => {
@@ -180,6 +181,17 @@ describe('buildBarhalCsv', () => {
     expect(lines[1].split(',').slice(16, 18)).toEqual(['01 Jun 2026 14:30', '01 Jun 2026 16:45'])
     expect(lines[2].split(',').slice(16, 18)).toEqual(['', ''])
     expect(lines[2].split(',')[21]).toBe('')
+  })
+
+  it('rounds a repeating Volume to two decimals, matching what the dashboard shows', () => {
+    // Volume is stored as unscaled numeric from (p*l*t)/6000, so a 100 cm cube is 166.666...
+    // The dashboard renders it 166,67; without rounding the CSV would read 166.66666666666666.
+    const [, line] = buildBarhalCsv([row({ volume: '166.66666666666666', lengthCm: '100' })]).split('\r\n')
+    const cells = line.split(',')
+
+    expect(cells[21]).toBe('166.67')
+    // Whole measurements stay whole — a dimension does not become 100.00.
+    expect(cells[18]).toBe('100')
   })
 
   it('emits only the header when there are no rows', () => {

@@ -119,11 +119,16 @@ function formatCsvWeight(value: number | string | null): string {
 /**
  * Measured values: a missing one is left blank rather than zeroed. A forced 0 on a dimension
  * reads as "it measures zero", when it in fact means nobody has measured it yet.
+ *
+ * Dibulatkan ke maksimal dua desimal, mengikuti tampilan dashboard. Volume disimpan sebagai
+ * numeric tanpa skala dan dihitung (p*l*t)/6000, sehingga kubus 100 cm menjadi 166,666...:
+ * tanpa pembulatan, CSV memuat 166.66666666666666 sementara layar memuat 166,67 di baris yang
+ * sama. Angka bulat tetap bulat — dimensi cm tidak berubah menjadi 100.00.
  */
 function formatCsvNumber(value: number | string | null): string {
   if (value === null || value === undefined || value === '') return ''
   const num = Number(value)
-  return Number.isFinite(num) ? String(num) : ''
+  return Number.isFinite(num) ? String(Math.round(num * 100) / 100) : ''
 }
 
 /** Blank unless both weights are in, which distinguishes "not weighed yet" from "no increase". */

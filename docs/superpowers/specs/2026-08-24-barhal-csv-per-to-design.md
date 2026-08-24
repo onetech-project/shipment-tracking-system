@@ -143,8 +143,12 @@ sekarang.
 
 ### Urutan baris
 
-`shipment_date DESC` (terbaru dulu), lalu `koli_number`, lalu `to_number`. TO dalam satu Koli
-tetap berkelompok berurutan sehingga kolom Koli yang berulang terbaca rapi.
+`shipment_date DESC` (terbaru dulu), lalu `koli_number`, lalu `to_number`.
+
+Karena tanggal TO yang diurutkan lebih dulu, TO milik satu Koli **tidak** berkelompok bila Koli itu
+memuat TO dari beberapa tanggal — barisnya berselang-seling dengan Koli lain. Itu konsekuensi yang
+diterima: urutan kronologis dipilih karena export ini dibaca per rentang tanggal, bukan per Koli.
+Untuk membaca satu Koli, urutkan atau filter kolom `ID Packing Kayu` di spreadsheet.
 
 ## Builder
 
