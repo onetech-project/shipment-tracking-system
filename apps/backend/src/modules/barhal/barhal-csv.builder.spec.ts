@@ -97,14 +97,21 @@ describe('buildBarhalCsv', () => {
     expect(line).toContain('"BARHAL, urgent"')
   })
 
-  it('quotes Remarks containing a bare CR so the column count stays 23', () => {
+  it('quotes Remarks containing a bare CR, so a CR-tolerant reader keeps the record whole', () => {
     // Records are separated by CRLF, so a lone CR inside a cell is not a record break here — but a
     // CR-tolerant reader (older Excel, some CSV parsers) treats it as one and splits the row apart.
     const csv = buildBarhalCsv([row({ remarks: 'BARHAL\rurgent' })])
     const [, line] = csv.split('\r\n')
 
     expect(line).toContain('"BARHAL\rurgent"')
-    expect(line.split(',')).toHaveLength(23)
+  })
+
+  it('doubles a quote inside Remarks, so the quoted cell does not end early', () => {
+    // Without the doubling the cell reads as `"say "` and every later column shifts one to the left.
+    const [, line] = buildBarhalCsv([row({ remarks: 'say "hi", ok' })]).split('\r\n')
+
+    expect(line).toContain(`,"say ""hi"", ok",1Jun-Kosambi-Badung-Barhal1,`)
+    expect(line).not.toContain('"say "hi"')
   })
 
   it('formats numerics returned as strings by the pg driver', () => {
@@ -143,6 +150,23 @@ describe('buildBarhalCsv', () => {
     const [, line] = buildBarhalCsv([row({ shipmentDate: onContainer })]).split('\r\n')
 
     expect(line.split(',')[0]).toBe('31 May 2026')
+  })
+
+  it('emits one line per row, in order, with nothing carried over between rows', () => {
+    const csv = buildBarhalCsv([
+      row({ toNumber: 'TO20260601AAAAA', remarks: 'first' }),
+      row({ toNumber: 'TO20260602BBBBB', remarks: 'second', std: null, sta: null, volume: null }),
+    ])
+    const lines = csv.split('\r\n')
+
+    expect(lines).toHaveLength(3)
+    expect(lines[1]).not.toBe(lines[2])
+    expect(lines[1].split(',')[5]).toBe('TO20260601AAAAA')
+    expect(lines[2].split(',')[5]).toBe('TO20260602BBBBB')
+    // The second row keeps its own blanks: nothing leaks forward from the fully-populated first.
+    expect(lines[1].split(',').slice(16, 18)).toEqual(['01 Jun 2026 14:30', '01 Jun 2026 16:45'])
+    expect(lines[2].split(',').slice(16, 18)).toEqual(['', ''])
+    expect(lines[2].split(',')[21]).toBe('')
   })
 
   it('emits only the header when there are no rows', () => {
