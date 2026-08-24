@@ -90,11 +90,26 @@ describe('buildBarhalCsv', () => {
     expect(cells.slice(7, 9)).toEqual(['', ''])
   })
 
-  it('quotes Remarks containing a comma so the column count stays 23', () => {
+  it('quotes Remarks containing a comma, so the comma is not read as a column break', () => {
     const csv = buildBarhalCsv([row({ remarks: 'BARHAL, urgent' })])
     const [, line] = csv.split('\r\n')
 
-    expect(line).toContain('"BARHAL, urgent"')
+    expect(line).toContain(',"BARHAL, urgent",1Jun-Kosambi-Badung-Barhal1,')
+  })
+
+  it('quotes Remarks containing an LF, so a spreadsheet-authored multi-line remark stays one record', () => {
+    // An LF is the likeliest of the three triggers to appear for real: Alt+Enter inside a spreadsheet
+    // cell, or any pasted multi-line remark. Unquoted it would end the record mid-row.
+    const csv = buildBarhalCsv([row({ remarks: 'BARHAL\nurgent' })])
+    const [, line] = csv.split('\r\n')
+
+    expect(line).toContain('"BARHAL\nurgent"')
+  })
+
+  it('quotes Remarks holding only a quote, with no comma to force the issue', () => {
+    const [, line] = buildBarhalCsv([row({ remarks: 'say "hi"' })]).split('\r\n')
+
+    expect(line).toContain(`,"say ""hi""",1Jun-Kosambi-Badung-Barhal1,`)
   })
 
   it('quotes Remarks containing a bare CR, so a CR-tolerant reader keeps the record whole', () => {
@@ -111,7 +126,6 @@ describe('buildBarhalCsv', () => {
     const [, line] = buildBarhalCsv([row({ remarks: 'say "hi", ok' })]).split('\r\n')
 
     expect(line).toContain(`,"say ""hi"", ok",1Jun-Kosambi-Badung-Barhal1,`)
-    expect(line).not.toContain('"say "hi"')
   })
 
   it('formats numerics returned as strings by the pg driver', () => {
@@ -160,7 +174,6 @@ describe('buildBarhalCsv', () => {
     const lines = csv.split('\r\n')
 
     expect(lines).toHaveLength(3)
-    expect(lines[1]).not.toBe(lines[2])
     expect(lines[1].split(',')[5]).toBe('TO20260601AAAAA')
     expect(lines[2].split(',')[5]).toBe('TO20260602BBBBB')
     // The second row keeps its own blanks: nothing leaks forward from the fully-populated first.
