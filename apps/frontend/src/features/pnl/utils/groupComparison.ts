@@ -1,5 +1,6 @@
-import { RouteGroup } from '@/features/route-groups/types'
-import { PnlGroupComparison, PnlGroupComparisonColumn } from '../hooks/usePnl'
+import { PnlGroupComparison, PnlGroupComparisonColumn, PnlRouteFilter } from '../hooks/usePnl'
+import { displayRouteLabel } from './routeLabels'
+import { CellWarning } from './cellWarning'
 
 export type CostComponentKey = 'costSmu' | 'costRa' | 'costSgOut' | 'costSgIn'
 
@@ -16,7 +17,7 @@ export interface ComparisonRowModel {
   date: string
   revenue: (number | null)[] // index-aligned with columns; null = no shipment, distinct from 0
   cost: (number | null)[]
-  incompleteTos: number[]
+  warnings: CellWarning[]
   components: Record<CostComponentKey, (number | null)[]>
 }
 
@@ -25,7 +26,7 @@ export interface ComparisonFooterRowModel {
   revenue: (number | null)[]
   cost: (number | null)[]
   components: Record<CostComponentKey, (number | null)[]> | null // null = this row does not expand
-  incompleteTos: number[] | null
+  warnings: CellWarning[] | null // null = this row has no AWBs behind it
 }
 
 export interface ComparisonTableModel {
@@ -38,6 +39,10 @@ function emptyComponents(): Record<CostComponentKey, (number | null)[]> {
   return { costSmu: [], costRa: [], costSgOut: [], costSgIn: [] }
 }
 
+// An absent cell still gets a clean warning rather than being left undefined, so the renderer and
+// the tests have exactly one shape to read. Matches dailyMatrix.ts's CLEAN.
+const CLEAN: CellWarning = { issues: [], incompleteTos: 0 }
+
 export function toComparisonTable(data: PnlGroupComparison): ComparisonTableModel {
   const rows: ComparisonRowModel[] = data.rows.map((row) => {
     const components = emptyComponents()
@@ -48,7 +53,11 @@ export function toComparisonTable(data: PnlGroupComparison): ComparisonTableMode
       date: row.date,
       revenue: row.cells.map((c) => (c ? c.revenue : null)),
       cost: row.cells.map((c) => (c ? c.cost : null)),
-      incompleteTos: row.cells.map((c) => (c ? c.incompleteTos : 0)),
+      warnings: row.cells.map((c) =>
+        // `issues` is non-optional in the type, but the deploy pipeline brings backend and frontend
+        // up in parallel, so a new frontend can briefly hit an old backend whose cells lack the field.
+        c ? { issues: c.issues ?? [], incompleteTos: c.incompleteTos } : CLEAN,
+      ),
       components,
     }
   })
@@ -65,7 +74,9 @@ export function toComparisonTable(data: PnlGroupComparison): ComparisonTableMode
       revenue: data.footer.map((f) => f.totalRevenue),
       cost: data.footer.map((f) => f.totalCost),
       components: totalComponents,
-      incompleteTos: data.footer.map((f) => f.incompleteTos),
+      // Same rolling-deploy fallback as the per-cell warnings above: `issues` is non-optional in the
+      // type, but an old backend's footer can still lack the field during a parallel deploy.
+      warnings: data.footer.map((f) => ({ issues: f.issues ?? [], incompleteTos: f.incompleteTos })),
     },
     {
       // No component breakdown: the average of a component is not itself a cost anyone books.
@@ -73,29 +84,44 @@ export function toComparisonTable(data: PnlGroupComparison): ComparisonTableMode
       revenue: data.footer.map((f) => f.avgRevenuePerDay),
       cost: data.footer.map((f) => f.avgCostPerDay),
       components: null,
-      incompleteTos: null,
+      warnings: null,
     },
   ]
 
   return { columns: data.columns, rows, footerRows }
 }
 
-// Routes belonging to more than one of the selected groups. The comparison columns are deliberately
-// independent, so a shared route contributes to every column that holds it and the columns do not
-// sum to a period total. Surfacing the overlap stops the table being read as a partition.
+// Routes belonging to more than one of the selected columns. The comparison columns are
+// deliberately independent, so a shared route contributes to every column that holds it and the
+// columns do not sum to a period total. Surfacing the overlap stops the table being read as a
+// partition. Computed from the response columns rather than the saved groups, so a bare route that
+// duplicates a group member is caught by the same code.
 export function overlappingRoutes(
-  groups: RouteGroup[],
+  columns: PnlGroupComparisonColumn[],
 ): { route: string; groupNames: string[] }[] {
   const byRoute = new Map<string, string[]>()
-  for (const group of groups) {
-    for (const route of group.routes) {
-      const label = `${route.originLabel} → ${route.dest}`
+  for (const column of columns) {
+    for (const route of column.routes) {
+      const label = displayRouteLabel(route)
       const names = byRoute.get(label)
-      if (names) names.push(group.name)
-      else byRoute.set(label, [group.name])
+      if (names) names.push(column.name)
+      else byRoute.set(label, [column.name])
     }
   }
   return [...byRoute.entries()]
     .filter(([, names]) => names.length > 1)
     .map(([route, groupNames]) => ({ route, groupNames }))
+}
+
+// A clicked comparison cell as an AWB drilldown filter. A group column carries every route it
+// aggregates, so the drilldown answers exactly the question the cell did — for that one day.
+export function routeFromComparisonCell(
+  column: PnlGroupComparisonColumn,
+  date: string,
+): PnlRouteFilter {
+  return {
+    routes: column.routes.map((r) => ({ origin: r.origin, dest: r.dest })),
+    dateFrom: date,
+    dateTo: date,
+  }
 }

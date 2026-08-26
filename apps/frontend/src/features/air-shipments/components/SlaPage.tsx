@@ -33,7 +33,7 @@ import {
 import { triggerBlobDownload } from '@/shared/utils/file-download.util'
 import { ExcludeModal } from '@/features/air-shipments/components/ExcludeModal'
 import { ExcludeByLtModal } from '@/features/air-shipments/components/ExcludeByLtModal'
-import { MultiRouteFilter } from '@/features/air-shipments/components/MultiRouteFilter'
+import { MultiRouteFilter } from '@/components/shared/multi-route-filter'
 import { EvidenceModal } from '@/features/air-shipments/components/EvidenceModal'
 import { OffloadedAwbTable } from '@/features/air-shipments/components/OffloadedAwbTable'
 import { colLabel, frozenColWidth } from '@/features/air-shipments/columns.config'

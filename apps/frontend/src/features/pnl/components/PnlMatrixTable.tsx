@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import { MatrixTableModel, formatDayLabel, groupOrigins } from '../utils/dailyMatrix'
 import { PnlDailyMatrixColumn } from '../hooks/usePnl'
 import { num, pct } from '../utils/format'
+import { CellWarning, hasWarning, warningTooltip, WARNING_TINT } from '../utils/cellWarning'
 
 interface PnlMatrixTableProps {
   title: string
@@ -29,25 +30,20 @@ function formatValue(value: number | null, format: 'number' | 'percent'): string
   return format === 'percent' ? pct(value) : num(Math.round(value))
 }
 
-// Shared by body and footer cells so an incomplete-cost warning reads identically wherever it appears.
-function incompleteTooltip(count: number): string | undefined {
-  return count > 0
-    ? `${count} TO belum ada cost — margin di sel ini lebih tinggi dari seharusnya`
-    : undefined
-}
-
 // The button fills the whole cell, so its title is the only tooltip the hovering user ever reaches —
-// the incomplete-cost warning must be merged into it, not left on the (now-covered) <td>.
-function cellButtonTitle(incomplete: number): string {
+// the warning must be merged into it, not left on the (now-covered) <td>.
+function cellButtonTitle(warning: CellWarning | undefined): string {
   const clickHint = 'Lihat AWB rute dan tanggal ini'
-  const tooltip = incompleteTooltip(incomplete)
+  const tooltip = warningTooltip(warning)
   return tooltip ? `${clickHint} — ${tooltip}` : clickHint
 }
 
-// Shared by body and footer cells so a negative total is styled the same way as a negative day.
-function valueClass(value: number | null, highlightNegative: boolean): string {
-  if (value == null || value >= 0 || !highlightNegative) return ''
-  return 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-950/40'
+// Amber wins the background: it says the number itself is unreliable, which outranks its sign.
+// A negative value keeps its red text so a warned loss never reads as a warned profit.
+function cellClass(value: number | null, highlightNegative: boolean, warned: boolean): string {
+  const negative = value != null && value < 0 && highlightNegative
+  if (warned) return `${WARNING_TINT} ${negative ? 'text-red-700 dark:text-red-400 font-semibold' : ''}`
+  return negative ? 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-950/40' : ''
 }
 
 export function PnlMatrixTable({ title, model, defaultOpen = true, onCellClick }: PnlMatrixTableProps) {
@@ -110,27 +106,23 @@ export function PnlMatrixTable({ title, model, defaultOpen = true, onCellClick }
                     {formatDayLabel(date)}
                   </td>
                   {model.values[rowIndex].map((value, colIndex) => {
-                    const incomplete = model.incompleteTos?.[rowIndex][colIndex] ?? 0
+                    const warning = model.warnings[rowIndex]?.[colIndex]
+                    const warned = hasWarning(warning)
                     const column = model.columns[colIndex]
-                    const content = (
-                      <>
-                        {formatValue(value, 'number')}
-                        {incomplete > 0 && <span className="ml-1 text-amber-600">•</span>}
-                      </>
-                    )
+                    const content = formatValue(value, 'number')
                     return (
                       <td
                         key={colIndex}
                         // The button below covers the whole cell and carries its own tooltip, so a
                         // <td> title here would be unreachable at best and, in the padding sliver
                         // the button doesn't cover, a conflicting one at worst.
-                        title={onCellClick ? undefined : incompleteTooltip(incomplete)}
-                        className={`whitespace-nowrap border-b border-l text-right ${valueClass(value, model.highlightNegative)} ${onCellClick ? 'p-0' : 'px-3 py-1.5'}`}
+                        title={onCellClick ? undefined : warningTooltip(warning)}
+                        className={`whitespace-nowrap border-b border-l text-right ${cellClass(value, model.highlightNegative, warned)} ${onCellClick ? 'p-0' : 'px-3 py-1.5'}`}
                       >
                         {onCellClick ? (
                           <button
                             type="button"
-                            title={cellButtonTitle(incomplete)}
+                            title={cellButtonTitle(warning)}
                             aria-label={`Lihat AWB ${column.originLabel} → ${column.dest}, ${formatDayLabel(date)}`}
                             className="w-full px-3 py-1.5 text-right hover:bg-primary/10"
                             onClick={() => onCellClick(column, date)}
@@ -154,15 +146,14 @@ export function PnlMatrixTable({ title, model, defaultOpen = true, onCellClick }
                     {row.label}
                   </td>
                   {row.values.map((value, colIndex) => {
-                    const incomplete = row.incompleteTos?.[colIndex] ?? 0
+                    const warning = row.warnings?.[colIndex]
                     return (
                       <td
                         key={colIndex}
-                        title={incompleteTooltip(incomplete)}
-                        className={`whitespace-nowrap border-b border-l px-3 py-1.5 text-right ${valueClass(value, model.highlightNegative)}`}
+                        title={warningTooltip(warning)}
+                        className={`whitespace-nowrap border-b border-l px-3 py-1.5 text-right ${cellClass(value, model.highlightNegative, hasWarning(warning))}`}
                       >
                         {formatValue(value, row.format)}
-                        {incomplete > 0 && <span className="ml-1 text-amber-600">•</span>}
                       </td>
                     )
                   })}
