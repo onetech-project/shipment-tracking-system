@@ -91,6 +91,15 @@ export enum Permission {
   CREATE_ROUTE_GROUP = 'create.route_group',
   UPDATE_ROUTE_GROUP = 'update.route_group',
   DELETE_ROUTE_GROUP = 'delete.route_group',
+
+  // Vendor Group — named sets of vendor names used by the PnL vendor-comparison tab. Reads gate
+  // both the menu and the vendor picker. Note the tab itself is only gated in the UI: the
+  // /pnl/breakdown/* endpoints require read.pnl and @Authorize on a method replaces rather than
+  // adds to the class-level decorator, so read.vendor_group genuinely protects /vendor-groups only.
+  READ_VENDOR_GROUP = 'read.vendor_group',
+  CREATE_VENDOR_GROUP = 'create.vendor_group',
+  UPDATE_VENDOR_GROUP = 'update.vendor_group',
+  DELETE_VENDOR_GROUP = 'delete.vendor_group',
 }
 
 // ── Auth Response DTOs ────────────────────────────────────────────────────────

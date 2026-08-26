@@ -1,5 +1,5 @@
 /**
- * Integration test for PnlService.getGroupComparison.
+ * Integration test for PnlService.getRouteComparison.
  *
  * pnl.service.spec.ts mocks dataSource.query(), so it can assert what SQL text got sent but
  * cannot tell whether Postgres would actually accept it. That gap is exactly how the `v.v.date_ata`
@@ -43,7 +43,7 @@ function isDbReachable(url: string): boolean {
 
 const DB_AVAILABLE = isDbReachable(CONNECTION_URL)
 
-describe('PnlService.getGroupComparison (integration)', () => {
+describe('PnlService.getRouteComparison (integration)', () => {
   if (!DB_AVAILABLE) {
     if (DATABASE_URL_EXPLICIT) {
       // Fail loudly, not skip: DATABASE_URL was set explicitly, so the caller expects a database.
@@ -149,12 +149,12 @@ describe('PnlService.getGroupComparison (integration)', () => {
   // This is the assertion that would have caught the v.v.date_ata bug: it was a SQL syntax error,
   // so any real execution in any filter mode throws. The mocked unit spec cannot see that.
   it('runs in cycle mode without throwing', async () => {
-    const result = await service.getGroupComparison([pick(groupA), pick(groupB)], CYCLE)
+    const result = await service.getRouteComparison([pick(groupA), pick(groupB)], CYCLE)
     expect(result.columns.map((c) => c.id)).toEqual([groupA, groupB])
   })
 
   it('runs in range mode without throwing', async () => {
-    const result = await service.getGroupComparison(
+    const result = await service.getRouteComparison(
       [pick(groupA), pick(groupB)],
       undefined,
       RANGE_START,
@@ -164,7 +164,7 @@ describe('PnlService.getGroupComparison (integration)', () => {
   })
 
   it('runs in the no-filter fallback (WHERE 1=0) without throwing', async () => {
-    await expect(service.getGroupComparison([pick(groupA), pick(groupB)])).resolves.toBeDefined()
+    await expect(service.getRouteComparison([pick(groupA), pick(groupB)])).resolves.toBeDefined()
   })
 
   it('gives a bare route column the same numbers as the group that contains it', async () => {
@@ -182,7 +182,7 @@ describe('PnlService.getGroupComparison (integration)', () => {
       [groupC, SHARED_ORIGIN, SHARED_DEST],
     )
 
-    const result = await service.getGroupComparison(
+    const result = await service.getRouteComparison(
       [pick(groupC), { kind: 'route', origin: SHARED_ORIGIN, dest: SHARED_DEST }],
       CYCLE,
     )
@@ -210,7 +210,7 @@ describe('PnlService.getGroupComparison (integration)', () => {
     expect(aOnlyRev).toBeGreaterThan(0)
     expect(bOnlyRev).toBeGreaterThan(0)
 
-    const result = await service.getGroupComparison([pick(groupA), pick(groupB)], CYCLE)
+    const result = await service.getRouteComparison([pick(groupA), pick(groupB)], CYCLE)
     const row = result.rows.find((r) => r.date === SHARED_ROUTE_DATE)!
 
     // Group A = shared route + A-only route; Group B = shared route + B-only route. If the shared
@@ -220,8 +220,8 @@ describe('PnlService.getGroupComparison (integration)', () => {
   })
 
   it('sums the four cost components to the cell cost for every non-null cell', async () => {
-    const cycleResult = await service.getGroupComparison([pick(groupA), pick(groupB)], CYCLE)
-    const rangeResult = await service.getGroupComparison(
+    const cycleResult = await service.getRouteComparison([pick(groupA), pick(groupB)], CYCLE)
+    const rangeResult = await service.getRouteComparison(
       [pick(groupA), pick(groupB)],
       undefined,
       RANGE_START,
@@ -238,6 +238,48 @@ describe('PnlService.getGroupComparison (integration)', () => {
             cell.cost,
             4,
           )
+        }
+      }
+    }
+    // Sanity: the fixture actually produced non-null cells to check, or the loop above proved
+    // nothing.
+    expect(checkedCells).toBeGreaterThan(0)
+  })
+
+  // The response cell does not carry revenue_discount on its own (only revenue, cost and the
+  // already-netted margin), so this checks margin against a direct query of the same expression
+  // the service's SQL uses, rather than reconstructing it from response fields alone.
+  it('keeps margin consistent with revenue minus discount minus cost, for every non-null cell', async () => {
+    const cycleResult = await service.getRouteComparison([pick(groupA), pick(groupB)], CYCLE)
+    const rangeResult = await service.getRouteComparison(
+      [pick(groupA), pick(groupB)],
+      undefined,
+      RANGE_START,
+      RANGE_END,
+    )
+
+    const discountOf = async (origin: string, dest: string, date: string): Promise<number> => {
+      const [row] = await queryRunner.query(
+        `SELECT COALESCE(SUM(revenue_discount), 0) AS d FROM v_pnl_to
+         WHERE origin_station = $1 AND dest_station = $2 AND date_ata::date = $3::date`,
+        [origin, dest, date],
+      )
+      return Number(row.d)
+    }
+
+    let checkedCells = 0
+    for (const result of [cycleResult, rangeResult]) {
+      for (const row of result.rows) {
+        for (let ci = 0; ci < result.columns.length; ci++) {
+          const cell = row.cells[ci]
+          if (!cell) continue
+          const routes = result.columns[ci].routes
+          let discount = 0
+          for (const r of routes) {
+            discount += await discountOf(r.origin, r.dest, row.date)
+          }
+          expect(cell.margin).toBeCloseTo(cell.revenue - discount - cell.cost, 4)
+          checkedCells += 1
         }
       }
     }

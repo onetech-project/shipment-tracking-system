@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing'
+import { PATH_METADATA } from '@nestjs/common/constants'
 import { PnlController } from './pnl.controller'
 import { PnlService } from './pnl.service'
 import { RbacGuard } from '../../common/guards/rbac.guard'
@@ -12,7 +13,8 @@ const mockService = {
   getAwbDrilldown: jest.fn(),
   getDataQuality: jest.fn(),
   getDailyMatrix: jest.fn(),
-  getGroupComparison: jest.fn(),
+  getRouteComparison: jest.fn(),
+  getVendorComparison: jest.fn(),
 }
 
 describe('PnlController', () => {
@@ -106,14 +108,14 @@ describe('PnlController', () => {
     )
   })
 
-  describe('getGroupComparison', () => {
+  describe('getRouteComparison', () => {
     it('parses mixed group and route descriptors in pick order', async () => {
-      await controller.getGroupComparison(
+      await controller.getRouteComparison(
         `g:11111111-1111-4111-8111-111111111111,r:Jabo|Denpasar`,
         '2026-05-1H',
       )
 
-      expect(mockService.getGroupComparison).toHaveBeenCalledWith(
+      expect(mockService.getRouteComparison).toHaveBeenCalledWith(
         [
           { kind: 'group', id: '11111111-1111-4111-8111-111111111111' },
           { kind: 'route', origin: 'Jabo', dest: 'Denpasar' },
@@ -126,11 +128,52 @@ describe('PnlController', () => {
     })
 
     it('sends an empty pick list when the columns param is absent', async () => {
-      await controller.getGroupComparison(undefined, '2026-05-1H')
+      await controller.getRouteComparison(undefined, '2026-05-1H')
 
-      expect(mockService.getGroupComparison).toHaveBeenCalledWith(
+      expect(mockService.getRouteComparison).toHaveBeenCalledWith(
         [], '2026-05-1H', undefined, undefined, undefined,
       )
     })
+  })
+
+  describe('getVendorComparison', () => {
+    it('parses vendor group and raw vendor descriptors in pick order', async () => {
+      await controller.getVendorComparison(
+        ['vg:11111111-1111-4111-8111-111111111111', 'v:PT Kargo, Tbk'],
+        '2026-05-1H',
+      )
+
+      expect(mockService.getVendorComparison).toHaveBeenCalledWith(
+        [
+          { kind: 'group', id: '11111111-1111-4111-8111-111111111111' },
+          { kind: 'vendor', name: 'PT Kargo, Tbk' },
+        ],
+        '2026-05-1H',
+        undefined,
+        undefined,
+        undefined,
+      )
+    })
+
+    it('sends an empty pick list when the columns param is absent', async () => {
+      await controller.getVendorComparison(undefined, '2026-05-1H')
+
+      expect(mockService.getVendorComparison).toHaveBeenCalledWith(
+        [], '2026-05-1H', undefined, undefined, undefined,
+      )
+    })
+  })
+})
+
+describe('route aliases', () => {
+  it('serves the comparison endpoint under both the new and the legacy path', () => {
+    const paths = Reflect.getMetadata(
+      PATH_METADATA,
+      PnlController.prototype.getRouteComparison,
+    )
+
+    expect(paths).toEqual(
+      expect.arrayContaining(['breakdown/route-comparison', 'breakdown/group-comparison']),
+    )
   })
 })

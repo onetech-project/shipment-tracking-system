@@ -1,22 +1,24 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect } from 'react'
 import Link from 'next/link'
 import { MultiRouteFilter } from '@/components/shared/multi-route-filter'
 import { useAvailableRoutes, useRouteGroups } from '@/features/route-groups/hooks/useRouteGroups'
-import { PnlColumnPick, PnlFilter, PnlRouteFilter, usePnlGroupComparison } from '../hooks/usePnl'
+import { PnlColumnPick, PnlFilter, PnlRouteFilter, usePnlRouteComparison } from '../hooks/usePnl'
 import { buildRouteLabelIndex, labelsForRoutes, routesForLabels } from '../utils/routeLabels'
-import { overlappingRoutes, routeFromComparisonCell, toComparisonTable } from '../utils/groupComparison'
-import { PnlGroupComparisonTable } from './PnlGroupComparisonTable'
+import { overlappingRoutes, routeFromComparisonCell, toRouteComparisonTable } from '../utils/routeComparison'
+import { PnlComparisonTable } from './PnlComparisonTable'
 
-interface PnlGroupComparisonViewProps {
+interface PnlRouteComparisonViewProps {
   filter: PnlFilter
+  // Lifted to the page (Task 7) so switching tabs — which unmounts this view — does not discard
+  // the selection. Pick order is column order, so the array is appended to rather than re-sorted.
+  picks: PnlColumnPick[]
+  onPicksChange: (next: PnlColumnPick[]) => void
   onCellClick?: (route: PnlRouteFilter) => void
 }
 
-export function PnlGroupComparisonView({ filter, onCellClick }: PnlGroupComparisonViewProps) {
-  // Pick order is column order, so the array is appended to rather than re-sorted.
-  const [picks, setPicks] = useState<PnlColumnPick[]>([])
+export function PnlRouteComparisonView({ filter, picks, onPicksChange, onCellClick }: PnlRouteComparisonViewProps) {
   const {
     data: groups,
     isLoading: isLoadingGroups,
@@ -24,31 +26,41 @@ export function PnlGroupComparisonView({ filter, onCellClick }: PnlGroupComparis
     refetch: refetchGroups,
   } = useRouteGroups()
   const { data: availableRoutes } = useAvailableRoutes()
-  const { data, isLoading, isError, refetch } = usePnlGroupComparison(filter, picks)
+  const { data, isLoading, isError, refetch } = usePnlRouteComparison(filter, picks)
 
   const routeIndex = buildRouteLabelIndex(availableRoutes ?? [])
   const pickedRoutes = picks.flatMap((p) => (p.kind === 'route' ? [{ origin: p.origin, dest: p.dest }] : []))
 
+  // Picks now outlive the component, so a group deleted while the user was on another tab would
+  // otherwise keep a checkbox pointing at nothing. The `!groups` guard is load-bearing:
+  // useRouteGroups has no initialData and react-query's default 5-minute gcTime means an undefined
+  // list is the normal state after a few minutes away — pruning then would wipe the selection this
+  // whole feature exists to keep. Raw route picks are never pruned; a route with no data in the
+  // current period is a legitimate, informative empty column.
+  useEffect(() => {
+    if (!groups) return
+    const pruned = picks.filter((p) => p.kind !== 'group' || groups.some((g) => g.id === p.id))
+    if (pruned.length !== picks.length) onPicksChange(pruned)
+  }, [groups, picks, onPicksChange])
+
   const toggleGroup = (id: string) =>
-    setPicks((prev) =>
-      prev.some((p) => p.kind === 'group' && p.id === id)
-        ? prev.filter((p) => !(p.kind === 'group' && p.id === id))
-        : [...prev, { kind: 'group', id }],
+    onPicksChange(
+      picks.some((p) => p.kind === 'group' && p.id === id)
+        ? picks.filter((p) => !(p.kind === 'group' && p.id === id))
+        : [...picks, { kind: 'group', id }],
     )
 
   // Routes are replaced wholesale by the dropdown, but the group picks keep their relative order:
   // dropping and re-adding every pick would silently reshuffle the columns.
   const setRouteLabels = (labels: string[]) => {
     const next = routesForLabels(labels, routeIndex)
-    setPicks((prev) => {
-      const kept = prev.filter(
-        (p) => p.kind === 'group' || next.some((r) => r.origin === p.origin && r.dest === p.dest),
-      )
-      const added = next
-        .filter((r) => !prev.some((p) => p.kind === 'route' && p.origin === r.origin && p.dest === r.dest))
-        .map((r) => ({ kind: 'route' as const, origin: r.origin, dest: r.dest }))
-      return [...kept, ...added]
-    })
+    const kept = picks.filter(
+      (p) => p.kind === 'group' || next.some((r) => r.origin === p.origin && r.dest === p.dest),
+    )
+    const added = next
+      .filter((r) => !picks.some((p) => p.kind === 'route' && p.origin === r.origin && p.dest === r.dest))
+      .map((r) => ({ kind: 'route' as const, origin: r.origin, dest: r.dest }))
+    onPicksChange([...kept, ...added])
   }
 
   const overlaps = overlappingRoutes(data?.columns ?? [])
@@ -95,7 +107,7 @@ export function PnlGroupComparisonView({ filter, onCellClick }: PnlGroupComparis
       <div className="rounded-lg border bg-card p-4">
         {(groups ?? []).length > 0 && (
           <>
-            <p className="mb-2 text-sm font-medium">Group</p>
+            <p className="mb-2 text-sm font-medium">Route Group</p>
             <div className="flex flex-wrap gap-x-6 gap-y-2">
               {(groups ?? []).map((group) => (
                 <label key={group.id} className="flex items-center gap-2 text-sm">
@@ -137,7 +149,7 @@ export function PnlGroupComparisonView({ filter, onCellClick }: PnlGroupComparis
       {picks.length === 0 ? (
         <div className="rounded-lg border bg-card p-8 text-center">
           <p className="text-sm text-muted-foreground">
-            Pilih minimal satu group atau rute untuk melihat perbandingan.
+            Pilih minimal satu Route Group atau rute untuk melihat perbandingan.
           </p>
         </div>
       ) : isLoading ? (
@@ -151,18 +163,21 @@ export function PnlGroupComparisonView({ filter, onCellClick }: PnlGroupComparis
         </div>
       ) : data ? (
         <div className="space-y-2">
-          {/* Revenue is SUM(revenue_total), gross — revenue_discount is never subtracted. That is
-              intentional, but Revenue sits right next to Cost, so without this note the obvious
-              (wrong) mental move is to subtract one column from the other. */}
+          {/* Revenue is SUM(revenue_total), gross — revenue_discount is never subtracted, while
+              Margin is net of discount. Now that Margin sits right next to Revenue and Cost, the
+              obvious (wrong) mental move is to expect Revenue − Cost to equal Margin. */}
           <p className="text-xs text-muted-foreground">
-            Kolom Revenue di sini bruto (belum dikurangi discount), berbeda dari Margin di tab Daily
-            Report. Revenue dan Cost tidak dimaksudkan untuk dikurangkan satu sama lain.
+            Kolom Revenue di sini bruto (belum dikurangi discount), sama seperti tab Daily Report.
+            Margin sudah dikurangi discount, jadi Revenue − Cost tidak sama dengan Margin —
+            selisihnya adalah discount.
           </p>
-          <PnlGroupComparisonTable
-            model={toComparisonTable(data)}
+          <PnlComparisonTable
+            model={toRouteComparisonTable(data)}
+            firstColumnHeader="Date"
+            cellHint="Lihat AWB kolom ini pada tanggal ini"
             onCellClick={
               onCellClick
-                ? (column, date) => onCellClick(routeFromComparisonCell(column, date))
+                ? (column, rowKey) => onCellClick(routeFromComparisonCell(column, rowKey))
                 : undefined
             }
           />

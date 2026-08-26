@@ -3,14 +3,14 @@ import { PnlCellIssue } from '../hooks/usePnl'
 
 /**
  * What makes a P&L cell yellow, and what the tooltip says about it. One definition for the daily
- * matrix and the group comparison, so "yellow" cannot come to mean two different things.
+ * matrix and the route comparison, so "yellow" cannot come to mean two different things.
  */
 export interface CellWarning {
   issues: PnlCellIssue[] // the cause: classified data quality problems, per issue type
   incompleteTos: number // the effect: TOs with no cost at all
 }
 
-// The amber tint every warned cell shares, across both the daily matrix and the group comparison
+// The amber tint every warned cell shares, across both the daily matrix and the route comparison
 // tables — one definition so the two tables cannot drift into two different "warned" colors.
 export const WARNING_TINT = 'bg-amber-100 dark:bg-amber-950/40'
 

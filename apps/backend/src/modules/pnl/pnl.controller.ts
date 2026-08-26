@@ -5,6 +5,7 @@ import { Authorize } from '../../common/decorators/authorize.decorator'
 import { Permission } from '@shared/auth'
 import { PnlService } from './pnl.service'
 import { parseColumnPicks, parseRoutePairs } from './pnl-columns.util'
+import { parseVendorColumnPicks, parseVendorNames } from './pnl-vendor-columns.util'
 
 @ApiTags('PnL')
 @Controller('pnl')
@@ -54,11 +55,19 @@ export class PnlController {
     @Query('routes') routes?: string,
     @Query('dateFrom') dateFrom?: string,
     @Query('dateTo') dateTo?: string,
+    // Repeats, because a vendor group column carries many vendors and a vendor name may contain
+    // any punctuation a delimiter would use. Past qs's arrayLimit of 20 occurrences it arrives as
+    // a plain object keyed by index rather than an array — see parseVendorNames.
+    @Query('vendor') vendor?: string | string[] | Record<string, unknown>,
   ) {
+    const vendors = parseVendorNames(vendor)
     return this.pnlService.getAwbDrilldown(page, limit, cycle, start, end, basis, {
       routes: parseRoutePairs(routes),
       dateFrom,
       dateTo,
+      // Omitted rather than sent empty, so an untouched drilldown produces exactly the filter shape
+      // it produced before vendors existed — which is also what the existing specs pin.
+      ...(vendors.length ? { vendors } : {}),
     })
   }
 
@@ -166,14 +175,42 @@ export class PnlController {
     return this.pnlService.getDailyMatrix(cycle, start, end, basis)
   }
 
-  @Get('breakdown/group-comparison')
-  getGroupComparison(
+  // Two paths, one handler. `group-comparison` is the legacy name kept alive for one release so a
+  // frontend that has not yet been redeployed keeps working — frontend and backend roll out in
+  // parallel. Remove the legacy entry only after the release carrying the rename is fully out.
+  @Get(['breakdown/route-comparison', 'breakdown/group-comparison'])
+  getRouteComparison(
     @Query('columns') columns?: string,
     @Query('cycle') cycle?: string,
     @Query('start') start?: string,
     @Query('end') end?: string,
     @Query('basis') basis?: string,
   ) {
-    return this.pnlService.getGroupComparison(parseColumnPicks(columns), cycle, start, end, basis)
+    return this.pnlService.getRouteComparison(parseColumnPicks(columns), cycle, start, end, basis)
+  }
+
+  // No method-level @Authorize. RbacGuard resolves permissions with getAllAndOverride([handler,
+  // class]), so a method-level decorator would REPLACE the class-level read.pnl rather than add to
+  // it — this endpoint would then stop requiring read.pnl. The read.vendor_group gate is a UI-side
+  // gate on the tab; what is genuinely guarded server-side is /vendor-groups itself.
+  //
+  // `columns` repeats: qs gives a string for one occurrence, an array for two or more, and — past
+  // qs's arrayLimit of 20 occurrences — a plain object keyed by index. The parameter is typed for
+  // all three shapes and the parser normalises before iterating.
+  @Get('breakdown/vendor-comparison')
+  getVendorComparison(
+    @Query('columns') columns?: string | string[] | Record<string, unknown>,
+    @Query('cycle') cycle?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+    @Query('basis') basis?: string,
+  ) {
+    return this.pnlService.getVendorComparison(
+      parseVendorColumnPicks(columns),
+      cycle,
+      start,
+      end,
+      basis,
+    )
   }
 }

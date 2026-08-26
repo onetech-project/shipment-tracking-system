@@ -2,21 +2,35 @@
 
 import React, { useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
-import { formatDayLabel } from '../utils/dailyMatrix'
-import { COST_COMPONENTS, ComparisonTableModel } from '../utils/groupComparison'
+import { COST_COMPONENTS, ComparisonColumn, ComparisonTableModel } from '../utils/comparison'
 import { num } from '../utils/format'
 import { CellWarning, hasWarning, warningTooltip, WARNING_TINT } from '../utils/cellWarning'
-import { PnlGroupComparisonColumn } from '../hooks/usePnl'
 
-interface PnlGroupComparisonTableProps {
-  model: ComparisonTableModel
+interface PnlComparisonTableProps<TColumn extends ComparisonColumn> {
+  model: ComparisonTableModel<TColumn>
+  // 'Date' on the route axis, 'Route' on the vendor axis.
+  firstColumnHeader: string
+  // What a clickable cell drills into. The route tab's cells are one day; the vendor tab's cells
+  // span the whole period, so a single hardcoded sentence would be false on one of them.
+  cellHint: string
   // When given, every value cell becomes a button — including empty ones, which are a valid answer
   // ("nothing flew these routes that day"). Footer cells stay inert: they span the whole period.
-  onCellClick?: (column: PnlGroupComparisonColumn, date: string) => void
+  // The second argument is the opaque rowKey; only the caller knows what it means.
+  onCellClick?: (column: TColumn, rowKey: string) => void
 }
 
 // The Total footer row expands like a body row; this is the key it occupies in the open set.
 const FOOTER_KEY = '__footer__'
+
+// The three value blocks, in render order. Every place that emits value cells loops over this, so
+// body rows, detail rows and footer rows can never disagree about how wide a row is.
+const FIELDS = ['revenue', 'cost', 'margin'] as const
+type Field = (typeof FIELDS)[number]
+
+function valueClass(field: Field, value: number | null): string {
+  // Only margin can meaningfully be negative; revenue and cost are sums of non-negative amounts.
+  return field === 'margin' && value != null && value < 0 ? 'text-red-600 dark:text-red-400' : ''
+}
 
 // A missing value is marked, not left blank: an empty cell and a real 0 read the same at a glance,
 // and a clickable cell needs something to aim at. Same rule as PnlMatrixTable.
@@ -25,17 +39,16 @@ function formatValue(value: number | null): string {
   return num(Math.round(value))
 }
 
-// Revenue and Cost cells now do the same thing — drill into the AWBs behind them — so they share
-// one title rather than two near-identical strings that could drift.
-function cellTitle(warning: CellWarning | undefined): string {
-  const hint = 'Lihat AWB kolom ini pada tanggal ini'
+// Revenue, Cost and Margin cells all do the same thing — drill into the AWBs behind them — so they
+// share one title rather than near-identical strings that could drift.
+function cellTitle(hint: string, warning: CellWarning | undefined): string {
   const tooltip = warningTooltip(warning)
   return tooltip ? `${hint} — ${tooltip}` : hint
 }
 
-// The expand toggle lives on the date, not on a cost cell: the detail rows it opens always covered
-// every column, so a per-cell toggle claimed a scope it never had.
-function DateCell({
+// The expand toggle lives on the row header, not on a cost cell: the detail rows it opens always
+// covered every column, so a per-cell toggle claimed a scope it never had.
+function RowHeaderCell({
   label,
   open,
   onToggle,
@@ -62,19 +75,25 @@ function DateCell({
   )
 }
 
-export function PnlGroupComparisonTable({ model, onCellClick }: PnlGroupComparisonTableProps) {
-  const [openDates, setOpenDates] = useState<Set<string>>(new Set())
-  const groupCount = model.columns.length
+export function PnlComparisonTable<TColumn extends ComparisonColumn>({
+  model,
+  firstColumnHeader,
+  cellHint,
+  onCellClick,
+}: PnlComparisonTableProps<TColumn>) {
+  const [openRows, setOpenRows] = useState<Set<string>>(new Set())
+  const columnCount = model.columns.length
 
   const toggle = (key: string) =>
-    setOpenDates((prev) => {
+    setOpenRows((prev) => {
       const next = new Set(prev)
       if (next.has(key)) next.delete(key)
       else next.add(key)
       return next
     })
 
-  // One detail row per component, spanning the Revenue block (blank) and the Cost block (filled).
+  // One detail row per component, spanning the Revenue block (blank), the Cost block (filled) and
+  // the Margin block (blank).
   const detailRows = (
     key: string,
     components: Record<string, (number | null)[]>,
@@ -89,16 +108,19 @@ export function PnlGroupComparisonTable({ model, onCellClick }: PnlGroupComparis
         <td className="sticky left-0 z-10 whitespace-nowrap border-b border-r bg-card px-3 py-1 pl-6 text-xs text-muted-foreground">
           {label}
         </td>
-        {Array.from({ length: groupCount }, (_, i) => (
-          <td key={`rev-${i}`} className="border-b border-l" />
+        {Array.from({ length: columnCount }, (_, i) => (
+          <td key={`blank-revenue-${i}`} className="border-b border-l" />
         ))}
-        {components[componentKey].map((value, i) => (
+        {Array.from({ length: columnCount }, (_, i) => (
           <td
             key={`cost-${i}`}
             className="whitespace-nowrap border-b border-l px-3 py-1 text-right text-xs text-muted-foreground"
           >
-            {formatValue(value)}
+            {formatValue(components[componentKey][i] ?? null)}
           </td>
+        ))}
+        {Array.from({ length: columnCount }, (_, i) => (
+          <td key={`blank-margin-${i}`} className="border-b border-l" />
         ))}
       </tr>
     ))
@@ -113,19 +135,25 @@ export function PnlGroupComparisonTable({ model, onCellClick }: PnlGroupComparis
                 rowSpan={2}
                 className="sticky left-0 z-20 border-b border-r bg-card px-3 py-2 text-left font-medium"
               >
-                Date
+                {firstColumnHeader}
               </th>
               <th
-                colSpan={groupCount}
+                colSpan={columnCount}
                 className="border-b border-l bg-green-100 px-3 py-1.5 text-center font-semibold dark:bg-green-950/40"
               >
                 Revenue
               </th>
               <th
-                colSpan={groupCount}
+                colSpan={columnCount}
                 className="border-b border-l bg-blue-100 px-3 py-1.5 text-center font-semibold dark:bg-blue-950/40"
               >
                 Cost
+              </th>
+              <th
+                colSpan={columnCount}
+                className="border-b border-l bg-violet-100 px-3 py-1.5 text-center font-semibold dark:bg-violet-950/40"
+              >
+                Margin
               </th>
             </tr>
             <tr>
@@ -145,6 +173,14 @@ export function PnlGroupComparisonTable({ model, onCellClick }: PnlGroupComparis
                   {column.name}
                 </th>
               ))}
+              {model.columns.map((column) => (
+                <th
+                  key={`margin-${column.id}`}
+                  className="whitespace-nowrap border-b border-l px-3 py-2 text-right font-medium text-muted-foreground"
+                >
+                  {column.name}
+                </th>
+              ))}
             </tr>
           </thead>
 
@@ -154,30 +190,32 @@ export function PnlGroupComparisonTable({ model, onCellClick }: PnlGroupComparis
               return (
                 // A row and its detail rows are siblings, so the pair is wrapped in a keyed
                 // Fragment — a bare <> cannot carry the key React needs inside a map.
-                <React.Fragment key={row.date}>
+                <React.Fragment key={row.rowKey}>
                   <tr
-                    data-testid={`row-${row.date}`}
+                    data-testid={`row-${row.rowKey}`}
                     className={striped ? 'bg-muted/30' : ''}
                   >
-                    <DateCell
-                      label={formatDayLabel(row.date)}
-                      open={openDates.has(row.date)}
-                      onToggle={() => toggle(row.date)}
+                    <RowHeaderCell
+                      label={row.rowLabel}
+                      open={openRows.has(row.rowKey)}
+                      onToggle={() => toggle(row.rowKey)}
                       className={striped ? 'bg-muted/30' : 'bg-card'}
                     />
-                    {(['revenue', 'cost'] as const).flatMap((field) =>
+                    {FIELDS.flatMap((field) =>
                       row[field].map((value, i) => {
                         const warning = row.warnings[i]
-                        const tint = hasWarning(warning) ? WARNING_TINT : ''
-                        const testId = `${field}-${row.date}-${model.columns[i].id}`
+                        // A warning tint outranks the negative-margin colour: an unreliable number
+                        // should not be read as a confident loss.
+                        const tint = hasWarning(warning) ? WARNING_TINT : valueClass(field, value)
+                        const testId = `${field}-${row.rowKey}-${model.columns[i].id}`
                         return onCellClick ? (
                           <td key={testId} className={`border-b border-l p-0 ${tint}`}>
                             <button
                               type="button"
                               data-testid={testId}
-                              title={cellTitle(warning)}
+                              title={cellTitle(cellHint, warning)}
                               className="w-full px-3 py-1.5 text-right hover:bg-primary/10"
-                              onClick={() => onCellClick(model.columns[i], row.date)}
+                              onClick={() => onCellClick(model.columns[i], row.rowKey)}
                             >
                               {formatValue(value)}
                             </button>
@@ -195,7 +233,7 @@ export function PnlGroupComparisonTable({ model, onCellClick }: PnlGroupComparis
                       }),
                     )}
                   </tr>
-                  {openDates.has(row.date) && detailRows(row.date, row.components, striped)}
+                  {openRows.has(row.rowKey) && detailRows(row.rowKey, row.components, striped)}
                 </React.Fragment>
               )
             })}
@@ -206,9 +244,9 @@ export function PnlGroupComparisonTable({ model, onCellClick }: PnlGroupComparis
               <React.Fragment key={footerRow.label}>
                 <tr className={i === 0 ? 'border-t-2 font-semibold' : 'font-semibold'}>
                   {footerRow.components ? (
-                    <DateCell
+                    <RowHeaderCell
                       label={footerRow.label}
-                      open={openDates.has(FOOTER_KEY)}
+                      open={openRows.has(FOOTER_KEY)}
                       onToggle={() => toggle(FOOTER_KEY)}
                       className="bg-card text-right"
                     />
@@ -217,27 +255,24 @@ export function PnlGroupComparisonTable({ model, onCellClick }: PnlGroupComparis
                       {footerRow.label}
                     </td>
                   )}
-                  {footerRow.revenue.map((value, ci) => (
-                    <td
-                      key={`rev-${ci}`}
-                      title={warningTooltip(footerRow.warnings?.[ci])}
-                      className={`whitespace-nowrap border-b border-l px-3 py-1.5 text-right ${hasWarning(footerRow.warnings?.[ci]) ? WARNING_TINT : ''}`}
-                    >
-                      {formatValue(value)}
-                    </td>
-                  ))}
-                  {footerRow.cost.map((value, ci) => (
-                    <td
-                      key={`cost-${ci}`}
-                      title={warningTooltip(footerRow.warnings?.[ci])}
-                      className={`whitespace-nowrap border-b border-l px-3 py-1.5 text-right ${hasWarning(footerRow.warnings?.[ci]) ? WARNING_TINT : ''}`}
-                    >
-                      {formatValue(value)}
-                    </td>
-                  ))}
+                  {FIELDS.flatMap((field) =>
+                    footerRow[field].map((value, ci) => (
+                      <td
+                        key={`${field}-${ci}`}
+                        title={warningTooltip(footerRow.warnings?.[ci])}
+                        className={`whitespace-nowrap border-b border-l px-3 py-1.5 text-right ${
+                          hasWarning(footerRow.warnings?.[ci])
+                            ? WARNING_TINT
+                            : valueClass(field, value)
+                        }`}
+                      >
+                        {formatValue(value)}
+                      </td>
+                    )),
+                  )}
                 </tr>
                 {footerRow.components &&
-                  openDates.has(FOOTER_KEY) &&
+                  openRows.has(FOOTER_KEY) &&
                   detailRows(FOOTER_KEY, footerRow.components, false)}
               </React.Fragment>
             ))}
