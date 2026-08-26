@@ -1,0 +1,51 @@
+'use client'
+
+import { PnlDailyMatrixColumn, PnlFilter, usePnlDailyMatrix } from '../hooks/usePnl'
+import { groupOrigins, toMarginTable, toRevenueTable } from '../utils/dailyMatrix'
+import { PnlMatrixTable } from './PnlMatrixTable'
+
+interface PnlDailyMatrixViewProps {
+  filter: PnlFilter
+  onCellClick?: (column: PnlDailyMatrixColumn, date: string) => void
+}
+
+export function PnlDailyMatrixView({ filter, onCellClick }: PnlDailyMatrixViewProps) {
+  const { data, isLoading, isError, refetch } = usePnlDailyMatrix(filter)
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6 animate-pulse">
+        <div className="h-[320px] rounded-lg border bg-card" />
+        <div className="h-[420px] rounded-lg border bg-card" />
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="rounded-lg border bg-card p-8 text-center">
+        <p className="text-sm text-muted-foreground">Failed to load the daily report.</p>
+        <button onClick={() => refetch()} className="mt-2 text-sm text-primary underline">
+          Retry
+        </button>
+      </div>
+    )
+  }
+
+  if (!data || data.columns.length === 0) {
+    return (
+      <div className="rounded-lg border bg-card p-8 text-center">
+        <p className="text-sm text-muted-foreground">No route data available.</p>
+      </div>
+    )
+  }
+
+  const originSuffix = groupOrigins(data.columns).map((g) => g.label).join('/')
+
+  return (
+    <div className="space-y-6">
+      <PnlMatrixTable title={`Revenue — ${originSuffix}`} model={toRevenueTable(data)} onCellClick={onCellClick} />
+      <PnlMatrixTable title={`Profit Margin — ${originSuffix}`} model={toMarginTable(data)} onCellClick={onCellClick} />
+    </div>
+  )
+}

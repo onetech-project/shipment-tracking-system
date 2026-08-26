@@ -109,16 +109,23 @@ export function PnlFormulaPanel() {
                   <td className="py-1.5 pr-4">+ Packing surcharge</td>
                   <td className="py-1.5"><Col name="additional_amount_packing_kayu" /> (0 when blank)</td>
                 </tr>
-                <tr>
-                  <td className="py-1.5 pr-4">− Discount (1.5%)</td>
-                  <td className="py-1.5"><Col name="amount_revenue" /> × 1.5% (freight revenue only)</td>
-                </tr>
                 <tr className="font-medium">
                   <td className="py-1.5 pr-4">= Revenue per TO</td>
-                  <td className="py-1.5 font-mono">amount_revenue − (amount_revenue × 1.5%) + packing_kayu</td>
+                  <td className="py-1.5 font-mono">amount_revenue + packing_kayu</td>
+                </tr>
+                <tr>
+                  <td className="py-1.5 pr-4">Discount (1.5%)</td>
+                  <td className="py-1.5">
+                    <Col name="amount_revenue" /> × 1.5% (freight revenue only)
+                  </td>
                 </tr>
               </tbody>
             </table>
+            <p className="mt-2 text-muted-foreground">
+              The discount is tracked as its own figure, <strong>not</strong> deducted from revenue. Est. Revenue
+              on the KPI cards is the gross figure above; the discount is subtracted once when gross profit is
+              computed (section 5).
+            </p>
           </Section>
 
           <Divider />
@@ -133,6 +140,33 @@ export function PnlFormulaPanel() {
             </p>
 
             <div className="space-y-3">
+              <div className="rounded border p-3 space-y-1.5">
+                <p className="font-medium">Route resolution (feeds RA, SG Outgoing and SG Incoming)</p>
+                <p className="text-muted-foreground">
+                  A TO&apos;s route is <Col name="origin_station" /> × <Col name="destination_station" />, taken
+                  from the DC-pair master <Col name="air_shipments_data" /> by matching the TO&apos;s origin and
+                  destination DC, and falling back to <Sheet name="Compile Air CGK" />&apos;s own station columns
+                  when the pair is not in the master. The master wins where both are filled.
+                </p>
+                <p className="text-muted-foreground">
+                  Three costs depend on it: the <Sheet name="SG Incoming" /> rate is looked up by route, and both
+                  RA and SG Outgoing branch on whether the origin is Surabaya. Note the grain differs — the
+                  Surabaya test for RA and SG Outgoing is taken per AWB (the origin of its TOs), while the SG
+                  Incoming lookup and the flag below are per TO.
+                </p>
+                <p className="text-muted-foreground">
+                  A TO whose route resolves from neither source keeps its revenue but carries no route, so it
+                  drops out of the Daily Report while still counting toward the KPI cards, and is flagged{' '}
+                  <Col name="station_mapping_missing" /> in the Data Quality panel — fix it by adding the DC pair
+                  to <Col name="air_shipments_data" />, not by editing a sheet.
+                </p>
+                <p className="text-muted-foreground">
+                  <strong>SMU cost does not use this route.</strong> It matches on{' '}
+                  <Sheet name="SMU Rate CGK SPX" />&apos;s own <Col name="via" /> / <Col name="dest" /> airport
+                  codes, which are a separate field from the station names above.
+                </p>
+              </div>
+
               <div className="rounded border p-3 space-y-1.5">
                 <p className="font-medium">SMU Cost</p>
                 <p className="text-muted-foreground">
@@ -190,18 +224,18 @@ export function PnlFormulaPanel() {
               <div className="rounded border p-3 space-y-1.5">
                 <p className="font-medium">SG Incoming Cost (per TO)</p>
                 <p className="text-muted-foreground">
-                  Join: <Sheet name="Compile Air CGK" /> <Col name="origin_station" /> ×{' '}
-                  <Col name="destination_station" /> → <Sheet name="SG Incoming" /> <Col name="origin" /> ×{' '}
+                  Join: the resolved route above → <Sheet name="SG Incoming" /> <Col name="origin" /> ×{' '}
                   <Col name="destination" />
                 </p>
                 <p className="font-mono text-foreground/80">
                   weight_share × (AWB_chargeable_weight × <Col name="sg_inc" /> + admin)
                 </p>
                 <p className="text-muted-foreground">
-                  Looked up per route (<Col name="origin_station" /> × <Col name="destination_station" />). Uses
-                  chargeable weight plus a flat admin (5,000 for CGK/Jabo, 0 for Surabaya), prorated to each TO by
-                  weight share so the admin is counted once per AWB. Shown as NULL when no matching route in{' '}
-                  <Sheet name="SG Incoming" />, but Total Cost treats a missing route as 0 so it is not nullified.
+                  Uses chargeable weight plus an admin, prorated to each TO by weight share so the admin is counted
+                  once per AWB. The admin comes from <Sheet name="SG Incoming" /> <Col name="admin" />; only when
+                  that is blank does it fall back to 5,000 for CGK/Jabo and 0 for Surabaya. Shown as NULL when the
+                  route has no matching row in <Sheet name="SG Incoming" />, but Total Cost treats a missing route
+                  as 0 so it is not nullified.
                 </p>
               </div>
 

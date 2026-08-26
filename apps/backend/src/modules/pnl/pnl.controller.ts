@@ -17,6 +17,11 @@ export class PnlController {
     return this.pnlService.getCycles(basis)
   }
 
+  @Get('stations')
+  getStations() {
+    return this.pnlService.getStations()
+  }
+
   @Get('summary')
   getSummary(
     @Query('cycle') cycle?: string,
@@ -45,8 +50,17 @@ export class PnlController {
     @Query('start') start?: string,
     @Query('end') end?: string,
     @Query('basis') basis?: string,
+    @Query('origin') origin?: string,
+    @Query('dest') dest?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
   ) {
-    return this.pnlService.getAwbDrilldown(page, limit, cycle, start, end, basis)
+    return this.pnlService.getAwbDrilldown(page, limit, cycle, start, end, basis, {
+      origin,
+      dest,
+      dateFrom,
+      dateTo,
+    })
   }
 
   @Get('awb-tos')
@@ -141,5 +155,15 @@ export class PnlController {
     @Query('basis') basis?: string,
   ) {
     return this.pnlService.getProfitByRoute(cycle, start, end, basis)
+  }
+
+  @Get('breakdown/daily-matrix')
+  getDailyMatrix(
+    @Query('cycle') cycle?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+    @Query('basis') basis?: string,
+  ) {
+    return this.pnlService.getDailyMatrix(cycle, start, end, basis)
   }
 }

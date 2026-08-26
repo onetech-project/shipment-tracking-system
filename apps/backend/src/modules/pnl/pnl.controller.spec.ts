@@ -6,10 +6,12 @@ import { ALLOW_ALL_GUARD } from '../../test/test-helpers'
 
 const mockService = {
   getCycles: jest.fn(),
+  getStations: jest.fn(),
   getSummary: jest.fn(),
   getTrend: jest.fn(),
   getAwbDrilldown: jest.fn(),
   getDataQuality: jest.fn(),
+  getDailyMatrix: jest.fn(),
 }
 
 describe('PnlController', () => {
@@ -32,6 +34,15 @@ describe('PnlController', () => {
     expect(await controller.getCycles()).toEqual(['2026-04-2H'])
   })
 
+  it('getStations delegates to service', async () => {
+    mockService.getStations.mockResolvedValueOnce([
+      { origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' },
+    ])
+    expect(await controller.getStations()).toEqual([
+      { origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' },
+    ])
+  })
+
   it('getSummary passes cycle + basis query params', async () => {
     mockService.getSummary.mockResolvedValueOnce({ cyclePeriod: '2026-04-2H' })
     await controller.getSummary('2026-04-2H', undefined, undefined, 'atd_origin')
@@ -47,12 +58,43 @@ describe('PnlController', () => {
   it('getAwbDrilldown defaults page=1 limit=50 and forwards basis', async () => {
     mockService.getAwbDrilldown.mockResolvedValueOnce({ data: [], total: 0 })
     await controller.getAwbDrilldown(1, 50, '2026-04-2H', undefined, undefined, 'ata_vendor_wh_destination')
-    expect(mockService.getAwbDrilldown).toHaveBeenCalledWith(1, 50, '2026-04-2H', undefined, undefined, 'ata_vendor_wh_destination')
+    expect(mockService.getAwbDrilldown).toHaveBeenCalledWith(
+      1, 50, '2026-04-2H', undefined, undefined, 'ata_vendor_wh_destination',
+      { origin: undefined, dest: undefined, dateFrom: undefined, dateTo: undefined },
+    )
   })
 
   it('getDataQuality passes page/limit', async () => {
     mockService.getDataQuality.mockResolvedValueOnce({ data: [], total: 0 })
     await controller.getDataQuality(2, 25)
     expect(mockService.getDataQuality).toHaveBeenCalledWith(2, 25)
+  })
+
+  it('getDailyMatrix forwards cycle, range and basis to the service', async () => {
+    mockService.getDailyMatrix.mockResolvedValueOnce({ columns: [], rows: [], footer: [], periodDays: 15 })
+    const result = await controller.getDailyMatrix('2026-07-1H', undefined, undefined, 'atd_origin')
+    expect(mockService.getDailyMatrix).toHaveBeenCalledWith('2026-07-1H', undefined, undefined, 'atd_origin')
+    expect(result.periodDays).toBe(15)
+  })
+
+  it('getAwbDrilldown forwards the route query params as one object', async () => {
+    mockService.getAwbDrilldown.mockResolvedValueOnce({ data: [], total: 0 })
+    await controller.getAwbDrilldown(
+      1, 50, '2026-04-2H', undefined, undefined, 'ata_vendor_wh_destination',
+      'Jabo', 'Tanjung Pinang', '2026-05-01', '2026-05-31',
+    )
+    expect(mockService.getAwbDrilldown).toHaveBeenCalledWith(
+      1, 50, '2026-04-2H', undefined, undefined, 'ata_vendor_wh_destination',
+      { origin: 'Jabo', dest: 'Tanjung Pinang', dateFrom: '2026-05-01', dateTo: '2026-05-31' },
+    )
+  })
+
+  it('getAwbDrilldown passes undefined route fields through untouched', async () => {
+    mockService.getAwbDrilldown.mockResolvedValueOnce({ data: [], total: 0 })
+    await controller.getAwbDrilldown(1, 50, '2026-04-2H')
+    expect(mockService.getAwbDrilldown).toHaveBeenCalledWith(
+      1, 50, '2026-04-2H', undefined, undefined, undefined,
+      { origin: undefined, dest: undefined, dateFrom: undefined, dateTo: undefined },
+    )
   })
 })

@@ -6,6 +6,7 @@ import {
   resolveBasis,
   buildFilter,
   calendarDaysForFilter,
+  calendarDatesForFilter,
 } from './pnl-filter.util'
 
 export interface PnlSummary {
@@ -31,6 +32,12 @@ export interface PnlAwbRow {
   awb: string
   vendor: string | null
   airline: string | null
+  origin: string | null // dominant origin_station across the AWB's TOs
+  dest: string | null
+  date: string | null // YYYY-MM-DD on the active date basis
+  originVaries: boolean // TOs of this AWB disagree on origin
+  destVaries: boolean
+  dateVaries: boolean
   toCount: number
   sumGw: number
   chwt: number | null
@@ -45,6 +52,15 @@ export interface PnlAwbRow {
   grossMarginPct: number | null
   hasNullCost: boolean
   issue: string | null
+}
+
+// Optional narrowing for the AWB drilldown. Every field is independent; supplying none leaves the
+// query exactly as it was before route filtering existed.
+export interface PnlRouteFilter {
+  origin?: string
+  dest?: string
+  dateFrom?: string // YYYY-MM-DD
+  dateTo?: string // YYYY-MM-DD, inclusive
 }
 
 export interface PnlToRow {
@@ -82,7 +98,10 @@ const ISSUE_RANK: Record<string, number> = {
   ra_rate_missing: 3,
   sgout_name_missing: 4,
   revenue_missing: 5,
-  sg_in_rate_missing: 6,
+  // A blank station breaks the SG Incoming join, so it ranks as the cause of the rate miss below
+  // it. This order must match the CASE chain in the v_pnl_to definition.
+  station_mapping_missing: 6,
+  sg_in_rate_missing: 7,
 }
 const ISSUE_BY_RANK: Record<number, string> = Object.fromEntries(
   Object.entries(ISSUE_RANK).map(([k, v]) => [v, k]),
@@ -136,6 +155,52 @@ export interface PnlProfitByRouteItem {
   avgMarginPerDay: number
 }
 
+export interface PnlStation {
+  origin: string // raw v_pnl_to value, e.g. 'Jabo'
+  originLabel: string // display label, e.g. 'CGK'
+  dest: string
+}
+
+// A daily matrix column is exactly one station pair, so the two share a definition.
+export type PnlDailyMatrixColumn = PnlStation
+
+export interface PnlDailyMatrixCell {
+  revenue: number
+  margin: number
+  weight: number
+  incompleteTos: number // TOs whose cost could not be computed; margin here is optimistic
+}
+
+export interface PnlDailyMatrixRow {
+  date: string // YYYY-MM-DD
+  cells: (PnlDailyMatrixCell | null)[] // index-aligned with columns; null = no shipment at all
+}
+
+export interface PnlDailyMatrixFooter {
+  totalRevenue: number
+  totalMargin: number
+  totalWeight: number
+  avgRevenuePerDay: number
+  avgMarginPerDay: number
+  marginPct: number | null // null when totalRevenue is 0
+  spacePerKg: number | null // null when totalWeight is 0
+  incompleteTos: number
+}
+
+export interface PnlDailyMatrix {
+  columns: PnlDailyMatrixColumn[]
+  rows: PnlDailyMatrixRow[]
+  footer: PnlDailyMatrixFooter[] // index-aligned with columns
+  periodDays: number
+}
+
+// The spreadsheet this report mirrors labels origins by airport code. Unknown origins fall back
+// to their raw value so a newly opened station is visible rather than silently blank.
+const ORIGIN_LABELS: Record<string, string> = {
+  Jabo: 'CGK',
+  Surabaya: 'SUB',
+}
+
 @Injectable()
 export class PnlService {
   constructor(private readonly dataSource: DataSource) {}
@@ -149,6 +214,22 @@ export class PnlService {
       ORDER BY cycle_period DESC
     `)
     return rows.map((r: { cycle_period: string }) => r.cycle_period)
+  }
+
+  // Distinct origin→destination pairs across the whole view, not just the selected period, so the
+  // daily matrix columns and the drilldown route dropdowns stay stable as the user changes cycle.
+  async getStations(): Promise<PnlStation[]> {
+    const rows = await this.dataSource.query(`
+      SELECT DISTINCT origin_station, dest_station
+      FROM v_pnl_to
+      WHERE origin_station IS NOT NULL AND dest_station IS NOT NULL
+      ORDER BY 1, 2
+    `)
+    return (rows as Record<string, string>[]).map((r) => ({
+      origin: r.origin_station,
+      originLabel: ORIGIN_LABELS[r.origin_station] ?? r.origin_station,
+      dest: r.dest_station,
+    }))
   }
 
   async getSummary(
@@ -234,12 +315,41 @@ export class PnlService {
     startDate?: string,
     endDate?: string,
     basis?: string,
+    route?: PnlRouteFilter,
   ): Promise<{ data: PnlAwbRow[]; total: number }> {
-    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate, 'v.')
+    // Same clause against the subquery alias. It reuses $1/$2, so no params are bound twice.
+    const inner = buildFilter(basis, cyclePeriod, startDate, endDate, 'm.')
+
+    // The route filter decides which AWBs are listed, not which TOs are summed: cost columns are
+    // MAX(cost_*_awb) over the whole AWB, so dropping TOs here would understate revenue against a
+    // full-AWB cost and invent losses. An AWB qualifies when any one of its TOs matches.
+    const routeParams: unknown[] = []
+    const routeConds: string[] = []
+    const bind = (value: unknown): string => {
+      routeParams.push(value)
+      return `$${params.length + routeParams.length}`
+    }
+    if (route?.origin) routeConds.push(`m.origin_station = ${bind(route.origin)}`)
+    if (route?.dest) routeConds.push(`m.dest_station = ${bind(route.dest)}`)
+    if (route?.dateFrom) routeConds.push(`${inner.dateCol} >= ${bind(route.dateFrom)}::DATE`)
+    if (route?.dateTo) {
+      routeConds.push(`${inner.dateCol} < (${bind(route.dateTo)}::DATE + INTERVAL '1 day')`)
+    }
+    const routeWhere = routeConds.length
+      ? `AND EXISTS (
+           SELECT 1 FROM v_pnl_to m
+           WHERE m.awb = v.awb
+             AND ${inner.where}
+             AND ${routeConds.join(' AND ')}
+         )`
+      : ''
+
     const offset = (page - 1) * limit
-    const dataParams = [...params, limit, offset]
-    const countParams = [...params]
-    const p = params.length
+    const filterParams = [...params, ...routeParams]
+    const dataParams = [...filterParams, limit, offset]
+    const countParams = [...filterParams]
+    const p = filterParams.length
 
     const [rows, countRows] = await Promise.all([
       this.dataSource.query(
@@ -248,6 +358,12 @@ export class PnlService {
           awb,
           vendor,
           airline,
+          MODE() WITHIN GROUP (ORDER BY origin_station)                        AS origin,
+          MODE() WITHIN GROUP (ORDER BY dest_station)                          AS dest,
+          TO_CHAR(MODE() WITHIN GROUP (ORDER BY ${dateCol}::DATE), 'YYYY-MM-DD') AS route_date,
+          COUNT(DISTINCT origin_station) > 1                                   AS origin_varies,
+          COUNT(DISTINCT dest_station)   > 1                                   AS dest_varies,
+          COUNT(DISTINCT ${dateCol}::DATE) > 1                                 AS date_varies,
           COUNT(*)::int                           AS to_count,
           SUM(gross_weight)                       AS sum_gw,
           MAX(chwt_awb)                           AS chwt,
@@ -263,10 +379,12 @@ export class PnlService {
           MIN(CASE issue
                 WHEN 'no_booking' THEN 1 WHEN 'smu_rate_missing' THEN 2
                 WHEN 'ra_rate_missing' THEN 3 WHEN 'sgout_name_missing' THEN 4
-                WHEN 'revenue_missing' THEN 5 WHEN 'sg_in_rate_missing' THEN 6
+                WHEN 'revenue_missing' THEN 5 WHEN 'station_mapping_missing' THEN 6
+                WHEN 'sg_in_rate_missing' THEN 7
               END)                                  AS issue_rank
-        FROM v_pnl_to
+        FROM v_pnl_to v
         WHERE ${where}
+        ${routeWhere}
         GROUP BY awb, vendor, airline
         ORDER BY SUM(revenue_total) DESC NULLS LAST
         LIMIT $${p + 1} OFFSET $${p + 2}
@@ -274,7 +392,7 @@ export class PnlService {
         dataParams,
       ),
       this.dataSource.query(
-        `SELECT COUNT(DISTINCT awb)::int AS total FROM v_pnl_to WHERE ${where}`,
+        `SELECT COUNT(DISTINCT awb)::int AS total FROM v_pnl_to v WHERE ${where} ${routeWhere}`,
         countParams,
       ),
     ])
@@ -288,6 +406,12 @@ export class PnlService {
         awb: r.awb as string,
         vendor: r.vendor as string | null,
         airline: r.airline as string | null,
+        origin: (r.origin as string | null) ?? null,
+        dest: (r.dest as string | null) ?? null,
+        date: (r.route_date as string | null) ?? null,
+        originVaries: r.origin_varies === true || r.origin_varies === 't',
+        destVaries: r.dest_varies === true || r.dest_varies === 't',
+        dateVaries: r.date_varies === true || r.date_varies === 't',
         toCount: Number(r.to_count),
         sumGw: Number(r.sum_gw),
         chwt: r.chwt != null ? Number(r.chwt) : null,
@@ -702,5 +826,89 @@ export class PnlService {
         avgMarginPerDay: totalMargin / days,
       }
     })
+  }
+
+  // Daily pivot behind the "Daily Report" tab: one row per calendar day, one column per
+  // origin→destination pair. Columns come from the whole view rather than the selected period so
+  // the layout stays stable as the user moves between cycles. All footer arithmetic lives here so
+  // the numbers have a single testable definition.
+  async getDailyMatrix(
+    cyclePeriod?: string,
+    startDate?: string,
+    endDate?: string,
+    basis?: string,
+  ): Promise<PnlDailyMatrix> {
+    const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const dates = calendarDatesForFilter(cyclePeriod, startDate, endDate)
+    const periodDays = Math.max(1, dates.length)
+
+    const [columns, factRows] = await Promise.all([
+      this.getStations(),
+      this.dataSource.query(
+        `
+        SELECT
+          TO_CHAR(${dateCol}::DATE, 'YYYY-MM-DD')                                AS d,
+          origin_station,
+          dest_station,
+          COALESCE(SUM(revenue_total), 0)                                        AS revenue,
+          COALESCE(SUM(revenue_total), 0) - COALESCE(SUM(revenue_discount), 0)
+            - COALESCE(SUM(cost_to), 0)                                          AS margin,
+          COALESCE(SUM(gross_weight), 0)                                         AS weight,
+          COUNT(*) FILTER (WHERE cost_to IS NULL)::int                           AS incomplete_tos
+        FROM v_pnl_to
+        WHERE ${where}
+          AND ${dateCol} IS NOT NULL
+        GROUP BY 1, 2, 3
+        `,
+        params,
+      ),
+    ])
+
+    const columnIndex = new Map(columns.map((c, i) => [`${c.origin}|${c.dest}`, i]))
+
+    const rows: PnlDailyMatrixRow[] = dates.map((date) => ({
+      date,
+      cells: columns.map(() => null),
+    }))
+    const rowIndex = new Map(rows.map((r, i) => [r.date, i]))
+
+    for (const fact of factRows as Record<string, string>[]) {
+      const ci = columnIndex.get(`${fact.origin_station}|${fact.dest_station}`)
+      const ri = rowIndex.get(fact.d)
+      if (ci === undefined || ri === undefined) continue
+      rows[ri].cells[ci] = {
+        revenue: Number(fact.revenue),
+        margin: Number(fact.margin),
+        weight: Number(fact.weight),
+        incompleteTos: Number(fact.incomplete_tos),
+      }
+    }
+
+    const footer: PnlDailyMatrixFooter[] = columns.map((_, ci) => {
+      let totalRevenue = 0
+      let totalMargin = 0
+      let totalWeight = 0
+      let incompleteTos = 0
+      for (const row of rows) {
+        const cell = row.cells[ci]
+        if (!cell) continue
+        totalRevenue += cell.revenue
+        totalMargin += cell.margin
+        totalWeight += cell.weight
+        incompleteTos += cell.incompleteTos
+      }
+      return {
+        totalRevenue,
+        totalMargin,
+        totalWeight,
+        avgRevenuePerDay: totalRevenue / periodDays,
+        avgMarginPerDay: totalMargin / periodDays,
+        marginPct: totalRevenue > 0 ? (totalMargin / totalRevenue) * 100 : null,
+        spacePerKg: totalWeight > 0 ? totalMargin / totalWeight : null,
+        incompleteTos,
+      }
+    })
+
+    return { columns, rows, footer, periodDays }
   }
 }

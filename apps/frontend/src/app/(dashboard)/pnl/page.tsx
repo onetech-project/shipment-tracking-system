@@ -1,16 +1,27 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
-import { usePnlCycles, usePnlSummary, PnlFilter, DateBasis, DEFAULT_DATE_BASIS } from '@/features/pnl/hooks/usePnl'
+import {
+  usePnlCycles,
+  usePnlSummary,
+  PnlFilter,
+  PnlRouteFilter,
+  PnlDailyMatrixColumn,
+  DateBasis,
+  DEFAULT_DATE_BASIS,
+  BASIS_LABELS,
+} from '@/features/pnl/hooks/usePnl'
+import { routeFromCell } from '@/features/pnl/utils/dailyMatrix'
 import { PnlKpiCards, PnlKpiKey } from '@/features/pnl/components/PnlKpiCards'
 import { PnlDailyMarginChart } from '@/features/pnl/components/PnlDailyMarginChart'
 import { PnlBreakdownPanel } from '@/features/pnl/components/PnlBreakdownPanel'
 import { PnlAwbDrilldown } from '@/features/pnl/components/PnlAwbDrilldown'
 import { PnlDataQuality } from '@/features/pnl/components/PnlDataQuality'
 import { PnlFormulaPanel } from '@/features/pnl/components/PnlFormulaPanel'
+import { PnlDailyMatrixView } from '@/features/pnl/components/PnlDailyMatrixView'
 import { SettlementView } from '@/features/pnl-settlement/components/SettlementView'
 
 function PnlSkeleton() {
@@ -43,11 +54,19 @@ function PnlSkeleton() {
 
 type FilterMode = 'cycle' | 'range'
 
-const BASIS_OPTIONS: { value: DateBasis; label: string }[] = [
-  { value: 'ata_vendor_wh_destination', label: 'ATA Vendor WH dest' },
-  { value: 'atd_origin', label: 'ATD origin' },
-  { value: 'completed_time', label: 'Completed time' },
-]
+// Order is deliberate — the default basis comes first. Labels come from BASIS_LABELS so the
+// drilldown's date column header can never disagree with this dropdown.
+const BASIS_OPTIONS: { value: DateBasis; label: string }[] = (
+  ['ata_vendor_wh_destination', 'atd_origin', 'completed_time'] satisfies DateBasis[]
+).map((value) => ({ value, label: BASIS_LABELS[value] }))
+
+type PnlView = 'estimate' | 'actual' | 'daily'
+
+const VIEW_SUBTITLE: Record<PnlView, string> = {
+  estimate: 'Estimated P&L based on arrival date — not yet billed',
+  actual: 'Actual revenue from settled invoices vs estimate',
+  daily: 'Daily revenue and profit margin per origin and destination',
+}
 
 function PnlPageContent() {
   const [dateBasis, setDateBasis] = useState<DateBasis>(DEFAULT_DATE_BASIS)
@@ -58,7 +77,9 @@ function PnlPageContent() {
   const [endDate, setEndDate] = useState('')
   const [activeKpi, setActiveKpi] = useState<PnlKpiKey | null>(null)
   const [showDq, setShowDq] = useState(false)
-  const [view, setView] = useState<'estimate' | 'actual'>('estimate')
+  const [view, setView] = useState<PnlView>('estimate')
+  const [drilldownRoute, setDrilldownRoute] = useState<PnlRouteFilter>({})
+  const drilldownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (cycles && cycles.length > 0 && (!cycle || !cycles.includes(cycle))) {
@@ -66,11 +87,28 @@ function PnlPageContent() {
     }
   }, [cycles, cycle])
 
+  // A route filter carries a date inside the old period; keeping it after the period changes would
+  // silently empty the table with no visible cause.
+  useEffect(() => {
+    setDrilldownRoute({})
+  }, [dateBasis, mode, cycle, startDate, endDate])
+
   // Changing the date basis re-derives the cycle list; drop the stale selection so the effect
   // above repicks the newest available cycle for the new basis.
   function handleBasisChange(next: DateBasis) {
     setDateBasis(next)
     setCycle(undefined)
+  }
+
+  // A clicked daily cell narrows the drilldown only: the page period, KPIs, chart and breakdowns
+  // keep showing the whole cycle, which is what makes the drilldown readable as a subset of them.
+  function handleCellClick(column: PnlDailyMatrixColumn, date: string) {
+    setDrilldownRoute(routeFromCell(column, date))
+    setView('estimate')
+    // Runs after the Estimated tab has mounted the drilldown.
+    requestAnimationFrame(() => {
+      drilldownRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
   }
 
   const filter: PnlFilter | undefined =
@@ -98,11 +136,7 @@ function PnlPageContent() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">P&amp;L Analysis</h1>
-          <p className="text-muted-foreground text-sm">
-            {view === 'estimate'
-              ? 'Estimated P&L based on arrival date — not yet billed'
-              : 'Actual revenue from settled invoices vs estimate'}
-          </p>
+          <p className="text-muted-foreground text-sm">{VIEW_SUBTITLE[view]}</p>
           <div className="mt-2 flex w-fit rounded-md border text-sm overflow-hidden">
             <button
               className={`px-3 py-1.5 ${view === 'estimate' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
@@ -115,6 +149,12 @@ function PnlPageContent() {
               onClick={() => setView('actual')}
             >
               Actual vs Estimate
+            </button>
+            <button
+              className={`px-3 py-1.5 border-l ${view === 'daily' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+              onClick={() => setView('daily')}
+            >
+              Daily Report
             </button>
           </div>
         </div>
@@ -213,6 +253,8 @@ function PnlPageContent() {
         </div>
       ) : view === 'actual' ? (
         <SettlementView filter={filter} />
+      ) : view === 'daily' ? (
+        filter && <PnlDailyMatrixView filter={filter} onCellClick={handleCellClick} />
       ) : (
         <>
           <PnlFormulaPanel />
@@ -221,7 +263,15 @@ function PnlPageContent() {
           )}
           {filter && <PnlDailyMarginChart filter={filter} />}
           {filter && <PnlBreakdownPanel filter={filter} activeKpi={activeKpi} />}
-          {filter && <PnlAwbDrilldown filter={filter} />}
+          {filter && (
+            <div ref={drilldownRef}>
+              <PnlAwbDrilldown
+                filter={filter}
+                route={drilldownRoute}
+                onRouteChange={setDrilldownRoute}
+              />
+            </div>
+          )}
           {showDq ? (
             <PnlDataQuality />
           ) : (
