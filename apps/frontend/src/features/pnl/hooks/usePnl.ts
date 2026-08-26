@@ -186,6 +186,46 @@ export interface PnlDailyMatrix {
   periodDays: number
 }
 
+export interface PnlGroupComparisonColumn {
+  id: string
+  name: string
+  routeCount: number
+}
+
+export interface PnlGroupComparisonCell {
+  revenue: number
+  cost: number
+  costSmu: number
+  costRa: number
+  costSgOut: number
+  costSgIn: number
+  incompleteTos: number
+}
+
+export interface PnlGroupComparisonRow {
+  date: string
+  cells: (PnlGroupComparisonCell | null)[]
+}
+
+export interface PnlGroupComparisonFooter {
+  totalRevenue: number
+  totalCost: number
+  totalCostSmu: number
+  totalCostRa: number
+  totalCostSgOut: number
+  totalCostSgIn: number
+  avgRevenuePerDay: number
+  avgCostPerDay: number
+  incompleteTos: number
+}
+
+export interface PnlGroupComparison {
+  columns: PnlGroupComparisonColumn[]
+  rows: PnlGroupComparisonRow[]
+  footer: PnlGroupComparisonFooter[]
+  periodDays: number
+}
+
 function filterToParams(filter: PnlFilter) {
   return filter.mode === 'cycle'
     ? { cycle: filter.cycle, basis: filter.basis }
@@ -383,6 +423,22 @@ export function usePnlDailyMatrix(filter: PnlFilter | undefined) {
         .get('/pnl/breakdown/daily-matrix', { params: filterToParams(filter!) })
         .then((r) => r.data),
     enabled: !!filter,
+    staleTime: 60 * 1000,
+  })
+}
+
+// Disabled until at least one group is selected, so an untouched tab makes no request at all.
+// groupIds is part of the query key, so re-picking groups refetches without a manual invalidate.
+export function usePnlGroupComparison(filter: PnlFilter | undefined, groupIds: string[]) {
+  return useQuery<PnlGroupComparison>({
+    queryKey: ['pnl', 'group-comparison', filter, groupIds],
+    queryFn: () =>
+      apiClient
+        .get('/pnl/breakdown/group-comparison', {
+          params: { ...filterToParams(filter!), groupIds: groupIds.join(',') },
+        })
+        .then((r) => r.data),
+    enabled: !!filter && groupIds.length > 0,
     staleTime: 60 * 1000,
   })
 }

@@ -27,6 +27,7 @@ import { GeneralParamsModule } from './modules/general-params/general-params.mod
 import { PnlModule } from './modules/pnl/pnl.module'
 import { PnlSettlementModule } from './modules/pnl-settlement/pnl-settlement.module'
 import { BarhalModule } from './modules/barhal/barhal.module'
+import { RouteGroupsModule } from './modules/route-groups/route-groups.module'
 
 @Module({
   imports: [
@@ -96,6 +97,7 @@ import { BarhalModule } from './modules/barhal/barhal.module'
     PnlModule,
     BarhalModule,
     PnlSettlementModule,
+    RouteGroupsModule,
   ],
   controllers: [AppController],
   providers: [

@@ -20,6 +20,7 @@ import {
   ShieldAlert,
   Menu,
   Package,
+  Route,
 } from 'lucide-react'
 
 interface NavLinkProps {
@@ -139,6 +140,15 @@ export function Sidebar({ onNavClick, collapsed = false, onToggleCollapse }: Sid
                 href="/barhal"
                 icon={<Package size={16} />}
                 label="Barhal"
+                onClick={onNavClick}
+                collapsed={collapsed}
+              />
+            )}
+            {hasPermission('read.route_group') && (
+              <NavLink
+                href="/route-groups"
+                icon={<Route size={16} />}
+                label="Route Group"
                 onClick={onNavClick}
                 collapsed={collapsed}
               />

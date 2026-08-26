@@ -166,4 +166,19 @@ export class PnlController {
   ) {
     return this.pnlService.getDailyMatrix(cycle, start, end, basis)
   }
+
+  @Get('breakdown/group-comparison')
+  getGroupComparison(
+    @Query('groupIds') groupIds?: string,
+    @Query('cycle') cycle?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+    @Query('basis') basis?: string,
+  ) {
+    const ids = (groupIds ?? '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean)
+    return this.pnlService.getGroupComparison(ids, cycle, start, end, basis)
+  }
 }

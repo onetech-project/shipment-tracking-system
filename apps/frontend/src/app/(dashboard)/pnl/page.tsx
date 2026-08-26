@@ -22,6 +22,7 @@ import { PnlAwbDrilldown } from '@/features/pnl/components/PnlAwbDrilldown'
 import { PnlDataQuality } from '@/features/pnl/components/PnlDataQuality'
 import { PnlFormulaPanel } from '@/features/pnl/components/PnlFormulaPanel'
 import { PnlDailyMatrixView } from '@/features/pnl/components/PnlDailyMatrixView'
+import { PnlGroupComparisonView } from '@/features/pnl/components/PnlGroupComparisonView'
 import { SettlementView } from '@/features/pnl-settlement/components/SettlementView'
 
 function PnlSkeleton() {
@@ -60,15 +61,17 @@ const BASIS_OPTIONS: { value: DateBasis; label: string }[] = (
   ['ata_vendor_wh_destination', 'atd_origin', 'completed_time'] satisfies DateBasis[]
 ).map((value) => ({ value, label: BASIS_LABELS[value] }))
 
-type PnlView = 'estimate' | 'actual' | 'daily'
+type PnlView = 'estimate' | 'actual' | 'daily' | 'groups'
 
 const VIEW_SUBTITLE: Record<PnlView, string> = {
   estimate: 'Estimated P&L based on arrival date — not yet billed',
   actual: 'Actual revenue from settled invoices vs estimate',
   daily: 'Daily revenue and profit margin per origin and destination',
+  groups: 'Revenue and cost per date, compared across route groups',
 }
 
 function PnlPageContent() {
+  const { hasPermission } = usePermissions()
   const [dateBasis, setDateBasis] = useState<DateBasis>(DEFAULT_DATE_BASIS)
   const { data: cycles, isLoading: isLoadingCycles, isError: isCyclesError, refetch: refetchCycles } = usePnlCycles(dateBasis)
   const [mode, setMode] = useState<FilterMode>('cycle')
@@ -92,6 +95,16 @@ function PnlPageContent() {
   useEffect(() => {
     setDrilldownRoute({})
   }, [dateBasis, mode, cycle, startDate, endDate])
+
+  // The Group Comparison tab button below is gated on read.route_group, but view state is not
+  // otherwise constrained — this is a defensive backstop so a user who can't see the tab can never
+  // stay parked on its view (e.g. if a future change ever set `view` from somewhere other than the
+  // button, such as a persisted or URL-driven value).
+  useEffect(() => {
+    if (view === 'groups' && !hasPermission('read.route_group')) {
+      setView('estimate')
+    }
+  }, [view, hasPermission])
 
   // Changing the date basis re-derives the cycle list; drop the stale selection so the effect
   // above repicks the newest available cycle for the new basis.
@@ -156,6 +169,14 @@ function PnlPageContent() {
             >
               Daily Report
             </button>
+            {hasPermission('read.route_group') && (
+              <button
+                className={`px-3 py-1.5 border-l ${view === 'groups' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+                onClick={() => setView('groups')}
+              >
+                Group Comparison
+              </button>
+            )}
           </div>
         </div>
 
@@ -255,6 +276,8 @@ function PnlPageContent() {
         <SettlementView filter={filter} />
       ) : view === 'daily' ? (
         filter && <PnlDailyMatrixView filter={filter} onCellClick={handleCellClick} />
+      ) : view === 'groups' ? (
+        filter && hasPermission('read.route_group') && <PnlGroupComparisonView filter={filter} />
       ) : (
         <>
           <PnlFormulaPanel />

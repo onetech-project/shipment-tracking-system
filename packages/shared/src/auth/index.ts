@@ -83,6 +83,14 @@ export enum Permission {
   // Barhal (wood-packing / Koli tracking)
   READ_BARHAL = 'read.barhal',
   CREATE_BARHAL = 'create.barhal',
+
+  // Route Group — named sets of origin→destination station pairs used by the PnL
+  // group-comparison tab. Reads gate both the menu and the group multi-select in PnL,
+  // so roles that use PnL need read.route_group as well.
+  READ_ROUTE_GROUP = 'read.route_group',
+  CREATE_ROUTE_GROUP = 'create.route_group',
+  UPDATE_ROUTE_GROUP = 'update.route_group',
+  DELETE_ROUTE_GROUP = 'delete.route_group',
 }
 
 // ── Auth Response DTOs ────────────────────────────────────────────────────────
