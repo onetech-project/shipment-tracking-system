@@ -122,8 +122,8 @@ const TO_ROUTE_JOIN = `
  * Pemilihan barisnya disamakan dengan cara v_pnl_to memilih satu booking per AWB
  * (20260711000001-pnl-dedup-booking-per-awb.ts) agar chWt Barhal dan PnL tidak saling berbeda.
  *
- * Dipakai bersama oleh recap (lewat buildScopeSql), exportCsv, dan getSmuList. Dua yang terakhir
- * tidak memanggil buildScopeSql, jadi definisinya tinggal di konstanta ini supaya tunggal.
+ * Dipakai bersama oleh recap (lewat buildScopeSql) dan getSmuList. getSmuList tidak memanggil
+ * buildScopeSql, jadi definisinya tinggal di konstanta ini supaya tunggal.
  */
 const SMU_CHWT_CTE = `
   smu_chwt AS (
@@ -135,6 +135,33 @@ const SMU_CHWT_CTE = `
        AND NULLIF(BTRIM(via),  '') IS NOT NULL
        AND NULLIF(BTRIM(dest), '') IS NOT NULL) DESC,
       updated_at DESC NULLS LAST
+  )
+`
+
+/**
+ * Satu baris per TO, diambil yang paling baru.
+ *
+ * air_shipments_compileaircgk unik pada (lt_number, to_number), sehingga satu TO bisa punya
+ * beberapa baris dengan LT dan tanggal berbeda — bukan kasus teoretis, data produksi sudah
+ * memuatnya. Tanpa DISTINCT ON, join ke barhal_koli_to menggandakan baris TO dan jumlah baris
+ * CSV melampaui total_to Koli-nya. Pola pemilihan barisnya sama seperti SMU_CHWT_CTE.
+ *
+ * vendor dan qty_parcel dibaca dari extra_fields karena keduanya bukan generated column,
+ * berbeda dari shipment_date/lt_number/remarks/gross_weight yang sudah dimaterialisasi.
+ */
+const TO_LATEST_CTE = `
+  to_latest AS (
+    SELECT DISTINCT ON (to_number)
+      to_number,
+      lt_number,
+      shipment_date,
+      gross_weight,
+      remarks,
+      extra_fields->>'vendor'     AS vendor,
+      extra_fields->>'qty_parcel' AS qty_parcel
+    FROM air_shipments_compileaircgk
+    WHERE to_number IS NOT NULL
+    ORDER BY to_number, updated_at DESC NULLS LAST
   )
 `
 
@@ -985,12 +1012,23 @@ export class BarhalService {
     }
   }
 
+  /**
+   * Export per TO: satu baris untuk setiap TO yang sudah dilampirkan ke sebuah Koli.
+   *
+   * Rentang tanggal disaring pada c.shipment_date (tanggal TO), bukan k.koli_date, supaya yang
+   * disaring sama dengan yang tampil di kolom "Date (TO)". Konsekuensinya, jumlah baris CSV tidak
+   * selalu sama dengan kartu statistik dashboard yang berbasis koli_date — sebuah TO bisa saja
+   * dipacking di bulan yang berbeda dari tanggal TO-nya.
+   *
+   * TO yang tidak lagi ada di sheet bertanggal NULL sehingga tersaring keluar saat rentang
+   * tanggal aktif; tanpa tanggal, baris itu memang tidak bisa ditempatkan dalam rentang mana pun.
+   */
   async exportCsv(dto: BarhalDashboardQueryDto): Promise<string> {
     const params: unknown[] = []
     const conditions: string[] = []
     if (dto.startDate && dto.endDate) {
       params.push(dto.startDate, dto.endDate)
-      conditions.push(`k.koli_date BETWEEN $${params.length - 1} AND $${params.length}`)
+      conditions.push(`c.shipment_date BETWEEN $${params.length - 1} AND $${params.length}`)
     }
     if (dto.origin) {
       params.push(dto.origin)
@@ -1004,23 +1042,42 @@ export class BarhalService {
 
     const rows: BarhalCsvRow[] = await this.dataSource.query(
       `
-      WITH ${SMU_CHWT_CTE}
+      WITH ${TO_LATEST_CTE}
       SELECT
-        k.koli_number   AS "koliNumber",
-        k.koli_date     AS "koliDate",
-        k.origin_name   AS "originName",
-        k.dest_name     AS "destName",
-        k.total_to      AS "totalTo",
+        -- ::text wajib. Driver pg mem-parse kolom \`date\` menjadi tengah malam waktu LOKAL, dan
+        -- kontainer produksi berjalan pada TZ=Asia/Jakarta (Dockerfile:41), sehingga tanggal 1 Juni
+        -- sampai ke builder sebagai 31 Mei 17:00Z dan tiap baris mundur satu hari. Empat query lain
+        -- di berkas ini sudah meng-cast; hanya export lama yang tidak.
+        c.shipment_date::text    AS "shipmentDate",
+        c.vendor                 AS "vendor",
+        k.origin_name            AS "originName",
+        k.dest_name              AS "destName",
+        c.lt_number              AS "ltNumber",
+        t.to_number              AS "toNumber",
+        c.gross_weight::numeric  AS "grossWeight",
+        c.qty_parcel             AS "qtyParcel",
+        c.remarks                AS "remarks",
+        -- No. Koli merangkap sebagai ID packing kayu; tidak ada identitas packing yang terpisah.
+        k.koli_number            AS "koliNumber",
         k.weight_before::numeric AS "weightBefore",
         k.weight_after::numeric  AS "weightAfter",
-        -- Baris CSV adalah per Koli, sedangkan chWt adalah properti No. SMU: satu SMU yang dipakai
-        -- beberapa Koli menampilkan chWt penuh di setiap barisnya, sehingga total kolom ini bisa
-        -- lebih besar dari total di recap. Lihat catatan di barhal-csv.builder.ts.
-        COALESCE((SELECT sc.chwt FROM smu_chwt sc
-                   WHERE sc.awb = NULLIF(BTRIM(k.smu_number), '')), 0)::numeric AS "chwt"
-      FROM barhal_koli k
+        k.smu_number             AS "smuNumber",
+        k.airlines               AS "airlines",
+        k.flight_no              AS "flightNo",
+        k.std                    AS "std",
+        k.sta                    AS "sta",
+        k.length_cm::numeric     AS "lengthCm",
+        k.width_cm::numeric      AS "widthCm",
+        k.height_cm::numeric     AS "heightCm",
+        k.volume::numeric        AS "volume",
+        k.batang_kayu            AS "batangKayu"
+      FROM barhal_koli_to t
+      JOIN barhal_koli k ON k.id = t.koli_id
+      -- LEFT JOIN, bukan inner: barhal_koli_to adalah snapshot, jadi TO yang hilang dari sheet
+      -- tetap harus tampil dengan kolom Koli utuh alih-alih lenyap diam-diam dari export.
+      LEFT JOIN to_latest c ON c.to_number = t.to_number
       ${where}
-      ORDER BY k.koli_date DESC, k.koli_number DESC
+      ORDER BY c.shipment_date DESC NULLS LAST, k.koli_number, t.to_number
       `,
       params,
     )
