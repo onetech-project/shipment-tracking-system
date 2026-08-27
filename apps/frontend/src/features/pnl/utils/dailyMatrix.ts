@@ -73,7 +73,7 @@ export function toRevenueTable(matrix: PnlDailyMatrix): MatrixTableModel {
     columns: matrix.columns,
     dates: matrix.rows.map((r) => r.date),
     values: matrix.rows.map((r) => r.cells.map((c) => (c ? c.revenue : null))),
-    warnings: cellWarnings(matrix).map((row) => row.map(revenueWarning)),
+    warnings: cellWarnings(matrix).map((row) => row.map((w) => revenueWarning(w))),
     footerRows: [
       { label: 'Total', values: matrix.footer.map((f) => f.totalRevenue), format: 'number', warnings: footerWarnings },
       {
