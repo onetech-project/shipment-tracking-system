@@ -62,3 +62,48 @@ describe('labelsForRoutes', () => {
     expect(labelsForRoutes([{ origin: 'Jabo', dest: 'Manokwari' }])).toEqual(['Jabo → Manokwari'])
   })
 })
+
+describe('buildRouteLabelIndex with a display label', () => {
+  // The Daily Report's route filter sits beside a matrix whose headers name origins by airport
+  // code, so its dropdown must speak the same form or a ticked route will not match any header.
+  const stations = [
+    { origin: 'Jabo', originLabel: 'CGK', dest: 'Denpasar' },
+    { origin: 'Surabaya', originLabel: 'SUB', dest: 'Tanjung Pinang' },
+  ]
+
+  it('labels by airport code and maps back to the raw pair', () => {
+    const { labels, byLabel } = buildRouteLabelIndex(stations, displayRouteLabel)
+    expect(labels).toEqual(['CGK → Denpasar', 'SUB → Tanjung Pinang'])
+    expect(byLabel.get('CGK → Denpasar')).toEqual({ origin: 'Jabo', dest: 'Denpasar' })
+  })
+
+  it('collapses two origins that share a display label onto one entry per destination', () => {
+    // Not a case the data produces today, but the dedupe already keys on the label, so pinning it
+    // makes the consequence explicit rather than surprising.
+    const { labels } = buildRouteLabelIndex(
+      [
+        { origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' },
+        { origin: 'Jakarta', originLabel: 'CGK', dest: 'Aceh' },
+      ],
+      displayRouteLabel,
+    )
+    expect(labels).toEqual(['CGK → Aceh'])
+  })
+})
+
+describe('labelsForRoutes with a display label', () => {
+  const index = buildRouteLabelIndex(
+    [{ origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' }],
+    displayRouteLabel,
+  )
+
+  it('ticks a selected pair using the index it was built with', () => {
+    expect(labelsForRoutes([{ origin: 'Jabo', dest: 'Aceh' }], index)).toEqual(['CGK → Aceh'])
+  })
+
+  it('falls back to the raw form for a pair the index does not know', () => {
+    // Same rule as the no-index form: a pair that cannot be labelled is still shown, because
+    // dropping it would silently widen the filter.
+    expect(labelsForRoutes([{ origin: 'Medan', dest: 'Batam' }], index)).toEqual(['Medan → Batam'])
+  })
+})

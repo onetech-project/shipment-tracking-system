@@ -11,6 +11,7 @@ import {
   PnlVendorPick,
   PnlFilter,
   PnlRouteFilter,
+  PnlRoutePair,
   PnlDailyMatrixColumn,
   DateBasis,
   DEFAULT_DATE_BASIS,
@@ -93,6 +94,11 @@ function PnlPageContent() {
   // tab is rendered by a ternary below, so leaving it unmounts the component outright. Deliberately
   // NOT cleared by the period effect below — a pick carries no date, unlike drilldownRoute.
   const [routePicks, setRoutePicks] = useState<PnlColumnPick[]>([])
+
+  // Lifted out of PnlDailyMatrixView for the same reason routePicks is: the tab is rendered by a
+  // ternary below, so leaving it unmounts the component outright. Deliberately NOT cleared by the
+  // period effect — a route carries no date, unlike drilldownRoute.
+  const [dailyRoutes, setDailyRoutes] = useState<PnlRoutePair[]>([])
 
   // Lifted out of PnlVendorComparisonView for the same reason routePicks is: the tab is rendered
   // by a ternary below, so leaving it unmounts the component outright. Deliberately NOT cleared by
@@ -315,7 +321,14 @@ function PnlPageContent() {
       ) : view === 'actual' ? (
         <SettlementView filter={filter} />
       ) : view === 'daily' ? (
-        filter && <PnlDailyMatrixView filter={filter} onCellClick={handleCellClick} />
+        filter && (
+          <PnlDailyMatrixView
+            filter={filter}
+            picks={dailyRoutes}
+            onPicksChange={setDailyRoutes}
+            onCellClick={handleCellClick}
+          />
+        )
       ) : view === 'routes' ? (
         filter &&
         hasPermission('read.route_group') && (

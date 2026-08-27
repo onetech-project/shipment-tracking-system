@@ -1,5 +1,12 @@
 import { PnlDailyMatrix } from '../hooks/usePnl'
-import { formatDayLabel, groupOrigins, routeFromCell, toMarginTable, toRevenueTable } from './dailyMatrix'
+import {
+  formatDayLabel,
+  groupOrigins,
+  routeFromCell,
+  selectMatrixColumns,
+  toMarginTable,
+  toRevenueTable,
+} from './dailyMatrix'
 
 const matrix: PnlDailyMatrix = {
   columns: [
@@ -215,5 +222,80 @@ describe('routeFromCell', () => {
       dateFrom: '2026-05-20',
       dateTo: '2026-05-20',
     })
+  })
+})
+
+describe('selectMatrixColumns', () => {
+  const jaboAceh = { origin: 'Jabo', dest: 'Aceh' }
+  const subPontianak = { origin: 'Surabaya', dest: 'Pontianak' }
+
+  it('returns every column when nothing is picked, so an untouched tab shows the whole report', () => {
+    expect(selectMatrixColumns(matrix, [])).toBe(matrix)
+  })
+
+  it('drops an unpicked column together with its cells and footer at the same index', () => {
+    const picked = selectMatrixColumns(matrix, [subPontianak])
+
+    expect(picked.columns).toEqual([{ origin: 'Surabaya', originLabel: 'SUB', dest: 'Pontianak' }])
+    expect(picked.rows[0].cells).toEqual([matrix.rows[0].cells[2]])
+    expect(picked.footer).toEqual([matrix.footer[2]])
+    expect(picked.periodDays).toBe(matrix.periodDays)
+    expect(picked.rows.map((r) => r.date)).toEqual(['2026-07-01', '2026-07-02'])
+  })
+
+  it('keeps the matrix column order, not the pick order, so origin header spans stay whole', () => {
+    // groupOrigins merges CONSECUTIVE same-origin columns; ordering by clicks would fracture them.
+    const picked = selectMatrixColumns(matrix, [subPontianak, jaboAceh])
+    expect(picked.columns.map((c) => c.dest)).toEqual(['Aceh', 'Pontianak'])
+  })
+
+  it('renders a picked route with no data as an empty column rather than dropping it', () => {
+    // What the user ticked must stay visible: an absent column reads as a broken filter, while an
+    // all-em-dash column reads as the real answer — nothing flew this route in this period.
+    const picked = selectMatrixColumns(matrix, [{ origin: 'Jabo', dest: 'Batam' }])
+
+    expect(picked.columns).toEqual([{ origin: 'Jabo', originLabel: 'CGK', dest: 'Batam' }])
+    expect(picked.rows.map((r) => r.cells)).toEqual([[null], [null]])
+    expect(picked.footer).toEqual([
+      {
+        totalRevenue: 0, totalMargin: 0, totalWeight: 0,
+        avgRevenuePerDay: 0, avgMarginPerDay: 0,
+        marginPct: null, spacePerKg: null, incompleteTos: 0, issues: [],
+      },
+    ])
+  })
+
+  it('places an empty column inside its origin block so the header span does not fracture', () => {
+    const picked = selectMatrixColumns(matrix, [
+      jaboAceh,
+      subPontianak,
+      { origin: 'Jabo', dest: 'Batam' },
+    ])
+    expect(picked.columns.map((c) => `${c.originLabel}-${c.dest}`)).toEqual([
+      'CGK-Aceh',
+      'CGK-Batam',
+      'SUB-Pontianak',
+    ])
+    expect(groupOrigins(picked.columns)).toEqual([
+      { label: 'CGK', span: 2 },
+      { label: 'SUB', span: 1 },
+    ])
+  })
+
+  it('appends an empty column whose origin the matrix does not know at all', () => {
+    const picked = selectMatrixColumns(matrix, [{ origin: 'Medan', dest: 'Batam' }, jaboAceh])
+    expect(picked.columns.map((c) => `${c.originLabel}-${c.dest}`)).toEqual(['CGK-Aceh', 'Medan-Batam'])
+  })
+
+  it('still returns columns when no pick matches, rather than a table with none', () => {
+    const picked = selectMatrixColumns(matrix, [{ origin: 'Medan', dest: 'Batam' }])
+    expect(picked.columns).toHaveLength(1)
+    expect(picked.rows.map((r) => r.cells)).toEqual([[null], [null]])
+  })
+
+  it('leaves the source matrix untouched', () => {
+    const before = JSON.stringify(matrix)
+    selectMatrixColumns(matrix, [subPontianak])
+    expect(JSON.stringify(matrix)).toBe(before)
   })
 })
