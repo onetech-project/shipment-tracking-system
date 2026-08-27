@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import { COST_COMPONENTS, ComparisonColumn, ComparisonTableModel } from '../utils/comparison'
 import { num } from '../utils/format'
 import { CellWarning, hasWarning, warningTooltip, WARNING_TINT } from '../utils/cellWarning'
+import { FROZEN_CELL_SUBTLE, frozenCell } from '../utils/frozenColumn'
 
 interface PnlComparisonTableProps<TColumn extends ComparisonColumn> {
   model: ComparisonTableModel<TColumn>
@@ -105,7 +106,11 @@ export function PnlComparisonTable<TColumn extends ComparisonColumn>({
         data-testid={`detail-${key}-${componentKey}`}
         className={striped ? 'bg-muted/30' : 'bg-muted/10'}
       >
-        <td className="sticky left-0 z-10 whitespace-nowrap border-b border-r bg-card px-3 py-1 pl-6 text-xs text-muted-foreground">
+        <td
+          className={`sticky left-0 z-10 whitespace-nowrap border-b border-r px-3 py-1 pl-6 text-xs text-muted-foreground ${
+            striped ? frozenCell(true) : FROZEN_CELL_SUBTLE
+          }`}
+        >
           {label}
         </td>
         {Array.from({ length: columnCount }, (_, i) => (
@@ -199,7 +204,7 @@ export function PnlComparisonTable<TColumn extends ComparisonColumn>({
                       label={row.rowLabel}
                       open={openRows.has(row.rowKey)}
                       onToggle={() => toggle(row.rowKey)}
-                      className={striped ? 'bg-muted/30' : 'bg-card'}
+                      className={frozenCell(striped)}
                     />
                     {FIELDS.flatMap((field) =>
                       row[field].map((value, i) => {

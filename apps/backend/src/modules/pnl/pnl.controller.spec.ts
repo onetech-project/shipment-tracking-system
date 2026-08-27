@@ -8,6 +8,7 @@ import { ALLOW_ALL_GUARD } from '../../test/test-helpers'
 const mockService = {
   getCycles: jest.fn(),
   getStations: jest.fn(),
+  getRoutes: jest.fn(),
   getSummary: jest.fn(),
   getTrend: jest.fn(),
   getAwbDrilldown: jest.fn(),
@@ -42,6 +43,15 @@ describe('PnlController', () => {
       { origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' },
     ])
     expect(await controller.getStations()).toEqual([
+      { origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' },
+    ])
+  })
+
+  it('getRoutes delegates to service', async () => {
+    mockService.getRoutes.mockResolvedValueOnce([
+      { origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' },
+    ])
+    expect(await controller.getRoutes()).toEqual([
       { origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' },
     ])
   })

@@ -1,5 +1,12 @@
 import { PnlDailyMatrix } from '../hooks/usePnl'
-import { formatDayLabel, groupOrigins, routeFromCell, toMarginTable, toRevenueTable } from './dailyMatrix'
+import {
+  formatDayLabel,
+  groupOrigins,
+  routeFromCell,
+  selectMatrixColumns,
+  toMarginTable,
+  toRevenueTable,
+} from './dailyMatrix'
 
 const matrix: PnlDailyMatrix = {
   columns: [
@@ -11,9 +18,12 @@ const matrix: PnlDailyMatrix = {
     {
       date: '2026-07-01',
       cells: [
-        { revenue: 1000, margin: 100, weight: 10, incompleteTos: 0, issues: [] },
+        { revenue: 1000, margin: 100, weight: 10, incompleteTos: 0, issues: [{ issue: 'revenue_missing', awbs: 1 }] },
         null,
-        { revenue: 0, margin: -50, weight: 5, incompleteTos: 2, issues: [{ issue: 'no_booking', awbs: 2 }] },
+        {
+          revenue: 0, margin: -50, weight: 5, incompleteTos: 2,
+          issues: [{ issue: 'no_booking', awbs: 2 }, { issue: 'revenue_missing', awbs: 1 }],
+        },
       ],
     },
     { date: '2026-07-02', cells: [null, null, null] },
@@ -22,7 +32,8 @@ const matrix: PnlDailyMatrix = {
     {
       totalRevenue: 1000, totalMargin: 100, totalWeight: 10,
       avgRevenuePerDay: 500, avgMarginPerDay: 50,
-      marginPct: 10, spacePerKg: 10, incompleteTos: 0, issues: [],
+      marginPct: 10, spacePerKg: 10, incompleteTos: 0,
+      issues: [{ issue: 'revenue_missing', awbs: 1 }],
     },
     {
       totalRevenue: 0, totalMargin: 0, totalWeight: 0,
@@ -32,7 +43,8 @@ const matrix: PnlDailyMatrix = {
     {
       totalRevenue: 0, totalMargin: -50, totalWeight: 5,
       avgRevenuePerDay: 0, avgMarginPerDay: -25,
-      marginPct: null, spacePerKg: -10, incompleteTos: 2, issues: [{ issue: 'no_booking', awbs: 3 }],
+      marginPct: null, spacePerKg: -10, incompleteTos: 2,
+      issues: [{ issue: 'no_booking', awbs: 3 }, { issue: 'revenue_missing', awbs: 1 }],
     },
   ],
   periodDays: 2,
@@ -80,14 +92,36 @@ describe('toRevenueTable', () => {
     expect(model.footerRows.every((r) => r.format === 'number')).toBe(true)
   })
 
-  it('warns on the revenue table too, since a missing revenue row understates it', () => {
+  it('warns only on revenue issues — cost issues and incomplete TOs cannot move SUM(revenue)', () => {
     const model = toRevenueTable(matrix)
+    // Column 3 carries both kinds. Only the revenue half survives, and its 2 cost-less TOs go.
     expect(model.warnings[0][2]).toEqual({
-      issues: [{ issue: 'no_booking', awbs: 2 }],
-      incompleteTos: 2,
+      issues: [{ issue: 'revenue_missing', awbs: 1 }],
+      incompleteTos: 0,
+    })
+    expect(model.warnings[0][0]).toEqual({
+      issues: [{ issue: 'revenue_missing', awbs: 1 }],
+      incompleteTos: 0,
     })
     expect(model.warnings[0][1]).toEqual({ issues: [], incompleteTos: 0 })
     expect(model.highlightNegative).toBe(false)
+  })
+
+  it('leaves a cost-only cell clean, so yellow here always means revenue', () => {
+    const costOnly: PnlDailyMatrix = {
+      ...matrix,
+      rows: [
+        {
+          date: '2026-07-01',
+          cells: [
+            { revenue: 500, margin: 10, weight: 1, incompleteTos: 3, issues: [{ issue: 'smu_rate_missing', awbs: 2 }] },
+            null,
+            null,
+          ],
+        },
+      ],
+    }
+    expect(toRevenueTable(costOnly).warnings[0][0]).toEqual({ issues: [], incompleteTos: 0 })
   })
 
   it('gives an absent cell a clean warning rather than undefined', () => {
@@ -99,9 +133,9 @@ describe('toRevenueTable', () => {
     ])
   })
 
-  it('warns both footer rows, since Avg / Day divides the same understated totalRevenue', () => {
+  it('scopes both footer rows to revenue too, since Avg / Day divides the same total', () => {
     const [total, avg] = toRevenueTable(matrix).footerRows
-    const expectedWarning = { issues: [{ issue: 'no_booking', awbs: 3 }], incompleteTos: 2 }
+    const expectedWarning = { issues: [{ issue: 'revenue_missing', awbs: 1 }], incompleteTos: 0 }
     expect(total.warnings?.[2]).toEqual(expectedWarning)
     expect(avg.warnings?.[2]).toEqual(expectedWarning)
   })
@@ -142,14 +176,14 @@ describe('toMarginTable', () => {
     ])
   })
 
-  it('carries the same warnings onto the margin table and its Total footer row', () => {
+  it('keeps every warning on the margin table — margin is spoiled by revenue AND cost alike', () => {
     const model = toMarginTable(matrix)
     expect(model.warnings[0][2]).toEqual({
-      issues: [{ issue: 'no_booking', awbs: 2 }],
+      issues: [{ issue: 'no_booking', awbs: 2 }, { issue: 'revenue_missing', awbs: 1 }],
       incompleteTos: 2,
     })
     expect(model.footerRows[0].warnings?.[2]).toEqual({
-      issues: [{ issue: 'no_booking', awbs: 3 }],
+      issues: [{ issue: 'no_booking', awbs: 3 }, { issue: 'revenue_missing', awbs: 1 }],
       incompleteTos: 2,
     })
     expect(model.highlightNegative).toBe(true)
@@ -157,7 +191,10 @@ describe('toMarginTable', () => {
 
   it('warns every footer row derived from totalMargin, but not gross weight', () => {
     const [total, avg, pct, tonase, space] = toMarginTable(matrix).footerRows
-    const expectedWarning = { issues: [{ issue: 'no_booking', awbs: 3 }], incompleteTos: 2 }
+    const expectedWarning = {
+      issues: [{ issue: 'no_booking', awbs: 3 }, { issue: 'revenue_missing', awbs: 1 }],
+      incompleteTos: 2,
+    }
     // Avg / Day, % Margin and Space per Kg all divide totalMargin, so they inherit its warning.
     expect(total.warnings?.[2]).toEqual(expectedWarning)
     expect(avg.warnings?.[2]).toEqual(expectedWarning)
@@ -185,5 +222,80 @@ describe('routeFromCell', () => {
       dateFrom: '2026-05-20',
       dateTo: '2026-05-20',
     })
+  })
+})
+
+describe('selectMatrixColumns', () => {
+  const jaboAceh = { origin: 'Jabo', dest: 'Aceh' }
+  const subPontianak = { origin: 'Surabaya', dest: 'Pontianak' }
+
+  it('returns every column when nothing is picked, so an untouched tab shows the whole report', () => {
+    expect(selectMatrixColumns(matrix, [])).toBe(matrix)
+  })
+
+  it('drops an unpicked column together with its cells and footer at the same index', () => {
+    const picked = selectMatrixColumns(matrix, [subPontianak])
+
+    expect(picked.columns).toEqual([{ origin: 'Surabaya', originLabel: 'SUB', dest: 'Pontianak' }])
+    expect(picked.rows[0].cells).toEqual([matrix.rows[0].cells[2]])
+    expect(picked.footer).toEqual([matrix.footer[2]])
+    expect(picked.periodDays).toBe(matrix.periodDays)
+    expect(picked.rows.map((r) => r.date)).toEqual(['2026-07-01', '2026-07-02'])
+  })
+
+  it('keeps the matrix column order, not the pick order, so origin header spans stay whole', () => {
+    // groupOrigins merges CONSECUTIVE same-origin columns; ordering by clicks would fracture them.
+    const picked = selectMatrixColumns(matrix, [subPontianak, jaboAceh])
+    expect(picked.columns.map((c) => c.dest)).toEqual(['Aceh', 'Pontianak'])
+  })
+
+  it('renders a picked route with no data as an empty column rather than dropping it', () => {
+    // What the user ticked must stay visible: an absent column reads as a broken filter, while an
+    // all-em-dash column reads as the real answer — nothing flew this route in this period.
+    const picked = selectMatrixColumns(matrix, [{ origin: 'Jabo', dest: 'Batam' }])
+
+    expect(picked.columns).toEqual([{ origin: 'Jabo', originLabel: 'CGK', dest: 'Batam' }])
+    expect(picked.rows.map((r) => r.cells)).toEqual([[null], [null]])
+    expect(picked.footer).toEqual([
+      {
+        totalRevenue: 0, totalMargin: 0, totalWeight: 0,
+        avgRevenuePerDay: 0, avgMarginPerDay: 0,
+        marginPct: null, spacePerKg: null, incompleteTos: 0, issues: [],
+      },
+    ])
+  })
+
+  it('places an empty column inside its origin block so the header span does not fracture', () => {
+    const picked = selectMatrixColumns(matrix, [
+      jaboAceh,
+      subPontianak,
+      { origin: 'Jabo', dest: 'Batam' },
+    ])
+    expect(picked.columns.map((c) => `${c.originLabel}-${c.dest}`)).toEqual([
+      'CGK-Aceh',
+      'CGK-Batam',
+      'SUB-Pontianak',
+    ])
+    expect(groupOrigins(picked.columns)).toEqual([
+      { label: 'CGK', span: 2 },
+      { label: 'SUB', span: 1 },
+    ])
+  })
+
+  it('appends an empty column whose origin the matrix does not know at all', () => {
+    const picked = selectMatrixColumns(matrix, [{ origin: 'Medan', dest: 'Batam' }, jaboAceh])
+    expect(picked.columns.map((c) => `${c.originLabel}-${c.dest}`)).toEqual(['CGK-Aceh', 'Medan-Batam'])
+  })
+
+  it('still returns columns when no pick matches, rather than a table with none', () => {
+    const picked = selectMatrixColumns(matrix, [{ origin: 'Medan', dest: 'Batam' }])
+    expect(picked.columns).toHaveLength(1)
+    expect(picked.rows.map((r) => r.cells)).toEqual([[null], [null]])
+  })
+
+  it('leaves the source matrix untouched', () => {
+    const before = JSON.stringify(matrix)
+    selectMatrixColumns(matrix, [subPontianak])
+    expect(JSON.stringify(matrix)).toBe(before)
   })
 })

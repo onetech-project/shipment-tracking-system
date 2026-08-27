@@ -24,6 +24,16 @@ export class PnlController {
     return this.pnlService.getStations()
   }
 
+  // Selectable routes for the Daily Report's route filter. Distinct from 'stations', which reports
+  // the pairs v_pnl_to actually carries: this reads the DC-pair master, so a route with no
+  // shipments in the period is still offered. Served from here rather than from
+  // /route-groups/available-routes so it inherits this controller's READ_PNL — that endpoint is
+  // guarded by READ_ROUTE_GROUP, which the Daily Report tab does not require.
+  @Get('routes')
+  getRoutes() {
+    return this.pnlService.getRoutes()
+  }
+
   @Get('summary')
   getSummary(
     @Query('cycle') cycle?: string,

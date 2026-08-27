@@ -604,6 +604,42 @@ describe('PnlService', () => {
     })
   })
 
+  describe('getRoutes', () => {
+    it('reads the DC-pair master, not the P&L view', async () => {
+      // The Daily Report's route filter must be able to offer a route before its first shipment
+      // ever lands, so it reads the master rather than the pairs v_pnl_to happens to carry.
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getRoutes()
+      const [sql, params] = dataSource.query.mock.calls[0]
+      expect(sql).toContain('air_shipments_data')
+      expect(sql).toContain("service = 'Air'")
+      expect(sql).not.toContain('v_pnl_to')
+      expect(params).toBeUndefined()
+    })
+
+    it('orders by origin then destination so contiguous rows share an origin', async () => {
+      // Same reason getStations does: selectMatrixColumns inserts a picked-but-empty route next to
+      // its origin's other columns, and groupOrigins merges only CONSECUTIVE same-origin columns.
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getRoutes()
+      expect(dataSource.query.mock.calls[0][0]).toContain('ORDER BY 1, 2')
+    })
+
+    it('labels known origins and falls back to the raw value for unknown ones', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { origin: 'Jabo', dest: 'Aceh' },
+        { origin: 'Medan', dest: 'Batam' },
+      ])
+
+      const result = await service.getRoutes()
+
+      expect(result).toEqual([
+        { origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' },
+        { origin: 'Medan', originLabel: 'Medan', dest: 'Batam' },
+      ])
+    })
+  })
+
   describe('getDailyMatrix', () => {
     // Two Jabo destinations and one Surabaya destination; facts cover only some (date, route) pairs.
     const columnRows = [

@@ -523,6 +523,17 @@ export function usePnlProfitByRoute(filter: PnlFilter | undefined) {
   })
 }
 
+// Selectable routes for the Daily Report's route filter, from the DC-pair master. Served by /pnl
+// rather than /route-groups/available-routes so it needs only read.pnl — the permission the Daily
+// Report tab itself requires. The master barely changes, so it is cached far longer than the report.
+export function usePnlRoutes() {
+  return useQuery<PnlStation[]>({
+    queryKey: ['pnl', 'routes'],
+    queryFn: () => apiClient.get('/pnl/routes').then((r) => r.data),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
 export function usePnlDailyMatrix(filter: PnlFilter | undefined) {
   return useQuery<PnlDailyMatrix>({
     queryKey: ['pnl', 'daily-matrix', filter],

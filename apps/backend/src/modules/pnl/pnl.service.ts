@@ -348,6 +348,34 @@ export class PnlService {
     }))
   }
 
+  // Selectable routes for the Daily Report's route filter. Reads the DC-pair master rather than
+  // v_pnl_to, so a route can be picked before its first shipment ever lands — a picked route with
+  // no shipments in the period renders as an all-em-dash column, which is a real answer.
+  //
+  // RouteGroupsService.getAvailableRoutes runs the same master query, but its endpoint is guarded
+  // by READ_ROUTE_GROUP while the Daily Report tab is not, so a user allowed to see the tab but
+  // not route groups would get a 403 and an empty filter. Duplicating a stable SELECT is cheaper
+  // than either having one module import the other's service or inventing a multi-permission
+  // guard. What is deliberately NOT duplicated is that method's hasData join: marking never-flown
+  // routes only serves the route picker, and here the em-dash column already says it.
+  async getRoutes(): Promise<PnlStation[]> {
+    const rows = await this.dataSource.query(`
+      SELECT DISTINCT
+        NULLIF(BTRIM(extra_fields->>'origin_station'), '')      AS origin,
+        NULLIF(BTRIM(extra_fields->>'destination_station'), '') AS dest
+      FROM air_shipments_data
+      WHERE service = 'Air'
+        AND NULLIF(BTRIM(extra_fields->>'origin_station'), '')      IS NOT NULL
+        AND NULLIF(BTRIM(extra_fields->>'destination_station'), '') IS NOT NULL
+      ORDER BY 1, 2
+    `)
+    return (rows as Record<string, string>[]).map((r) => ({
+      origin: r.origin,
+      originLabel: originLabel(r.origin),
+      dest: r.dest,
+    }))
+  }
+
   async getSummary(
     cyclePeriod?: string,
     startDate?: string,
