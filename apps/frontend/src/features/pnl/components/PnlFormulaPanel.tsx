@@ -98,12 +98,15 @@ export function PnlFormulaPanel() {
 
           {/* ── REVENUE ── */}
           <Section title="2. Estimated Revenue (per TO)">
-            <p className="mb-2 text-muted-foreground">Source: <Sheet name="Compile Air CGK" /></p>
+            <p className="mb-2 text-muted-foreground">
+              Freight rate source: <Col name="air_shipments_data" /> (the DC-pair master, matched by route
+              the same way as station resolution below). Other fields from <Sheet name="Compile Air CGK" />.
+            </p>
             <table className="w-full">
               <tbody className="divide-y divide-border/40">
                 <tr>
                   <td className="py-1.5 pr-4 w-40">Freight revenue</td>
-                  <td className="py-1.5"><Col name="amount_revenue" /></td>
+                  <td className="py-1.5 font-mono">gross_weight × rate_spx</td>
                 </tr>
                 <tr>
                   <td className="py-1.5 pr-4">+ Packing surcharge</td>
@@ -111,20 +114,22 @@ export function PnlFormulaPanel() {
                 </tr>
                 <tr className="font-medium">
                   <td className="py-1.5 pr-4">= Revenue per TO</td>
-                  <td className="py-1.5 font-mono">amount_revenue + packing_kayu</td>
+                  <td className="py-1.5 font-mono">(gross_weight × rate_spx) + packing_kayu</td>
                 </tr>
                 <tr>
-                  <td className="py-1.5 pr-4">Discount (1.5%)</td>
-                  <td className="py-1.5">
-                    <Col name="amount_revenue" /> × 1.5% (freight revenue only)
+                  <td className="py-1.5 pr-4">Discount</td>
+                  <td className="py-1.5 font-mono">
+                    gross_weight × (<Col name="pph_2" /> + <Col name="disc_15" />)
                   </td>
                 </tr>
               </tbody>
             </table>
             <p className="mt-2 text-muted-foreground">
-              The discount is tracked as its own figure, <strong>not</strong> deducted from revenue. Est. Revenue
-              on the KPI cards is the gross figure above; the discount is subtracted once when gross profit is
-              computed (section 5).
+              <Col name="rate_spx" />, <Col name="pph_2" /> and <Col name="disc_15" /> come from{' '}
+              <Col name="air_shipments_data" /> for the TO&apos;s route. The discount is tracked as its own
+              figure, <strong>not</strong> deducted from revenue. Est. Revenue on the KPI cards is the gross
+              figure above; the discount is subtracted once when gross profit is computed (section 5) — net
+              revenue works out to gross_weight × (rate_spx − pph_2 − disc_15) + packing_kayu.
             </p>
           </Section>
 
@@ -138,6 +143,24 @@ export function PnlFormulaPanel() {
               <strong>chargeable weight</strong> (<Col name="chwt_airlines" />), falling back to gross weight when
               chargeable weight is missing.
             </p>
+
+            <div className="mb-3 rounded border border-sky-200 bg-sky-50 px-3 py-2 text-sky-800 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-200">
+              <p className="font-medium mb-0.5">
+                Route fallback — cost without waiting for the reservation
+              </p>
+              <p className="text-sky-700 dark:text-sky-300">
+                When an AWB has no booking row (or its vendor/airline pair has no{' '}
+                <Sheet name="SMU" /> rate), cost is estimated from the route instead. The TO&apos;s origin
+                and destination DC resolve through <Col name="air_shipments_data" /> to{' '}
+                <Col name="3lc_origin" /> / <Col name="3lc_destination" />, and every cost below is
+                computed on those airport codes. Such rows are marked{' '}
+                <span className="rounded bg-sky-100 px-1 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-900/50 dark:text-sky-300">
+                  Estimated
+                </span>{' '}
+                in the AWB table and switch to real booking figures as soon as the reservation exists.
+                Estimates cost on <strong>gross weight</strong> — chargeable weight lives on the booking.
+              </p>
+            </div>
 
             <div className="space-y-3">
               <div className="rounded border p-3 space-y-1.5">
@@ -184,7 +207,13 @@ export function PnlFormulaPanel() {
                   <span className="font-mono">w</span> = AWB chargeable weight. PPN is charged on freight + all
                   surcharges + admin; komisi (commission rebate) is deducted on the freight portion only.{' '}
                   <Col name="ppn" /> and <Col name="komisi" /> are percentages (11 = 11%, 2.94 = 2.94%).
-                  NULL when no matching row in <Sheet name="SMU" />.
+                </p>
+                <p className="text-sky-700 dark:text-sky-300">
+                  <strong>Fallback:</strong> with no booking, the same formula runs on the{' '}
+                  <Sheet name="SMU" /> row for the 3LC route with the <strong>highest all-in cost per kg</strong>{' '}
+                  — ranked on the full expression above per kg, not on <Col name="freight_rate" /> alone, so the
+                  estimate is the conservative one. That row&apos;s <Col name="sg_out" /> also drives SG Outgoing
+                  below. NULL only when the route has no <Sheet name="SMU" /> row at all.
                 </p>
               </div>
 
@@ -198,9 +227,14 @@ export function PnlFormulaPanel() {
                 </p>
                 <p className="text-muted-foreground">
                   PPN applies to amount + admin. <strong>0 for Surabaya origin</strong> (no RA at SUB).
-                  0 when <Col name="ra" /> is blank or starts with &quot;include&quot;.
-                  NULL when no matching row in <Sheet name="RA" />.
+                  0 when <Col name="ra" /> starts with &quot;include&quot;.
+                  NULL when the booking names an RA with no matching row in <Sheet name="RA" />.
                   <Col name="ppn" /> is stored as a percentage (e.g. 11 = 11% VAT).
+                </p>
+                <p className="text-sky-700 dark:text-sky-300">
+                  <strong>Fallback:</strong> when there is no booking, or the booking&apos;s{' '}
+                  <Col name="ra" /> is blank, the estimate uses the <strong>highest rate</strong> in{' '}
+                  <Sheet name="RA" /> (ignoring &quot;include&quot; rows).
                 </p>
               </div>
 
@@ -219,6 +253,11 @@ export function PnlFormulaPanel() {
                   NULL when no matching row in <Sheet name="SG Outgoing" />.
                   <Col name="ppn" /> is stored as a percentage.
                 </p>
+                <p className="text-sky-700 dark:text-sky-300">
+                  <strong>Fallback:</strong> same join and formula, keyed off the{' '}
+                  <Col name="sg_out" /> of the SMU row the route fallback picked. An unmatched name
+                  costs 0 rather than NULL, so a missing SG Outgoing entry cannot nullify the whole estimate.
+                </p>
               </div>
 
               <div className="rounded border p-3 space-y-1.5">
@@ -236,6 +275,10 @@ export function PnlFormulaPanel() {
                   that is blank does it fall back to 5,000 for CGK/Jabo and 0 for Surabaya. Shown as NULL when the
                   route has no matching row in <Sheet name="SG Incoming" />, but Total Cost treats a missing route
                   as 0 so it is not nullified.
+                </p>
+                <p className="text-sky-700 dark:text-sky-300">
+                  <strong>Fallback:</strong> unchanged — this cost is keyed on the resolved route, so it no
+                  longer waits on a booking. Without one it uses gross weight in place of chargeable weight.
                 </p>
               </div>
 

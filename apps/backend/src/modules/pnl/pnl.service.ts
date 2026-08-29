@@ -55,6 +55,8 @@ export interface PnlAwbRow {
   grossProfit: number | null
   grossMarginPct: number | null
   hasNullCost: boolean
+  // TRUE when any TO under this AWB was costed by the route-level fallback rather than a booking.
+  isCostEstimated: boolean
   issue: string | null
 }
 
@@ -82,6 +84,9 @@ export interface PnlToRow {
   grossProfit: number | null
   marginPct: number | null
   issue: string | null
+  // TRUE when the cost came from the route-level fallback (no reservation yet, or its vendor/
+  // airline pair has no SMU rate) rather than the TO's own booking — the figures are an estimate.
+  isCostEstimated: boolean
 }
 
 export interface PnlDataQualityItem {
@@ -509,6 +514,7 @@ export class PnlService {
           MAX(cost_total_awb) + COALESCE(SUM(cost_sg_in_to), 0) AS total_cost,
           COALESCE(SUM(gross_profit_to), 0)       AS gross_profit,
           (MAX(cost_total_awb) IS NULL OR MAX(cost_sg_in_to) IS NULL) AS has_null_cost,
+          BOOL_OR(is_cost_estimated)              AS is_cost_estimated,
           MIN(CASE issue
                 WHEN 'no_booking' THEN 1 WHEN 'smu_rate_missing' THEN 2
                 WHEN 'ra_rate_missing' THEN 3 WHEN 'sgout_name_missing' THEN 4
@@ -559,6 +565,7 @@ export class PnlService {
         grossProfit: gp,
         grossMarginPct: rev > 0 ? (gp / rev) * 100 : null,
         hasNullCost: r.has_null_cost === true || r.has_null_cost === 't',
+        isCostEstimated: r.is_cost_estimated === true || r.is_cost_estimated === 't',
         issue: r.issue_rank != null ? (ISSUE_BY_RANK[Number(r.issue_rank)] ?? null) : null,
       }
     })
@@ -639,7 +646,8 @@ export class PnlService {
              THEN (gross_profit_to / revenue_total) * 100
              ELSE NULL
         END AS margin_pct,
-        issue
+        issue,
+        is_cost_estimated
       FROM v_pnl_to
       WHERE awb = $1 AND ${where.replace(/\$(\d+)/g, (_, n) => `$${Number(n) + 1}`)}
       ORDER BY to_number
@@ -659,6 +667,7 @@ export class PnlService {
       grossProfit: r.gross_profit_to != null ? Number(r.gross_profit_to) : null,
       marginPct: r.margin_pct != null ? Number(r.margin_pct) : null,
       issue: (r.issue as string | null) ?? null,
+      isCostEstimated: r.is_cost_estimated === true,
     }))
   }
 

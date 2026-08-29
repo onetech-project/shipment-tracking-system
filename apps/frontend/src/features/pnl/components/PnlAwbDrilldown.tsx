@@ -59,7 +59,17 @@ function ToSubTable({ awb, filter }: ToSubTableProps) {
               <tbody>
                 {data.map((to: PnlToRow, idx: number) => (
                   <tr key={to.toNumber} className={idx % 2 === 0 ? '' : 'bg-muted/30'}>
-                    <td className="py-1 pr-3 font-mono">{to.toNumber}</td>
+                    <td className="py-1 pr-3 font-mono">
+                      {to.toNumber}
+                      {to.isCostEstimated && (
+                        <span
+                          className="ml-1.5 rounded bg-sky-100 px-1 py-0.5 text-[9px] font-normal text-sky-700 dark:bg-sky-900/50 dark:text-sky-300"
+                          title="No reservation yet — cost estimated from the route's dearest SMU and RA rates"
+                        >
+                          Est
+                        </span>
+                      )}
+                    </td>
                     <td className="py-1 pr-3 text-right">{num(to.grossWeight)}</td>
                     <td className="py-1 pr-3 text-right">{to.chwt != null ? num(to.chwt) : '—'}</td>
                     <td className="py-1 pr-3 text-right">{fmt.format(to.revenue)}</td>
@@ -303,6 +313,14 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
                           title="Fix in source Google Sheet, then re-sync"
                         >
                           {issueLabel(row.issue)}
+                        </span>
+                      )}
+                      {row.isCostEstimated && (
+                        <span
+                          className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-normal text-sky-700 dark:bg-sky-900/50 dark:text-sky-300"
+                          title="No reservation yet — cost estimated from the route's dearest SMU and RA rates. Replaced by actuals once the booking is entered."
+                        >
+                          Estimated
                         </span>
                       )}
                     </td>
