@@ -31,7 +31,7 @@ function row(overrides: Partial<PnlAwbRow> = {}): PnlAwbRow {
     toCount: 1, sumGw: 10, chwt: 12, totalRevenue: 100, totalDiscount: 1.5,
     costSmu: 10, costRa: 5, costSgOut: 5, costSgIn: 1,
     totalCost: 21, grossProfit: 77.5, grossMarginPct: 77.5,
-    hasNullCost: false, issue: null,
+    hasNullCost: false, isCostEstimated: false, issue: null,
     ...overrides,
   }
 }
@@ -109,6 +109,21 @@ describe('PnlAwbDrilldown route columns', () => {
     const cells = Array.from(container.querySelectorAll('tbody tr td')).map((c) => c.textContent)
     // Expander, AWB, then origin / dest / date.
     expect(cells.slice(2, 5)).toEqual(['—', '—', '—'])
+  })
+
+  // The badge is what tells the reader a figure came from the route fallback rather than a real
+  // booking, so a costed-but-estimated AWB must never render indistinguishably from a booked one.
+  it('badges an AWB whose cost came from the route fallback', () => {
+    mockRows([row({ isCostEstimated: true })])
+    const { container } = render(<PnlAwbDrilldown filter={filter} route={{}} onRouteChange={jest.fn()} />)
+    const awbCell = container.querySelectorAll('tbody tr td')[1]
+    expect(awbCell.textContent).toContain('Estimated')
+  })
+
+  it('does not badge an AWB costed from its own booking', () => {
+    mockRows([row({ isCostEstimated: false })])
+    const { container } = render(<PnlAwbDrilldown filter={filter} route={{}} onRouteChange={jest.fn()} />)
+    expect(container.textContent).not.toContain('Estimated')
   })
 })
 

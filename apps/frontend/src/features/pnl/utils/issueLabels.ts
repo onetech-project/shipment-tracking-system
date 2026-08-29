@@ -3,7 +3,9 @@
 // station_mapping_missing is the exception: it is fixed by adding the DC pair to the
 // air_shipments_data master table, not by editing a sheet.
 export const ISSUE_LABELS: Record<string, string> = {
-  no_booking: 'No booking row (AWB missing in SMU rate sheet)',
+  // Since the route-level cost fallback, a missing booking alone no longer blocks costing — this
+  // fires only when the route ALSO has no DC pair in air_shipments_data to fall back on.
+  no_booking: 'No booking and no route fallback (DC pair missing in air_shipments_data)',
   smu_rate_missing: 'SMU rate missing for route',
   ra_rate_missing: 'RA rate not found',
   sgout_name_missing: 'SG Outgoing name not matched',
