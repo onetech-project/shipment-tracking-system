@@ -48,6 +48,18 @@ const DB_AVAILABLE = isDbReachable(CONNECTION_URL)
 // Marks every fixture row so the assertions can find them without colliding with real data.
 const TAG = 'INTTEST-AWBFILTER'
 
+// Revenue is no longer read off the compile row. Since 20260829000001-pnl-rate-spx-revenue it is
+// gross_weight * rate_spx, with rate_spx looked up on air_shipments_data by the DC pair in the
+// compile row's extra_fields.origin/destination. A fixture that only sets amount_revenue therefore
+// lands in the view with revenue_total NULL. These fixtures seed their own DC pair so the revenue
+// assertion measures the AWB filter rather than the state of production reference data.
+const FIXTURE_ORIGIN_DC = `${TAG}-ORIGIN-DC`
+const FIXTURE_DEST_DC = `${TAG}-DEST-DC`
+const FIXTURE_RATE_SPX = 100_000
+const FIXTURE_GROSS_WEIGHT = 10
+// 10 kg * 100,000 = 1,000,000 revenue_freight per surviving row, packing_kayu 0.
+const FIXTURE_REVENUE_PER_ROW = FIXTURE_GROSS_WEIGHT * FIXTURE_RATE_SPX
+
 // [to_number suffix, awb value, should it survive into v_pnl_to?]
 const FIXTURES: Array<[string, string | null, boolean]> = [
   ['REAL', '126-99900001', true],
@@ -111,15 +123,33 @@ describe('v_pnl_to non-AWB exclusion (integration)', () => {
     await queryRunner.connect()
     await queryRunner.startTransaction()
 
+    // The DC pair the fixtures price against. No pph_2/disc_15, so revenue_discount is 0 and
+    // revenue_total is exactly gross_weight * rate_spx.
+    await queryRunner.query(
+      `INSERT INTO air_shipments_data (service, origin_dc, destination_dc, extra_fields)
+       VALUES ('Air', $1, $2, $3)`,
+      [
+        FIXTURE_ORIGIN_DC,
+        FIXTURE_DEST_DC,
+        JSON.stringify({
+          origin_station: 'Jabo',
+          destination_station: 'Balikpapan',
+          rate_spx: FIXTURE_RATE_SPX,
+        }),
+      ],
+    )
+
     for (const [suffix, awb] of FIXTURES) {
       const extra: Record<string, unknown> = {
         to_number: `${TAG}-${suffix}`,
-        gross_weight: 10,
-        amount_revenue: 1000000,
+        gross_weight: FIXTURE_GROSS_WEIGHT,
         additional_amount_packing_kayu: 0,
         completed_time: '02-May-2026 22:08',
         ata_vendor_wh_destination: '03-May-2026 13:26',
         atd_origin: '2026-05-02 13:26',
+        // The DC pair drives the rate_spx lookup that produces revenue.
+        origin: FIXTURE_ORIGIN_DC,
+        destination: FIXTURE_DEST_DC,
         origin_station: 'Jabo',
         destination_station: 'Balikpapan',
       }
@@ -135,7 +165,8 @@ describe('v_pnl_to non-AWB exclusion (integration)', () => {
   })
 
   afterEach(async () => {
-    // Never committed: air_shipments_compileaircgk and the view are left exactly as found.
+    // Never committed: air_shipments_compileaircgk, air_shipments_data and the view are left
+    // exactly as found.
     await queryRunner.rollbackTransaction()
     await queryRunner.release()
   })
@@ -180,7 +211,8 @@ describe('v_pnl_to non-AWB exclusion (integration)', () => {
        FROM v_pnl_to WHERE to_number LIKE $1`,
       [`${TAG}-%`],
     )
-    // 5 surviving fixtures × 1,000,000 revenue each; the 9 placeholders contribute nothing.
-    expect(row.revenue).toBe(5_000_000)
+    const surviving = FIXTURES.filter(([, , keep]) => keep).length
+    // Each surviving fixture prices at gross_weight * rate_spx; the placeholders contribute nothing.
+    expect(row.revenue).toBe(surviving * FIXTURE_REVENUE_PER_ROW)
   })
 })
