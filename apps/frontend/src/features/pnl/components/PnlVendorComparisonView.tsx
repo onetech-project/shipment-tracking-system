@@ -227,12 +227,11 @@ export function PnlVendorComparisonView({
               : 'Kolom di bawah hanya mencakup TO yang punya vendor. Porsinya belum bisa dihitung dari response ini.'}
           </div>
 
-          {/* Revenue is SUM(revenue_total), gross — revenue_discount is never subtracted. Margin
-              does subtract it, so the two columns do not differ by Cost alone. */}
+          {/* Revenue and Margin are both net of revenue_discount now, so Revenue − Cost === Margin
+              and the old "the gap is the discount" caveat no longer applies. */}
           <p className="text-xs text-muted-foreground">
-            Kolom Revenue di sini bruto (belum dikurangi discount), sama seperti tab Daily Report.
-            Margin sudah dikurangi discount, jadi Revenue − Cost tidak sama dengan Margin —
-            selisihnya adalah discount.
+            Kolom Revenue sudah bersih (rate_spx − pph_2 − disc_15), sama seperti tab Daily Report.
+            Revenue − Cost = Margin.
           </p>
 
           <PnlComparisonTable

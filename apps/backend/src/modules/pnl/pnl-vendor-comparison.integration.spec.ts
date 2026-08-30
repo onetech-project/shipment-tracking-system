@@ -179,7 +179,9 @@ describe('PnlService.getVendorComparison (integration)', () => {
     const [expected] = await queryRunner.query(
       `SELECT
          COALESCE(SUM(cost_to), 0)                      AS cost,
-         COALESCE(SUM(revenue_total), 0)                AS revenue,
+         -- Net, matching the revenue the comparison cells report.
+         COALESCE(SUM(revenue_total), 0)
+           - COALESCE(SUM(revenue_discount), 0)         AS revenue,
          COALESCE(SUM(cost_smu_awb * weight_share)
                   FILTER (WHERE cost_to IS NOT NULL), 0) AS cost_smu
        FROM v_pnl_to

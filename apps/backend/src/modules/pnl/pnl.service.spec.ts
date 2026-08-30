@@ -33,16 +33,18 @@ describe('PnlService', () => {
         expect.stringContaining('v_pnl_to'),
         ['2026-04-2H'],
       )
-      // Gross profit nets the 1.5% discount: 5,000,000 − 75,000 − 4,000,000 = 925,000
+      // Revenue is displayed net: 5,000,000 − 75,000 = 4,925,000, and gross profit is that minus
+      // cost (925,000 — unchanged, it always netted the discount). Margin pct divides by the net.
       expect(result).toEqual({
         label: '2026-04-2H',
         totalTos: 100,
         totalAwbs: 10,
-        totalRevenue: 5000000,
+        totalRevenue: 4925000,
+        totalRevenueGross: 5000000,
         totalDiscount: 75000,
         totalCost: 4000000,
         grossProfit: 925000,
-        grossMarginPct: 18.5,
+        grossMarginPct: (925000 / 4925000) * 100,
       })
     })
   })
@@ -121,9 +123,11 @@ describe('PnlService', () => {
 
       const result = await service.getProfitByRoute('2026-05-1H')
 
-      // 1000 − 15 − 600 = 385 (NOT SUM(gross_profit_to))
+      // 1000 − 15 − 600 = 385 (NOT SUM(gross_profit_to)); revenue displays net, 1000 − 15 = 985,
+      // so revenue − cost reconciles with margin.
       expect(result[0].totalMargin).toBe(385)
-      expect(result[0].totalRevenue).toBe(1000)
+      expect(result[0].totalRevenue).toBe(985)
+      expect(result[0].totalRevenue - 600).toBe(result[0].totalMargin)
       expect(result[0].avgMarginPerKg).toBeCloseTo(3.85)
     })
   })
@@ -1171,10 +1175,12 @@ describe('PnlService', () => {
       )
 
       const factSql = spy.mock.calls[1][0] as string
-      // Gross revenue is unchanged; margin nets the discount. Written as one normalised string so
-      // whitespace in the SQL literal cannot make the assertion pass or fail by accident.
+      // Revenue and margin both net the discount, so the two reconcile against cost. Written as one
+      // normalised string so whitespace in the SQL literal cannot make this pass or fail by accident.
       const normalised = factSql.replace(/\s+/g, ' ')
-      expect(normalised).toContain('COALESCE(SUM(v.revenue_total), 0) AS revenue')
+      expect(normalised).toContain(
+        'COALESCE(SUM(v.revenue_total), 0) - COALESCE(SUM(v.revenue_discount), 0) AS revenue',
+      )
       expect(normalised).toContain(
         'COALESCE(SUM(v.revenue_total), 0) - COALESCE(SUM(v.revenue_discount), 0) - COALESCE(SUM(v.cost_to), 0) AS margin',
       )
@@ -1330,7 +1336,7 @@ describe('PnlService', () => {
       expect(result.rows[1].cells[0]).toBeNull()
     })
 
-    it('selects gross revenue and the Daily Report margin expression', async () => {
+    it('selects net revenue and the Daily Report margin expression', async () => {
       mockFactQueries([])
 
       await service.getVendorComparison([group(VG1)], '2026-05-1H')
@@ -1338,7 +1344,9 @@ describe('PnlService', () => {
       // Call 2 is the fact query (0 = group members, 1 = stations). Normalised to one line so
       // whitespace in the SQL literal cannot make this pass or fail by accident.
       const factSql = (dataSource.query.mock.calls[2][0] as string).replace(/\s+/g, ' ')
-      expect(factSql).toContain('COALESCE(SUM(v.revenue_total), 0) AS revenue')
+      expect(factSql).toContain(
+        'COALESCE(SUM(v.revenue_total), 0) - COALESCE(SUM(v.revenue_discount), 0) AS revenue',
+      )
       expect(factSql).toContain(
         '- COALESCE(SUM(v.revenue_discount), 0) - COALESCE(SUM(v.cost_to), 0) AS margin',
       )

@@ -126,10 +126,11 @@ export function PnlFormulaPanel() {
             </table>
             <p className="mt-2 text-muted-foreground">
               <Col name="rate_spx" />, <Col name="pph_2" /> and <Col name="disc_15" /> come from{' '}
-              <Col name="air_shipments_data" /> for the TO&apos;s route. The discount is tracked as its own
-              figure, <strong>not</strong> deducted from revenue. Est. Revenue on the KPI cards is the gross
-              figure above; the discount is subtracted once when gross profit is computed (section 5) — net
-              revenue works out to gross_weight × (rate_spx − pph_2 − disc_15) + packing_kayu.
+              <Col name="air_shipments_data" /> for the TO&apos;s route. The view stores revenue gross and
+              keeps the discount as its own column, but every revenue figure the dashboard{' '}
+              <strong>displays</strong> — Est. Revenue, the AWB drilldown, both comparison tabs — is net of
+              it: gross_weight × (rate_spx − pph_2 − disc_15) + packing_kayu. Gross profit subtracts cost
+              from that same net revenue (section 5), so Revenue − Cost = Gross Profit on screen.
             </p>
           </Section>
 
