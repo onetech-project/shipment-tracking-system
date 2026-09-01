@@ -41,7 +41,7 @@ describe('warningTooltip', () => {
       incompleteTos: 4,
     })
     expect(tooltip).toBe(
-      'Data quality: No booking row (AWB missing in SMU rate sheet) (1 AWB) · 4 TO belum ada cost',
+      'Data quality: No booking and no route fallback (DC pair missing in air_shipments_data) (1 AWB) · 4 TO belum ada cost',
     )
   })
 

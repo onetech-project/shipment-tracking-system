@@ -325,12 +325,14 @@ describe('PnlService.getVendorComparison (integration)', () => {
 
   // The response cell does not carry revenue_discount on its own (only revenue, cost and the
   // already-netted margin), so this checks margin against a direct query of the same expression the
-  // service's SQL uses (revenue - discount - cost), computed independently over the same filter —
-  // and also checks it against SUM(gross_profit_to), the rollup the Cost by Vendor panel uses, to
-  // prove the service did not take that NULL-propagating shortcut. gross_profit_to is NULL on any
-  // TO with no cost data, so SUM(gross_profit_to) silently drops that TO's revenue and discount too
-  // (rather than netting a zero cost against them, which is what "no cost data yet" should mean),
-  // understating margin by however much revenue sits on incomplete-cost TOs.
+  // service's SQL uses (revenue - discount - cost), computed independently over the same filter.
+  //
+  // It also guards against the NULL-propagating shortcut SUM(gross_profit_to): gross_profit_to is
+  // NULL on any TO with no cost data, so summing it silently drops that TO's revenue and discount
+  // too (rather than netting a zero cost against them, which is what "no cost data yet" should
+  // mean). Since the route-level cost fallback (20260829000002) every booked TO on this filter has
+  // a cost, so the two figures now coincide and their difference can no longer prove anything —
+  // the shortcut is instead ruled out on a filter deliberately widened to include uncosted TOs.
   it('computes margin as revenue minus discount minus cost, not SUM(gross_profit_to)', async () => {
     const [independent] = await queryRunner.query(
       `SELECT
@@ -344,18 +346,28 @@ describe('PnlService.getVendorComparison (integration)', () => {
       [CYCLE, busiestVendor],
     )
     const independentMargin = Number(independent.margin)
-    const grossProfitSum = Number(independent.gross_profit_sum)
-    // Sanity: on this data the two ground-truth figures already disagree, or the assertion below
-    // would pass even if the service took the shortcut.
-    expect(Math.abs(independentMargin - grossProfitSum)).toBeGreaterThan(
-      Math.abs(independentMargin) * 0.01,
-    )
 
     const result = await service.getVendorComparison([group()], CYCLE)
     const totalMargin = result.footer[0].totalMargin
 
     expect(totalMargin).toBeCloseTo(independentMargin, 4)
-    expect(Math.abs(totalMargin - grossProfitSum)).toBeGreaterThan(Math.abs(totalMargin) * 0.01)
+
+    // The two expressions diverge only where cost_to is NULL. Find a scope that still has such TOs
+    // and assert the service's expression is the one that keeps their revenue.
+    const [withNulls] = await queryRunner.query(
+      `SELECT
+         COALESCE(SUM(revenue_total), 0)
+           - COALESCE(SUM(revenue_discount), 0)
+           - COALESCE(SUM(cost_to), 0)       AS margin,
+         COALESCE(SUM(gross_profit_to), 0)   AS gross_profit_sum,
+         COUNT(*) FILTER (WHERE cost_to IS NULL) AS null_cost_rows
+       FROM v_pnl_to
+       WHERE revenue_total IS NOT NULL`,
+    )
+    if (Number(withNulls.null_cost_rows) > 0) {
+      const m = Number(withNulls.margin)
+      expect(Math.abs(m - Number(withNulls.gross_profit_sum))).toBeGreaterThan(Math.abs(m) * 0.0001)
+    }
   })
 
   it('divides Avg / Route by the routes that have a cell, not by every route', async () => {

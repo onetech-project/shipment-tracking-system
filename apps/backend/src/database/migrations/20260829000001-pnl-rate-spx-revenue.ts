@@ -1,0 +1,236 @@
+import { MigrationInterface, QueryRunner } from 'typeorm'
+
+// Freight revenue moves from the "Compile Air CGK" sheet's amount_revenue cell to a per-route
+// rate on the DC-pair master air_shipments_data: revenue = gross_weight * (rate_spx - pph_2 - disc_15).
+//
+// revenue_discount already flows into every downstream margin calc as
+// `revenue_total - revenue_discount` (pnl.service.ts, ~8 call sites, plus two frontend views) — and
+// disc_15 is the exact same 1.5% that revenue_discount used to charge on amount_revenue. So instead
+// of pre-netting revenue_freight, this keeps it GROSS (gross_weight * rate_spx) and folds BOTH
+// deductions (pph_2 + disc_15) into revenue_discount. `revenue_total - revenue_discount` then comes
+// out to gross_weight * (rate_spx - pph_2 - disc_15) with no double-counting and no changes needed
+// outside this view.
+//
+// rate_spx/pph_2/disc_15 are read the same way origin_station/destination_station already are — via
+// the station_map DC-pair lookup — using pnl_parse_numeric (defined in
+// 20260604000001-pnl-align-with-sheet.ts) for tolerant free-text parsing, same as every other
+// extra_fields numeric in this view.
+export class PnlRateSpxRevenue20260829000001 implements MigrationInterface {
+  name = 'PnlRateSpxRevenue20260829000001'
+
+  public async up(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`DROP MATERIALIZED VIEW IF EXISTS v_pnl_to`)
+    await queryRunner.query(this.viewSql(true))
+    await this.createIndexes(queryRunner)
+  }
+
+  public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`DROP MATERIALIZED VIEW IF EXISTS v_pnl_to`)
+    await queryRunner.query(this.viewSql(false))
+    await this.createIndexes(queryRunner)
+  }
+
+  private async createIndexes(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`CREATE UNIQUE INDEX idx_v_pnl_to_id ON v_pnl_to(id)`)
+    await queryRunner.query(`CREATE INDEX idx_v_pnl_to_cycle ON v_pnl_to(cycle_period)`)
+    await queryRunner.query(`CREATE INDEX idx_v_pnl_to_awb ON v_pnl_to(awb)`)
+    await queryRunner.query(`CREATE INDEX idx_v_pnl_to_completed_time ON v_pnl_to(completed_time)`)
+    await queryRunner.query(`CREATE INDEX idx_v_pnl_to_cycle_awb ON v_pnl_to(cycle_period, awb)`)
+    await queryRunner.query(`CREATE INDEX idx_v_pnl_to_cycle_completed ON v_pnl_to(cycle_completed)`)
+    await queryRunner.query(`CREATE INDEX idx_v_pnl_to_cycle_ata ON v_pnl_to(cycle_ata)`)
+    await queryRunner.query(`CREATE INDEX idx_v_pnl_to_cycle_atd ON v_pnl_to(cycle_atd)`)
+  }
+
+  private viewSql(useRateSpx: boolean): string {
+    // True branch derives revenue from air_shipments_data.rate_spx via the DC-pair lookup.
+    // False branch restores the previous amount_revenue-based calc verbatim (20260816000001).
+    const rateFields = useRateSpx
+      ? `,
+        pnl_parse_numeric(extra_fields->>'rate_spx') AS rate_spx,
+        pnl_parse_numeric(extra_fields->>'pph_2')    AS pph_2,
+        pnl_parse_numeric(extra_fields->>'disc_15')  AS disc_15`
+      : ``
+
+    const compileRevenueSource = useRateSpx ? `` : `c.amount_revenue, `
+
+    const compileRevenueComputed = useRateSpx
+      ? `,
+        c.gross_weight * sm.rate_spx                                            AS revenue_freight_gross,
+        c.gross_weight * (COALESCE(sm.pph_2, 0) + COALESCE(sm.disc_15, 0))      AS revenue_deduction`
+      : ``
+
+    const baseRevenue = useRateSpx
+      ? `
+          c.revenue_freight_gross                              AS revenue_freight,
+          c.packing_kayu                                        AS revenue_packing,
+          c.revenue_freight_gross + c.packing_kayu              AS revenue_total,
+          COALESCE(c.revenue_deduction, 0)                       AS revenue_discount,`
+      : `
+          c.amount_revenue                                     AS revenue_freight,
+          c.packing_kayu                                       AS revenue_packing,
+          c.amount_revenue + c.packing_kayu                    AS revenue_total,
+          COALESCE(c.amount_revenue, 0) * 0.015                AS revenue_discount,`
+
+    return `
+      CREATE MATERIALIZED VIEW v_pnl_to AS
+      WITH
+      station_map AS (
+        SELECT DISTINCT ON (BTRIM(origin_dc), BTRIM(destination_dc))
+          BTRIM(origin_dc)      AS origin_dc,
+          BTRIM(destination_dc) AS destination_dc,
+          NULLIF(BTRIM(extra_fields->>'origin_station'), '')      AS origin_station,
+          NULLIF(BTRIM(extra_fields->>'destination_station'), '') AS dest_station${rateFields}
+        FROM air_shipments_data
+        WHERE service = 'Air'
+        ORDER BY BTRIM(origin_dc), BTRIM(destination_dc), updated_at DESC NULLS LAST, id DESC
+      ),
+      compile AS (
+        SELECT
+          c.id, c.awb, c.to_number, c.gross_weight, ${compileRevenueSource}c.packing_kayu,
+          c.completed_time, c.cycle_period, c.cycle_completed, c.cycle_ata, c.cycle_atd,
+          c.date_completed, c.date_ata, c.date_atd,
+          c.lt_number, c.actual_revenue, c.actual_cost, c.settled_at, c.invoice_period_label,
+          COALESCE(sm.origin_station, NULLIF(BTRIM(c.origin_station), '')) AS origin_station,
+          COALESCE(sm.dest_station,   NULLIF(BTRIM(c.dest_station),   '')) AS dest_station${compileRevenueComputed}
+        FROM air_shipments_compileaircgk c
+        LEFT JOIN station_map sm
+          ON sm.origin_dc      = BTRIM(c.extra_fields->>'origin')
+         AND sm.destination_dc = BTRIM(c.extra_fields->>'destination')
+      ),
+      awb_totals AS (
+        SELECT awb, SUM(gross_weight) AS sum_gw_per_awb, MAX(origin_station) AS origin_station
+        FROM compile GROUP BY awb
+      ),
+      booking AS (
+        SELECT DISTINCT ON (awb)
+          awb, account AS vendor, airlines, via, dest, ra_name, chwt
+        FROM air_shipments_smu_rate_cgk_spx
+        ORDER BY awb,
+          (NULLIF(BTRIM(account), '') IS NOT NULL
+           AND NULLIF(BTRIM(via),  '') IS NOT NULL
+           AND NULLIF(BTRIM(dest), '') IS NOT NULL) DESC,
+          updated_at DESC NULLS LAST
+      ),
+      smu_price AS (
+        SELECT
+          b.awb,
+          s.freight_rate, s.sc_per_kg, s.fbc_per_kg, s.myc_per_kg, s.other_per_kg,
+          s.admin_smu, s.ppn_pct, s.komisi_pct,
+          s.sg_out AS sg_out_name
+        FROM booking b
+        LEFT JOIN air_shipments_smu s
+          ON s.vendor=b.vendor AND s.airlines=b.airlines AND s.origin=b.via AND s.destination=b.dest
+      ),
+      ra_price AS (
+        SELECT b.awb, r.rate AS ra_rate, r.admin AS ra_admin, r.ppn AS ra_ppn, b.ra_name
+        FROM booking b
+        LEFT JOIN air_shipments_ra r
+          ON r.ra_name_norm = LOWER(REGEXP_REPLACE(COALESCE(b.ra_name, ''), '[^a-zA-Z0-9]', '', 'g'))
+         AND r.ra_name_norm <> ''
+      ),
+      sg_price AS (
+        SELECT sp.awb, sg.rate AS sg_rate, sg.admin AS sg_admin, sg.ppn AS sg_ppn, sp.sg_out_name
+        FROM smu_price sp
+        LEFT JOIN air_shipments_sg_outgoing sg
+          ON sg.sg_outgoing_name_norm = LOWER(REGEXP_REPLACE(COALESCE(sp.sg_out_name, ''), '[^a-zA-Z0-9]', '', 'g'))
+         AND sg.sg_outgoing_name_norm <> ''
+      ),
+      awb_cost AS (
+        SELECT
+          a.awb, a.sum_gw_per_awb, a.origin_station,
+          COALESCE(b.chwt, a.sum_gw_per_awb) AS aw_weight,
+          CASE WHEN sp.freight_rate IS NULL THEN NULL
+               ELSE (
+                      ( ( sp.freight_rate
+                          + COALESCE(sp.sc_per_kg, 0)
+                          + COALESCE(sp.fbc_per_kg, 0)
+                          + COALESCE(sp.myc_per_kg, 0)
+                          + COALESCE(sp.other_per_kg, 0)
+                        ) * COALESCE(b.chwt, a.sum_gw_per_awb)
+                        + COALESCE(sp.admin_smu, 0)
+                      ) * (1 + COALESCE(sp.ppn_pct, 0) / 100.0)
+                      - (sp.freight_rate * COALESCE(b.chwt, a.sum_gw_per_awb))
+                        * (COALESCE(sp.komisi_pct, 0) / 100.0)
+                    )
+          END AS cost_smu,
+          CASE WHEN a.origin_station = 'Surabaya'  THEN 0
+               WHEN b.ra_name IS NULL OR b.ra_name = '' THEN 0
+               WHEN LOWER(rp.ra_name) LIKE 'include%'  THEN 0
+               WHEN rp.ra_rate IS NULL                 THEN NULL
+               ELSE (COALESCE(b.chwt, a.sum_gw_per_awb) * rp.ra_rate + COALESCE(rp.ra_admin, 0))
+                    * (1 + COALESCE(rp.ra_ppn, 0) / 100.0)
+          END AS cost_ra,
+          CASE WHEN sp.sg_out_name IS NULL OR sp.sg_out_name = '' THEN 0
+               WHEN LOWER(sp.sg_out_name) LIKE 'include%'         THEN 0
+               WHEN sgp.sg_rate IS NULL                           THEN NULL
+               WHEN a.origin_station = 'Surabaya'
+                 THEN (COALESCE(b.chwt, a.sum_gw_per_awb) * sgp.sg_rate + COALESCE(sgp.sg_admin, 0))
+                      * (1 + COALESCE(sgp.sg_ppn, 0) / 100.0)
+               ELSE COALESCE(b.chwt, a.sum_gw_per_awb) * sgp.sg_rate
+                      * (1 + COALESCE(sgp.sg_ppn, 0) / 100.0) + COALESCE(sgp.sg_admin, 0)
+          END AS cost_sg_out
+        FROM awb_totals a
+        LEFT JOIN booking   b   ON b.awb   = a.awb
+        LEFT JOIN smu_price sp  ON sp.awb  = a.awb
+        LEFT JOIN ra_price  rp  ON rp.awb  = a.awb
+        LEFT JOIN sg_price  sgp ON sgp.awb = a.awb
+      ),
+      base AS (
+        SELECT
+          c.id,
+          c.to_number, c.awb, c.completed_time, c.cycle_period,
+          c.cycle_completed, c.cycle_ata, c.cycle_atd, c.date_completed, c.date_ata, c.date_atd,
+          c.invoice_period_label                                AS invoice_period,
+          c.lt_number, c.actual_revenue, c.actual_cost, c.settled_at, b.chwt AS chwt_awb,
+          c.origin_station, c.dest_station, b.vendor, b.airlines AS airline,
+          c.gross_weight, ac.sum_gw_per_awb,
+          c.gross_weight / NULLIF(ac.sum_gw_per_awb, 0)        AS weight_share,${baseRevenue}
+          ac.cost_smu                                          AS cost_smu_awb,
+          ac.cost_ra                                           AS cost_ra_awb,
+          ac.cost_sg_out                                       AS cost_sg_out_awb,
+          ac.cost_smu + ac.cost_ra + ac.cost_sg_out            AS cost_total_awb,
+          ac.aw_weight,
+          sgi.sg_inc,
+          COALESCE(sgi.admin, CASE WHEN c.origin_station = 'Surabaya' THEN 0 ELSE 5000 END)
+                                                               AS sg_in_admin
+        FROM compile c
+        LEFT JOIN booking  b  ON b.awb  = c.awb
+        LEFT JOIN awb_cost ac ON ac.awb = c.awb
+        LEFT JOIN air_shipments_sg_incoming sgi
+          ON sgi.origin = c.origin_station
+         AND sgi.destination = c.dest_station
+      )
+      SELECT
+        id, to_number, awb, completed_time, cycle_period,
+        cycle_completed, cycle_ata, cycle_atd, date_completed, date_ata, date_atd,
+        invoice_period,
+        lt_number, actual_revenue, actual_cost,
+        (settled_at IS NOT NULL)                          AS is_settled,
+        (actual_revenue - revenue_total)                  AS var_revenue,
+        chwt_awb,
+        origin_station, dest_station, vendor, airline,
+        gross_weight, sum_gw_per_awb, weight_share,
+        revenue_freight, revenue_packing, revenue_total, revenue_discount,
+        cost_smu_awb, cost_ra_awb, cost_sg_out_awb, cost_total_awb,
+        CASE WHEN sg_inc IS NULL THEN NULL
+             ELSE weight_share * (aw_weight * sg_inc + sg_in_admin)
+        END                                                                 AS cost_sg_in_to,
+        cost_total_awb * weight_share
+          + COALESCE(weight_share * (aw_weight * sg_inc + sg_in_admin), 0)   AS cost_to,
+        (revenue_total - revenue_discount)
+          - cost_total_awb * weight_share
+          - COALESCE(weight_share * (aw_weight * sg_inc + sg_in_admin), 0)   AS gross_profit_to,
+        CASE
+          WHEN vendor          IS NULL THEN 'no_booking'
+          WHEN cost_smu_awb    IS NULL THEN 'smu_rate_missing'
+          WHEN cost_ra_awb     IS NULL THEN 'ra_rate_missing'
+          WHEN cost_sg_out_awb IS NULL THEN 'sgout_name_missing'
+          WHEN revenue_total   IS NULL THEN 'revenue_missing'
+          WHEN origin_station IS NULL OR dest_station IS NULL THEN 'station_mapping_missing'
+          WHEN sg_inc          IS NULL THEN 'sg_in_rate_missing'
+          ELSE NULL
+        END                                                                 AS issue
+      FROM base
+    `
+  }
+}

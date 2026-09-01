@@ -85,6 +85,8 @@ export interface PnlAwbRow {
   grossProfit: number | null
   grossMarginPct: number | null
   hasNullCost: boolean
+  // Cost came from the route-level fallback (no reservation yet) rather than a booking.
+  isCostEstimated: boolean
   issue: string | null
 }
 
@@ -101,6 +103,7 @@ export interface PnlToRow {
   grossProfit: number | null
   marginPct: number | null
   issue: string | null
+  isCostEstimated: boolean
 }
 
 export interface PnlDataQualityItem {
