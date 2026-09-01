@@ -394,7 +394,7 @@ it('renders the comparison table from a real payload via toRouteComparisonTable'
 // Finding 2: Revenue here is SUM(revenue_total), gross — revenue_discount is never subtracted —
 // while Margin is net of discount. Now that Margin sits beside Revenue and Cost in this table,
 // without a caption the obvious (wrong) reading is that Revenue − Cost should equal Margin.
-it('captions the table to say Revenue is gross, so Revenue minus Cost does not equal Margin', () => {
+it('captions the table to say Revenue is net, so Revenue minus Cost equals Margin', () => {
   ;(usePnlRouteComparison as jest.Mock).mockReturnValue({
     data: comparisonData,
     isLoading: false,
@@ -405,8 +405,8 @@ it('captions the table to say Revenue is gross, so Revenue minus Cost does not e
 
   fireEvent.click(screen.getByLabelText(/Kalimantan/))
 
-  expect(screen.getByText(/bruto/i)).toBeInTheDocument()
-  expect(screen.getByText(/tidak sama dengan Margin/i)).toBeInTheDocument()
+  expect(screen.getByText(/sudah bersih/i)).toBeInTheDocument()
+  expect(screen.getByText(/Revenue − Cost = Margin/i)).toBeInTheDocument()
 })
 
 it('sends selected group picks to usePnlRouteComparison in click order, moving a reselected group to the end', () => {

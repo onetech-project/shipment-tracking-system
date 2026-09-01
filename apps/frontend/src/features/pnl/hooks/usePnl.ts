@@ -47,7 +47,10 @@ export interface PnlSummary {
   label: string
   totalTos: number
   totalAwbs: number
+  // Net of discount, like every revenue figure the dashboard shows: totalRevenue - totalCost
+  // equals grossProfit on screen. The gross figure is totalRevenueGross.
   totalRevenue: number
+  totalRevenueGross: number
   totalDiscount: number
   totalCost: number
   grossProfit: number

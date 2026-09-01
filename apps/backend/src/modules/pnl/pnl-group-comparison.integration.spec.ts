@@ -193,9 +193,11 @@ describe('PnlService.getRouteComparison (integration)', () => {
   })
 
   it('counts the shared route revenue in both groups columns', async () => {
+    // Net, matching what the comparison cells report.
     const revenueOf = async (dest: string): Promise<number> => {
       const [row] = await queryRunner.query(
-        `SELECT COALESCE(SUM(revenue_total), 0) AS rev FROM v_pnl_to
+        `SELECT COALESCE(SUM(revenue_total), 0) - COALESCE(SUM(revenue_discount), 0) AS rev
+         FROM v_pnl_to
          WHERE origin_station = $1 AND dest_station = $2 AND date_ata::date = $3::date`,
         [SHARED_ORIGIN, dest, SHARED_ROUTE_DATE],
       )
@@ -249,7 +251,7 @@ describe('PnlService.getRouteComparison (integration)', () => {
   // The response cell does not carry revenue_discount on its own (only revenue, cost and the
   // already-netted margin), so this checks margin against a direct query of the same expression
   // the service's SQL uses, rather than reconstructing it from response fields alone.
-  it('keeps margin consistent with revenue minus discount minus cost, for every non-null cell', async () => {
+  it('keeps margin consistent with net revenue minus cost, for every non-null cell', async () => {
     const cycleResult = await service.getRouteComparison([pick(groupA), pick(groupB)], CYCLE)
     const rangeResult = await service.getRouteComparison(
       [pick(groupA), pick(groupB)],
@@ -258,13 +260,20 @@ describe('PnlService.getRouteComparison (integration)', () => {
       RANGE_END,
     )
 
-    const discountOf = async (origin: string, dest: string, date: string): Promise<number> => {
+    // Gross revenue and discount straight from the view, so the expected net figure is computed
+    // from the source rather than from the value under test.
+    const grossAndDiscountOf = async (
+      origin: string,
+      dest: string,
+      date: string,
+    ): Promise<{ gross: number; discount: number }> => {
       const [row] = await queryRunner.query(
-        `SELECT COALESCE(SUM(revenue_discount), 0) AS d FROM v_pnl_to
+        `SELECT COALESCE(SUM(revenue_total), 0) AS g, COALESCE(SUM(revenue_discount), 0) AS d
+         FROM v_pnl_to
          WHERE origin_station = $1 AND dest_station = $2 AND date_ata::date = $3::date`,
         [origin, dest, date],
       )
-      return Number(row.d)
+      return { gross: Number(row.g), discount: Number(row.d) }
     }
 
     let checkedCells = 0
@@ -274,11 +283,17 @@ describe('PnlService.getRouteComparison (integration)', () => {
           const cell = row.cells[ci]
           if (!cell) continue
           const routes = result.columns[ci].routes
+          let gross = 0
           let discount = 0
           for (const r of routes) {
-            discount += await discountOf(r.origin, r.dest, row.date)
+            const g = await grossAndDiscountOf(r.origin, r.dest, row.date)
+            gross += g.gross
+            discount += g.discount
           }
-          expect(cell.margin).toBeCloseTo(cell.revenue - discount - cell.cost, 4)
+          // The cell reports revenue net, computed from the view's own gross and discount.
+          expect(cell.revenue).toBeCloseTo(gross - discount, 4)
+          // And because revenue is net, margin is simply revenue − cost.
+          expect(cell.margin).toBeCloseTo(cell.revenue - cell.cost, 4)
           checkedCells += 1
         }
       }

@@ -13,15 +13,33 @@ import { indexIssueRows, ISSUE_BY_RANK, PnlCellIssue } from './pnl-cell-issues.u
 import { RoutePair, ColumnPick } from './pnl-columns.util'
 import { VendorColumnPick } from './pnl-vendor-columns.util'
 
+// ── NET REVENUE ──────────────────────────────────────────────────────────────────────────────
+// v_pnl_to stores revenue GROSS and carries pph_2 + disc_15 beside it in revenue_discount
+// (20260829000001-pnl-rate-spx-revenue). Margin always netted the discount; the revenue figures
+// did not, so on every screen Revenue - Cost overshot Margin by exactly the discount and two tabs
+// carried a note explaining the gap.
+//
+// Every revenue value this service returns for DISPLAY is now net: revenue_total - revenue_discount,
+// which is gross_weight * (rate_spx - pph_2 - disc_15) + packing_kayu. The view is untouched — this
+// is presentation only — and each net figure is derived where the discount is already selected, so
+// no query grew a join. Margin and cost are unchanged; only the revenue side and the marginPct
+// denominators moved.
+//
+// Adding a new revenue-returning query? Select COALESCE(SUM(revenue_discount), 0) with it and
+// subtract, or the new surface will disagree with every existing one.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
 export interface PnlSummary {
   label: string
   totalTos: number
   totalAwbs: number
+  // Net of revenue_discount — this is the figure the KPI card shows, so that on screen
+  // totalRevenue - totalCost === grossProfit. See NET REVENUE below.
   totalRevenue: number
+  totalRevenueGross: number // SUM(revenue_total), before the discount
   totalDiscount: number
   totalCost: number
   grossProfit: number
-  grossMarginPct: number
+  grossMarginPct: number // over net revenue
 }
 
 export interface PnlDailyMarginItem {
@@ -269,7 +287,7 @@ export interface PnlVendorComparisonColumn {
 }
 
 export interface PnlVendorComparisonCell {
-  revenue: number // gross: SUM(revenue_total), discount not netted
+  revenue: number // net of revenue_discount, like every other displayed revenue figure
   cost: number
   // revenue_total - revenue_discount - cost_to, the same expression getDailyMatrix uses, so one
   // route and period reads the same in both tabs. NOT SUM(gross_profit_to), which is
@@ -402,17 +420,20 @@ export class PnlService {
       params,
     )
     const row = rows[0]
-    const totalRevenue = Number(row.total_revenue)
+    const totalRevenueGross = Number(row.total_revenue)
     const totalDiscount = Number(row.total_discount)
     const totalCost = Number(row.total_cost)
-    // Margin nets the 1.5% revenue discount, matching the sheet's Margin formula.
-    const grossProfit = totalRevenue - totalDiscount - totalCost
+    const totalRevenue = totalRevenueGross - totalDiscount
+    // Unchanged: the discount was always netted here. What changed is that totalRevenue now carries
+    // the same netting, so the card reads gross_weight * (rate_spx - pph_2 - disc_15) + packing.
+    const grossProfit = totalRevenue - totalCost
     const label = cyclePeriod ?? `${startDate} to ${endDate}`
     return {
       label,
       totalTos: Number(row.total_tos),
       totalAwbs: Number(row.total_awbs),
       totalRevenue,
+      totalRevenueGross,
       totalDiscount,
       totalCost,
       grossProfit,
@@ -444,9 +465,9 @@ export class PnlService {
       params,
     )
     return rows.map((r: Record<string, unknown>) => {
-      const revenue = Number(r.revenue)
+      const revenue = Number(r.revenue) - Number(r.discount)
       const cost = Number(r.cost)
-      const gp = revenue - Number(r.discount) - cost
+      const gp = revenue - cost
       return {
         date: r.date as string,
         revenue,
@@ -554,7 +575,9 @@ export class PnlService {
         ${routeWhere}
         ${vendorWhere}
         GROUP BY awb, vendor, airline
-        ORDER BY SUM(revenue_total) DESC NULLS LAST
+        -- Ordered on the net figure, matching the Revenue column the table renders.
+        ORDER BY (COALESCE(SUM(revenue_total), 0)
+                  - COALESCE(SUM(revenue_discount), 0)) DESC NULLS LAST
         LIMIT $${p + 1} OFFSET $${p + 2}
         `,
         dataParams,
@@ -567,7 +590,7 @@ export class PnlService {
 
     const total = Number(countRows[0].total)
     const data: PnlAwbRow[] = rows.map((r: Record<string, unknown>) => {
-      const rev = Number(r.total_revenue)
+      const rev = Number(r.total_revenue) - Number(r.total_discount)
       const gp = Number(r.gross_profit)
       const totalCost = r.total_cost != null ? Number(r.total_cost) : null
       return {
@@ -583,7 +606,7 @@ export class PnlService {
         toCount: Number(r.to_count),
         sumGw: Number(r.sum_gw),
         chwt: r.chwt != null ? Number(r.chwt) : null,
-        totalRevenue: rev,
+        totalRevenue: rev, // net; the gross figure stays in totalDiscount's sibling below
         totalDiscount: Number(r.total_discount),
         costSmu: r.cost_smu != null ? Number(r.cost_smu) : null,
         costRa: r.cost_ra != null ? Number(r.cost_ra) : null,
@@ -664,14 +687,17 @@ export class PnlService {
         gross_weight,
         chwt_awb * weight_share                AS chwt,
         revenue_total,
+        revenue_discount,
         cost_smu_awb  * weight_share          AS cost_smu,
         cost_ra_awb   * weight_share          AS cost_ra,
         cost_sg_out_awb * weight_share        AS cost_sg,
         cost_sg_in_to                          AS cost_sg_in,
         cost_to,
         gross_profit_to,
-        CASE WHEN revenue_total > 0 AND gross_profit_to IS NOT NULL
-             THEN (gross_profit_to / revenue_total) * 100
+        -- Both sides of the ratio are net: gross_profit_to already subtracts revenue_discount,
+        -- so dividing by the gross revenue would understate every TO's margin.
+        CASE WHEN (revenue_total - revenue_discount) > 0 AND gross_profit_to IS NOT NULL
+             THEN (gross_profit_to / (revenue_total - revenue_discount)) * 100
              ELSE NULL
         END AS margin_pct,
         issue,
@@ -686,7 +712,7 @@ export class PnlService {
       toNumber: r.to_number as string,
       grossWeight: Number(r.gross_weight),
       chwt: r.chwt != null ? Number(r.chwt) : null,
-      revenue: Number(r.revenue_total),
+      revenue: Number(r.revenue_total) - Number(r.revenue_discount),
       costSmu: r.cost_smu != null ? Number(r.cost_smu) : null,
       costRa: r.cost_ra != null ? Number(r.cost_ra) : null,
       costSg: r.cost_sg != null ? Number(r.cost_sg) : null,
@@ -712,18 +738,21 @@ export class PnlService {
         COALESCE(NULLIF(origin_station, ''), '?') || ' → ' ||
         COALESCE(NULLIF(dest_station,   ''), '?') AS route,
         COALESCE(SUM(gross_weight), 0)            AS total_weight,
-        COALESCE(SUM(revenue_total), 0)           AS total_revenue
+        COALESCE(SUM(revenue_total), 0)           AS total_revenue,
+        COALESCE(SUM(revenue_discount), 0)        AS total_discount
       FROM v_pnl_to
       WHERE ${where}
       GROUP BY 1
-      ORDER BY total_revenue DESC NULLS LAST
+      -- Ordered on the net figure, so the breakdown ranks by what it displays.
+      ORDER BY (COALESCE(SUM(revenue_total), 0)
+                - COALESCE(SUM(revenue_discount), 0)) DESC NULLS LAST
       `,
       params,
     )
     return rows.map((r: Record<string, unknown>) => ({
       route: r.route as string,
       totalWeight: Number(r.total_weight),
-      totalRevenue: Number(r.total_revenue),
+      totalRevenue: Number(r.total_revenue) - Number(r.total_discount),
     }))
   }
 
@@ -983,10 +1012,10 @@ export class PnlService {
       params,
     )
     return rows.map((r: Record<string, unknown>) => {
-      const totalRevenue = Number(r.total_revenue)
+      const totalRevenue = Number(r.total_revenue) - Number(r.total_discount)
       const totalWeight = Number(r.total_weight)
       const totalCost = Number(r.total_cost)
-      const totalMargin = totalRevenue - Number(r.total_discount) - totalCost
+      const totalMargin = totalRevenue - totalCost
       return {
         route: r.route as string,
         totalRevenue,
@@ -1021,7 +1050,8 @@ export class PnlService {
           TO_CHAR(${dateCol}::DATE, 'YYYY-MM-DD')                                AS d,
           origin_station,
           dest_station,
-          COALESCE(SUM(revenue_total), 0)                                        AS revenue,
+          COALESCE(SUM(revenue_total), 0)
+            - COALESCE(SUM(revenue_discount), 0)                                 AS revenue,
           COALESCE(SUM(revenue_total), 0) - COALESCE(SUM(revenue_discount), 0)
             - COALESCE(SUM(cost_to), 0)                                          AS margin,
           COALESCE(SUM(gross_weight), 0)                                         AS weight,
@@ -1219,7 +1249,8 @@ export class PnlService {
         SELECT
           TO_CHAR(${dateCol}::DATE, 'YYYY-MM-DD')                      AS d,
           cr.col_idx                                                   AS col_idx,
-          COALESCE(SUM(v.revenue_total), 0)                            AS revenue,
+          COALESCE(SUM(v.revenue_total), 0)
+            - COALESCE(SUM(v.revenue_discount), 0)                     AS revenue,
           COALESCE(SUM(v.cost_to), 0)                                  AS cost,
           COALESCE(SUM(v.revenue_total), 0)
             - COALESCE(SUM(v.revenue_discount), 0)
@@ -1466,7 +1497,8 @@ export class PnlService {
           v.origin_station                                             AS origin_station,
           v.dest_station                                               AS dest_station,
           cv.col_idx                                                   AS col_idx,
-          COALESCE(SUM(v.revenue_total), 0)                            AS revenue,
+          COALESCE(SUM(v.revenue_total), 0)
+            - COALESCE(SUM(v.revenue_discount), 0)                     AS revenue,
           COALESCE(SUM(v.cost_to), 0)                                  AS cost,
           COALESCE(SUM(v.revenue_total), 0)
             - COALESCE(SUM(v.revenue_discount), 0)
@@ -1517,6 +1549,9 @@ export class PnlService {
       // cannot be shown by this table, so it stays in the denominator as unexplained revenue.
       this.dataSource.query(
         `
+        -- Deliberately gross on both sides: this pair is only ever consumed as a RATIO
+        -- (revenue_in_columns / revenue_period) for the coverage banner, and netting the discount
+        -- out of both halves cancels. Nothing here reaches the screen as a rupiah figure.
         SELECT
           COALESCE(SUM(v.revenue_total), 0)                              AS revenue_period,
           COALESCE(SUM(v.revenue_total) FILTER (
