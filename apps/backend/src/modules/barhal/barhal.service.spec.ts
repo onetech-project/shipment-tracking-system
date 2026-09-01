@@ -740,17 +740,126 @@ describe('BarhalService', () => {
   })
 
   describe('exportCsv', () => {
-    it('reads each Koli chWt from its own No. SMU, not from the AWBs of its TOs', async () => {
+    it('emits one row per attached TO, joined to its Koli', async () => {
       dataSource.query.mockResolvedValueOnce([])
 
       await service.exportCsv({ startDate: '2026-06-01', endDate: '2026-06-30' })
 
       const [sql] = dataSource.query.mock.calls[0]
-      expect(sql).toContain("WHERE sc.awb = NULLIF(BTRIM(k.smu_number), '')")
-      expect(sql).toContain('smu_chwt AS (')
-      // A Koli with no SMU yet exports 0, keeping the column numeric for spreadsheets.
-      expect(sql).toContain('COALESCE((SELECT sc.chwt FROM smu_chwt sc')
-      expect(sql).not.toContain('bkt.awb')
+      expect(sql).toContain('FROM barhal_koli_to t')
+      expect(sql).toContain('JOIN barhal_koli k ON k.id = t.koli_id')
+      // Vendor and qty parcel are not generated columns — only extra_fields carries them.
+      expect(sql).toContain("extra_fields->>'vendor'")
+      // Tanpa ::text, driver pg mengirim tengah malam waktu lokal dan tanggalnya mundur sehari
+      // di kontainer produksi yang ber-TZ Asia/Jakarta.
+      expect(sql).toContain('c.shipment_date::text')
+      expect(sql).toContain("extra_fields->>'qty_parcel'")
+      // The export no longer carries a ChWt column, so it must not pay for that CTE.
+      expect(sql).not.toContain('smu_chwt')
+    })
+
+    it('collapses a TO that has several LT rows in the sheet down to its latest one', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.exportCsv({})
+
+      const [sql] = dataSource.query.mock.calls[0]
+      // air_shipments_compileaircgk is unique on (lt_number, to_number), so one TO can hold
+      // several rows; without DISTINCT ON the join multiplies TO rows past the Koli's total_to.
+      expect(sql).toContain('DISTINCT ON (to_number)')
+      expect(sql).toContain('ORDER BY to_number, updated_at DESC NULLS LAST')
+    })
+
+    it('keeps a Koli line whose TO has vanished from the sheet', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.exportCsv({})
+
+      const [sql] = dataSource.query.mock.calls[0]
+      // barhal_koli_to is a snapshot: an inner join would silently drop the line and make the
+      // CSV disagree with the Koli's total_to.
+      expect(sql).toContain('LEFT JOIN to_latest c ON c.to_number = t.to_number')
+    })
+
+    it('filters the date range on the TO date, matching the exported Date (TO) column', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.exportCsv({ startDate: '2026-06-01', endDate: '2026-06-30', origin: 'Kosambi' })
+
+      const [sql, params] = dataSource.query.mock.calls[0]
+      expect(sql).toContain('c.shipment_date BETWEEN $1 AND $2')
+      expect(sql).not.toContain('k.koli_date BETWEEN')
+      expect(sql).toContain('k.origin_name = $3')
+      expect(params).toEqual(['2026-06-01', '2026-06-30', 'Kosambi'])
+    })
+
+    it('orders by TO date descending, then by Koli number, then by TO number', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.exportCsv({})
+
+      const [sql] = dataSource.query.mock.calls[0]
+      expect(sql).toContain('ORDER BY c.shipment_date DESC NULLS LAST, k.koli_number, t.to_number')
+    })
+
+    it('mengekspor tepat 22 alias berkutip yang sama persis dengan field BarhalCsvRow', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.exportCsv({})
+
+      // Kutip ganda pada alias wajib: tanpa kutip, Postgres melipat alias menjadi huruf kecil
+      // (`AS koliNumber` menjadi kolom `kolinumber`), sehingga setiap field BarhalCsvRow terbaca
+      // `undefined` di builder dan export menjadi header plus baris-baris koma kosong. Tidak ada
+      // yang gagal lebih dulu: DataSource.query<T = any> membuat anotasi tipe di exportCsv tak
+      // mengikat apa pun, jadi typecheck pun tidak menangkapnya. Tes ini satu-satunya pengikatnya.
+      const [sql] = dataSource.query.mock.calls[0]
+      const aliases = [...(sql as string).matchAll(/AS "(\w+)"/g)].map((m) => m[1])
+      // Kolom ke-23 CSV (Kenaikan Berat) diturunkan di dalam builder dan tidak punya alias SQL.
+      const expected = [
+        'shipmentDate', 'vendor', 'originName', 'destName', 'ltNumber', 'toNumber',
+        'grossWeight', 'qtyParcel', 'remarks', 'koliNumber', 'weightBefore', 'weightAfter',
+        'smuNumber', 'airlines', 'flightNo', 'std', 'sta', 'lengthCm', 'widthCm', 'heightCm',
+        'volume', 'batangKayu',
+      ]
+      // Dibandingkan sebagai himpunan terurut: alias yang hilang, salah eja, kelebihan, atau
+      // kehilangan kutipnya sama-sama membuat tes ini gagal.
+      expect([...aliases].sort()).toEqual([...expected].sort())
+      expect(aliases).toHaveLength(22)
+    })
+
+    it('hands the query rows to the CSV builder', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        {
+          shipmentDate: '2026-06-01',
+          vendor: 'ESP',
+          originName: 'Kosambi',
+          destName: 'Badung',
+          ltNumber: 'LT1',
+          toNumber: 'TO1',
+          grossWeight: '7.44',
+          qtyParcel: '1',
+          remarks: 'BARHAL',
+          koliNumber: '1Jun-Kosambi-Badung-Barhal1',
+          weightBefore: '15',
+          weightAfter: '20',
+          smuNumber: null,
+          airlines: null,
+          flightNo: null,
+          std: null,
+          sta: null,
+          lengthCm: null,
+          widthCm: null,
+          heightCm: null,
+          volume: null,
+          batangKayu: null,
+        },
+      ])
+
+      const csv = await service.exportCsv({})
+
+      const [header, line] = csv.split('\r\n')
+      expect(header.startsWith('Date (TO),Vendor,Origin,Destination')).toBe(true)
+      expect(line).toBe('01 Jun 2026,ESP,Kosambi,Badung,LT1,TO1,7.4,1,BARHAL,1Jun-Kosambi-Badung-Barhal1,15.0,20.0,5.0,,,,,,,,,,')
     })
   })
 
