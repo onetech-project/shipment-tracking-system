@@ -1262,3 +1262,211 @@ describe('AirShipmentsService — findOffloadedAwbs() route filter', () => {
     })
   })
 })
+
+describe('AirShipmentsService — indexable date filtering (buildTimestampExpression)', () => {
+  let service: AirShipmentsService
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AirShipmentsService,
+        { provide: SheetsService, useValue: { getConfigs: jest.fn().mockReturnValue([]) } },
+        {
+          provide: DynamicTableService,
+          useValue: { ensureTable: jest.fn().mockResolvedValue({ success: true }) },
+        },
+        { provide: getRepositoryToken(AirShipmentCgk), useValue: makeRepo() },
+        { provide: getRepositoryToken(AirShipmentSub), useValue: makeRepo() },
+        { provide: getRepositoryToken(AirShipmentSda), useValue: makeRepo() },
+        { provide: getRepositoryToken(RatePerStation), useValue: makeRepo() },
+        { provide: getRepositoryToken(RouteMaster), useValue: makeRepo() },
+        { provide: getRepositoryToken(GoogleSheetConfig), useValue: makeRepo() },
+        { provide: getRepositoryToken(GoogleSheetSheetConfig), useValue: makeRepo() },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+        { provide: DataSource, useValue: { query: jest.fn().mockResolvedValue([]) } },
+        {
+          provide: GeneralParamsService,
+          useValue: { getValue: jest.fn().mockResolvedValue('5') },
+        },
+      ],
+    }).compile()
+
+    service = module.get<AirShipmentsService>(AirShipmentsService)
+  })
+
+  // The date filter drove a seq scan over 280K rows in production: the predicate was a
+  // regex + cast over extra_fields->>'atd_origin', which no index can answer. The
+  // generated STORED column date_atd holds exactly that parsed value, so when the table
+  // exposes it we filter on the bare column and the planner can use a btree on it.
+  it('filters on the generated date_atd column when the table exposes it', () => {
+    const expr = (service as any).buildTimestampExpression('atd_origin', [
+      'id',
+      'extra_fields',
+      'date_atd',
+    ])
+    expect(expr).toBe('date_atd')
+    // No JSONB extraction, no regex, no cast — otherwise the index is unusable.
+    expect(expr).not.toContain('extra_fields')
+    expect(expr).not.toContain('~')
+    expect(expr).not.toContain('CASE')
+  })
+
+  it('falls back to the JSONB expression when the generated column is absent', () => {
+    const expr = (service as any).buildTimestampExpression('atd_origin', ['id', 'extra_fields'])
+    expect(expr).toContain(`extra_fields->>'atd_origin'`)
+    expect(expr).toContain('CASE')
+  })
+
+  // Only atd_origin has a generated counterpart; other fields must keep the old path.
+  it('does not claim a generated column for fields that have none', () => {
+    const expr = (service as any).buildTimestampExpression('ata_flight', [
+      'id',
+      'extra_fields',
+      'date_atd',
+    ])
+    expect(expr).toContain(`extra_fields->>'ata_flight'`)
+  })
+
+  // The sea profile's non-ISO dates go through parse_flexible_timestamp; that tolerant
+  // parser must win over the generated column, which only exists on the air compile table.
+  it('keeps the flexible parser for sea tables even if a date_atd column exists', () => {
+    const expr = (service as any).buildTimestampExpression(
+      'atd_origin',
+      ['id', 'extra_fields', 'date_atd'],
+      true,
+    )
+    expect(expr).toContain('parse_flexible_timestamp')
+  })
+
+  // parse_flexible_timestamp returns a naive TIMESTAMP, so the old clause compared it
+  // against a timestamptz bound. Postgres resolved that by coercing the *column* using
+  // the session TimeZone (Asia/Jakarta) — a silent 7-hour shift of the sea date window.
+  // Converting the bound instead makes the comparison naive-to-naive and removes the shift.
+  it('converts the bound, not the column, for the naive sea timestamp', () => {
+    const params: any[] = []
+    const clause = (service as any).buildDateRangeClause(
+      ['id', 'extra_fields'],
+      params,
+      '2026-01-01',
+      '2026-01-31',
+      undefined,
+      true,
+    )
+    expect(clause).toContain('AT TIME ZONE')
+    // The column side stays a bare call — wrapping it would defeat any index on it.
+    expect(clause).not.toContain(`parse_flexible_timestamp(NULLIF(TRIM(extra_fields->>'atd_origin'), '')) AT TIME ZONE`)
+  })
+
+  // The JSONB fallback already produces a timestamptz, so its bounds must stay untouched.
+  it('leaves the timestamptz fallback clause unconverted', () => {
+    const params: any[] = []
+    const clause = (service as any).buildDateRangeClause(
+      ['id', 'extra_fields'],
+      params,
+      '2026-01-01',
+      '2026-01-31',
+    )
+    expect(clause).not.toContain('AT TIME ZONE')
+  })
+
+  it('the emitted date range clause compares the bare column against bind params', () => {
+    const params: any[] = []
+    const clause = (service as any).buildDateRangeClause(
+      ['id', 'extra_fields', 'date_atd'],
+      params,
+      '2026-01-01',
+      '2026-01-31',
+    )
+    expect(clause).toContain('date_atd >=')
+    expect(clause).toContain('date_atd <=')
+    expect(params).toHaveLength(2)
+  })
+})
+
+describe('AirShipmentsService — SLA lookup caching on the table read path', () => {
+  let service: AirShipmentsService
+
+  beforeEach(async () => {
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        AirShipmentsService,
+        { provide: SheetsService, useValue: { getConfigs: jest.fn().mockReturnValue([]) } },
+        {
+          provide: DynamicTableService,
+          useValue: { ensureTable: jest.fn().mockResolvedValue({ success: true }) },
+        },
+        { provide: getRepositoryToken(AirShipmentCgk), useValue: makeRepo() },
+        { provide: getRepositoryToken(AirShipmentSub), useValue: makeRepo() },
+        { provide: getRepositoryToken(AirShipmentSda), useValue: makeRepo() },
+        { provide: getRepositoryToken(RatePerStation), useValue: makeRepo() },
+        { provide: getRepositoryToken(RouteMaster), useValue: makeRepo() },
+        { provide: getRepositoryToken(GoogleSheetConfig), useValue: makeRepo() },
+        { provide: getRepositoryToken(GoogleSheetSheetConfig), useValue: makeRepo() },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
+        { provide: DataSource, useValue: { query: jest.fn().mockResolvedValue([]) } },
+        {
+          provide: GeneralParamsService,
+          useValue: { getValue: jest.fn().mockResolvedValue('5') },
+        },
+      ],
+    }).compile()
+
+    service = module.get<AirShipmentsService>(AirShipmentsService)
+  })
+
+  /** Counts reads of the air_shipments_data master across a call. */
+  function wireMock() {
+    const slaReads: string[] = []
+    const dataSource = service['dataSource'] as jest.Mocked<DataSource>
+    dataSource.query.mockImplementation((sql: string) => {
+      if (sql.includes('information_schema.columns')) {
+        return Promise.resolve([
+          { column_name: 'id' },
+          { column_name: 'extra_fields' },
+          { column_name: 'excluded_reasons' },
+          { column_name: 'lt_number' },
+        ])
+      }
+      if (sql.includes('information_schema.tables')) return Promise.resolve([{ exists: true }])
+      if (sql.includes('air_shipments_data')) {
+        slaReads.push(sql)
+        return Promise.resolve([])
+      }
+      if (sql.includes('count(*)')) return Promise.resolve([{ count: 0 }])
+      return Promise.resolve([])
+    })
+    return slaReads
+  }
+
+  const baseQuery = {
+    page: 1,
+    limit: 50,
+    sortBy: 'id',
+    sortOrder: 'asc' as const,
+    alertFilter: 'any' as const,
+  }
+
+  // The SLA page sends alertFilter=any on every table request, so this path ran
+  // SELECT * FROM air_shipments_data (all columns incl. extra_fields) per request.
+  it('reuses the cached SLA lookup across repeated table reads', async () => {
+    const slaReads = wireMock()
+    await service.findAllForTable('air_shipments_compileaircgk', baseQuery)
+    await service.findAllForTable('air_shipments_compileaircgk', baseQuery)
+    expect(slaReads).toHaveLength(1)
+  })
+
+  it('reuses the cached SLA lookup on the lt-numbers path too', async () => {
+    const slaReads = wireMock()
+    await service.findLtNumbersForTable('air_shipments_compileaircgk', { alertFilter: 'any' })
+    await service.findLtNumbersForTable('air_shipments_compileaircgk', { alertFilter: 'any' })
+    expect(slaReads).toHaveLength(1)
+  })
+
+  // The lookup only reads origin_dc / destination_dc / sla / lost_treshold, but SELECT *
+  // dragged the whole extra_fields JSONB across the wire for every row.
+  it('reads only the columns the lookup needs, not SELECT *', async () => {
+    const slaReads = wireMock()
+    await service.findAllForTable('air_shipments_compileaircgk', baseQuery)
+    expect(slaReads[0]).not.toContain('SELECT *')
+  })
+})

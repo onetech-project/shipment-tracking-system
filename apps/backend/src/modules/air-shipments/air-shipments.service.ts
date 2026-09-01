@@ -168,7 +168,7 @@ export class AirShipmentsService {
       const emptyOffload = new Map<string, { offload: boolean; hasEvidence: boolean }>()
       const [{ nHours, mHours }, slaLookup] = await Promise.all([
         this.getAlertNMHours(),
-        this.getSlaLookupByOriginDest(),
+        this.getCachedSlaLookup(),
       ])
       const reservasiByAwb = profile.useSmuTracking
         ? await this.getCachedReservasiTrackinganByAwb(RESERVASI_TABLE_NAME)
@@ -294,7 +294,7 @@ export class AirShipmentsService {
       const emptyOffload = new Map<string, { offload: boolean; hasEvidence: boolean }>()
       const [{ nHours, mHours }, slaLookup] = await Promise.all([
         this.getAlertNMHours(),
-        this.getSlaLookupByOriginDest(),
+        this.getCachedSlaLookup(),
       ])
       const reservasiByAwb = profile.useSmuTracking
         ? await this.getCachedReservasiTrackinganByAwb(RESERVASI_TABLE_NAME)
@@ -665,17 +665,41 @@ export class AirShipmentsService {
     useFlexibleTimestamps = false,
   ): string | null {
     const atdOriginExpr = this.buildTimestampExpression('atd_origin', columns, useFlexibleTimestamps)
+    // The generated column and parse_flexible_timestamp both yield a naive TIMESTAMP,
+    // while the bounds below are absolute instants. Comparing the two would make
+    // Postgres coerce the *column* to timestamptz — correct, but opaque to a btree on
+    // it. Converting the bound instead keeps the comparison timestamp-to-timestamp, so
+    // the index stays usable; the conversion is identical in effect because it applies
+    // the same session TimeZone the column-side coercion would have used.
+    const toLocal = (placeholder: string) =>
+      this.isNaiveTimestampExpression('atd_origin', columns, useFlexibleTimestamps)
+        ? `(${placeholder} AT TIME ZONE current_setting('TimeZone'))`
+        : placeholder
+
     if (startDate && endDate) {
-      const clause = `(${atdOriginExpr} >= $${params.length + 1}::timestamptz AND ${atdOriginExpr} <= $${params.length + 2}::timestamptz)`
+      const lower = toLocal(`$${params.length + 1}::timestamptz`)
+      const upper = toLocal(`$${params.length + 2}::timestamptz`)
+      const clause = `(${atdOriginExpr} >= ${lower} AND ${atdOriginExpr} <= ${upper})`
       params.push(`${startDate}T00:00:00.000Z`, `${endDate}T23:59:59.999Z`)
       return clause
     }
     if (typeof days === 'number') {
-      const clause = `(${atdOriginExpr} >= NOW() - ($${params.length + 1} || ' days')::interval)`
+      const bound = toLocal(`(NOW() - ($${params.length + 1} || ' days')::interval)`)
+      const clause = `(${atdOriginExpr} >= ${bound})`
       params.push(String(days))
       return clause
     }
     return null
+  }
+
+  /**
+   * Whether buildTimestampExpression yields a naive TIMESTAMP (generated column or
+   * parse_flexible_timestamp) rather than a timestamptz-producing cast.
+   */
+  private isNaiveTimestampExpression(field: string, columns: string[], useFlexible = false) {
+    if (useFlexible) return true
+    const generated = AirShipmentsService.GENERATED_DATE_COLUMNS[field]
+    return Boolean(generated && columns.includes(generated))
   }
 
   private async getAlertNMHours(): Promise<{ nHours: number; mHours: number }> {
@@ -879,8 +903,16 @@ export class AirShipmentsService {
     )
     if (!exists[0]?.exists) return new Map()
 
+    // Only these four fields are read below. SELECT * shipped the whole extra_fields
+    // JSONB for every row of the master on each load. Each field is resolved the same
+    // way getFieldValueFromRow would have — real column first, then extra_fields — so
+    // the narrower projection cannot change which values are found.
+    const dataColumns = await this.getTableColumns(tableName)
+    const projection = ['origin_dc', 'destination_dc', 'sla', 'lost_treshold']
+      .map((field) => `${this.buildFieldValueExpression(field, dataColumns)} AS "${field}"`)
+      .join(', ')
     const rows: Record<string, unknown>[] = await this.dataSource.query(
-      `SELECT * FROM "${tableName}"`
+      `SELECT ${projection} FROM "${tableName}"`
     )
     const map = new Map<string, { sla: string | null; tjph: string | null }>()
     for (const row of rows) {
@@ -1046,13 +1078,30 @@ export class AirShipmentsService {
     return expressions.length > 1 ? `COALESCE(${expressions.join(', ')})` : expressions[0]
   }
 
+  /**
+   * Generated STORED columns that already hold the parsed timestamp for a raw
+   * extra_fields date, keyed by the raw field name. Filtering on the bare column
+   * lets the planner use a btree index; the JSONB + regex + cast expression below
+   * is opaque to every index and forced a seq scan of the whole table (280K rows
+   * on air_shipments_compileaircgk) just to evaluate the date range.
+   *
+   * Only safe because pnl_parse_date (which computes date_atd) accepts a superset
+   * of the ISO regex used below: rows the regex matched are matched here too.
+   */
+  private static readonly GENERATED_DATE_COLUMNS: Record<string, string> = {
+    atd_origin: 'date_atd',
+  }
+
   private buildTimestampExpression(field: string, columns: string[], useFlexible = false) {
     const fieldExpr = this.buildFieldValueExpression(field, columns)
     if (useFlexible) {
       // Sea sheets store non-ISO date strings ('1-Jun-2026 22:15'); the tolerant
       // SQL parser (EXCEPTION → NULL) covers them where the ISO regex would drop rows.
+      // The generated columns live on the air compile table only, so this wins.
       return `parse_flexible_timestamp(${fieldExpr})`
     }
+    const generated = AirShipmentsService.GENERATED_DATE_COLUMNS[field]
+    if (generated && columns.includes(generated)) return generated
     const v = `NULLIF(${fieldExpr}, '')`
     return `(CASE WHEN ${v} ~ '^\\d{4}-\\d{2}-\\d{2}([ T]\\d{1,2}:\\d{2}|$)' THEN ${v}::timestamptz END)`
   }
