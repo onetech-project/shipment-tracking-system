@@ -1077,7 +1077,10 @@ export class BarhalService {
       -- tetap harus tampil dengan kolom Koli utuh alih-alih lenyap diam-diam dari export.
       LEFT JOIN to_latest c ON c.to_number = t.to_number
       ${where}
-      ORDER BY c.shipment_date DESC NULLS LAST, k.koli_number, t.to_number
+      -- Dikelompokkan per Koli lebih dulu supaya baris satu Koli selalu berdampingan: kolom
+      -- terukur milik Koli hanya diisi pada baris pertamanya (lihat buildBarhalCsv), dan
+      -- urutan berbasis tanggal TO bisa memisahkan baris pertama itu jauh dari sisanya.
+      ORDER BY k.koli_number, c.shipment_date DESC NULLS LAST, t.to_number
       `,
       params,
     )

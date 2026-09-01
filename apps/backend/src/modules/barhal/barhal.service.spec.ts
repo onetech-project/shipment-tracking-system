@@ -793,13 +793,21 @@ describe('BarhalService', () => {
       expect(params).toEqual(['2026-06-01', '2026-06-30', 'Kosambi'])
     })
 
-    it('orders by TO date descending, then by Koli number, then by TO number', async () => {
+    /**
+     * Mengelompokkan per Koli lebih dulu adalah syarat kolom milik Koli hanya diisi di baris
+     * pertamanya: dengan urutan lama yang berbasis tanggal TO, baris satu Koli bisa terpecah ke
+     * beberapa tempat dalam berkas, sehingga baris pertamanya berdiri jauh dari sisanya dan
+     * pembacanya kehilangan konteks. Tanggal TO tetap menjadi urutan di dalam tiap Koli.
+     */
+    it('groups rows by Koli first, so each Koli forms one unbroken block', async () => {
       dataSource.query.mockResolvedValueOnce([])
 
       await service.exportCsv({})
 
       const [sql] = dataSource.query.mock.calls[0]
-      expect(sql).toContain('ORDER BY c.shipment_date DESC NULLS LAST, k.koli_number, t.to_number')
+      expect(sql).toContain(
+        'ORDER BY k.koli_number, c.shipment_date DESC NULLS LAST, t.to_number',
+      )
     })
 
     it('mengekspor tepat 22 alias berkutip yang sama persis dengan field BarhalCsvRow', async () => {
