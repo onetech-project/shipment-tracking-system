@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing'
 import { getRepositoryToken } from '@nestjs/typeorm'
+import { DataSource } from 'typeorm'
 import {
   ConflictException,
   ForbiddenException,
@@ -75,6 +76,10 @@ describe('UsersService', () => {
 
   const eventEmitter = { emit: jest.fn() }
 
+  const dataSource = {
+    transaction: jest.fn(),
+  }
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -84,6 +89,7 @@ describe('UsersService', () => {
         { provide: getRepositoryToken(UserRole), useValue: urRepo },
         { provide: AuthService, useValue: authService },
         { provide: EventEmitter2, useValue: eventEmitter },
+        { provide: DataSource, useValue: dataSource },
       ],
     }).compile()
 
@@ -91,6 +97,16 @@ describe('UsersService', () => {
     jest.clearAllMocks()
     userRepo.create.mockImplementation((dto) => ({ ...dto }))
     profileRepo.create.mockImplementation((dto) => ({ ...dto }))
+    dataSource.transaction.mockImplementation(async (cb: any) =>
+      cb({
+        save: (entityOrTarget: any, maybeEntity?: any) => {
+          const entity = maybeEntity ?? entityOrTarget
+          return entity instanceof Profile || entity?.organizationId
+            ? profileRepo.save(entity)
+            : userRepo.save(entity)
+        },
+      })
+    )
     userRepo.createQueryBuilder.mockReturnValue(qb)
     qb.select.mockReturnValue(qb)
     qb.innerJoin.mockReturnValue(qb)
@@ -201,6 +217,38 @@ describe('UsersService', () => {
       ).rejects.toThrow(new ConflictException('Username already taken'))
 
       expect(userRepo.save).not.toHaveBeenCalled()
+    })
+
+    it('writes user and profile in one transaction so a profile failure leaves no orphan user', async () => {
+      userRepo.findOne.mockResolvedValue(null)
+      ;(bcryptMock.hash as jest.Mock).mockResolvedValue('hashed-new-pw')
+
+      // The transactional manager fails on the profile write.
+      const managerSave = jest
+        .fn()
+        .mockResolvedValueOnce(makeUser({ id: 'user-new' }))
+        .mockRejectedValueOnce(new Error('profile insert failed'))
+      dataSource.transaction.mockImplementation(async (cb: any) => cb({ save: managerSave }))
+
+      await expect(
+        service.create(
+          {
+            username: 'bob',
+            password: 'plain',
+            email: 'bob@example.com',
+            firstName: 'Bob',
+            lastName: 'Jones',
+          },
+          'org-1',
+          'actor-1'
+        )
+      ).rejects.toThrow('profile insert failed')
+
+      // Both writes must go through the transactional manager, never the bare repos.
+      expect(userRepo.save).not.toHaveBeenCalled()
+      expect(profileRepo.save).not.toHaveBeenCalled()
+      // And no success event may be emitted for a rolled-back user.
+      expect(eventEmitter.emit).not.toHaveBeenCalledWith('user.created', expect.anything())
     })
   })
 

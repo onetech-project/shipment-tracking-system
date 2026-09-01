@@ -1120,4 +1120,145 @@ describe('AirShipmentsService — findOffloadedAwbs() route filter', () => {
     expect(dataSql).toBeDefined()
     expect(dataSql!.sql).not.toContain('air_shipments_compileaircgk')
   })
+
+  describe('processSingleSheet — no-change detection (write amplification)', () => {
+    // Regression: sheet headers that are NOT top-level table columns live in
+    // extra_fields. The diff compared them against `existing[key]` (always
+    // undefined), so every row looked changed and was rewritten on every sync
+    // tick — 92M updates for 66K rows in production.
+    const setupSheet = () => {
+      const existingRow = {
+        id: 'row-1',
+        to_number: 'TO-1',
+        is_locked: null,
+        // top-level (generated) columns
+        awb: '126-111',
+        gross_weight: '10.5',
+        // everything else lives here
+        extra_fields: { vendor: 'GATRANS', origin: 'CGK', stt: 'STT-1' },
+      }
+      const incomingRow = {
+        to_number: 'TO-1',
+        awb: '126-111',
+        gross_weight: '10.5',
+        vendor: 'GATRANS',
+        origin: 'CGK',
+        stt: 'STT-1',
+      }
+      const mockQuery = jest.fn().mockImplementation((sql: string) => {
+        if (String(sql).includes('information_schema.columns')) {
+          // Mirrors the real table: awb/gross_weight/to_number are GENERATED
+          // from extra_fields; vendor/origin/stt are not columns at all.
+          return Promise.resolve([
+            { column_name: 'id', is_generated: 'NEVER' },
+            { column_name: 'is_locked', is_generated: 'NEVER' },
+            { column_name: 'last_synced_at', is_generated: 'NEVER' },
+            { column_name: 'extra_fields', is_generated: 'NEVER' },
+            { column_name: 'to_number', is_generated: 'ALWAYS' },
+            { column_name: 'awb', is_generated: 'ALWAYS' },
+            { column_name: 'gross_weight', is_generated: 'ALWAYS' },
+          ])
+        }
+        return Promise.resolve([])
+      })
+      const selectSpy = jest.fn().mockReturnThis()
+      ;(service as any).dataSource = {
+        query: mockQuery,
+        createQueryBuilder: jest.fn(() => ({
+          select: selectSpy,
+          from: jest.fn().mockReturnThis(),
+          getRawMany: jest.fn().mockResolvedValue([existingRow]),
+        })),
+      }
+      return { incomingRow, mockQuery, selectSpy }
+    }
+
+    it('skips a row whose extra_fields values are all unchanged', async () => {
+      const { incomingRow } = setupSheet()
+      const upsertSpy = jest
+        .spyOn(service as any, 'upsertDynamic')
+        .mockResolvedValue(undefined)
+
+      const result = await (service as any).processSingleSheet({
+        sheetName: 'CompileAirCGK',
+        tableName: 'air_shipments_compileaircgk',
+        uniqueKey: 'to_number',
+        headers: Object.keys(incomingRow),
+        rows: [incomingRow],
+      })
+
+      expect(result.noChangeSkipped).toBe(1)
+      expect(result.upserted).toBe(0)
+      expect(upsertSpy).not.toHaveBeenCalled()
+    })
+
+    it('still upserts when an extra_fields value actually changes', async () => {
+      const { incomingRow } = setupSheet()
+      const upsertSpy = jest
+        .spyOn(service as any, 'upsertDynamic')
+        .mockResolvedValue(undefined)
+
+      const result = await (service as any).processSingleSheet({
+        sheetName: 'CompileAirCGK',
+        tableName: 'air_shipments_compileaircgk',
+        uniqueKey: 'to_number',
+        headers: Object.keys(incomingRow),
+        rows: [{ ...incomingRow, vendor: 'CHANGED' }],
+      })
+
+      expect(result.noChangeSkipped).toBe(0)
+      expect(result.upserted).toBe(1)
+      expect(upsertSpy).toHaveBeenCalled()
+    })
+
+    it('fetches only the columns the diff reads, not SELECT *', async () => {
+      const { incomingRow, selectSpy } = setupSheet()
+      jest.spyOn(service as any, 'upsertDynamic').mockResolvedValue(undefined)
+
+      await (service as any).processSingleSheet({
+        sheetName: 'CompileAirCGK',
+        tableName: 'air_shipments_compileaircgk',
+        uniqueKey: 'to_number',
+        headers: Object.keys(incomingRow),
+        rows: [incomingRow],
+      })
+
+      const selected = selectSpy.mock.calls[0][0]
+      expect(selected).not.toBe('*')
+      expect(selected).toEqual(expect.arrayContaining(['t."to_number"', 't."extra_fields"']))
+      // vendor/origin/stt are not columns — must not be selected
+      expect(selected).not.toEqual(expect.arrayContaining(['t."vendor"']))
+    })
+  })
+
+  describe('resolveDateExpr — schema probe', () => {
+    const runProbe = async (hasDate: boolean) => {
+      let capturedSql = ''
+      const mockQuery = jest.fn().mockImplementation((sql: string) => {
+        capturedSql = sql
+        return Promise.resolve([{ has_date: hasDate }])
+      })
+      ;(service as any).dataSource = { query: mockQuery }
+      const expr = await (service as any).resolveDateExpr('air_shipments_compileaircgk')
+      return { expr, capturedSql }
+    }
+
+    it('uses the business date column when the sheet supplies one', async () => {
+      const { expr } = await runProbe(true)
+      expect(expr).toBe(`parse_flexible_timestamp(extra_fields->>'date')`)
+    })
+
+    it('falls back to created_at when no date field exists', async () => {
+      const { expr } = await runProbe(false)
+      expect(expr).toBe('created_at::timestamp')
+    })
+
+    it('probes the table shape with a single row, not a whole-table EXISTS scan', async () => {
+      // The EXISTS form matched every row via the GIN index (66K rows, ~9ms) just
+      // to answer a yes/no schema question. LIMIT 1 answers it from one page.
+      const { capturedSql } = await runProbe(true)
+      expect(capturedSql).toContain('LIMIT 1')
+      expect(capturedSql).not.toContain('EXISTS')
+    })
+  })
 })

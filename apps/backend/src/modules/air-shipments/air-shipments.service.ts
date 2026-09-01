@@ -1180,10 +1180,39 @@ export class AirShipmentsService {
     const rowKey = (row: Record<string, unknown>): string =>
       keyColumns.map((k) => String(row[k] ?? '')).join('\x00')
 
-    // Fetch existing rows — only key columns + data columns needed for diff
+    // Column catalog is needed both to build the SELECT list below and to split
+    // incoming fields into real columns vs extra_fields.
+    const columnsResult = await this.dataSource.query(
+      `
+      SELECT column_name, is_generated
+      FROM information_schema.columns
+      WHERE table_name = $1
+      AND table_schema = 'public'
+      `,
+      [tableName]
+    )
+
+    const allColumns: string[] = columnsResult.map((c: any) => c.column_name)
+    const entityColumns = columnsResult
+      .filter((c: any) => c.is_generated === 'NEVER')
+      .map((c: any) => c.column_name)
+      .filter((c: string) => c !== 'extra_fields')
+
+    // Fetch existing rows — only the columns the diff actually reads, instead of
+    // SELECT * over every column of a 30+ column table on each sync tick.
+    const diffColumns = Array.from(
+      new Set([
+        ...keyColumns,
+        'is_locked',
+        'extra_fields',
+        // top-level columns that the sheet also supplies
+        ...headers.filter((h) => allColumns.includes(h)),
+      ])
+    ).filter((c) => allColumns.length === 0 || allColumns.includes(c))
+
     const existingRows = await this.dataSource
       .createQueryBuilder()
-      .select('*')
+      .select(diffColumns.length > 0 ? diffColumns.map((c) => `t."${c}"`) : ['*'])
       .from(tableName, 't')
       .getRawMany()
     const existingMap = new Map<string, Record<string, unknown>>()
@@ -1192,22 +1221,6 @@ export class AirShipmentsService {
     let lockedSkipped = 0
     let noChangeSkipped = 0
     const rowsToUpsert: Record<string, unknown>[] = []
-
-    // Get all entity columns for this table (excluding extra_fields)
-    const columnsResult = await this.dataSource.query(
-      `
-      SELECT column_name
-      FROM information_schema.columns
-      WHERE table_name = $1
-      AND table_schema = 'public'
-      AND is_generated = 'NEVER'
-      `,
-      [tableName]
-    )
-
-    const entityColumns = columnsResult
-      .map((c: any) => c.column_name)
-      .filter((c: string) => c !== 'extra_fields')
 
     for (const incomingRow of rows) {
       const existing = existingMap.get(rowKey(incomingRow))
@@ -1235,10 +1248,19 @@ export class AirShipmentsService {
       regularFields['last_synced_at'] = new Date()
 
       if (existing) {
+        // Most sheet headers are not top-level columns — they are stored inside
+        // extra_fields. Comparing them against existing[k] always yielded
+        // undefined, so every row looked changed and was rewritten on every
+        // tick. Resolve each key the same way it is written: top-level column
+        // first, then extra_fields.
+        const existingExtra = (existing['extra_fields'] ?? {}) as Record<string, unknown>
+        const existingValue = (k: string): unknown =>
+          k in existing ? existing[k] : existingExtra[k]
+
         const hasChanges = Object.keys(incomingRow).some(
           (k) =>
             !SYSTEM_COLUMNS.has(k) &&
-            this.normalizeForDiff(incomingRow[k]) !== this.normalizeForDiff(existing[k])
+            this.normalizeForDiff(incomingRow[k]) !== this.normalizeForDiff(existingValue(k))
         )
         if (!hasChanges) {
           noChangeSkipped++
@@ -1717,8 +1739,11 @@ export class AirShipmentsService {
    * regex-guard `tableName`.
    */
   private async resolveDateExpr(tableName: string): Promise<string> {
+    // Whether the sheet carries a `date` field is a property of the table shape,
+    // so one row answers it. The old EXISTS form matched all 66K rows through the
+    // GIN index just to return a boolean.
     const rows = await this.dataSource.query(
-      `SELECT EXISTS(SELECT 1 FROM "${tableName}" WHERE extra_fields ? 'date' LIMIT 1) AS has_date`
+      `SELECT extra_fields ? 'date' AS has_date FROM "${tableName}" LIMIT 1`
     )
     return rows?.[0]?.has_date
       ? `parse_flexible_timestamp(extra_fields->>'date')`

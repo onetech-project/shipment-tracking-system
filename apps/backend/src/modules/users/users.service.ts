@@ -6,7 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
+import { DataSource, Repository } from 'typeorm'
 import { EventEmitter2 } from '@nestjs/event-emitter'
 import * as bcrypt from 'bcrypt'
 import { User } from './entities/user.entity'
@@ -30,7 +30,8 @@ export class UsersService {
     @InjectRepository(Profile) private readonly profileRepo: Repository<Profile>,
     @InjectRepository(UserRole) private readonly urRepo: Repository<UserRole>,
     private readonly authService: AuthService,
-    private readonly eventEmitter: EventEmitter2
+    private readonly eventEmitter: EventEmitter2,
+    private readonly dataSource: DataSource
   ) {}
 
   async findAll(
@@ -62,16 +63,20 @@ export class UsersService {
     const existing = await this.userRepo.findOne({ where: { username: dto.username } })
     if (existing) throw new ConflictException('Username already taken')
     const password = await bcrypt.hash(dto.password, BCRYPT_ROUNDS)
-    const user = this.userRepo.create({ username: dto.username, password, isActive: true })
-    const saved = await this.userRepo.save(user)
-    // Create profile
-    const profile = this.profileRepo.create({
-      userId: saved.id,
-      organizationId,
-      email: dto.email,
-      name: `${dto.firstName} ${dto.lastName}`,
+    // User and profile must land together — a failed profile write previously
+    // left an orphan user row behind.
+    const saved = await this.dataSource.transaction(async (manager) => {
+      const user = this.userRepo.create({ username: dto.username, password, isActive: true })
+      const savedUser = await manager.save(user)
+      const profile = this.profileRepo.create({
+        userId: savedUser.id,
+        organizationId,
+        email: dto.email,
+        name: `${dto.firstName} ${dto.lastName}`,
+      })
+      await manager.save(profile)
+      return savedUser
     })
-    await this.profileRepo.save(profile)
     this.eventEmitter.emit('user.created', { userId: saved.id, organizationId, actorId })
     return saved
   }
