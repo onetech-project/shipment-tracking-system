@@ -6,6 +6,7 @@ import { MatrixTableModel, formatDayLabel, groupOrigins } from '../utils/dailyMa
 import { PnlDailyMatrixColumn } from '../hooks/usePnl'
 import { num, pct } from '../utils/format'
 import { CellWarning, hasWarning, warningTooltip, WARNING_TINT } from '../utils/cellWarning'
+import { frozenCell } from '../utils/frozenColumn'
 
 interface PnlMatrixTableProps {
   title: string
@@ -101,7 +102,7 @@ export function PnlMatrixTable({ title, model, defaultOpen = true, onCellClick }
               {model.dates.map((date, rowIndex) => (
                 <tr key={date} className={rowIndex % 2 ? 'bg-muted/30' : ''}>
                   <td
-                    className={`sticky left-0 z-10 whitespace-nowrap border-b border-r px-3 py-1.5 ${rowIndex % 2 ? 'bg-muted/30' : 'bg-card'}`}
+                    className={`sticky left-0 z-10 whitespace-nowrap border-b border-r px-3 py-1.5 ${frozenCell(rowIndex % 2 === 1)}`}
                   >
                     {formatDayLabel(date)}
                   </td>

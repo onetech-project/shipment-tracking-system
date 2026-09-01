@@ -36,3 +36,26 @@ export function warningTooltip(warning: CellWarning | undefined): string | undef
   }
   return parts.join(' · ')
 }
+
+// The only issue values that say revenue itself is missing. Named rather than inlined so there is
+// one place to extend if another revenue-side issue is ever classified.
+//
+// Caveat worth knowing: v_pnl_to.issue is a priority CHAIN, not a list — 'revenue_missing' only
+// surfaces once vendor and all three AWB costs are present. An AWB that is both unbooked and
+// missing revenue is labelled 'no_booking', so it reads clean here. Fixing that needs a direct
+// COUNT(*) FILTER (WHERE revenue_total IS NULL) aggregate in getDailyMatrix, not a wider set.
+const REVENUE_ISSUES = new Set(['revenue_missing'])
+
+/**
+ * The same warning, narrowed to what makes the REVENUE number unreliable. Cost issues and
+ * incompleteTos are dropped: neither can move SUM(revenue_total). Used by the revenue table only —
+ * margin is revenue − discount − cost, so both halves still spoil it.
+ */
+// Overloaded so callers holding a definite warning — every cell and footer entry does, since both
+// are built with a clean fallback — get one back without a non-null assertion.
+export function revenueWarning(warning: CellWarning): CellWarning
+export function revenueWarning(warning: CellWarning | undefined): CellWarning | undefined
+export function revenueWarning(warning: CellWarning | undefined): CellWarning | undefined {
+  if (!warning) return undefined
+  return { issues: warning.issues.filter((i) => REVENUE_ISSUES.has(i.issue)), incompleteTos: 0 }
+}

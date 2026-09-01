@@ -1,4 +1,4 @@
-import { CellWarning, hasWarning, warningTooltip } from './cellWarning'
+import { CellWarning, hasWarning, revenueWarning, warningTooltip } from './cellWarning'
 
 const clean: CellWarning = { issues: [], incompleteTos: 0 }
 
@@ -53,5 +53,47 @@ describe('warningTooltip', () => {
     expect(warningTooltip({ issues: [{ issue: 'brand_new', awbs: 1 }], incompleteTos: 0 })).toBe(
       'Data quality: brand_new (1 AWB)',
     )
+  })
+})
+
+describe('revenueWarning', () => {
+  it('keeps a revenue issue', () => {
+    expect(revenueWarning({ issues: [{ issue: 'revenue_missing', awbs: 2 }], incompleteTos: 0 })).toEqual({
+      issues: [{ issue: 'revenue_missing', awbs: 2 }],
+      incompleteTos: 0,
+    })
+  })
+
+  it('drops cost issues, so a cost-only cell reads as clean', () => {
+    const costOnly = revenueWarning({
+      issues: [
+        { issue: 'smu_rate_missing', awbs: 3 },
+        { issue: 'sg_in_rate_missing', awbs: 1 },
+      ],
+      incompleteTos: 4,
+    })
+    expect(hasWarning(costOnly)).toBe(false)
+  })
+
+  it('drops incompleteTos, which counts TOs with no cost and never touches revenue', () => {
+    expect(hasWarning(revenueWarning({ issues: [], incompleteTos: 9 }))).toBe(false)
+  })
+
+  it('still warns when a cell has a revenue issue AND cost problems', () => {
+    // "Only revenue" means only revenue DECIDES the colour — a cost problem neither adds to it nor
+    // cancels it. Blanking a mixed cell would hide missing revenue exactly where data is worst.
+    const mixed = revenueWarning({
+      issues: [
+        { issue: 'no_booking', awbs: 5 },
+        { issue: 'revenue_missing', awbs: 1 },
+      ],
+      incompleteTos: 7,
+    })
+    expect(hasWarning(mixed)).toBe(true)
+    expect(warningTooltip(mixed)).toBe('Data quality: Revenue missing (1 AWB)')
+  })
+
+  it('passes undefined through rather than inventing a clean warning', () => {
+    expect(revenueWarning(undefined)).toBeUndefined()
   })
 })
