@@ -7,11 +7,11 @@
 /**
  * One row per TO attached to a Koli.
  *
- * The Koli-owned fields (originName, destName, and everything from koliNumber onwards) are
- * REPEATED on every TO row of that Koli, so each row stands alone for filtering and pivoting.
- * The cost is that summing the weight, volume, or batang kayu columns counts a single Koli once
- * per TO and therefore overstates the total — the dashboard recap, which counts each Koli once,
- * is the number to trust for totals.
+ * The Koli's MEASURED fields — the two weights, the three dimensions, volume, and batang kayu —
+ * are written only on the first row of each Koli and left blank on that Koli's remaining TO rows,
+ * so the columns sum to the Koli totals instead of counting one Koli once per TO. Its IDENTIFYING
+ * fields (originName, destName, koliNumber, SMU, airlines, flight, STD/STA) are still repeated on
+ * every row, which keeps each row filterable and groupable on its own.
  *
  * The pg driver returns `numeric` columns as strings and `date`/`timestamptz` columns as Date
  * objects, so the field types admit both shapes.
@@ -139,9 +139,20 @@ function formatCsvDelta(before: number | string | null, after: number | string |
   return Number.isFinite(delta) ? delta.toFixed(1) : ''
 }
 
+/**
+ * The measured columns are emitted once per Koli, on its first row.
+ *
+ * Membership is tracked against every Koli already seen rather than against the previous row
+ * alone: the query groups a Koli's rows together, but should that ordering ever change, a Koli
+ * split across the file would otherwise print its measurements again and double the column total
+ * — the very overcounting this blanking exists to remove.
+ */
 export function buildBarhalCsv(rows: BarhalCsvRow[]): string {
   const lines = [HEADERS.map(escapeCsvCell).join(',')]
+  const seenKoli = new Set<string>()
   for (const row of rows) {
+    const isFirstRowOfKoli = !seenKoli.has(row.koliNumber)
+    seenKoli.add(row.koliNumber)
     lines.push(
       [
         formatCsvDate(row.shipmentDate),
@@ -154,19 +165,19 @@ export function buildBarhalCsv(rows: BarhalCsvRow[]): string {
         row.qtyParcel,
         row.remarks,
         row.koliNumber,
-        formatCsvWeight(row.weightBefore),
-        formatCsvWeight(row.weightAfter),
-        formatCsvDelta(row.weightBefore, row.weightAfter),
+        isFirstRowOfKoli ? formatCsvWeight(row.weightBefore) : '',
+        isFirstRowOfKoli ? formatCsvWeight(row.weightAfter) : '',
+        isFirstRowOfKoli ? formatCsvDelta(row.weightBefore, row.weightAfter) : '',
         row.smuNumber,
         row.airlines,
         row.flightNo,
         formatCsvDateTime(row.std),
         formatCsvDateTime(row.sta),
-        formatCsvNumber(row.lengthCm),
-        formatCsvNumber(row.widthCm),
-        formatCsvNumber(row.heightCm),
-        formatCsvNumber(row.volume),
-        formatCsvNumber(row.batangKayu),
+        isFirstRowOfKoli ? formatCsvNumber(row.lengthCm) : '',
+        isFirstRowOfKoli ? formatCsvNumber(row.widthCm) : '',
+        isFirstRowOfKoli ? formatCsvNumber(row.heightCm) : '',
+        isFirstRowOfKoli ? formatCsvNumber(row.volume) : '',
+        isFirstRowOfKoli ? formatCsvNumber(row.batangKayu) : '',
       ]
         .map(escapeCsvCell)
         .join(','),

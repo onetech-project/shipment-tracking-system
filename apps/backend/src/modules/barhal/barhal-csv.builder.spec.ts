@@ -194,6 +194,68 @@ describe('buildBarhalCsv', () => {
     expect(cells[18]).toBe('100')
   })
 
+  /**
+   * Kolom milik Koli (berat, dimensi, volume, batang kayu) dulu diulang di setiap baris TO,
+   * sehingga menjumlahkannya menghitung satu Koli sebanyak jumlah TO-nya. Kini hanya baris
+   * pertama tiap Koli yang memuatnya, jadi kolom-kolom itu bisa dijumlah apa adanya.
+   */
+  it('hanya menampilkan kolom milik Koli pada baris pertama tiap Koli', () => {
+    const lines = buildBarhalCsv([
+      row({ koliNumber: 'Koli-A', toNumber: 'TO-A1' }),
+      row({ koliNumber: 'Koli-A', toNumber: 'TO-A2' }),
+      row({ koliNumber: 'Koli-B', toNumber: 'TO-B1', weightBefore: 30, weightAfter: 41, volume: 1.2 }),
+    ]).split('\r\n')
+
+    const first = lines[1].split(',')
+    expect(first.slice(10, 13)).toEqual(['15.0', '20.0', '5.0'])
+    expect(first.slice(18, 23)).toEqual(['120', '80', '60', '0.58', '4'])
+
+    // Baris TO kedua dari Koli yang sama: kolom Koli dikosongkan, bukan diulang.
+    const second = lines[2].split(',')
+    expect(second.slice(10, 13)).toEqual(['', '', ''])
+    expect(second.slice(18, 23)).toEqual(['', '', '', '', ''])
+
+    // Koli berikutnya memulai hitungan dari awal lagi dengan nilainya sendiri.
+    const third = lines[3].split(',')
+    expect(third.slice(10, 13)).toEqual(['30.0', '41.0', '11.0'])
+    expect(third[21]).toBe('1.2')
+  })
+
+  it('tetap mengulang kolom TO dan identitas Koli di baris lanjutan', () => {
+    const lines = buildBarhalCsv([
+      row({ koliNumber: 'Koli-A', toNumber: 'TO-A1' }),
+      row({ koliNumber: 'Koli-A', toNumber: 'TO-A2', grossWeight: 3.5 }),
+    ]).split('\r\n')
+
+    const second = lines[2].split(',')
+    // Kolom milik TO itu sendiri tidak pernah dikosongkan.
+    expect(second[0]).toBe('01 Jun 2026')
+    expect(second[5]).toBe('TO-A2')
+    expect(second[6]).toBe('3.5')
+    // ID Packing Kayu tetap ada di setiap baris: itu kunci yang menyatukan baris ke Koli-nya.
+    expect(second[9]).toBe('Koli-A')
+    // SMU/Airlines/Flight/STD/STA sengaja tidak ikut dikosongkan.
+    expect(second.slice(13, 18)).toEqual([
+      '990-12345678', 'Garuda', 'GA-712', '01 Jun 2026 14:30', '01 Jun 2026 16:45',
+    ])
+  })
+
+  /**
+   * SQL mengurutkan per Koli sehingga baris satu Koli selalu berdampingan. Pengosongan tetap
+   * dilakukan berdasarkan Koli yang sudah pernah terlihat, bukan sekadar baris sebelumnya: kalau
+   * suatu saat urutannya berubah, kolom Koli tetap muncul tepat sekali dan totalnya tidak dobel.
+   */
+  it('tidak memunculkan ulang kolom Koli ketika barisnya terpisah oleh Koli lain', () => {
+    const lines = buildBarhalCsv([
+      row({ koliNumber: 'Koli-A', toNumber: 'TO-A1' }),
+      row({ koliNumber: 'Koli-B', toNumber: 'TO-B1' }),
+      row({ koliNumber: 'Koli-A', toNumber: 'TO-A2' }),
+    ]).split('\r\n')
+
+    expect(lines[3].split(',').slice(10, 13)).toEqual(['', '', ''])
+    expect(lines[3].split(',').slice(18, 23)).toEqual(['', '', '', '', ''])
+  })
+
   it('emits only the header when there are no rows', () => {
     expect(buildBarhalCsv([])).toBe(EXPECTED_HEADER)
   })
