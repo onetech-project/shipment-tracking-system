@@ -236,4 +236,24 @@ export class PnlController {
   ) {
     return this.pnlService.getAnalyticsDailySeries(cycle, start, end, basis)
   }
+
+  @Get('analytics/journey')
+  getAnalyticsJourney(
+    @Query('cycle') cycle?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+    @Query('basis') basis?: string,
+  ) {
+    return this.pnlService.getAnalyticsJourney(cycle, start, end, basis)
+  }
+
+  @Get('analytics/gw-chw')
+  getAnalyticsGwChw(
+    @Query('cycle') cycle?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+    @Query('basis') basis?: string,
+  ) {
+    return this.pnlService.getAnalyticsGwChw(cycle, start, end, basis)
+  }
 }

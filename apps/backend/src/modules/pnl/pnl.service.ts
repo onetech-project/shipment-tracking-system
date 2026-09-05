@@ -193,6 +193,39 @@ export interface PnlAnalyticsDailySeries {
   rows: PnlAnalyticsDailyRow[]
 }
 
+// One vendor × airline × route combination, for the "best journey" ranking. Only AWBs with fully
+// attributed cost are counted: a row with no cost reads as infinitely profitable and would head
+// every ranking it appears in.
+export interface PnlAnalyticsJourneyRow {
+  vendor: string | null
+  airline: string | null
+  // '?' is a real bucket, not an error state: v_pnl_to permits a NULL/empty station (that is what
+  // station_mapping_missing reports) and the per-AWB MODE() yields NULL when no TO of the AWB has
+  // one. Such AWBs are coalesced into '?' rather than dropped, matching getAnalyticsDailySeries.
+  origin: string
+  dest: string
+  awbCount: number
+  gw: number
+  chwt: number
+  revenue: number
+  cost: number
+  margin: number
+  marginPerKg: number
+}
+
+// Gross weight versus chargeable weight per route. Unlike the journey rollup this counts every AWB,
+// including ones with no cost: the gap is a weight fact, not a margin fact.
+export interface PnlAnalyticsGwChwRow {
+  // '?' is a real bucket here too — see PnlAnalyticsJourneyRow.origin.
+  origin: string
+  dest: string
+  gw: number
+  chwt: number
+  diff: number // gw - chwt
+  revenuePerKg: number
+  impact: number // diff * revenuePerKg
+}
+
 export interface PnlStation {
   origin: string // raw v_pnl_to value, e.g. 'Jabo'
   originLabel: string // display label, e.g. 'CGK'
@@ -1729,5 +1762,134 @@ export class PnlService {
         incompleteTos: Number(r.incomplete_tos),
       })),
     }
+  }
+
+  // Chargeable weight and the AWB-level cost columns are attributes of the AWB, not of the TO row:
+  // both endpoints below therefore collapse to one row per AWB first (MAX over the AWB) and only
+  // then group. Summing chwt_awb straight off v_pnl_to would multiply it by each AWB's TO count.
+  //
+  // Deliberately NOT costSplitSql: that helper prorates by weight_share because its callers group
+  // at TO grain. This CTE collapses to one row per AWB first, so it takes the whole AWB cost via
+  // MAX. Prorating on top of that would understate every component.
+  //
+  // The stations are coalesced here, inside the CTE, so both outer queries group on an already
+  // clean value. MODE() ignores NULLs, so an AWB with any mapped TO reports that station and only
+  // an AWB with no mapped TO at all falls through to '?'.
+  private analyticsPerAwbCte(where: string): string {
+    return `
+      WITH per_awb AS (
+        SELECT
+          awb,
+          vendor,
+          airline,
+          COALESCE(NULLIF(MODE() WITHIN GROUP (ORDER BY origin_station), ''), '?')  AS origin,
+          COALESCE(NULLIF(MODE() WITHIN GROUP (ORDER BY dest_station),   ''), '?')  AS dest,
+          COALESCE(SUM(gross_weight), 0)                                       AS gw,
+          COALESCE(MAX(chwt_awb), 0)                                           AS chwt,
+          COALESCE(SUM(revenue_total), 0)
+            - COALESCE(SUM(revenue_discount), 0)                               AS revenue,
+          COALESCE(MAX(cost_smu_awb), 0)
+            + COALESCE(MAX(cost_ra_awb), 0)
+            + COALESCE(MAX(cost_sg_out_awb), 0)
+            + COALESCE(SUM(cost_sg_in_to), 0)                                  AS cost,
+          (MAX(cost_total_awb) IS NULL OR MAX(cost_sg_in_to) IS NULL)          AS has_null_cost
+        FROM v_pnl_to
+        WHERE ${where}
+        GROUP BY awb, vendor, airline
+      )`
+  }
+
+  async getAnalyticsJourney(
+    cyclePeriod?: string,
+    startDate?: string,
+    endDate?: string,
+    basis?: string,
+  ): Promise<PnlAnalyticsJourneyRow[]> {
+    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate)
+
+    const rows = await this.dataSource.query(
+      `
+      ${this.analyticsPerAwbCte(where)}
+      SELECT
+        vendor,
+        airline,
+        origin,
+        dest,
+        COUNT(*)::int          AS awb_count,
+        COALESCE(SUM(gw), 0)      AS gw,
+        COALESCE(SUM(chwt), 0)    AS chwt,
+        COALESCE(SUM(revenue), 0) AS revenue,
+        COALESCE(SUM(cost), 0)    AS cost
+      FROM per_awb
+      WHERE has_null_cost = FALSE
+        AND cost > 0
+      GROUP BY vendor, airline, origin, dest
+      `,
+      params,
+    )
+
+    return (rows as Record<string, string>[])
+      .map((r) => {
+        const gw = Number(r.gw)
+        const revenue = Number(r.revenue)
+        const cost = Number(r.cost)
+        const margin = revenue - cost
+        return {
+          vendor: (r.vendor as string | null) ?? null,
+          airline: (r.airline as string | null) ?? null,
+          origin: r.origin,
+          dest: r.dest,
+          awbCount: Number(r.awb_count),
+          gw,
+          chwt: Number(r.chwt),
+          revenue,
+          cost,
+          margin,
+          marginPerKg: gw > 0 ? margin / gw : 0,
+        }
+      })
+      .sort((a, b) => b.marginPerKg - a.marginPerKg)
+  }
+
+  async getAnalyticsGwChw(
+    cyclePeriod?: string,
+    startDate?: string,
+    endDate?: string,
+    basis?: string,
+  ): Promise<PnlAnalyticsGwChwRow[]> {
+    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate)
+
+    const rows = await this.dataSource.query(
+      `
+      ${this.analyticsPerAwbCte(where)}
+      SELECT
+        origin,
+        dest,
+        COALESCE(SUM(gw), 0)      AS gw,
+        COALESCE(SUM(chwt), 0)    AS chwt,
+        COALESCE(SUM(revenue), 0) AS revenue
+      FROM per_awb
+      GROUP BY origin, dest
+      `,
+      params,
+    )
+
+    return (rows as Record<string, string>[])
+      .map((r) => {
+        const gw = Number(r.gw)
+        const chwt = Number(r.chwt)
+        const revenuePerKg = gw > 0 ? Number(r.revenue) / gw : 0
+        const diff = gw - chwt
+        return {
+          origin: r.origin,
+          dest: r.dest,
+          gw,
+          chwt,
+          diff,
+          revenuePerKg,
+          impact: diff * revenuePerKg,
+        }
+      })
+      .sort((a, b) => a.impact - b.impact)
   }
 }

@@ -1644,4 +1644,142 @@ describe('PnlService', () => {
       expect(sql).toContain("COALESCE(NULLIF(dest_station, ''), '?') AS dest_station")
     })
   })
+
+  describe('getAnalyticsJourney', () => {
+    it('returns one row per vendor, airline and route, sorted by margin per kg', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        {
+          vendor: 'ESP',
+          airline: 'GA',
+          origin: 'Jabo',
+          dest: 'Denpasar',
+          awb_count: 4,
+          gw: '1000',
+          chwt: '900',
+          revenue: '5000',
+          cost: '3000',
+        },
+        {
+          vendor: 'Acme',
+          airline: 'GA',
+          origin: 'Jabo',
+          dest: 'Denpasar',
+          awb_count: 2,
+          gw: '500',
+          chwt: '480',
+          revenue: '2000',
+          cost: '1800',
+        },
+      ])
+
+      const result = await service.getAnalyticsJourney('2026-05-1H')
+
+      // Chargeable weight is an AWB attribute: it must be MAX(chwt_awb) per AWB before it is
+      // summed, or every AWB's chwt is multiplied by its TO count.
+      expect(dataSource.query).toHaveBeenCalledWith(
+        expect.stringContaining('MAX(chwt_awb)'),
+        ['2026-05-1H'],
+      )
+      expect(result).toEqual([
+        {
+          vendor: 'ESP',
+          airline: 'GA',
+          origin: 'Jabo',
+          dest: 'Denpasar',
+          awbCount: 4,
+          gw: 1000,
+          chwt: 900,
+          revenue: 5000,
+          cost: 3000,
+          margin: 2000,
+          marginPerKg: 2,
+        },
+        {
+          vendor: 'Acme',
+          airline: 'GA',
+          origin: 'Jabo',
+          dest: 'Denpasar',
+          awbCount: 2,
+          gw: 500,
+          chwt: 480,
+          revenue: 2000,
+          cost: 1800,
+          margin: 200,
+          marginPerKg: 0.4,
+        },
+      ])
+    })
+
+    it('reports marginPerKg as 0 rather than Infinity when a group has no weight', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        {
+          vendor: 'Acme',
+          airline: null,
+          origin: 'Jabo',
+          dest: 'Batam',
+          awb_count: 1,
+          gw: '0',
+          chwt: '0',
+          revenue: '100',
+          cost: '40',
+        },
+      ])
+
+      const result = await service.getAnalyticsJourney('2026-05-1H')
+
+      expect(result[0].marginPerKg).toBe(0)
+    })
+  })
+
+  describe('getAnalyticsGwChw', () => {
+    it('returns the gross-versus-chargeable gap per route, worst impact first', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { origin: 'Jabo', dest: 'Denpasar', gw: '1000', chwt: '1200', revenue: '5000' },
+        { origin: 'Jabo', dest: 'Batam', gw: '800', chwt: '700', revenue: '4000' },
+      ])
+
+      const result = await service.getAnalyticsGwChw('2026-05-1H')
+
+      // Revenue is billed on gross weight while cost is incurred on chargeable weight, so a
+      // negative diff is money paid for weight that was never billed — sorted first.
+      expect(result).toEqual([
+        {
+          origin: 'Jabo',
+          dest: 'Denpasar',
+          gw: 1000,
+          chwt: 1200,
+          diff: -200,
+          revenuePerKg: 5,
+          impact: -1000,
+        },
+        {
+          origin: 'Jabo',
+          dest: 'Batam',
+          gw: 800,
+          chwt: 700,
+          diff: 100,
+          revenuePerKg: 5,
+          impact: 500,
+        },
+      ])
+    })
+
+    // v_pnl_to allows a NULL station (that is what station_mapping_missing means) and MODE()
+    // returns NULL when every TO of an AWB lacks one. Without the coalesce the row reaches the
+    // frontend as origin: null and routeKey mints the phantom route "null|null". Coalesced rather
+    // than filtered, matching getAnalyticsDailySeries: the weight and revenue are real.
+    it('folds AWBs with no mapped station into a ? bucket rather than emitting null', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.getAnalyticsGwChw('2026-05-1H')
+
+      const sql = (dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')
+      expect(sql).toContain(
+        "COALESCE(NULLIF(MODE() WITHIN GROUP (ORDER BY origin_station), ''), '?') AS origin",
+      )
+      expect(sql).toContain(
+        "COALESCE(NULLIF(MODE() WITHIN GROUP (ORDER BY dest_station), ''), '?') AS dest",
+      )
+    })
+  })
 })
