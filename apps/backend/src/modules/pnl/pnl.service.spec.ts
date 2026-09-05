@@ -849,6 +849,40 @@ describe('PnlService', () => {
     })
   })
 
+  // The three sibling methods below all render their cost split from costSplitSql. This is the
+  // only place the four expressions are asserted as a set, including the one that must NOT be
+  // prorated: cost_sg_in_to already carries weight_share from the view, so a second multiplication
+  // squares the share. The aliased and bare forms are both exercised because the three call sites
+  // are split between them.
+  describe('costSplitSql', () => {
+    const split = (alias?: string) =>
+      (service as unknown as { costSplitSql(a?: string): string })
+        .costSplitSql(alias)
+        .replace(/\s+/g, ' ')
+
+    it('prorates the three AWB-grain components but never cost_sg_in_to', () => {
+      for (const [sql, a] of [
+        [split(), ''],
+        [split('v'), 'v.'],
+      ] as const) {
+        expect(sql).toContain(`SUM(${a}cost_smu_awb * ${a}weight_share)`)
+        expect(sql).toContain(`SUM(${a}cost_ra_awb * ${a}weight_share)`)
+        expect(sql).toContain(`SUM(${a}cost_sg_out_awb * ${a}weight_share)`)
+        expect(sql).toContain(`SUM(COALESCE(${a}cost_sg_in_to, 0))`)
+        expect(sql).not.toContain('cost_sg_in_to * ')
+      }
+    })
+
+    it('pins every component to costed TOs and names all four columns', () => {
+      const sql = split()
+      expect(sql.match(/FILTER \(WHERE cost_to IS NOT NULL\)/g)).toHaveLength(4)
+      expect(sql).toContain('AS cost_smu')
+      expect(sql).toContain('AS cost_ra')
+      expect(sql).toContain('AS cost_sg_out')
+      expect(sql).toContain('AS cost_sg_in')
+    })
+  })
+
   describe('getRouteComparison', () => {
     // Real-shaped UUIDs, not 'g1'/'g2': group ids round-trip as-is into PnlRouteComparisonColumn.id.
     const G1 = '11111111-1111-4111-8111-111111111111'
@@ -1550,6 +1584,13 @@ describe('PnlService', () => {
         expect.stringContaining('cost_smu_awb * weight_share'),
         ['2026-05-1H'],
       )
+      // Pin the split at this call site, not only inside costSplitSql: the FILTER is what keeps an
+      // incomplete TO contributing zero rather than a partial. The GROUP BY shape is load-bearing
+      // too — grouping by anything but (day, origin, dest) silently changes the grain the whole
+      // tab is built on.
+      const sql = (dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')
+      expect(sql).toContain('FILTER (WHERE cost_to IS NOT NULL)')
+      expect(sql).toContain('GROUP BY 1, 2, 3')
       // Every calendar day of the half-cycle is listed, not only the days with shipments: the
       // frontend divides by this length for "per day" figures.
       expect(result.dates).toHaveLength(15)
@@ -1587,6 +1628,20 @@ describe('PnlService', () => {
       ])
       expect(result.dates).toEqual(['2026-05-01', '2026-05-02', '2026-05-03'])
       expect(result.rows).toEqual([])
+    })
+
+    // v_pnl_to allows a NULL station — that is what station_mapping_missing means. Without the
+    // coalesce the row reaches the frontend as origin: null and routeKey mints the phantom route
+    // "null|null". Filtering the row out instead would drop revenue that getSummary still counts
+    // and break the integration spec's reconciliation, so it is coalesced, not excluded.
+    it('folds unmapped stations into a single ? bucket rather than emitting null', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.getAnalyticsDailySeries('2026-05-1H')
+
+      const sql = (dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')
+      expect(sql).toContain("COALESCE(NULLIF(origin_station, ''), '?') AS origin_station")
+      expect(sql).toContain("COALESCE(NULLIF(dest_station, ''), '?') AS dest_station")
     })
   })
 })

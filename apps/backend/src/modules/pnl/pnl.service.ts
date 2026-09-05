@@ -167,11 +167,14 @@ export interface PnlProfitByRouteItem {
   avgMarginPerDay: number
 }
 
-// One (date x route) cell of the analytics tab's foundation series. Deliberately per-route rather
+// One (date × route) cell of the analytics tab's foundation series. Deliberately per-route rather
 // than a daily total: the Routes & Groups section needs a per-route daily series for every route,
 // and the scope selector must be able to re-fold the same response instead of refetching.
 export interface PnlAnalyticsDailyRow {
   date: string // YYYY-MM-DD
+  // v_pnl_to permits a NULL or empty station (that is what station_mapping_missing reports). Such
+  // rows are kept — dropping them would break reconciliation against getSummary — and their
+  // stations arrive as the sentinel '?', matching getRevenueByRoute / getProfitByRoute.
   origin: string
   dest: string
   revenue: number // net: revenue_total - revenue_discount
@@ -1163,6 +1166,25 @@ export class PnlService {
     return { columns, rows, footer, periodDays }
   }
 
+  // The four cost components, always emitted together and never re-derived per call site. Three
+  // are AWB-grain and must be prorated by weight_share; cost_sg_in_to already carries the share
+  // inside the view definition, so multiplying again would square it and silently understate SG In
+  // on every multi-TO AWB. Each FILTER pins the split to costed TOs, so an incomplete TO
+  // contributes zero rather than a partial. Single-sourced because the invariant the whole P&L
+  // rests on is that these four sum to the cost every tab reports — three drifting copies is
+  // exactly how that quietly stops being true.
+  private costSplitSql(alias = ''): string {
+    const a = alias ? `${alias}.` : ''
+    return `COALESCE(SUM(${a}cost_smu_awb * ${a}weight_share)
+                   FILTER (WHERE ${a}cost_to IS NOT NULL), 0)            AS cost_smu,
+          COALESCE(SUM(${a}cost_ra_awb * ${a}weight_share)
+                   FILTER (WHERE ${a}cost_to IS NOT NULL), 0)            AS cost_ra,
+          COALESCE(SUM(${a}cost_sg_out_awb * ${a}weight_share)
+                   FILTER (WHERE ${a}cost_to IS NOT NULL), 0)            AS cost_sg_out,
+          COALESCE(SUM(COALESCE(${a}cost_sg_in_to, 0))
+                   FILTER (WHERE ${a}cost_to IS NOT NULL), 0)            AS cost_sg_in`
+  }
+
   // Revenue, cost and margin per calendar day for each selected comparison column, behind the
   // "Route Comparison" tab. A column is either a saved route group or a single route the user
   // picked ad hoc; both reduce to a list of origin→destination pairs, so both take the same path.
@@ -1278,14 +1300,7 @@ export class PnlService {
           COALESCE(SUM(v.revenue_total), 0)
             - COALESCE(SUM(v.revenue_discount), 0)
             - COALESCE(SUM(v.cost_to), 0)                              AS margin,
-          COALESCE(SUM(v.cost_smu_awb    * v.weight_share)
-                   FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_smu,
-          COALESCE(SUM(v.cost_ra_awb     * v.weight_share)
-                   FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_ra,
-          COALESCE(SUM(v.cost_sg_out_awb * v.weight_share)
-                   FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_sg_out,
-          COALESCE(SUM(COALESCE(v.cost_sg_in_to, 0))
-                   FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_sg_in,
+          ${this.costSplitSql('v')},
           COUNT(*) FILTER (WHERE v.cost_to IS NULL)::int               AS incomplete_tos
         FROM v_pnl_to v
         JOIN col_routes cr
@@ -1526,14 +1541,7 @@ export class PnlService {
           COALESCE(SUM(v.revenue_total), 0)
             - COALESCE(SUM(v.revenue_discount), 0)
             - COALESCE(SUM(v.cost_to), 0)                              AS margin,
-          COALESCE(SUM(v.cost_smu_awb    * v.weight_share)
-                   FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_smu,
-          COALESCE(SUM(v.cost_ra_awb     * v.weight_share)
-                   FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_ra,
-          COALESCE(SUM(v.cost_sg_out_awb * v.weight_share)
-                   FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_sg_out,
-          COALESCE(SUM(COALESCE(v.cost_sg_in_to, 0))
-                   FILTER (WHERE v.cost_to IS NOT NULL), 0)            AS cost_sg_in,
+          ${this.costSplitSql('v')},
           COUNT(*) FILTER (WHERE v.cost_to IS NULL)::int               AS incomplete_tos
         FROM v_pnl_to v
         JOIN col_vendors cv ON cv.vendor = v.vendor
@@ -1690,18 +1698,11 @@ export class PnlService {
       `
       SELECT
         TO_CHAR(${dateCol}::DATE, 'YYYY-MM-DD')                       AS d,
-        origin_station,
-        dest_station,
+        COALESCE(NULLIF(origin_station, ''), '?')                     AS origin_station,
+        COALESCE(NULLIF(dest_station,   ''), '?')                     AS dest_station,
         COALESCE(SUM(revenue_total), 0)
           - COALESCE(SUM(revenue_discount), 0)                        AS revenue,
-        COALESCE(SUM(cost_smu_awb * weight_share)
-                 FILTER (WHERE cost_to IS NOT NULL), 0)               AS cost_smu,
-        COALESCE(SUM(cost_ra_awb * weight_share)
-                 FILTER (WHERE cost_to IS NOT NULL), 0)               AS cost_ra,
-        COALESCE(SUM(cost_sg_out_awb * weight_share)
-                 FILTER (WHERE cost_to IS NOT NULL), 0)               AS cost_sg_out,
-        COALESCE(SUM(COALESCE(cost_sg_in_to, 0))
-                 FILTER (WHERE cost_to IS NOT NULL), 0)               AS cost_sg_in,
+        ${this.costSplitSql()},
         COALESCE(SUM(gross_weight), 0)                                AS weight,
         COUNT(*) FILTER (WHERE cost_to IS NULL)::int                  AS incomplete_tos
       FROM v_pnl_to
