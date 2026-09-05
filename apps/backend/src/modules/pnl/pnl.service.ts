@@ -222,6 +222,10 @@ export interface PnlAnalyticsGwChwRow {
   gw: number
   chwt: number
   diff: number // gw - chwt
+  // A floor, not an exact rate: because this rollup counts every AWB, one carrying the
+  // revenue_missing issue contributes real gross weight and zero revenue, pulling the route's rate
+  // down and understating |impact| — by a different amount per route, so it perturbs this ranking.
+  // Dropping those AWBs would understate the weight gap instead, which is the worse trade.
   revenuePerKg: number
   impact: number // diff * revenuePerKg
 }
@@ -1869,6 +1873,8 @@ export class PnlService {
         COALESCE(SUM(chwt), 0)    AS chwt,
         COALESCE(SUM(revenue), 0) AS revenue
       FROM per_awb
+      -- No has_null_cost filter, unlike getAnalyticsJourney: gw and chwt are weight facts that an
+      -- uncosted AWB still reports truthfully. Filtering here would drop real tonnage.
       GROUP BY origin, dest
       `,
       params,

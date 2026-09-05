@@ -1680,6 +1680,30 @@ describe('PnlService', () => {
         expect.stringContaining('MAX(chwt_awb)'),
         ['2026-05-1H'],
       )
+      // The AWB-grain cost columns are attributes of the AWB, not the TO: MAX collapses them, SUM
+      // would multiply each by the AWB's TO count and invert the ranking this endpoint exists to
+      // produce. cost_sg_in_to is the exception — it is TO-grain (the view already applies
+      // weight_share), so it sums. gross_weight is TO-grain too.
+      expect(dataSource.query).toHaveBeenCalledWith(
+        expect.stringContaining('MAX(cost_smu_awb)'),
+        ['2026-05-1H'],
+      )
+      expect(dataSource.query).toHaveBeenCalledWith(
+        expect.stringContaining('MAX(cost_ra_awb)'),
+        ['2026-05-1H'],
+      )
+      expect(dataSource.query).toHaveBeenCalledWith(
+        expect.stringContaining('MAX(cost_sg_out_awb)'),
+        ['2026-05-1H'],
+      )
+      expect(dataSource.query).toHaveBeenCalledWith(
+        expect.stringContaining('SUM(cost_sg_in_to)'),
+        ['2026-05-1H'],
+      )
+      expect(dataSource.query).toHaveBeenCalledWith(
+        expect.stringContaining('SUM(gross_weight)'),
+        ['2026-05-1H'],
+      )
       expect(result).toEqual([
         {
           vendor: 'ESP',
@@ -1728,6 +1752,18 @@ describe('PnlService', () => {
       const result = await service.getAnalyticsJourney('2026-05-1H')
 
       expect(result[0].marginPerKg).toBe(0)
+    })
+
+    // The only thing standing between this ranking and an AWB with no attributed cost reading as
+    // infinitely profitable. `cost > 0` is not redundant with has_null_cost: a fully-attributed
+    // AWB can still total zero cost, and zero cost is the same lie.
+    it('counts only fully-costed AWBs, which an unattributed AWB would otherwise top', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.getAnalyticsJourney('2026-05-1H')
+
+      const sql = (dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')
+      expect(sql).toContain('has_null_cost = FALSE AND cost > 0')
     })
   })
 
@@ -1780,6 +1816,19 @@ describe('PnlService', () => {
       expect(sql).toContain(
         "COALESCE(NULLIF(MODE() WITHIN GROUP (ORDER BY dest_station), ''), '?') AS dest",
       )
+    })
+
+    // 0/0 is NaN, and a comparator that returns NaN makes Array.sort scramble the whole array, not
+    // just the offending row — one weightless route would silently reorder every other one.
+    it('reports revenuePerKg as 0 rather than NaN when a route has no weight', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { origin: 'Jabo', dest: 'Batam', gw: '0', chwt: '0', revenue: '0' },
+      ])
+
+      const result = await service.getAnalyticsGwChw('2026-05-1H')
+
+      expect(result[0].revenuePerKg).toBe(0)
+      expect(result[0].impact).toBe(0)
     })
   })
 })
