@@ -1526,4 +1526,67 @@ describe('PnlService', () => {
       })
     })
   })
+
+  describe('getAnalyticsDailySeries', () => {
+    it('returns the calendar dates and one row per date and route', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        {
+          d: '2026-05-02',
+          origin_station: 'Jabo',
+          dest_station: 'Denpasar',
+          revenue: '1000',
+          cost_smu: '400',
+          cost_ra: '50',
+          cost_sg_out: '30',
+          cost_sg_in: '20',
+          weight: '250',
+          incomplete_tos: 2,
+        },
+      ])
+
+      const result = await service.getAnalyticsDailySeries('2026-05-1H')
+
+      expect(dataSource.query).toHaveBeenCalledWith(
+        expect.stringContaining('cost_smu_awb * weight_share'),
+        ['2026-05-1H'],
+      )
+      // Every calendar day of the half-cycle is listed, not only the days with shipments: the
+      // frontend divides by this length for "per day" figures.
+      expect(result.dates).toHaveLength(15)
+      expect(result.dates[0]).toBe('2026-05-01')
+      expect(result.dates[14]).toBe('2026-05-15')
+      expect(result.rows).toEqual([
+        {
+          date: '2026-05-02',
+          origin: 'Jabo',
+          dest: 'Denpasar',
+          revenue: 1000,
+          costSmu: 400,
+          costRa: 50,
+          costSgOut: 30,
+          costSgIn: 20,
+          weight: 250,
+          incompleteTos: 2,
+        },
+      ])
+    })
+
+    it('filters by date range when no cycle is given', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      const result = await service.getAnalyticsDailySeries(
+        undefined,
+        '2026-05-01',
+        '2026-05-03',
+        'atd_origin',
+      )
+
+      expect(dataSource.query).toHaveBeenCalledWith(expect.stringContaining('date_atd'), [
+        '2026-05-01',
+        '2026-05-03',
+      ])
+      expect(result.dates).toEqual(['2026-05-01', '2026-05-02', '2026-05-03'])
+      expect(result.rows).toEqual([])
+    })
+  })
 })

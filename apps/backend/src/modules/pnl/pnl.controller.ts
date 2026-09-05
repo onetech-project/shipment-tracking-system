@@ -223,4 +223,17 @@ export class PnlController {
       basis,
     )
   }
+
+  // The Analytics tab's three endpoints. No method-level @Authorize: RbacGuard resolves with
+  // getAllAndOverride([handler, class]), so a method decorator would REPLACE the class-level
+  // read.pnl rather than add to it.
+  @Get('analytics/daily-series')
+  getAnalyticsDailySeries(
+    @Query('cycle') cycle?: string,
+    @Query('start') start?: string,
+    @Query('end') end?: string,
+    @Query('basis') basis?: string,
+  ) {
+    return this.pnlService.getAnalyticsDailySeries(cycle, start, end, basis)
+  }
 }

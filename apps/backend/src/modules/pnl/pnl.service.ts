@@ -167,6 +167,29 @@ export interface PnlProfitByRouteItem {
   avgMarginPerDay: number
 }
 
+// One (date x route) cell of the analytics tab's foundation series. Deliberately per-route rather
+// than a daily total: the Routes & Groups section needs a per-route daily series for every route,
+// and the scope selector must be able to re-fold the same response instead of refetching.
+export interface PnlAnalyticsDailyRow {
+  date: string // YYYY-MM-DD
+  origin: string
+  dest: string
+  revenue: number // net: revenue_total - revenue_discount
+  costSmu: number
+  costRa: number
+  costSgOut: number
+  costSgIn: number
+  weight: number // gross weight
+  incompleteTos: number
+}
+
+export interface PnlAnalyticsDailySeries {
+  // Every calendar day the period spans, ascending - including days with no shipments, which carry
+  // no row below. The frontend divides by this length for "per day" figures.
+  dates: string[]
+  rows: PnlAnalyticsDailyRow[]
+}
+
 export interface PnlStation {
   origin: string // raw v_pnl_to value, e.g. 'Jabo'
   originLabel: string // display label, e.g. 'CGK'
@@ -1648,6 +1671,62 @@ export class PnlService {
         revenueInColumns: Number(coverageRow?.revenue_in_columns ?? 0),
         revenuePeriod: Number(coverageRow?.revenue_period ?? 0),
       },
+    }
+  }
+
+  // Foundation of the Analytics tab: revenue, the four cost components, weight and the incomplete-TO
+  // count, per calendar day and per route. The cost split uses the same weight-share expressions as
+  // getRouteComparison, so a day's four components sum to the same cost both tabs report.
+  async getAnalyticsDailySeries(
+    cyclePeriod?: string,
+    startDate?: string,
+    endDate?: string,
+    basis?: string,
+  ): Promise<PnlAnalyticsDailySeries> {
+    const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const dates = calendarDatesForFilter(cyclePeriod, startDate, endDate)
+
+    const rows = await this.dataSource.query(
+      `
+      SELECT
+        TO_CHAR(${dateCol}::DATE, 'YYYY-MM-DD')                       AS d,
+        origin_station,
+        dest_station,
+        COALESCE(SUM(revenue_total), 0)
+          - COALESCE(SUM(revenue_discount), 0)                        AS revenue,
+        COALESCE(SUM(cost_smu_awb * weight_share)
+                 FILTER (WHERE cost_to IS NOT NULL), 0)               AS cost_smu,
+        COALESCE(SUM(cost_ra_awb * weight_share)
+                 FILTER (WHERE cost_to IS NOT NULL), 0)               AS cost_ra,
+        COALESCE(SUM(cost_sg_out_awb * weight_share)
+                 FILTER (WHERE cost_to IS NOT NULL), 0)               AS cost_sg_out,
+        COALESCE(SUM(COALESCE(cost_sg_in_to, 0))
+                 FILTER (WHERE cost_to IS NOT NULL), 0)               AS cost_sg_in,
+        COALESCE(SUM(gross_weight), 0)                                AS weight,
+        COUNT(*) FILTER (WHERE cost_to IS NULL)::int                  AS incomplete_tos
+      FROM v_pnl_to
+      WHERE ${where}
+        AND ${dateCol} IS NOT NULL
+      GROUP BY 1, 2, 3
+      ORDER BY 1, 2, 3
+      `,
+      params,
+    )
+
+    return {
+      dates,
+      rows: (rows as Record<string, string>[]).map((r) => ({
+        date: r.d,
+        origin: r.origin_station,
+        dest: r.dest_station,
+        revenue: Number(r.revenue),
+        costSmu: Number(r.cost_smu),
+        costRa: Number(r.cost_ra),
+        costSgOut: Number(r.cost_sg_out),
+        costSgIn: Number(r.cost_sg_in),
+        weight: Number(r.weight),
+        incompleteTos: Number(r.incomplete_tos),
+      })),
     }
   }
 }
