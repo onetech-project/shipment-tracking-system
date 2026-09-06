@@ -8,7 +8,7 @@
 
 import { SeriesDay, SlaOverview } from '../types'
 import { mapSlaRoutes } from './cycle'
-import { completeRevenueShare, div, num, UNATTRIBUTED } from './series'
+import { completeRevenueShare, num, UNATTRIBUTED } from './series'
 
 export const COVERAGE_MIN = 95
 
