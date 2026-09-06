@@ -17,7 +17,13 @@ import {
   DEFAULT_DATE_BASIS,
   BASIS_LABELS,
 } from '@/features/pnl/hooks/usePnl'
-import { ROUTE_COMPARISON_LABEL, VENDOR_COMPARISON_LABEL } from '@/features/pnl/constants'
+import {
+  ANALYTICS_LABEL,
+  ROUTE_COMPARISON_LABEL,
+  VENDOR_COMPARISON_LABEL,
+} from '@/features/pnl/constants'
+import { PnlAnalyticsView } from '@/features/pnl-analytics/components/PnlAnalyticsView'
+import { AnalyticsScope } from '@/features/pnl-analytics/types'
 import { routeFromCell } from '@/features/pnl/utils/dailyMatrix'
 import { PnlKpiCards, PnlKpiKey } from '@/features/pnl/components/PnlKpiCards'
 import { PnlDailyMarginChart } from '@/features/pnl/components/PnlDailyMarginChart'
@@ -66,7 +72,7 @@ const BASIS_OPTIONS: { value: DateBasis; label: string }[] = (
   ['ata_vendor_wh_destination', 'atd_origin', 'completed_time'] satisfies DateBasis[]
 ).map((value) => ({ value, label: BASIS_LABELS[value] }))
 
-type PnlView = 'estimate' | 'actual' | 'daily' | 'routes' | 'vendors'
+type PnlView = 'estimate' | 'actual' | 'daily' | 'routes' | 'vendors' | 'analytics'
 
 const VIEW_SUBTITLE: Record<PnlView, string> = {
   estimate: 'Estimated P&L based on arrival date — not yet billed',
@@ -74,6 +80,7 @@ const VIEW_SUBTITLE: Record<PnlView, string> = {
   daily: 'Daily revenue and profit margin per origin and destination',
   routes: 'Revenue, cost and margin per date, compared across routes and route groups',
   vendors: 'Revenue, cost and margin per route, compared across vendors and vendor groups',
+  analytics: 'Data health, trends, cost structure and route economics for the selected period',
 }
 
 function PnlPageContent() {
@@ -104,6 +111,11 @@ function PnlPageContent() {
   // by a ternary below, so leaving it unmounts the component outright. Deliberately NOT cleared by
   // the period effect — a pick carries no date, unlike drilldownRoute.
   const [vendorPicks, setVendorPicks] = useState<PnlVendorPick[]>([])
+
+  // Lifted out of PnlAnalyticsView for the same reason vendorPicks is: the tab is rendered by a
+  // ternary below, so leaving it unmounts the component outright. Deliberately NOT cleared by the
+  // period effect — a scope carries no date, unlike drilldownRoute.
+  const [analyticsScope, setAnalyticsScope] = useState<AnalyticsScope>({ kind: 'all' })
 
   useEffect(() => {
     if (cycles && cycles.length > 0 && (!cycle || !cycles.includes(cycle))) {
@@ -223,6 +235,12 @@ function PnlPageContent() {
                 {VENDOR_COMPARISON_LABEL}
               </button>
             )}
+            <button
+              className={`rounded-md border px-3 py-1.5 ${view === 'analytics' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+              onClick={() => setView('analytics')}
+            >
+              {ANALYTICS_LABEL}
+            </button>
           </div>
         </div>
 
@@ -347,6 +365,14 @@ function PnlPageContent() {
             picks={vendorPicks}
             onPicksChange={setVendorPicks}
             onCellClick={applyDrilldownRoute}
+          />
+        )
+      ) : view === 'analytics' ? (
+        filter && (
+          <PnlAnalyticsView
+            filter={filter}
+            scope={analyticsScope}
+            onScopeChange={setAnalyticsScope}
           />
         )
       ) : (

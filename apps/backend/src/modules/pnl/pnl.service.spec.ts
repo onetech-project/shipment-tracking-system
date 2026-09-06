@@ -849,6 +849,40 @@ describe('PnlService', () => {
     })
   })
 
+  // The three sibling methods below all render their cost split from costSplitSql. This is the
+  // only place the four expressions are asserted as a set, including the one that must NOT be
+  // prorated: cost_sg_in_to already carries weight_share from the view, so a second multiplication
+  // squares the share. The aliased and bare forms are both exercised because the three call sites
+  // are split between them.
+  describe('costSplitSql', () => {
+    const split = (alias?: string) =>
+      (service as unknown as { costSplitSql(a?: string): string })
+        .costSplitSql(alias)
+        .replace(/\s+/g, ' ')
+
+    it('prorates the three AWB-grain components but never cost_sg_in_to', () => {
+      for (const [sql, a] of [
+        [split(), ''],
+        [split('v'), 'v.'],
+      ] as const) {
+        expect(sql).toContain(`SUM(${a}cost_smu_awb * ${a}weight_share)`)
+        expect(sql).toContain(`SUM(${a}cost_ra_awb * ${a}weight_share)`)
+        expect(sql).toContain(`SUM(${a}cost_sg_out_awb * ${a}weight_share)`)
+        expect(sql).toContain(`SUM(COALESCE(${a}cost_sg_in_to, 0))`)
+        expect(sql).not.toContain('cost_sg_in_to * ')
+      }
+    })
+
+    it('pins every component to costed TOs and names all four columns', () => {
+      const sql = split()
+      expect(sql.match(/FILTER \(WHERE cost_to IS NOT NULL\)/g)).toHaveLength(4)
+      expect(sql).toContain('AS cost_smu')
+      expect(sql).toContain('AS cost_ra')
+      expect(sql).toContain('AS cost_sg_out')
+      expect(sql).toContain('AS cost_sg_in')
+    })
+  })
+
   describe('getRouteComparison', () => {
     // Real-shaped UUIDs, not 'g1'/'g2': group ids round-trip as-is into PnlRouteComparisonColumn.id.
     const G1 = '11111111-1111-4111-8111-111111111111'
@@ -1524,6 +1558,277 @@ describe('PnlService', () => {
         footer: [],
         coverage: { revenueInColumns: 0, revenuePeriod: 0 },
       })
+    })
+  })
+
+  describe('getAnalyticsDailySeries', () => {
+    it('returns the calendar dates and one row per date and route', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        {
+          d: '2026-05-02',
+          origin_station: 'Jabo',
+          dest_station: 'Denpasar',
+          revenue: '1000',
+          cost_smu: '400',
+          cost_ra: '50',
+          cost_sg_out: '30',
+          cost_sg_in: '20',
+          weight: '250',
+          incomplete_tos: 2,
+        },
+      ])
+
+      const result = await service.getAnalyticsDailySeries('2026-05-1H')
+
+      expect(dataSource.query).toHaveBeenCalledWith(
+        expect.stringContaining('cost_smu_awb * weight_share'),
+        ['2026-05-1H'],
+      )
+      // Pin the split at this call site, not only inside costSplitSql: the FILTER is what keeps an
+      // incomplete TO contributing zero rather than a partial. The GROUP BY shape is load-bearing
+      // too — grouping by anything but (day, origin, dest) silently changes the grain the whole
+      // tab is built on.
+      const sql = (dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')
+      expect(sql).toContain('FILTER (WHERE cost_to IS NOT NULL)')
+      expect(sql).toContain('GROUP BY 1, 2, 3')
+      // Every calendar day of the half-cycle is listed, not only the days with shipments: the
+      // frontend divides by this length for "per day" figures.
+      expect(result.dates).toHaveLength(15)
+      expect(result.dates[0]).toBe('2026-05-01')
+      expect(result.dates[14]).toBe('2026-05-15')
+      expect(result.rows).toEqual([
+        {
+          date: '2026-05-02',
+          origin: 'Jabo',
+          dest: 'Denpasar',
+          revenue: 1000,
+          costSmu: 400,
+          costRa: 50,
+          costSgOut: 30,
+          costSgIn: 20,
+          weight: 250,
+          incompleteTos: 2,
+        },
+      ])
+    })
+
+    it('filters by date range when no cycle is given', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      const result = await service.getAnalyticsDailySeries(
+        undefined,
+        '2026-05-01',
+        '2026-05-03',
+        'atd_origin',
+      )
+
+      expect(dataSource.query).toHaveBeenCalledWith(expect.stringContaining('date_atd'), [
+        '2026-05-01',
+        '2026-05-03',
+      ])
+      expect(result.dates).toEqual(['2026-05-01', '2026-05-02', '2026-05-03'])
+      expect(result.rows).toEqual([])
+    })
+
+    // v_pnl_to allows a NULL station — that is what station_mapping_missing means. Without the
+    // coalesce the row reaches the frontend as origin: null and routeKey mints the phantom route
+    // "null|null". Filtering the row out instead would drop revenue that getSummary still counts
+    // and break the integration spec's reconciliation, so it is coalesced, not excluded.
+    it('folds unmapped stations into a single ? bucket rather than emitting null', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.getAnalyticsDailySeries('2026-05-1H')
+
+      const sql = (dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')
+      expect(sql).toContain("COALESCE(NULLIF(origin_station, ''), '?') AS origin_station")
+      expect(sql).toContain("COALESCE(NULLIF(dest_station, ''), '?') AS dest_station")
+    })
+  })
+
+  describe('getAnalyticsJourney', () => {
+    it('returns one row per vendor, airline and route, sorted by margin per kg', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        {
+          vendor: 'ESP',
+          airline: 'GA',
+          origin: 'Jabo',
+          dest: 'Denpasar',
+          awb_count: 4,
+          gw: '1000',
+          chwt: '900',
+          revenue: '5000',
+          cost: '3000',
+        },
+        {
+          vendor: 'Acme',
+          airline: 'GA',
+          origin: 'Jabo',
+          dest: 'Denpasar',
+          awb_count: 2,
+          gw: '500',
+          chwt: '480',
+          revenue: '2000',
+          cost: '1800',
+        },
+      ])
+
+      const result = await service.getAnalyticsJourney('2026-05-1H')
+
+      // Chargeable weight is an AWB attribute: it must be MAX(chwt_awb) per AWB before it is
+      // summed, or every AWB's chwt is multiplied by its TO count.
+      expect(dataSource.query).toHaveBeenCalledWith(
+        expect.stringContaining('MAX(chwt_awb)'),
+        ['2026-05-1H'],
+      )
+      // The AWB-grain cost columns are attributes of the AWB, not the TO: MAX collapses them, SUM
+      // would multiply each by the AWB's TO count and invert the ranking this endpoint exists to
+      // produce. cost_sg_in_to is the exception — it is TO-grain (the view already applies
+      // weight_share), so it sums. gross_weight is TO-grain too.
+      expect(dataSource.query).toHaveBeenCalledWith(
+        expect.stringContaining('MAX(cost_smu_awb)'),
+        ['2026-05-1H'],
+      )
+      expect(dataSource.query).toHaveBeenCalledWith(
+        expect.stringContaining('MAX(cost_ra_awb)'),
+        ['2026-05-1H'],
+      )
+      expect(dataSource.query).toHaveBeenCalledWith(
+        expect.stringContaining('MAX(cost_sg_out_awb)'),
+        ['2026-05-1H'],
+      )
+      expect(dataSource.query).toHaveBeenCalledWith(
+        expect.stringContaining('SUM(cost_sg_in_to)'),
+        ['2026-05-1H'],
+      )
+      expect(dataSource.query).toHaveBeenCalledWith(
+        expect.stringContaining('SUM(gross_weight)'),
+        ['2026-05-1H'],
+      )
+      expect(result).toEqual([
+        {
+          vendor: 'ESP',
+          airline: 'GA',
+          origin: 'Jabo',
+          dest: 'Denpasar',
+          awbCount: 4,
+          gw: 1000,
+          chwt: 900,
+          revenue: 5000,
+          cost: 3000,
+          margin: 2000,
+          marginPerKg: 2,
+        },
+        {
+          vendor: 'Acme',
+          airline: 'GA',
+          origin: 'Jabo',
+          dest: 'Denpasar',
+          awbCount: 2,
+          gw: 500,
+          chwt: 480,
+          revenue: 2000,
+          cost: 1800,
+          margin: 200,
+          marginPerKg: 0.4,
+        },
+      ])
+    })
+
+    it('reports marginPerKg as 0 rather than Infinity when a group has no weight', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        {
+          vendor: 'Acme',
+          airline: null,
+          origin: 'Jabo',
+          dest: 'Batam',
+          awb_count: 1,
+          gw: '0',
+          chwt: '0',
+          revenue: '100',
+          cost: '40',
+        },
+      ])
+
+      const result = await service.getAnalyticsJourney('2026-05-1H')
+
+      expect(result[0].marginPerKg).toBe(0)
+    })
+
+    // The only thing standing between this ranking and an AWB with no attributed cost reading as
+    // infinitely profitable. `cost > 0` is not redundant with has_null_cost: a fully-attributed
+    // AWB can still total zero cost, and zero cost is the same lie.
+    it('counts only fully-costed AWBs, which an unattributed AWB would otherwise top', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.getAnalyticsJourney('2026-05-1H')
+
+      const sql = (dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')
+      expect(sql).toContain('has_null_cost = FALSE AND cost > 0')
+    })
+  })
+
+  describe('getAnalyticsGwChw', () => {
+    it('returns the gross-versus-chargeable gap per route, worst impact first', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { origin: 'Jabo', dest: 'Denpasar', gw: '1000', chwt: '1200', revenue: '5000' },
+        { origin: 'Jabo', dest: 'Batam', gw: '800', chwt: '700', revenue: '4000' },
+      ])
+
+      const result = await service.getAnalyticsGwChw('2026-05-1H')
+
+      // Revenue is billed on gross weight while cost is incurred on chargeable weight, so a
+      // negative diff is money paid for weight that was never billed — sorted first.
+      expect(result).toEqual([
+        {
+          origin: 'Jabo',
+          dest: 'Denpasar',
+          gw: 1000,
+          chwt: 1200,
+          diff: -200,
+          revenuePerKg: 5,
+          impact: -1000,
+        },
+        {
+          origin: 'Jabo',
+          dest: 'Batam',
+          gw: 800,
+          chwt: 700,
+          diff: 100,
+          revenuePerKg: 5,
+          impact: 500,
+        },
+      ])
+    })
+
+    // v_pnl_to allows a NULL station (that is what station_mapping_missing means) and MODE()
+    // returns NULL when every TO of an AWB lacks one. Without the coalesce the row reaches the
+    // frontend as origin: null and routeKey mints the phantom route "null|null". Coalesced rather
+    // than filtered, matching getAnalyticsDailySeries: the weight and revenue are real.
+    it('folds AWBs with no mapped station into a ? bucket rather than emitting null', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.getAnalyticsGwChw('2026-05-1H')
+
+      const sql = (dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')
+      expect(sql).toContain(
+        "COALESCE(NULLIF(MODE() WITHIN GROUP (ORDER BY origin_station), ''), '?') AS origin",
+      )
+      expect(sql).toContain(
+        "COALESCE(NULLIF(MODE() WITHIN GROUP (ORDER BY dest_station), ''), '?') AS dest",
+      )
+    })
+
+    // 0/0 is NaN, and a comparator that returns NaN makes Array.sort scramble the whole array, not
+    // just the offending row — one weightless route would silently reorder every other one.
+    it('reports revenuePerKg as 0 rather than NaN when a route has no weight', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { origin: 'Jabo', dest: 'Batam', gw: '0', chwt: '0', revenue: '0' },
+      ])
+
+      const result = await service.getAnalyticsGwChw('2026-05-1H')
+
+      expect(result[0].revenuePerKg).toBe(0)
+      expect(result[0].impact).toBe(0)
     })
   })
 })

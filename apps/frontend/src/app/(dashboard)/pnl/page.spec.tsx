@@ -117,6 +117,25 @@ jest.mock('@/features/pnl/components/PnlVendorComparisonView', () => ({
   ),
 }))
 
+// Same shape of mock as the comparison views above: echoes back the `scope` prop the page owns, so
+// the persistence test can prove a chosen scope survives a tab switch.
+jest.mock('@/features/pnl-analytics/components/PnlAnalyticsView', () => ({
+  PnlAnalyticsView: ({
+    scope,
+    onScopeChange,
+  }: {
+    scope: { kind: string }
+    onScopeChange: (next: { kind: string; keys: string[] }) => void
+  }) => (
+    <div data-testid="analytics-view">
+      <span data-testid="analytics-scope">{`scope:${scope.kind}`}</span>
+      <button onClick={() => onScopeChange({ kind: 'routes', keys: ['Jabo|Denpasar'] })}>
+        pick-scope
+      </button>
+    </div>
+  ),
+}))
+
 import PnlPage from './page'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
@@ -394,7 +413,7 @@ describe('PnlPage Vendor Comparison tab', () => {
 
   // flex-wrap alone would leave the first button of the wrapped row drawing a border-l against
   // nothing, with no border-t between the two rows. The row is a gapped pill row instead.
-  it('renders the five tabs as a wrapping gapped pill row, with no leftover separators', () => {
+  it('renders the six tabs as a wrapping gapped pill row, with no leftover separators', () => {
     const { container } = renderPage({
       permissions: ['read.pnl', 'read.route_group', 'read.vendor_group'],
     })
@@ -405,10 +424,44 @@ describe('PnlPage Vendor Comparison tab', () => {
     expect(row.className).not.toContain('overflow-hidden')
 
     const buttons = Array.from(row.querySelectorAll('button'))
-    expect(buttons).toHaveLength(5)
+    expect(buttons).toHaveLength(6)
     for (const button of buttons) {
       expect(button.className).toContain('rounded-md border')
       expect(button.className).not.toContain('border-l')
     }
+  })
+
+  // The tab needs only read.pnl — the page's own gate. Unlike Route/Vendor Comparison it is not
+  // hidden from anyone who can reach the page at all.
+  it('shows the Analytics tab to a user holding only read.pnl', () => {
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Analytics' }))
+
+    expect(screen.getByTestId('analytics-view')).toBeInTheDocument()
+    // VIEW_SUBTITLE is typed Record<PnlView, string>, so a missing entry fails tsc — but nothing
+    // pins the text, and a wrong subtitle describes the tab the user is not on.
+    expect(
+      screen.getByText('Data health, trends, cost structure and route economics for the selected period'),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps the analytics scope when the user leaves the tab and comes back', () => {
+    renderPage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Analytics' }))
+    // The tab opens unscoped — every route the period carries. Pinned here because without it a
+    // default of any other kind would make the assertion below pass for the wrong reason.
+    expect(screen.getByTestId('analytics-scope')).toHaveTextContent('scope:all')
+
+    fireEvent.click(screen.getByRole('button', { name: 'pick-scope' }))
+    expect(screen.getByTestId('analytics-scope')).toHaveTextContent('scope:routes')
+
+    // The tab is rendered by a ternary, so leaving unmounts the view outright: only state lifted
+    // to the page survives this round trip.
+    fireEvent.click(screen.getByRole('button', { name: 'Estimated' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Analytics' }))
+
+    expect(screen.getByTestId('analytics-scope')).toHaveTextContent('scope:routes')
   })
 })

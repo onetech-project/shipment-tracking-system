@@ -1,0 +1,372 @@
+/**
+ * The permission behaviour is the point of this section: visible to everyone so the capability is
+ * discoverable, but silent — no request, no 403 — for a user who cannot read SLA data.
+ */
+import React from 'react'
+import { render, screen, within } from '@testing-library/react'
+import '@testing-library/jest-dom'
+import { AnalyticsOps } from './AnalyticsOps'
+import { OffloadedAwbRow } from '@/features/air-shipments/types'
+import { SlaOverview } from '../types'
+
+const sla: SlaOverview = {
+  summary: {
+    alerts: { melewatiSla: { routes: 2, tonnage: 900 } },
+    otp: {
+      percentage: 92,
+      onTimeWeight: 920,
+      lateWeight: 80,
+      breakdown: [
+        { route: 'Kosambi DC - Aceh DC', percentage: 80, onTimeWeight: 80, lateWeight: 20 },
+        { route: 'Kosambi DC - Batam DC', percentage: 0, onTimeWeight: 0, lateWeight: 0 },
+      ],
+    },
+  },
+}
+
+/**
+ * Three measured routes with three distinct OTP percentages, so a reversed ranking comparator
+ * cannot hide behind a tie; plus a 0/0 route sitting exactly on the "no measurement" boundary and
+ * an unmappable SLA route name.
+ */
+const richSla: SlaOverview = {
+  summary: {
+    alerts: {
+      melewatiSla: { routes: 2, tonnage: 900 },
+      potensiMelebihiSla: { routes: 4, tonnage: 500 },
+      flightTracking: { routes: 1, tonnage: 100 },
+      // Routes but no tonnage: still a real alert, so the filter must be an OR, not an AND.
+      melewatiTjph: { routes: 3, tonnage: 0 },
+      // Nothing at all: must not be listed.
+      spxSlaAlert: { routes: 0, tonnage: 0 },
+    },
+    otp: {
+      percentage: 92,
+      onTimeWeight: 920,
+      lateWeight: 80,
+      breakdown: [
+        { route: 'Kosambi DC - Aceh DC', percentage: 80, onTimeWeight: 80, lateWeight: 20 },
+        { route: 'Kosambi DC - Batam DC', percentage: 40, onTimeWeight: 40, lateWeight: 60 },
+        { route: 'Kosambi DC - Medan DC', percentage: 95, onTimeWeight: 190, lateWeight: 10 },
+        { route: 'Kosambi DC - Palu DC', percentage: 0, onTimeWeight: 0, lateWeight: 0 },
+        { route: 'NotARoutePair', percentage: 10, onTimeWeight: 5, lateWeight: 45 },
+      ],
+    },
+  },
+}
+
+const offloadedRow = (awb: string, airline: string | null): OffloadedAwbRow => ({
+  id: awb,
+  awb,
+  airline,
+})
+
+/** GA 4, JT 2, SJ 1 — three distinct counts. A7 is on no drilldown page, so the join is partial. */
+const offloaded: OffloadedAwbRow[] = [
+  offloadedRow('A1', 'GA'),
+  offloadedRow('A2', 'GA'),
+  offloadedRow('A3', 'GA'),
+  offloadedRow('A4', 'JT'),
+  offloadedRow('A5', 'JT'),
+  offloadedRow('A6', 'SJ'),
+  offloadedRow('A7', 'GA'),
+]
+
+/** Aceh 3, Batam 2, Medan 1 — three distinct counts for the route ranking. */
+const drilldownAwbs = [
+  { awb: 'A1', origin: 'Jabo', dest: 'Aceh' },
+  { awb: 'A2', origin: 'Jabo', dest: 'Aceh' },
+  { awb: 'A3', origin: 'Jabo', dest: 'Aceh' },
+  { awb: 'A4', origin: 'Jabo', dest: 'Batam' },
+  { awb: 'A5', origin: 'Jabo', dest: 'Batam' },
+  { awb: 'A6', origin: 'Jabo', dest: 'Medan' },
+]
+
+const base = {
+  sla: undefined,
+  slaLoading: false,
+  slaError: false,
+  offloaded: undefined,
+  offloadedLoading: false,
+  offloadedError: false,
+  awbs: [],
+  routeKeys: [],
+  ranged: false,
+}
+
+const headersOf = (table: HTMLElement) =>
+  within(table)
+    .getAllByRole('columnheader')
+    .map((h) => h.textContent)
+
+/**
+ * Identifies a table by its exact header sequence, and asserts exactly one matches. A table whose
+ * columns were reordered no longer answers to its old header sequence, so every lookup here doubles
+ * as a column-order assertion.
+ */
+function tableWithHeaders(headers: string[]): HTMLElement {
+  const matches = screen
+    .getAllByRole('table')
+    .filter((t) => headersOf(t).join('\u0000') === headers.join('\u0000'))
+  expect(matches).toHaveLength(1)
+  return matches[0]
+}
+
+const bodyRows = (table: HTMLElement) => within(table).getAllByRole('row').slice(1)
+
+const cellsOf = (row: HTMLElement) =>
+  within(row)
+    .getAllByRole('cell')
+    .map((c) => c.textContent)
+
+describe('AnalyticsOps', () => {
+  it('explains the missing permission instead of hiding the section', () => {
+    render(<AnalyticsOps {...base} canReadSla={false} />)
+    expect(screen.getByTestId('analytics-ops-permission')).toHaveTextContent(/SLA/i)
+    expect(screen.queryByTestId('analytics-ops-otp')).not.toBeInTheDocument()
+  })
+
+  // The section is rendered for everyone so the capability stays discoverable: without the
+  // permission it must still be on the page, heading and all, carrying the note.
+  it('still renders the Operations section itself without the permission', () => {
+    render(<AnalyticsOps {...base} canReadSla={false} sla={sla} />)
+    expect(screen.getByRole('heading', { name: 'Operations' })).toBeInTheDocument()
+    expect(screen.getByTestId('analytics-ops-permission')).toHaveTextContent(
+      'This section needs the SLA read permission, which your account does not have. Ask an ' +
+        'administrator for read.sla to see on-time performance, SLA alerts and offloaded AWBs here.',
+    )
+    // No SLA figures leak out through the gate, even when data was handed to the component.
+    expect(screen.queryByTestId('analytics-ops-otp')).not.toBeInTheDocument()
+    expect(screen.queryByText('Past SLA')).not.toBeInTheDocument()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+  })
+
+  it('shows on-time performance and alerts when the permission is held', () => {
+    render(<AnalyticsOps {...base} canReadSla sla={sla} />)
+    expect(screen.getByTestId('analytics-ops-otp')).toHaveTextContent('92.0%')
+    expect(screen.getByText('Past SLA')).toBeInTheDocument()
+  })
+
+  // The headline sentence carries three separate figures; a swap between them would misreport
+  // on-time weight as late weight without changing any single number on the page.
+  it('reports the unscoped headline verbatim, on-time weight before late weight', () => {
+    render(<AnalyticsOps {...base} canReadSla sla={sla} />)
+    expect(screen.getByTestId('analytics-ops-otp')).toHaveTextContent(
+      'On-time performance 92.0% — 920 kg on time against 80 kg late.',
+    )
+    expect(screen.getByTestId('analytics-ops-otp')).not.toHaveTextContent('recomputed')
+  })
+
+  // Scoped, the headline must be recomputed from the routes in scope rather than echoing the API's
+  // period-wide 92% — and must say so.
+  it('recomputes and labels the headline when a route scope is active', () => {
+    render(<AnalyticsOps {...base} canReadSla sla={richSla} routeKeys={['Jabo|Aceh']} />)
+    expect(screen.getByTestId('analytics-ops-otp')).toHaveTextContent(
+      'On-time performance 80.0% — 80 kg on time against 20 kg late, recomputed over the routes in scope.',
+    )
+    expect(bodyRows(tableWithHeaders(['Route', 'OTP', 'On time', 'Late']))).toHaveLength(1)
+  })
+
+  it('keeps a route with no measurement out of the worst-performer ranking', () => {
+    render(<AnalyticsOps {...base} canReadSla sla={sla} />)
+    // Batam is 0/0, not a 0% performer: it belongs in the "not measured" list, not at the top.
+    expect(screen.getByTestId('analytics-ops-nodata')).toHaveTextContent(/Batam/)
+    expect(screen.getByTestId('sla-route-Jabo|Aceh')).toBeInTheDocument()
+    expect(screen.queryByTestId('sla-route-Jabo|Batam')).not.toBeInTheDocument()
+  })
+
+  // Worst-first is the whole point of this table: the routes that are failing must be at the top.
+  // Three distinct percentages, so a reversed comparator cannot hide behind a tie.
+  it('ranks measured SLA routes worst-first, with the right figures on each row', () => {
+    render(<AnalyticsOps {...base} canReadSla sla={richSla} />)
+    const table = tableWithHeaders(['Route', 'OTP', 'On time', 'Late'])
+    const rows = bodyRows(table)
+    expect(rows.map((r) => r.getAttribute('data-testid'))).toEqual([
+      'sla-route-Jabo|Batam',
+      'sla-route-Jabo|Aceh',
+      'sla-route-Jabo|Medan',
+    ])
+    expect(cellsOf(rows[0])).toEqual(['CGK → Batam', '40.0%', '40', '60'])
+    expect(cellsOf(rows[1])).toEqual(['CGK → Aceh', '80.0%', '80', '20'])
+    expect(cellsOf(rows[2])).toEqual(['CGK → Medan', '95.0%', '190', '10'])
+    // Palu is 0/0 and sits exactly on the "no measurement" boundary: named, but never ranked.
+    expect(screen.queryByTestId('sla-route-Jabo|Palu')).not.toBeInTheDocument()
+    expect(screen.getByTestId('analytics-ops-nodata')).toHaveTextContent(
+      'Not measured (no on-time and no late weight, so their 0% is an artifact rather than a ' +
+        'failure): CGK → Palu.',
+    )
+  })
+
+  // ALERT_LABELS translates the API's Indonesian keys; a mislabelled alert reads as a different
+  // operational failure entirely, so the exact English strings are pinned, in tonnage order.
+  it('labels alerts in English and lists them by tonnage, heaviest first', () => {
+    render(<AnalyticsOps {...base} canReadSla sla={richSla} />)
+    const table = tableWithHeaders(['Alert', 'Routes', 'Tonnage'])
+    expect(bodyRows(table).map(cellsOf)).toEqual([
+      ['Past SLA', '2', '900'],
+      ['At risk of missing SLA', '4', '500'],
+      ['Flight tracking issue', '1', '100'],
+      // Routes but no tonnage: kept, because it is still a live alert.
+      ['Past TJPH', '3', '0'],
+    ])
+    // Zero routes and zero tonnage: nothing happened, so it is not an alert at all.
+    expect(screen.queryByText('SLA alert (SPX)')).not.toBeInTheDocument()
+  })
+
+  it('says the SLA data failed to load rather than reporting 0% on-time', () => {
+    render(<AnalyticsOps {...base} canReadSla slaError />)
+    // Exact text, because the offloaded block renders an absent-note of its own here.
+    expect(
+      screen.getByText('SLA data could not be loaded, so this section is incomplete.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByTestId('analytics-ops-otp')).not.toBeInTheDocument()
+  })
+
+  // A failed refetch can leave a stale payload in hand. The error wins: reporting last cycle's
+  // on-time percentage as this cycle's is worse than admitting the load failed.
+  it('says the SLA data failed to load even when a stale payload is still held', () => {
+    render(<AnalyticsOps {...base} canReadSla sla={sla} slaError />)
+    expect(
+      screen.getByText('SLA data could not be loaded, so this section is incomplete.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByTestId('analytics-ops-otp')).not.toBeInTheDocument()
+    expect(screen.queryByText('Past SLA')).not.toBeInTheDocument()
+  })
+
+  it('says the SLA data failed to load when the payload never arrived', () => {
+    render(<AnalyticsOps {...base} canReadSla />)
+    expect(
+      screen.getByText('SLA data could not be loaded, so this section is incomplete.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByTestId('analytics-ops-otp')).not.toBeInTheDocument()
+  })
+
+  it('shows a loading placeholder rather than an absent-note while SLA data is in flight', () => {
+    render(<AnalyticsOps {...base} canReadSla slaLoading />)
+    expect(
+      screen.queryByText('SLA data could not be loaded, so this section is incomplete.'),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByTestId('analytics-ops-otp')).not.toBeInTheDocument()
+  })
+
+  it('names the SLA routes it could not map to a P&L route instead of dropping them', () => {
+    render(<AnalyticsOps {...base} canReadSla sla={richSla} />)
+    expect(
+      screen.getByText('SLA routes with no P&L counterpart, excluded above: NotARoutePair.'),
+    ).toBeInTheDocument()
+  })
+
+  it('warns that a custom range falls back to period aggregates', () => {
+    const { rerender } = render(<AnalyticsOps {...base} canReadSla sla={sla} ranged />)
+    expect(screen.getByText(/A custom date range is active/)).toBeInTheDocument()
+    rerender(<AnalyticsOps {...base} canReadSla sla={sla} />)
+    expect(screen.queryByText(/A custom date range is active/)).not.toBeInTheDocument()
+  })
+
+  // "Failed to load" and "loaded, and there was nothing" are different facts about the business and
+  // must never render as one another.
+  it('distinguishes offloaded AWBs that failed to load from a period with none', () => {
+    const { rerender } = render(<AnalyticsOps {...base} canReadSla sla={sla} offloadedError />)
+    expect(
+      screen.getByText('Offloaded AWBs could not be loaded, so this section is incomplete.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('No offloaded AWB in this period.')).not.toBeInTheDocument()
+
+    rerender(<AnalyticsOps {...base} canReadSla sla={sla} offloaded={[]} />)
+    expect(screen.getByText('No offloaded AWB in this period.')).toBeInTheDocument()
+    expect(
+      screen.queryByText('Offloaded AWBs could not be loaded, so this section is incomplete.'),
+    ).not.toBeInTheDocument()
+  })
+
+  // Same rule on the offload side: an errored refetch holding stale rows must not present them.
+  it('says the offloaded AWBs failed to load even when stale rows are still held', () => {
+    render(
+      <AnalyticsOps {...base} canReadSla sla={sla} offloaded={offloaded} offloadedError />,
+    )
+    expect(
+      screen.getByText('Offloaded AWBs could not be loaded, so this section is incomplete.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/offloaded AWB\(s\)\./)).not.toBeInTheDocument()
+    expect(
+      screen.getAllByRole('table').filter((t) => headersOf(t).join() === ['Airline', 'AWBs'].join()),
+    ).toHaveLength(0)
+  })
+
+  it('shows a loading placeholder rather than an absent-note while offload data is in flight', () => {
+    render(<AnalyticsOps {...base} canReadSla sla={sla} offloadedLoading />)
+    expect(
+      screen.queryByText('Offloaded AWBs could not be loaded, so this section is incomplete.'),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText('No offloaded AWB in this period.')).not.toBeInTheDocument()
+  })
+
+  it('says the offloaded AWBs failed to load when the payload never arrived', () => {
+    render(<AnalyticsOps {...base} canReadSla sla={sla} />)
+    expect(
+      screen.getByText('Offloaded AWBs could not be loaded, so this section is incomplete.'),
+    ).toBeInTheDocument()
+  })
+
+  it('breaks offloaded AWBs down by airline and by route, busiest first', () => {
+    render(
+      <AnalyticsOps
+        {...base}
+        canReadSla
+        sla={sla}
+        offloaded={offloaded}
+        awbs={drilldownAwbs}
+      />,
+    )
+    expect(bodyRows(tableWithHeaders(['Airline', 'AWBs'])).map(cellsOf)).toEqual([
+      ['GA', '4'],
+      ['JT', '2'],
+      ['SJ', '1'],
+    ])
+    expect(bodyRows(tableWithHeaders(['Route', 'AWBs'])).map(cellsOf)).toEqual([
+      ['CGK → Aceh', '3'],
+      ['CGK → Batam', '2'],
+      ['CGK → Medan', '1'],
+    ])
+  })
+
+  // The join rate qualifies the route breakdown above it: 6 of the 7 offloaded AWBs were on the
+  // current drilldown page, so the route table describes only that slice.
+  it('reports the count and the drilldown join rate', () => {
+    render(
+      <AnalyticsOps
+        {...base}
+        canReadSla
+        sla={sla}
+        offloaded={offloaded}
+        awbs={drilldownAwbs}
+      />,
+    )
+    expect(
+      screen.getByText(
+        '7 offloaded AWB(s). 85.7% of them matched an AWB on the current drilldown page, which is ' +
+          'the only way a route can be attached to them.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  // With nothing to join against, the airline breakdown still stands but the route table cannot
+  // exist — and must not render as an empty-looking table.
+  it('omits the offload route table when no offloaded AWB joined the drilldown page', () => {
+    render(<AnalyticsOps {...base} canReadSla sla={sla} offloaded={offloaded} />)
+    expect(
+      screen.getByText(/0\.0% of them matched an AWB on the current drilldown page/),
+    ).toBeInTheDocument()
+    expect(bodyRows(tableWithHeaders(['Airline', 'AWBs'])).map(cellsOf)).toEqual([
+      ['GA', '4'],
+      ['JT', '2'],
+      ['SJ', '1'],
+    ])
+    expect(
+      screen.getAllByRole('table').filter((t) => headersOf(t).join() === ['Route', 'AWBs'].join()),
+    ).toHaveLength(0)
+    // Nor its empty-state stand-in: there is no route breakdown to speak of, so the block is gone
+    // entirely rather than present-but-empty.
+    expect(screen.queryByText('No rows.')).not.toBeInTheDocument()
+  })
+})
