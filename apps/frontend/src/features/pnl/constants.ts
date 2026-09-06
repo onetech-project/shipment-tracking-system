@@ -2,3 +2,4 @@
 // export from a page.tsx beyond its own default and metadata.
 export const ROUTE_COMPARISON_LABEL = 'Route Comparison'
 export const VENDOR_COMPARISON_LABEL = 'Vendor Comparison'
+export const ANALYTICS_LABEL = 'Analytics'
