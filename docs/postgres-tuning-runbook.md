@@ -43,6 +43,19 @@ CONCURRENTLY v_pnl_to` also ran every 15 seconds, and each refresh consumes up t
 - `UsersService.create` wraps the user + profile writes in one transaction.
 - Migration `20260901000001-drop-unused-write-amplifying-indexes` drops 12 unused
   indexes, including 9 GIN indexes on `extra_fields` (51 MB total, zero reads).
+- **The GIN drop above did not hold on its own.** `DynamicTableService.ensureTable`
+  recreated each index, and it runs on scheduler boot and on every sheet-config
+  write — so the indexes were back within a tick of the migration. `ensureTable`
+  now drops instead of creating, and `20260908000002-redrop-extra-fields-gin-indexes`
+  clears what earlier deploys left behind. Locally this took
+  `air_shipments_compileaircgk` from 330 MB to 132 MB.
+- The numeric generated columns no longer use a bare `::NUMERIC` cast. A single
+  sheet cell reading `"16.660kg"` failed the whole 500-row upsert chunk and forced
+  a row-by-row fallback (313 roundtrips instead of 1). `coercer.ts` now strips a
+  mass-unit suffix on the way in, and
+  `20260908000001-tolerant-numeric-generated-columns` moves all 12 remaining
+  bare-cast columns onto the tolerant `pnl_parse_numeric`, which returns NULL
+  rather than aborting the statement.
 
 ## Step 1 — deploy the code first
 

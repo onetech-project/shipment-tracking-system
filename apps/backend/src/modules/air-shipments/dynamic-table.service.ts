@@ -129,11 +129,21 @@ export class DynamicTableService {
         )
       }
 
-      // 4) Create GIN index on extra_fields
+      // 4) Drop the GIN index on extra_fields if an older deploy left one behind.
+      //
+      // This used to CREATE the index. Nothing ever read it: every query reaches into the
+      // jsonb with `->>`, which a GIN index cannot serve — it answers containment (`@>`) and
+      // key-existence (`?`) only. pg_stat_user_indexes confirmed idx_scan = 0 on all nine of
+      // them. What they did cost is writes: GIN maintains a pending list flushed with
+      // work_mem, so every upsert of a jsonb column paid index maintenance, 27 MB of it on
+      // air_shipments_compileaircgk alone.
+      //
+      // Migration 20260901000001 already drops these, but the drop did not hold: ensureTable
+      // runs on scheduler boot and on every sheet-config write, so the index was recreated
+      // within a tick of the migration. Dropping here is what actually makes it permanent.
       const idxName = `idx_${tableName}_extra_gin`
       const qIdx = quoteIdentifier(idxName)
-      const createIndexSql = `CREATE INDEX IF NOT EXISTS ${qIdx} ON ${qTable} USING GIN (extra_fields)`
-      await this.dataSource.query(createIndexSql)
+      await this.dataSource.query(`DROP INDEX IF EXISTS ${qIdx}`)
 
       // 5) Refresh in-memory table schemas so runtime can pick up new columns
       try {

@@ -36,6 +36,25 @@ describe('DynamicTableService', () => {
     expect(sheetsService.reloadTableSchemas).toHaveBeenCalledWith([cfg.tableName])
   })
 
+  // The GIN index on extra_fields served no query (every read uses `->>`, which GIN cannot
+  // answer) but cost write amplification on every upsert. Migration 20260901000001 drops it;
+  // ensureTable used to recreate it on the next scheduler boot, undoing the drop.
+  it('drops the extra_fields GIN index and never recreates it', async () => {
+    const cfg: any = {
+      tableName: 'air_shipment_testtable',
+      sheetName: 'Test Table',
+      uniqueKey: ['to_number'],
+    }
+
+    await service.ensureTable(cfg)
+
+    const sql = dataSource.query.mock.calls.map((c) => String(c[0]))
+    expect(sql.some((q) => /USING GIN/i.test(q))).toBe(false)
+    expect(
+      sql.some((q) => /DROP INDEX IF EXISTS\s+"?idx_air_shipment_testtable_extra_gin"?/i.test(q))
+    ).toBe(true)
+  })
+
   it('returns failure for unsafe table name', async () => {
     const cfg: any = { tableName: 'DROP TABLE; --', sheetName: 'bad', uniqueKey: ['a'] }
     const res = await service.ensureTable(cfg)
