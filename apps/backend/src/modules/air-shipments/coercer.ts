@@ -15,6 +15,9 @@ const SPREADSHEET_ERRORS = new Set(['#REF!', '#VALUE!', '#N/A', '#NAME?', '#DIV/
 /** Matches: "1 day, 4:00:00" or "2 days, 0:30:00" */
 const DURATION_RE = /^(\d+)\s+days?,\s+(\d+):(\d+):(\d+)$/i
 
+/** Matches a number followed by a mass unit: "16.660kg", "1,234.5 KG", "16.66 kilograms" */
+const WEIGHT_UNIT_RE = /^(-?[\d,]+(?:\.\d+)?)\s*(?:kgs?|kilograms?)\.?$/i
+
 /** Matches dd-mmm-yyyy (e.g. 08-Apr-2026) */
 const DMY_ALPHA_RE = /^(\d{2})-([A-Za-z]{3})-(\d{4})$/
 
@@ -68,6 +71,18 @@ export function coerceValue(value: string, context: CoercionContext): unknown {
   // 2.5. Percentage strings: "11%" → 11, "1,234%" → 1234
   if (/^-?[\d,]+(\.\d+)?%$/.test(value)) {
     const num = Number(value.replace(/[,%]/g, ''))
+    if (!isNaN(num)) return num
+  }
+
+  // 2.6. Weight strings with a unit suffix: "16.660kg" -> 16.66, "1,234.5 KG" -> 1234.5.
+  // Sheet operators occasionally type the unit into the number cell. Left as a plain
+  // string the value reaches Postgres, where the gross_weight generated column's
+  // ::NUMERIC cast rejects it and aborts the entire 500-row upsert chunk, forcing the
+  // sync into a row-by-row fallback. Stripping the unit here keeps only the number.
+  // Anchored: text beyond the unit ("50kg extra") is not a weight and stays a string.
+  const weightMatch = WEIGHT_UNIT_RE.exec(value)
+  if (weightMatch) {
+    const num = Number(weightMatch[1].replace(/,/g, ''))
     if (!isNaN(num)) return num
   }
 
