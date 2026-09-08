@@ -112,6 +112,32 @@ describe('coerceValue()', () => {
     })
   })
 
+  describe('weight strings with unit suffix → number', () => {
+    it('coerces "16.660kg" to 16.66', () => {
+      expect(coerceValue('16.660kg', ctx)).toBe(16.66)
+    })
+
+    it('coerces "16.660 kg" (spaced) to 16.66', () => {
+      expect(coerceValue('16.660 kg', ctx)).toBe(16.66)
+    })
+
+    it('coerces "16.660KG" (uppercase) to 16.66', () => {
+      expect(coerceValue('16.660KG', ctx)).toBe(16.66)
+    })
+
+    it('coerces "1,234.5 kg" (thousands separator) to 1234.5', () => {
+      expect(coerceValue('1,234.5 kg', ctx)).toBe(1234.5)
+    })
+
+    it('does not coerce "50kg extra" (trailing text)', () => {
+      expect(coerceValue('50kg extra', ctx)).toBe('50kg extra')
+    })
+
+    it('does not coerce a bare unit "kg"', () => {
+      expect(coerceValue('kg', ctx)).toBe('kg')
+    })
+  })
+
   describe('fallback → plain string', () => {
     it('returns plain string for unrecognized values', () => {
       expect(coerceValue('CGK Airport', ctx)).toBe('CGK Airport')
