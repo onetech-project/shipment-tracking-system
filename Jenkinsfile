@@ -291,12 +291,45 @@ pipeline {
                         echo "Copying .env file from compose directory..."
                         cp ${env.COMPOSE_DIR}/.env ./apps/backend/.env || true
                     """
+
+                    // Stop the running backend before touching the schema.
+                    //
+                    // Migrations run in a single transaction (migrationsTransactionMode: 'all'),
+                    // so DDL locks on v_pnl_to and the air_shipments_* tables accumulate until
+                    // the whole batch commits. The live backend meanwhile issues
+                    // `REFRESH MATERIALIZED VIEW CONCURRENTLY v_pnl_to` on every sync tick
+                    // (default every 15s), which grabs AccessShare on those same tables while
+                    // waiting on v_pnl_to. The two lock in opposite order and Postgres kills
+                    // the migration with "deadlock detected".
+                    //
+                    // The deploy stage below restarts the backend anyway, so stopping it here
+                    // costs no extra downtime — it just moves the restart a few minutes earlier
+                    // and gives the migration an exclusive window.
+                    sh """
+                        set -euo pipefail
+
+                        cd ${env.COMPOSE_DIR}
+
+                        echo "Stopping ${env.BACKEND_SERVICE_NAME} so migrations get an exclusive lock window..."
+                        docker compose stop ${env.BACKEND_SERVICE_NAME} || true
+                    """
                     try {
                         sh 'npm run migration:run'
                     } catch (err) {
                         echo "Migration failed! Reverting..."
 
                         sh 'npm run migration:revert || true'
+
+                        // We stopped the backend above and the deploy stage will not run, so
+                        // bring the old container back up rather than leaving the service down.
+                        sh """
+                            set -euo pipefail
+
+                            cd ${env.COMPOSE_DIR}
+
+                            echo "Restarting ${env.BACKEND_SERVICE_NAME} after failed migration..."
+                            docker compose start ${env.BACKEND_SERVICE_NAME} || true
+                        """
 
                         error("Migration failed and rollback executed")
                     }
