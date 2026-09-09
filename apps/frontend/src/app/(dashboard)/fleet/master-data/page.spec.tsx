@@ -180,4 +180,129 @@ describe('FleetMasterDataPage', () => {
     expect(screen.queryByRole('button', { name: 'Ubah' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Hapus' })).not.toBeInTheDocument()
   })
+
+  // Master data is the one corner of this module with its own permission set — drivers, documents
+  // and lease contracts deliberately share the vehicle set, so a copy-paste of *.fleet_vehicle from
+  // drivers/page.tsx would silently hand every vehicle-permission holder destructive CRUD over the
+  // rows feeding every dropdown in the module. Each slug is denied on its own so the assertion is
+  // about which slug was asked for, not merely that some permission was consulted.
+  it('gates the create button on create.fleet_master_data alone', () => {
+    mockHasPermission.mockImplementation((p: string) => p !== 'create.fleet_master_data')
+    render(<FleetMasterDataPage />)
+    expect(screen.queryByRole('button', { name: /Tambah/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Ubah' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hapus' })).toBeInTheDocument()
+  })
+
+  it('gates the edit and toggle buttons on update.fleet_master_data alone', () => {
+    mockHasPermission.mockImplementation((p: string) => p !== 'update.fleet_master_data')
+    render(<FleetMasterDataPage />)
+    expect(screen.queryByRole('button', { name: 'Ubah' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Nonaktifkan' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '+ Tambah Jenis Armada' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hapus' })).toBeInTheDocument()
+  })
+
+  it('gates the delete button on delete.fleet_master_data alone', () => {
+    mockHasPermission.mockImplementation((p: string) => p !== 'delete.fleet_master_data')
+    render(<FleetMasterDataPage />)
+    expect(screen.queryByRole('button', { name: 'Hapus' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '+ Tambah Jenis Armada' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Ubah' })).toBeInTheDocument()
+  })
+
+  // The table is the whole screen; nothing else tells the operator what a row holds. Cell text is
+  // compared exactly rather than by substring so a hardcoded 0 cannot hide inside a '10'.
+  it('renders each column of a row: label, code, sort order and threshold', () => {
+    mockUseFleetMasterData.mockReturnValue({
+      data: [{ ...row, code: 'kir', label: 'KIR Tahunan', sortOrder: 10, warnDays: 0 }],
+      isLoading: false,
+    })
+    render(<FleetMasterDataPage />)
+
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual([
+      'Label',
+      'Kode',
+      'Urutan',
+      'Ambang (hari)',
+      '',
+    ])
+
+    const cells = within(screen.getAllByRole('row')[1]).getAllByRole('cell')
+    // No badge on an active row, so the label cell is the label and nothing else.
+    expect(cells[0].textContent).toBe('KIR Tahunan')
+    expect(cells[1].textContent).toBe('kir')
+    expect(cells[2].textContent).toBe('10')
+    // 0 means "warn on the expiry date itself" — a real threshold, not an absent one. Rendering it
+    // as the em dash used for null would tell the operator no threshold is set when one is.
+    expect(cells[3].textContent).toBe('0')
+  })
+
+  it('renders the em dash only when the row genuinely has no threshold', () => {
+    mockUseFleetMasterData.mockReturnValue({ data: [{ ...row, warnDays: null }], isLoading: false })
+    render(<FleetMasterDataPage />)
+    const cells = within(screen.getAllByRole('row')[1]).getAllByRole('cell')
+    expect(cells[3].textContent).toBe('\u2014')
+  })
+
+  // The badge is the only signal a row is deactivated — without it the row looks live and the
+  // 'Aktifkan' button reads as a mistake.
+  it('marks a deactivated row with the nonaktif badge', () => {
+    mockUseFleetMasterData.mockReturnValue({ data: [{ ...row, isActive: false }], isLoading: false })
+    render(<FleetMasterDataPage />)
+    const cells = within(screen.getAllByRole('row')[1]).getAllByRole('cell')
+    expect(within(cells[0]).getByText('nonaktif')).toBeInTheDocument()
+  })
+
+  // A table that ignores isLoading flashes "no data" on every tab switch, telling the operator a
+  // category is empty while it is still being fetched.
+  it('shows the loading row rather than the empty message while a category is fetching', () => {
+    mockUseFleetMasterData.mockReturnValue({ data: undefined, isLoading: true })
+    render(<FleetMasterDataPage />)
+    expect(screen.getByText('Loading\u2026')).toBeInTheDocument()
+    expect(screen.queryByText('Belum ada data untuk kategori ini.')).not.toBeInTheDocument()
+  })
+
+  it('tells the operator the category is empty once the fetch settles with no rows', () => {
+    mockUseFleetMasterData.mockReturnValue({ data: [], isLoading: false })
+    render(<FleetMasterDataPage />)
+    expect(screen.getByText('Belum ada data untuk kategori ini.')).toBeInTheDocument()
+  })
+
+  it('titles the page and says what the master data feeds', () => {
+    render(<FleetMasterDataPage />)
+    expect(screen.getByRole('heading', { name: 'Master Data Armada' })).toBeInTheDocument()
+    expect(
+      screen.getByText('Daftar pilihan yang muncul di form kendaraan dan sopir.'),
+    ).toBeInTheDocument()
+  })
+
+  // The description is the only place that tells the operator deactivating is the way out when the
+  // backend refuses the delete with a 409, and it has to name the row being deleted.
+  it('names the row and offers deactivation in the delete confirmation', () => {
+    render(<FleetMasterDataPage />)
+    const dialog = openDeleteDialog()
+    expect(dialog.getByText('Hapus data master')).toBeInTheDocument()
+    expect(
+      dialog.getByText(
+        'Hapus "CDD"? Kalau masih dipakai kendaraan, sistem akan menolak \u2014 nonaktifkan saja.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  // Exactly one tab is selected at a time: aria-selected on every tab tells a screen-reader user
+  // that all eight categories are open at once, which is no information at all.
+  it('marks only the active tab as selected', () => {
+    render(<FleetMasterDataPage />)
+    const selectedLabels = () =>
+      screen
+        .getAllByRole('tab')
+        .filter((t) => t.getAttribute('aria-selected') === 'true')
+        .map((t) => t.textContent)
+
+    expect(selectedLabels()).toEqual(['Jenis Armada'])
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Jenis Dokumen' }))
+    expect(selectedLabels()).toEqual(['Jenis Dokumen'])
+  })
 })
