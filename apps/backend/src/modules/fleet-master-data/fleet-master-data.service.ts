@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, FindOptionsWhere, Repository } from 'typeorm'
 import { FleetMasterDataEntity } from './entities/fleet-master-data.entity'
 import { FleetMasterCategory } from './fleet-master-data.constants'
+import { CreateFleetMasterDataDto } from './dto/create-fleet-master-data.dto'
+import { UpdateFleetMasterDataDto } from './dto/update-fleet-master-data.dto'
 
 const UNIQUE_VIOLATION = '23505'
 const CAT_CODE_UNIQUE_CONSTRAINT = 'uq_fleet_master_data_cat_code'
@@ -12,25 +14,6 @@ const CAT_CODE_UNIQUE_CONSTRAINT = 'uq_fleet_master_data_cat_code'
 // missing table would turn every delete into a 500. Phase 2 and 3 append their columns here —
 // that is the single place a new reference has to be registered.
 const REFERENCING_COLUMNS: { table: string; column: string }[] = []
-
-interface CreateInput {
-  category: FleetMasterCategory
-  code: string
-  label: string
-  sortOrder?: number
-  warnDays?: number | null
-  defaultValidMonths?: number | null
-  isRequired?: boolean | null
-}
-
-interface UpdateInput {
-  label?: string
-  sortOrder?: number
-  isActive?: boolean
-  warnDays?: number | null
-  defaultValidMonths?: number | null
-  isRequired?: boolean | null
-}
 
 @Injectable()
 export class FleetMasterDataService {
@@ -52,7 +35,7 @@ export class FleetMasterDataService {
     return this.repo.find({ where, order: { sortOrder: 'ASC', label: 'ASC' } })
   }
 
-  async create(dto: CreateInput): Promise<FleetMasterDataEntity> {
+  async create(dto: CreateFleetMasterDataDto): Promise<FleetMasterDataEntity> {
     await this.assertCodeFree(dto.category, dto.code)
     try {
       return await this.repo.save(this.repo.create(dto as Partial<FleetMasterDataEntity>))
@@ -65,11 +48,11 @@ export class FleetMasterDataService {
   // `category` and `code` are deliberately not updatable. Both are the row's identity: vehicles
   // reference the row by id, but the seed migration and any future code path find it by
   // (category, code). Letting either move would relabel a dropdown entry out from under them.
-  async update(id: string, dto: UpdateInput): Promise<FleetMasterDataEntity> {
+  async update(id: string, dto: UpdateFleetMasterDataDto): Promise<FleetMasterDataEntity> {
     const existing = await this.repo.findOne({ where: { id } })
     if (!existing) throw new NotFoundException('Master data row not found')
 
-    const patch: UpdateInput = {}
+    const patch: UpdateFleetMasterDataDto = {}
     if (dto.label !== undefined) patch.label = dto.label
     if (dto.sortOrder !== undefined) patch.sortOrder = dto.sortOrder
     if (dto.isActive !== undefined) patch.isActive = dto.isActive
