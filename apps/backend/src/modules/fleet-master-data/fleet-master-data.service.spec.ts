@@ -81,6 +81,10 @@ describe('FleetMasterDataService', () => {
       repo.findOne.mockResolvedValue(null)
       const row = await service.create({ category: 'jenis_berkas', code: 'kir', label: 'Buku Uji' })
       expect(row).toMatchObject({ category: 'jenis_berkas', code: 'kir' })
+      // A null-for-anything mock cannot tell a category-scoped lookup from a global one, so assert
+      // the where-clause itself: a category-blind pre-check would 409 this `kir` because `kir`
+      // already exists under jenis_dokumen.
+      expect(repo.findOne).toHaveBeenCalledWith({ where: { category: 'jenis_berkas', code: 'kir' } })
     })
 
     it('reshapes a racing unique violation into a ConflictException', async () => {
@@ -89,6 +93,19 @@ describe('FleetMasterDataService', () => {
       await expect(
         service.create({ category: 'leasing', code: 'mtf', label: 'MTF' }),
       ).rejects.toBeInstanceOf(ConflictException)
+    })
+
+    // (category, code) is the table's only unique constraint today, so a catch that keyed on the
+    // 23505 code alone would look correct. A Phase 2 constraint would then be reshaped into a
+    // misleading "Code already exists" 409 -- anything that is not our constraint must surface
+    // unchanged, which also covers the re-raise path.
+    it('re-raises a 23505 from a different constraint unchanged', async () => {
+      repo.findOne.mockResolvedValue(null)
+      const err = { code: '23505', constraint: 'uq_fleet_master_data_label' }
+      repo.save.mockRejectedValue(err)
+      await expect(
+        service.create({ category: 'leasing', code: 'mtf', label: 'MTF' }),
+      ).rejects.toBe(err)
     })
   })
 
@@ -117,7 +134,33 @@ describe('FleetMasterDataService', () => {
       repo.findOne.mockResolvedValueOnce({ id: 'r1', isActive: false })
       dataSource.query.mockResolvedValue([{ count: '7' }])
       await expect(service.update('r1', { isActive: false })).resolves.toBeDefined()
+      // The resolved row comes from the second findOne mock whether or not repo.update ever ran,
+      // so the patch has to be asserted directly or a dropped isActive line goes unnoticed.
+      expect(repo.update).toHaveBeenCalledWith('r1', { isActive: false })
       expect(dataSource.query).not.toHaveBeenCalled()
+    })
+
+    // update() copies the allow-list field by field, so any one dropped line silently discards that
+    // column while every other field still saves. Pass all six at once so no line can go missing.
+    it('carries every updatable field into the patch', async () => {
+      repo.findOne.mockResolvedValueOnce({ id: 'r1', category: 'leasing', code: 'mtf' })
+      repo.findOne.mockResolvedValueOnce({ id: 'r1' })
+      await service.update('r1', {
+        label: 'X',
+        sortOrder: 3,
+        isActive: false,
+        warnDays: 30,
+        defaultValidMonths: 12,
+        isRequired: true,
+      })
+      expect(repo.update).toHaveBeenCalledWith('r1', {
+        label: 'X',
+        sortOrder: 3,
+        isActive: false,
+        warnDays: 30,
+        defaultValidMonths: 12,
+        isRequired: true,
+      })
     })
   })
 
@@ -145,7 +188,9 @@ describe('FleetMasterDataService', () => {
       // exercises the guard this test is named for. Phase 2 populates REFERENCING_COLUMNS and this
       // should revert to the brief's dataSource.query mock.
       jest.spyOn(service as never, 'countUsage').mockResolvedValue(3 as never)
-      await expect(service.remove('r1')).rejects.toThrow(/3/)
+      // /3/ alone would pass on a message that dropped the label and the "deactivate instead"
+      // guidance, which is the whole point of the 409.
+      await expect(service.remove('r1')).rejects.toThrow(/MTF.*3 record\(s\).*[Dd]eactivate/)
       expect(repo.delete).not.toHaveBeenCalled()
     })
 
