@@ -30,6 +30,7 @@ import { BarhalModule } from './modules/barhal/barhal.module'
 import { RouteGroupsModule } from './modules/route-groups/route-groups.module'
 import { VendorGroupsModule } from './modules/vendor-groups/vendor-groups.module'
 import { FleetMasterDataModule } from './modules/fleet-master-data/fleet-master-data.module'
+import { FleetDriversModule } from './modules/fleet-drivers/fleet-drivers.module'
 
 @Module({
   imports: [
@@ -102,6 +103,7 @@ import { FleetMasterDataModule } from './modules/fleet-master-data/fleet-master-
     RouteGroupsModule,
     VendorGroupsModule,
     FleetMasterDataModule,
+    FleetDriversModule,
   ],
   controllers: [AppController],
   providers: [
