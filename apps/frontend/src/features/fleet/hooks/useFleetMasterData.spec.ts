@@ -120,6 +120,54 @@ describe('useFleetMasterData', () => {
       },
     ])
   })
+
+  // warnDays 0 is the value the defaults must not swallow: it means "warn on the expiry date
+  // itself", while null means "let the backend apply its 30-day default". A falsy check here turns
+  // an operator's deliberate 0 into null on the way out of the cache, so the management table shows
+  // no threshold and the edit dialog reopens with an empty field.
+  it('keeps a zero warning threshold distinct from an absent one', () => {
+    ;(useQuery as jest.Mock).mockReturnValue({})
+
+    useFleetMasterData('jenis_dokumen')
+
+    expect(
+      queryConfig().select([
+        {
+          id: 'r3',
+          category: 'jenis_dokumen',
+          code: 'kir',
+          label: 'KIR Tahunan',
+          sortOrder: 0,
+          isActive: true,
+          warnDays: 0,
+          defaultValidMonths: 0,
+          isRequired: false,
+        },
+      ]),
+    ).toEqual([
+      {
+        id: 'r3',
+        category: 'jenis_dokumen',
+        code: 'kir',
+        label: 'KIR Tahunan',
+        sortOrder: 0,
+        isActive: true,
+        warnDays: 0,
+        defaultValidMonths: 0,
+        isRequired: false,
+      },
+    ])
+  })
+
+  // Master data changes rarely and feeds every dropdown in the module, so it is cached for a
+  // minute; at staleTime 0 every tab switch and every remount refetches all eight categories.
+  it('caches the category list for a minute', () => {
+    ;(useQuery as jest.Mock).mockReturnValue({})
+
+    useFleetMasterData('leasing')
+
+    expect(queryConfig().staleTime).toBe(60 * 1000)
+  })
 })
 
 describe('useCreateFleetMasterData', () => {
