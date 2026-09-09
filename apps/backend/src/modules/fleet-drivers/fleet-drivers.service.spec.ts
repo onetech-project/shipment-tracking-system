@@ -69,6 +69,15 @@ describe('FleetDriversService', () => {
       expect(clause?.[1]).toEqual({ q: '%budi%' })
     })
 
+    // The `if (q?.trim())` guard trims before testing, but the parameter it builds has to trim
+    // too: a name pasted with a trailing space would search for '%  budi  %' and match nothing,
+    // so the user sees an empty list. The test above passes an already-clean term and misses it.
+    it('trims the search term before wrapping it in wildcards', async () => {
+      await service.findAll('  budi  ')
+      const clause = qb.andWhere.mock.calls.find((c) => String(c[0]).includes('ILIKE'))
+      expect(clause?.[1]).toEqual({ q: '%budi%' })
+    })
+
     // Added beyond the brief's nine: the assertion above only proves *some* column is matched.
     // Without naming all three, narrowing the search to the name alone leaves the suite green
     // while the phone and licence-number search silently stop working.
@@ -156,6 +165,22 @@ describe('FleetDriversService', () => {
     it('collapses a blanked telepon and simNomor to null', async () => {
       const row = await service.create({ nama: 'Budi', telepon: '   ', simNomor: '  ' })
       expect(row).toMatchObject({ telepon: null, simNomor: null })
+    })
+
+    // Every other blank test passes whitespace, never null -- yet null is what the client sends
+    // to clear a column: the DTO types these `string | null` and @IsOptional skips validation for
+    // null as well as undefined. A guard narrowed to undefined would call null.trim() and 500.
+    it('accepts an explicit null telepon and simNomor', async () => {
+      const row = await service.create({ nama: 'Budi', telepon: null, simNomor: null })
+      expect(row).toMatchObject({ telepon: null, simNomor: null })
+    })
+
+    // Only the collapse-to-null branch was pinned. Handing the raw value back instead of the
+    // trimmed one would store '  0812  ' verbatim -- invisible to exact-match lookups and to the
+    // ILIKE '0812%' search the list runs.
+    it('trims a telepon and simNomor it keeps', async () => {
+      const row = await service.create({ nama: 'Budi', telepon: '  0812  ', simNomor: '  B1234  ' })
+      expect(row).toMatchObject({ telepon: '0812', simNomor: 'B1234' })
     })
   })
 
@@ -251,6 +276,36 @@ describe('FleetDriversService', () => {
       repo.findOne.mockResolvedValue({ id: 'd1', nama: 'Budi' })
       await service.update('d1', { simNomor: '   ' })
       expect(repo.update).toHaveBeenCalledWith('d1', { simNomor: null })
+    })
+
+    // The documented clear-the-column path sends an explicit null, not a blank string, and the
+    // DTO types it that way on purpose. Nothing above reaches the null branch of the collapse,
+    // so narrowing it to undefined would 500 on the one request it exists to serve.
+    it('clears telepon and simNomor on an explicit null', async () => {
+      repo.findOne.mockResolvedValue({ id: 'd1', nama: 'Budi' })
+      await service.update('d1', { telepon: null, simNomor: null })
+      expect(repo.update).toHaveBeenCalledWith('d1', { telepon: null, simNomor: null })
+    })
+
+    // Same collapse seen from its other branch: a value that survives has to survive *trimmed*,
+    // or a padded phone number is written straight to the column and no later search finds it.
+    it('trims a telepon and simNomor it keeps', async () => {
+      repo.findOne.mockResolvedValue({ id: 'd1', nama: 'Budi' })
+      await service.update('d1', { telepon: '  0812  ', simNomor: '  B1234  ' })
+      expect(repo.update).toHaveBeenCalledWith('d1', { telepon: '0812', simNomor: 'B1234' })
+    })
+
+    // repo.findOne serves both the pre-existence check and the post-update re-read, so a single
+    // mock value makes the two calls indistinguishable and the re-read free to vanish. Distinct
+    // sequential values pin it: without the re-read a successful PATCH hands the edit form the
+    // values the row had *before* the write, which reads as a save that silently failed.
+    it('returns the row re-read after the update, not the pre-update one', async () => {
+      repo.findOne
+        .mockResolvedValueOnce({ id: 'd1', nama: 'Budi' })
+        .mockResolvedValueOnce({ id: 'd1', nama: 'Budi Santoso' })
+      const row = await service.update('d1', { nama: 'Budi Santoso' })
+      expect(repo.findOne).toHaveBeenCalledTimes(2)
+      expect(row).toMatchObject({ nama: 'Budi Santoso' })
     })
 
     // Real TypeORM throws on an empty update value set, so an unconditional call would turn a
