@@ -80,6 +80,14 @@ describe('FleetDriversService', () => {
       expect(clause?.[0]).toContain('d.simNomor ILIKE :q')
     })
 
+    // simJenis is the only source of the licence-class label the list renders, and the mock
+    // returns the builder from every call, so dropping or misspelling the join relation leaves
+    // every other findAll test green.
+    it('hydrates the simJenis relation for the licence-class label', async () => {
+      await service.findAll()
+      expect(qb.leftJoinAndSelect).toHaveBeenCalledWith('d.simJenis', 'sim')
+    })
+
     it('includes inactive drivers when asked', async () => {
       await service.findAll(undefined, true)
       expect(qb.andWhere).not.toHaveBeenCalledWith('d.isActive = TRUE')
@@ -116,8 +124,25 @@ describe('FleetDriversService', () => {
 
     it('accepts a driver with no licence data at all', async () => {
       const row = await service.create({ nama: 'Budi' })
-      expect(row).toMatchObject({ nama: 'Budi' })
+      // The licence fields are asserted here too: absent input has to normalise to an explicit
+      // null, otherwise `undefined` reaches TypeORM and the column keeps whatever a default says.
+      expect(row).toMatchObject({ nama: 'Budi', simJenisId: null, simExpiresAt: null })
       expect(masterRepo.findOne).not.toHaveBeenCalled()
+    })
+
+    // The licence class and expiry are the reason the create form exists beyond the name. Nothing
+    // else reads them back, so hardcoding either to null would persist a driver with no licence
+    // while every other create test stayed green.
+    it('persists the licence class and expiry it was given', async () => {
+      const row = await service.create({
+        nama: 'Budi',
+        simJenisId: '11111111-1111-1111-1111-111111111111',
+        simExpiresAt: '2027-01-31',
+      })
+      expect(row).toMatchObject({
+        simJenisId: '11111111-1111-1111-1111-111111111111',
+        simExpiresAt: '2027-01-31',
+      })
     })
 
     it('trims the name', async () => {
@@ -148,6 +173,67 @@ describe('FleetDriversService', () => {
       repo.update.mockClear()
       await service.update('d1', { nama: 'Budi B' })
       expect(repo.update).toHaveBeenCalledWith('d1', { nama: 'Budi B' })
+    })
+
+    // The pool-row bug the create path already pins is reachable through PATCH as well: the FK
+    // proves the id exists in fleet_master_data, not that the row is a licence class, so without
+    // this lookup a driver could be repointed at "Pool Cakung" as their jenis SIM.
+    it('validates a new simJenisId by id AND jenis_sim category', async () => {
+      repo.findOne.mockResolvedValue({ id: 'd1', nama: 'Budi' })
+      await service.update('d1', { simJenisId: '11111111-1111-1111-1111-111111111111' })
+      expect(masterRepo.findOne).toHaveBeenCalledWith({
+        where: { id: '11111111-1111-1111-1111-111111111111', category: 'jenis_sim' },
+      })
+    })
+
+    // ...and the 400 has to surface from update, not just from create.
+    it('rejects a simJenisId that is not a jenis_sim row', async () => {
+      repo.findOne.mockResolvedValue({ id: 'd1', nama: 'Budi' })
+      masterRepo.findOne.mockResolvedValue(null)
+      await expect(
+        service.update('d1', { simJenisId: '11111111-1111-1111-1111-111111111111' }),
+      ).rejects.toBeInstanceOf(BadRequestException)
+    })
+
+    // The guard is truthy (`if (dto.simJenisId)`) rather than `!== undefined` on purpose: clearing
+    // the licence class sends null, and there is no master row to look a null up against.
+    it('skips the master lookup when the licence class is being cleared', async () => {
+      repo.findOne.mockResolvedValue({ id: 'd1', nama: 'Budi' })
+      await service.update('d1', { simJenisId: null })
+      expect(masterRepo.findOne).not.toHaveBeenCalled()
+    })
+
+    // "Nonaktifkan" is the primary row action the driver list is built around. Nothing else proves
+    // isActive ever reaches the patch object, so dropping it would leave the button silently inert.
+    it('deactivates a driver', async () => {
+      repo.findOne.mockResolvedValue({ id: 'd1', nama: 'Budi', isActive: true })
+      await service.update('d1', { isActive: false })
+      expect(repo.update).toHaveBeenCalledWith('d1', { isActive: false })
+    })
+
+    // The create path trims; a rename through PATCH has to trim too, or the same driver sorts and
+    // matches differently depending on which endpoint last wrote the name.
+    it('trims a renamed driver', async () => {
+      repo.findOne.mockResolvedValue({ id: 'd1', nama: 'Budi' })
+      await service.update('d1', { nama: '  Budi Santoso  ' })
+      expect(repo.update).toHaveBeenCalledWith('d1', { nama: 'Budi Santoso' })
+    })
+
+    // '' and whitespace-only collapse to null so each optional column has one empty state rather
+    // than two: an empty string stored here would be invisible to every IS NULL filter.
+    it('collapses a blanked telepon to null', async () => {
+      repo.findOne.mockResolvedValue({ id: 'd1', nama: 'Budi' })
+      await service.update('d1', { telepon: '   ' })
+      expect(repo.update).toHaveBeenCalledWith('d1', { telepon: null })
+    })
+
+    // Real TypeORM throws on an empty update value set, so an unconditional call would turn a
+    // no-op PATCH into a 500 rather than returning the row untouched.
+    it('issues no UPDATE at all for an empty patch', async () => {
+      repo.findOne.mockResolvedValue({ id: 'd1', nama: 'Budi' })
+      const row = await service.update('d1', {})
+      expect(repo.update).not.toHaveBeenCalled()
+      expect(row).toMatchObject({ id: 'd1', nama: 'Budi' })
     })
   })
 
