@@ -163,6 +163,15 @@ export function Sidebar({ onNavClick, collapsed = false, onToggleCollapse }: Sid
                 collapsed={collapsed}
               />
             )}
+            {hasPermission('read.fleet_vehicle') && (
+              <NavLink
+                href="/fleet"
+                icon={<Truck size={16} />}
+                label="Registrasi Armada"
+                onClick={onNavClick}
+                collapsed={collapsed}
+              />
+            )}
           </div>
         </div>
 
