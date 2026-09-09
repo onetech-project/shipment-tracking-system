@@ -127,4 +127,42 @@ describe('DriverFormDialog', () => {
     expect(await screen.findByText('Ditolak.')).toBeInTheDocument()
     expect(onCloseRejected).not.toHaveBeenCalled()
   })
+
+  // An optional field the operator never touched has to survive an edit: the backend reads an
+  // explicit null as "clear this column", so a dropped seed would silently wipe the driver's
+  // licence number, class and expiry. Asserted against a bare object, not objectContaining, so a
+  // field that arrives as null instead of its seeded value is caught rather than ignored.
+  it('keeps optional fields the operator did not touch when editing', async () => {
+    const onSubmit = jest.fn().mockResolvedValue(undefined)
+    render(
+      <DriverFormDialog
+        open
+        simTypes={simTypes}
+        initial={{
+          id: 'd1',
+          nama: 'Budi',
+          telepon: '0812',
+          simNomor: 'X9',
+          simJenisId: 'sim-1',
+          simJenis: null,
+          simExpiresAt: '2027-01-01',
+          isActive: true,
+        }}
+        onSubmit={onSubmit}
+        onClose={jest.fn()}
+      />,
+    )
+    expect(screen.getByText('Ubah sopir')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith({
+        nama: 'Budi',
+        telepon: '0812',
+        simNomor: 'X9',
+        simJenisId: 'sim-1',
+        simExpiresAt: '2027-01-01',
+      }),
+    )
+  })
 })
