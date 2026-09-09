@@ -37,6 +37,23 @@ describe('FleetLayout', () => {
     expect(screen.queryByRole('link', { name: 'Master Data' })).not.toBeInTheDocument()
   })
 
+  // The tab labels say nothing about where they go. Without these a tab pointing at the wrong
+  // route renders identically and ships silently — the operator clicks "Master Data" and lands
+  // somewhere else, or on a 404.
+  it('points each tab at its own route', () => {
+    mockHasPermission.mockReturnValue(true)
+    render(
+      <FleetLayout>
+        <p>isi</p>
+      </FleetLayout>,
+    )
+    expect(screen.getByRole('link', { name: 'Sopir' })).toHaveAttribute('href', '/fleet/drivers')
+    expect(screen.getByRole('link', { name: 'Master Data' })).toHaveAttribute(
+      'href',
+      '/fleet/master-data',
+    )
+  })
+
   it('marks the active tab with aria-current', () => {
     mockHasPermission.mockReturnValue(true)
     render(
