@@ -162,6 +162,35 @@ describe('FleetMasterDataService', () => {
         isRequired: true,
       })
     })
+
+    // Real TypeORM throws on an empty update value set, so an unconditional call would turn a
+    // PATCH carrying only the whitelist-stripped category/code into a 500 rather than a no-op
+    // that returns the row untouched.
+    it('issues no UPDATE at all for an empty patch', async () => {
+      repo.findOne.mockResolvedValue({ id: 'r1', category: 'leasing', code: 'mtf', label: 'MTF' })
+      const row = await service.update('r1', {})
+      expect(repo.update).not.toHaveBeenCalled()
+      expect(row).toEqual({ id: 'r1', category: 'leasing', code: 'mtf', label: 'MTF' })
+    })
+
+    // Returning `existing` instead of the re-read row would hand back pre-update values and the
+    // edit form would repaint the old label — a save that silently looks like it failed.
+    it('returns the row re-read after the update, not the pre-update one', async () => {
+      repo.findOne
+        .mockResolvedValueOnce({ id: 'r1', category: 'leasing', code: 'mtf', label: 'MTF' })
+        .mockResolvedValueOnce({ id: 'r1', category: 'leasing', code: 'mtf', label: 'MTF Baru' })
+      const row = await service.update('r1', { label: 'MTF Baru' })
+      expect(row).toEqual({ id: 'r1', category: 'leasing', code: 'mtf', label: 'MTF Baru' })
+    })
+
+    // The re-read can come back empty when the row is deleted between the two findOnes; returning
+    // undefined would surface as a 200 with an empty body instead of a 404.
+    it('throws NotFoundException when the row disappears before the re-read', async () => {
+      repo.findOne
+        .mockResolvedValueOnce({ id: 'r1', category: 'leasing', code: 'mtf' })
+        .mockResolvedValueOnce(null)
+      await expect(service.update('r1', { label: 'X' })).rejects.toBeInstanceOf(NotFoundException)
+    })
   })
 
   describe('remove', () => {
@@ -181,25 +210,49 @@ describe('FleetMasterDataService', () => {
     // and is told to deactivate instead.
     it('refuses to delete a row in use and reports how many reference it', async () => {
       repo.findOne.mockResolvedValue({ id: 'r1', category: 'leasing', label: 'MTF' })
-      // DEVIATION FROM BRIEF (see report): the brief drove this through
-      // dataSource.query.mockResolvedValue([{ count: '3' }]), but REFERENCING_COLUMNS is empty in
-      // Phase 1 so countUsage() short-circuits and never reaches dataSource.query -- that mock was
-      // inert and remove() resolved. Stubbing countUsage is the only channel left that still
-      // exercises the guard this test is named for. Phase 2 populates REFERENCING_COLUMNS and this
-      // should revert to the brief's dataSource.query mock.
-      jest.spyOn(service as never, 'countUsage').mockResolvedValue(3 as never)
+      dataSource.query.mockResolvedValue([{ count: '3' }])
       // /3/ alone would pass on a message that dropped the label and the "deactivate instead"
       // guidance, which is the whole point of the 409.
       await expect(service.remove('r1')).rejects.toThrow(/MTF.*3 record\(s\).*[Dd]eactivate/)
       expect(repo.delete).not.toHaveBeenCalled()
     })
 
-    // Phase 1 has no referencing tables yet. The usage probe must therefore be a no-op that
-    // reports zero, not a query against fleet_vehicles — which does not exist until Phase 2.
-    it('reports zero usage without querying the database at all', async () => {
+    // A zero count is not a licence to skip the probe: the probe running and reporting nothing is
+    // what makes the delete safe. Assert it actually ran and still let the delete through.
+    it('probes the database and deletes when the probe reports zero', async () => {
       repo.findOne.mockResolvedValue({ id: 'r1', category: 'leasing', label: 'MTF' })
+      dataSource.query.mockResolvedValue([{ count: '0' }])
       await service.remove('r1')
-      expect(dataSource.query).not.toHaveBeenCalled()
+      const [sql, params] = dataSource.query.mock.calls[0] as [string, unknown[]]
+      expect(sql).toContain('fleet_drivers')
+      expect(params).toEqual(['r1'])
+      expect(repo.delete).toHaveBeenCalledWith('r1')
+    })
+
+    // The FK fleet_drivers.sim_jenis_id -> fleet_master_data.id is ON DELETE RESTRICT, so if the
+    // registry names the wrong table or column the probe counts zero, repo.delete() runs, Postgres
+    // raises the violation and the admin gets a 500 instead of the 409 below. Pinning the exact
+    // identifiers is the only thing standing between that FK and an unhandled error: a mutation of
+    // either name in REFERENCING_COLUMNS fails here.
+    it('probes fleet_drivers.sim_jenis_id — the FK that would otherwise 500', async () => {
+      repo.findOne.mockResolvedValue({ id: 'r1', category: 'jenis_sim', label: 'B1 Umum' })
+      dataSource.query.mockResolvedValue([{ count: '0' }])
+      await service.remove('r1')
+      const [sql, params] = dataSource.query.mock.calls[0] as [string, unknown[]]
+      // Whitespace-normalised so the assertion pins the identifiers, not the SQL's formatting.
+      expect(sql.replace(/\s+/g, ' ')).toContain(
+        'SELECT count(*) AS c FROM fleet_drivers WHERE sim_jenis_id = $1',
+      )
+      expect(params).toEqual(['r1'])
+    })
+
+    // COALESCE(SUM(c), 0) means an empty result set is legitimately "nothing references this".
+    // Number(undefined) is NaN and NaN > 0 is false, so a dropped ?? 0 would fail open rather
+    // than loudly — the delete would still proceed. Pin the fallback.
+    it('treats an empty probe result as zero usage rather than NaN', async () => {
+      repo.findOne.mockResolvedValue({ id: 'r1', category: 'leasing', label: 'MTF' })
+      dataSource.query.mockResolvedValue([])
+      await service.remove('r1')
       expect(repo.delete).toHaveBeenCalledWith('r1')
     })
   })
