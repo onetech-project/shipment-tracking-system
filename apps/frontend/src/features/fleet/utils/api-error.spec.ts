@@ -19,8 +19,8 @@ describe('apiErrorMessage', () => {
   })
 
   it('falls back when response.data.message is present but not a string', () => {
-    // Nest returns an array of messages for a class-validator failure; rendering it as text
-    // would print a comma-joined blob, so it is treated as absent.
+    // Nothing validates the `message?: string` cast the helper makes, so a non-string value can
+    // reach it whatever its origin; it has to fall back rather than hand a non-string to JSX.
     const err = { response: { data: { message: ['nama should not be empty'] } } }
     expect(apiErrorMessage(err, 'fallback')).toBe('fallback')
   })
