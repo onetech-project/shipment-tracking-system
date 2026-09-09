@@ -149,6 +149,14 @@ describe('FleetDriversService', () => {
       const row = await service.create({ nama: '  Budi Santoso  ' })
       expect(row).toMatchObject({ nama: 'Budi Santoso' })
     })
+
+    // The update path pins what blankToNull does, but neither create call site was pinned: passing
+    // the raw dto value straight through would persist '   ' in telepon or sim_nomor, and a
+    // whitespace-only string is invisible to every IS NULL filter the list and alerts rely on.
+    it('collapses a blanked telepon and simNomor to null', async () => {
+      const row = await service.create({ nama: 'Budi', telepon: '   ', simNomor: '  ' })
+      expect(row).toMatchObject({ telepon: null, simNomor: null })
+    })
   })
 
   describe('update', () => {
@@ -211,6 +219,16 @@ describe('FleetDriversService', () => {
       expect(repo.update).toHaveBeenCalledWith('d1', { isActive: false })
     })
 
+    // Renewing a licence is the one write the expiry column exists for, and the partial index
+    // idx_fleet_drivers_sim_expiry serves the expiry-alert query off it. Nothing else proved
+    // simExpiresAt reaches the patch, so dropping the line — or clearing it to null — would let a
+    // renewal silently no-op and leave the alert firing on the old date.
+    it('records a renewed licence expiry', async () => {
+      repo.findOne.mockResolvedValue({ id: 'd1', nama: 'Budi' })
+      await service.update('d1', { simExpiresAt: '2027-01-31' })
+      expect(repo.update).toHaveBeenCalledWith('d1', { simExpiresAt: '2027-01-31' })
+    })
+
     // The create path trims; a rename through PATCH has to trim too, or the same driver sorts and
     // matches differently depending on which endpoint last wrote the name.
     it('trims a renamed driver', async () => {
@@ -225,6 +243,14 @@ describe('FleetDriversService', () => {
       repo.findOne.mockResolvedValue({ id: 'd1', nama: 'Budi' })
       await service.update('d1', { telepon: '   ' })
       expect(repo.update).toHaveBeenCalledWith('d1', { telepon: null })
+    })
+
+    // Same collapse, one column over: simNomor had no counterpart, so stripping its blankToNull
+    // would store a whitespace-only licence number that no IS NULL filter can see.
+    it('collapses a blanked simNomor to null', async () => {
+      repo.findOne.mockResolvedValue({ id: 'd1', nama: 'Budi' })
+      await service.update('d1', { simNomor: '   ' })
+      expect(repo.update).toHaveBeenCalledWith('d1', { simNomor: null })
     })
 
     // Real TypeORM throws on an empty update value set, so an unconditional call would turn a
