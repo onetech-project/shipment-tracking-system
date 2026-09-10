@@ -76,7 +76,7 @@ export default function FleetDriversPage() {
       {isError ? (
         <div className="rounded-lg border bg-card p-8 text-center">
           <p className="text-sm text-muted-foreground">Gagal memuat data sopir.</p>
-          <button onClick={() => refetch()} className="mt-2 text-sm text-primary underline">
+          <button type="button" onClick={() => refetch()} className="mt-2 text-sm text-primary underline">
             Coba lagi
           </button>
         </div>

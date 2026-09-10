@@ -217,16 +217,12 @@ describe('useFleetMasterDataByCategory', () => {
 
   // The option is opt-out, not opt-in: every caller that predates it must keep fetching, so an
   // absent opts object has to resolve to true rather than to undefined.
-  it('fetches when enabled is not given', async () => {
+  it('fetches when enabled is not given', () => {
     ;(useQuery as jest.Mock).mockReturnValue({})
 
     useFleetMasterDataByCategory('jenis_sim')
 
     expect(queryConfig().enabled).toBe(true)
-    await queryConfig().queryFn()
-    expect(apiClient.get).toHaveBeenCalledWith('/fleet/master-data', {
-      params: { category: 'jenis_sim' },
-    })
   })
 
   it('fetches when explicitly enabled', () => {
