@@ -46,18 +46,36 @@ export class FleetVehicleDocuments20260910000002 implements MigrationInterface {
         ON fleet_vehicle_documents (expires_at) WHERE is_current
     `)
 
+    // uq_fleet_vehicle_documents_current covers the current-document lookup, but the renewal
+    // history — every row for one vehicle, is_current or not — is the reason this table keeps
+    // superseded rows at all, and without this index that query is a sequential scan. Matches
+    // the @Index on FleetVehicleDocumentEntity; the decorator alone creates nothing under
+    // synchronize: false.
+    await queryRunner.query(`
+      CREATE INDEX IF NOT EXISTS idx_fleet_vehicle_documents_vehicle
+        ON fleet_vehicle_documents (vehicle_id, is_current)
+    `)
+
     // severity_rank is numeric rather than a label so MIN() yields the worst severity and
     // ORDER BY sorts correctly with no CASE at the call site. 30 is the same fallback
     // DEFAULT_WARN_DAYS carries in fleet-master-data.constants.ts; fleet-severity.ts repeats
     // this ladder in TypeScript and the two must stay in step.
+    //
+    // NOT CURRENT_DATE. node-postgres negotiates the session at Etc/UTC regardless of the
+    // container's TZ, so CURRENT_DATE would be the UTC day: every morning from 00:00 to 07:00
+    // WIB it still reads yesterday, and an operator checking a certificate that expires today
+    // would be told it expires tomorrow. The fleet runs on the Jakarta business day, so the
+    // comparison names that zone explicitly instead of depending on a server setting no
+    // reader of this file can see. fleet-severity.ts's todayISO() resolves the same day.
     await queryRunner.query(`
       CREATE OR REPLACE VIEW fleet_vehicle_document_status AS
       SELECT
         d.vehicle_id,
-        MIN(d.expires_at - CURRENT_DATE) AS min_days_left,
+        MIN(d.expires_at - (now() AT TIME ZONE 'Asia/Jakarta')::date) AS min_days_left,
         MIN(CASE
-              WHEN d.expires_at < CURRENT_DATE                                 THEN 0
-              WHEN d.expires_at - CURRENT_DATE <= COALESCE(m.warn_days, 30)    THEN 1
+              WHEN d.expires_at < (now() AT TIME ZONE 'Asia/Jakarta')::date THEN 0
+              WHEN d.expires_at - (now() AT TIME ZONE 'Asia/Jakarta')::date
+                     <= COALESCE(m.warn_days, 30)                          THEN 1
               ELSE 2
             END) AS severity_rank
       FROM fleet_vehicle_documents d
