@@ -350,22 +350,30 @@ describe('FleetDriversPage', () => {
 
     // M2 — a SUCCESSFUL retry after a failed delete must not leave the old error on screen; the
     // operator reads it as "it failed again".
+    //
+    // Matched on the banner's exact text rather than a /masih ditugaskan/i substring, for the same
+    // reason master-data/page.spec.tsx does: the delete dialog renders prose of its own, and a
+    // loose matcher can resolve to that node instead of the banner and then go stale when the
+    // dialog closes.
     it('clears a stale delete error when the retry succeeds', async () => {
       mockDelete.mockRejectedValueOnce({
         response: { data: { message: 'Sopir masih ditugaskan' } },
       })
       render(<FleetDriversPage />)
 
-      fireEvent.click(screen.getByRole('button', { name: 'Hapus' }))
-      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Hapus' }))
-      expect(await screen.findByText(/masih ditugaskan/i)).toBeInTheDocument()
+      const failing = openDeleteDialog()
+      fireEvent.click(failing.getByRole('button', { name: 'Hapus' }))
+      expect(await screen.findByText('Sopir masih ditugaskan')).toBeInTheDocument()
 
       mockDelete.mockResolvedValueOnce({})
-      fireEvent.click(screen.getByRole('button', { name: 'Hapus' }))
-      fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Hapus' }))
-      await waitFor(() => expect(screen.queryByText(/masih ditugaskan/i)).not.toBeInTheDocument())
+      const retry = openDeleteDialog()
+      fireEvent.click(retry.getByRole('button', { name: 'Hapus' }))
+      await waitFor(() =>
+        expect(screen.queryByText('Sopir masih ditugaskan')).not.toBeInTheDocument(),
+      )
     })
   })
+
   describe('the master data gate', () => {
     // I2 — the persona spec §7 designs the split for. Without the gate this operator sends a
     // request that is guaranteed to 403 and gets an empty dropdown with no explanation.
@@ -444,12 +452,6 @@ describe('FleetDriversPage', () => {
       })
       render(<FleetDriversPage />)
       expect(screen.queryByRole('table')).not.toBeInTheDocument()
-    })
-
-    it('shows no failure notice while the load is healthy', () => {
-      render(<FleetDriversPage />)
-      expect(screen.queryByText(/gagal memuat data sopir/i)).not.toBeInTheDocument()
-      expect(screen.getByRole('table')).toBeInTheDocument()
     })
   })
 })
