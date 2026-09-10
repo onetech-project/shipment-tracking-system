@@ -247,13 +247,16 @@ describe('FleetMasterDataService', () => {
     })
 
     // COALESCE(SUM(c), 0) means an empty result set is legitimately "nothing references this".
-    // Number(undefined) is NaN and NaN > 0 is false, so a dropped ?? 0 would fail open rather
-    // than loudly — the delete would still proceed. Pin the fallback.
+    // Number(undefined) is NaN and NaN > 0 is false, so a dropped `?? 0` fails open rather than
+    // loudly: the delete proceeds either way. That is why this asserts countUsage's return value
+    // directly — an assertion on remove()'s behaviour passes under both branches and cannot tell
+    // the fallback from its absence.
     it('treats an empty probe result as zero usage rather than NaN', async () => {
-      repo.findOne.mockResolvedValue({ id: 'r1', category: 'leasing', label: 'MTF' })
       dataSource.query.mockResolvedValue([])
-      await service.remove('r1')
-      expect(repo.delete).toHaveBeenCalledWith('r1')
+      const count = await (service as unknown as {
+        countUsage: (id: string) => Promise<number>
+      }).countUsage('r1')
+      expect(count).toBe(0)
     })
   })
 })
