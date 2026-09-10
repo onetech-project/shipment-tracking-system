@@ -4,7 +4,9 @@ import { MigrationInterface, QueryRunner } from 'typeorm'
 //
 // One table rather than eight: all eight lists are ordered label sets with no structural
 // difference between them, so eight entities/services/controllers would be boilerplate unpaid
-// for by anything. Adding a ninth dropdown later needs no migration at all.
+// for by anything. Adding a ninth dropdown needs BOTH this CHECK constraint altered by a new
+// migration and FLEET_MASTER_CATEGORIES extended; fleet-master-data.constants.spec.ts fails
+// first if only one side moves.
 //
 // warn_days / default_valid_months / is_required are nullable and only meaningful for certain
 // categories. A `config JSONB` column would avoid that, and was rejected: warn_days is read

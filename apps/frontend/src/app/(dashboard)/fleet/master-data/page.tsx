@@ -80,7 +80,11 @@ export default function FleetMasterDataPage() {
             key={c}
             role="tab"
             aria-selected={c === category}
-            onClick={() => setCategory(c)}
+            onClick={() => {
+              setCategory(c)
+              // The banner names a row in the category being left behind.
+              setDeleteError(null)
+            }}
             className={cn(
               '-mb-px border-b-2 px-3 py-2 text-sm font-medium motion-safe:transition-colors',
               c === category

@@ -26,15 +26,18 @@ export default function FleetDriversPage() {
   const [modal, setModal] = useState<Modal>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
-  const { data: drivers, isLoading } = useFleetDrivers({ q })
-  const { data: simTypes } = useFleetMasterDataByCategory('jenis_sim')
-  const createDriver = useCreateFleetDriver()
-  const updateDriver = useUpdateFleetDriver()
-  const deleteDriver = useDeleteFleetDriver()
-
   const canCreate = hasPermission('create.fleet_vehicle')
   const canUpdate = hasPermission('update.fleet_vehicle')
   const canDelete = hasPermission('delete.fleet_vehicle')
+  // Spec §7 keeps master data behind its own permission, so this list is not guaranteed to the
+  // operator looking at this page.
+  const canReadMaster = hasPermission('read.fleet_master_data')
+
+  const { data: drivers, isLoading, isError, refetch } = useFleetDrivers({ q })
+  const { data: simTypes } = useFleetMasterDataByCategory('jenis_sim', { enabled: canReadMaster })
+  const createDriver = useCreateFleetDriver()
+  const updateDriver = useUpdateFleetDriver()
+  const deleteDriver = useDeleteFleetDriver()
 
   const handleSubmit = async (payload: FleetDriverPayload) => {
     if (modal?.type === 'edit') {
@@ -70,43 +73,53 @@ export default function FleetDriversPage() {
         />
       </div>
 
-      <DataTable
-        rows={drivers ?? []}
-        isLoading={isLoading}
-        keyExtractor={(d) => d.id}
-        emptyMessage="Belum ada sopir terdaftar."
-        columns={[
-          { header: 'Nama', accessor: (d) => d.nama },
-          { header: 'Telepon', accessor: (d) => d.telepon ?? '—' },
-          { header: 'Nomor SIM', accessor: (d) => d.simNomor ?? '—' },
-          { header: 'Jenis SIM', accessor: (d) => d.simJenis?.label ?? '—' },
-          { header: 'Berlaku sampai', accessor: (d) => d.simExpiresAt ?? '—' },
-          {
-            header: '',
-            className: 'text-right',
-            accessor: (d) => (
-              <div className="flex justify-end gap-2">
-                {canUpdate && (
-                  <Button variant="ghost" size="sm" onClick={() => setModal({ type: 'edit', driver: d })}>
-                    Ubah
-                  </Button>
-                )}
-                {canDelete && (
-                  <Button variant="ghost" size="sm" onClick={() => setModal({ type: 'delete', driver: d })}>
-                    Hapus
-                  </Button>
-                )}
-              </div>
-            ),
-          },
-        ]}
-      />
+      {isError ? (
+        <div className="rounded-lg border bg-card p-8 text-center">
+          <p className="text-sm text-muted-foreground">Gagal memuat data sopir.</p>
+          <button onClick={() => refetch()} className="mt-2 text-sm text-primary underline">
+            Coba lagi
+          </button>
+        </div>
+      ) : (
+        <DataTable
+          rows={drivers ?? []}
+          isLoading={isLoading}
+          keyExtractor={(d) => d.id}
+          emptyMessage="Belum ada sopir terdaftar."
+          columns={[
+            { header: 'Nama', accessor: (d) => d.nama },
+            { header: 'Telepon', accessor: (d) => d.telepon ?? '—' },
+            { header: 'Nomor SIM', accessor: (d) => d.simNomor ?? '—' },
+            { header: 'Jenis SIM', accessor: (d) => d.simJenis?.label ?? '—' },
+            { header: 'Berlaku sampai', accessor: (d) => d.simExpiresAt ?? '—' },
+            {
+              header: '',
+              className: 'text-right',
+              accessor: (d) => (
+                <div className="flex justify-end gap-2">
+                  {canUpdate && (
+                    <Button variant="ghost" size="sm" onClick={() => setModal({ type: 'edit', driver: d })}>
+                      Ubah
+                    </Button>
+                  )}
+                  {canDelete && (
+                    <Button variant="ghost" size="sm" onClick={() => setModal({ type: 'delete', driver: d })}>
+                      Hapus
+                    </Button>
+                  )}
+                </div>
+              ),
+            },
+          ]}
+        />
+      )}
 
       {(modal?.type === 'create' || modal?.type === 'edit') && (
         <DriverFormDialog
           open
           initial={modal.type === 'edit' ? modal.driver : undefined}
           simTypes={simTypes ?? []}
+          simTypesUnavailable={!canReadMaster}
           onSubmit={handleSubmit}
           onClose={() => setModal(null)}
         />
@@ -125,6 +138,9 @@ export default function FleetDriversPage() {
         destructive
         onConfirm={async () => {
           if (modal?.type !== 'delete') return
+          // A successful retry must not leave the previous failure on screen — the operator
+          // reads a stale banner as "it failed again".
+          setDeleteError(null)
           // ConfirmDialog does not catch, so a rejected mutation would surface as an unhandled
           // rejection and the dialog would stay open with no explanation.
           try {

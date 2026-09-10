@@ -42,12 +42,21 @@ export function useFleetDrivers(params: { q?: string; includeInactive?: boolean 
 
 // Shared by the driver form (jenis_sim) and, from Phase 2, the vehicle form. Cached longer than
 // the lists it feeds — master data barely moves.
-export function useFleetMasterDataByCategory(category: FleetMasterCategory) {
+// GET /fleet/master-data is gated by READ_FLEET_MASTER_DATA, but the pages that need these
+// dropdowns are gated by READ_FLEET_VEHICLE — spec §7 splits them on purpose so a field
+// operator can register vehicles without editing the lookup lists. Callers pass enabled so
+// that persona spends no request and can be told the lists are unavailable, instead of
+// staring at an empty dropdown.
+export function useFleetMasterDataByCategory(
+  category: FleetMasterCategory,
+  opts: { enabled?: boolean } = {},
+) {
   return useQuery<FleetMasterRow[]>({
     queryKey: ['fleet', 'master-data', category],
     queryFn: () =>
       apiClient.get('/fleet/master-data', { params: { category } }).then((r) => r.data),
     staleTime: 5 * 60 * 1000,
+    enabled: opts.enabled ?? true,
   })
 }
 
