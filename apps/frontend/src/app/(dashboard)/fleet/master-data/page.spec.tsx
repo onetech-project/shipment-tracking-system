@@ -81,6 +81,26 @@ describe('FleetMasterDataPage', () => {
     expect(await screen.findByText('Gagal menghapus data master.')).toBeInTheDocument()
   })
 
+  // The banner names a row in the category the operator just left. Carrying it into a new tab
+  // attributes the failure to the wrong data.
+  //
+  // Matched on the banner's exact text rather than a /masih dipakai/i substring: the delete
+  // confirmation's own description ("Kalau masih dipakai kendaraan, sistem akan menolak") also
+  // contains that phrase, so the loose form resolves to the dialog node instead of the banner.
+  it('clears the delete error when switching category', async () => {
+    mockDelete.mockRejectedValueOnce({
+      response: { data: { message: 'Masih dipakai 3 kendaraan' } },
+    })
+    render(<FleetMasterDataPage />)
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Hapus' })[0])
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Hapus' }))
+    expect(await screen.findByText('Masih dipakai 3 kendaraan')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Pool' }))
+    expect(screen.queryByText('Masih dipakai 3 kendaraan')).not.toBeInTheDocument()
+  })
+
   it('deletes the row the operator confirmed', async () => {
     render(<FleetMasterDataPage />)
     const dialog = openDeleteDialog()

@@ -203,6 +203,39 @@ describe('useFleetMasterDataByCategory', () => {
 
     expect(queryConfig().staleTime).toBe(5 * 60 * 1000)
   })
+
+  // The endpoint is gated by READ_FLEET_MASTER_DATA while the page is gated by
+  // READ_FLEET_VEHICLE. Firing the query for someone who lacks the master-data permission
+  // spends a guaranteed 403 and leaves the dropdown silently empty.
+  it('does not fetch when disabled', () => {
+    ;(useQuery as jest.Mock).mockReturnValue({})
+
+    useFleetMasterDataByCategory('jenis_sim', { enabled: false })
+
+    expect(queryConfig().enabled).toBe(false)
+  })
+
+  // The option is opt-out, not opt-in: every caller that predates it must keep fetching, so an
+  // absent opts object has to resolve to true rather than to undefined.
+  it('fetches when enabled is not given', async () => {
+    ;(useQuery as jest.Mock).mockReturnValue({})
+
+    useFleetMasterDataByCategory('jenis_sim')
+
+    expect(queryConfig().enabled).toBe(true)
+    await queryConfig().queryFn()
+    expect(apiClient.get).toHaveBeenCalledWith('/fleet/master-data', {
+      params: { category: 'jenis_sim' },
+    })
+  })
+
+  it('fetches when explicitly enabled', () => {
+    ;(useQuery as jest.Mock).mockReturnValue({})
+
+    useFleetMasterDataByCategory('jenis_sim', { enabled: true })
+
+    expect(queryConfig().enabled).toBe(true)
+  })
 })
 
 describe('useCreateFleetDriver', () => {

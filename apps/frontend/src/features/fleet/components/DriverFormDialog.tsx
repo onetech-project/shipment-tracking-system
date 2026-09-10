@@ -19,6 +19,7 @@ interface DriverFormDialogProps {
   open: boolean
   initial?: FleetDriver
   simTypes: FleetMasterRow[]
+  simTypesUnavailable?: boolean
   onSubmit: (payload: FleetDriverPayload) => Promise<void>
   onClose: () => void
 }
@@ -27,6 +28,7 @@ export function DriverFormDialog({
   open,
   initial,
   simTypes,
+  simTypesUnavailable = false,
   onSubmit,
   onClose,
 }: DriverFormDialogProps) {
@@ -106,6 +108,12 @@ export function DriverFormDialog({
               ))}
             </select>
           </FormField>
+
+          {simTypesUnavailable && (
+            <p className="text-xs text-muted-foreground">
+              Daftar Jenis SIM tidak tersedia — butuh izin akses master data.
+            </p>
+          )}
 
           <FormField
             label="Masa berlaku SIM"
