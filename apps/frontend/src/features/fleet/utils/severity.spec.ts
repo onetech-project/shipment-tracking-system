@@ -33,6 +33,40 @@ describe('severityMeta', () => {
     const tones = new Set(['crit', 'warn', 'ok'].map((s) => severityMeta(s as never).tone))
     expect(tones.size).toBe(3)
   })
+
+  // The dot is the only severity cue on a narrow viewport, where the badge label is clipped.
+  // A dot that renders `undefined` into a className disappears entirely rather than degrading.
+  it.each(FLEET_SEVERITIES)('maps %s to a dot colour', (severity) => {
+    expect(severityMeta(severity).dot).toBeTruthy()
+  })
+
+  it.each([
+    ['crit', 'bg-red-500'],
+    ['warn', 'bg-amber-500'],
+    ['ok', 'bg-emerald-500'],
+    ['none', 'bg-slate-400'],
+  ])('paints the %s dot %s', (severity, dot) => {
+    expect(severityMeta(severity as never).dot).toBe(dot)
+  })
+
+  // The same "grey, not green" rule the tone obeys. Pinned separately because the dot is a
+  // second, independent colour channel: a green dot on a vehicle we hold no papers for claims
+  // the papers are in order.
+  it('keeps the none dot distinct from the ok dot', () => {
+    expect(severityMeta('none').dot).not.toBe(severityMeta('ok').dot)
+  })
+
+  it('gives crit, warn and ok three distinct dots', () => {
+    const dots = new Set(['crit', 'warn', 'ok'].map((s) => severityMeta(s as never).dot))
+    expect(dots.size).toBe(3)
+  })
+
+  // Runtime armour, not a reachable branch: the FleetVehicle wire type is looser than the
+  // FleetSeverity union, so a backend that invents a severity would otherwise render
+  // `undefined` into every className. Reached here only through a deliberate type escape.
+  it('falls back to the none meta for a severity outside the union', () => {
+    expect(severityMeta('tidak-diketahui' as never)).toEqual(severityMeta('none'))
+  })
 })
 
 describe('expiryText', () => {

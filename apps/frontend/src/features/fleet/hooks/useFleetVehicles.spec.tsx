@@ -2,6 +2,7 @@ import { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import { apiClient } from '@/shared/api/client'
+import { FLEET_VEHICLE_SORTS } from '../types'
 import {
   useArchiveFleetVehicle,
   useCreateFleetVehicle,
@@ -62,6 +63,44 @@ describe('useFleetVehicles', () => {
       page: 2,
       poolId: 'p1',
     })
+  })
+
+  // The paging and ordering half of the same call. `sort` is the entire point of the
+  // FLEET_VEHICLE_SORTS union: dropped on the way out, the table silently serves the backend's
+  // default order while the header still shows the column the operator picked.
+  it('forwards the paging and sort params', async () => {
+    const { result } = renderHook(
+      () => useFleetVehicles({ page: 2, pageSize: 50, sort: '-tahun' }),
+      { wrapper },
+    )
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mocked.get.mock.calls[0][1].params).toMatchObject({
+      page: 2,
+      pageSize: 50,
+      sort: '-tahun',
+    })
+  })
+
+  it.each(FLEET_VEHICLE_SORTS)('forwards the %s sort verbatim', async (sort) => {
+    const { result } = renderHook(() => useFleetVehicles({ sort }), { wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mocked.get.mock.calls[0][1].params.sort).toBe(sort)
+  })
+
+  // Archived vehicles are hidden by default; asking for them is the only way an operator can
+  // find a row to restore.
+  it('asks for archived rows when the toggle is on', async () => {
+    const { result } = renderHook(() => useFleetVehicles({ includeArchived: true }), { wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mocked.get.mock.calls[0][1].params.includeArchived).toBe(true)
+  })
+
+  // `|| undefined` rather than sending `includeArchived=false`: the key is absent, not falsy,
+  // so the backend's own default decides.
+  it('omits includeArchived when the toggle is off', async () => {
+    const { result } = renderHook(() => useFleetVehicles({ includeArchived: false }), { wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(mocked.get.mock.calls[0][1].params.includeArchived).toBeUndefined()
   })
 
   // An empty search box must not send `q=`; the backend would treat it as a filter and the DTO
