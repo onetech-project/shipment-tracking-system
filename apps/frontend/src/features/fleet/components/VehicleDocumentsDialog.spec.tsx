@@ -300,6 +300,57 @@ describe('VehicleDocumentsDialog', () => {
     ])
   })
 
+  // The mirror of the arrives-after-mount case, and the reason the carry-through filter is a
+  // conjunction rather than a bare `in rows` check: rows is seeded once at mount, so a type that
+  // LEAVES docTypes mid-mount — deactivated in the master data while the dialog is open — keeps a
+  // stale seeded row it no longer renders. `docTypes.some` is the half that notices the type is
+  // gone and lets the document ride along untouched; drop it for `!(d.docTypeId in rows)` and the
+  // stale row excludes the document from carry-through while the shrunken docTypes excludes it
+  // from edited, so the transactional PUT silently retires a document the operator never saw.
+  it('carries through a document whose type leaves docTypes after mount', async () => {
+    const onSubmit = jest.fn().mockResolvedValue(undefined)
+    const withBoth = vehicle({
+      documents: [
+        {
+          docTypeId: 'dt-stnk',
+          code: 'stnk',
+          label: 'STNK',
+          nomor: 'A-1',
+          issuedAt: '2026-01-05',
+          expiresAt: '2027-05-01',
+          daysLeft: 200,
+          severity: 'ok',
+        },
+        {
+          docTypeId: 'dt-kir',
+          code: 'kir',
+          label: 'KIR',
+          nomor: 'JKT-1',
+          issuedAt: '2026-03-10',
+          expiresAt: '2026-09-15',
+          daysLeft: 5,
+          severity: 'warn',
+        },
+      ],
+    })
+    const props = {
+      open: true,
+      vehicle: withBoth,
+      onSubmit,
+      onClose: jest.fn(),
+    }
+    const { rerender } = render(<VehicleDocumentsDialog {...props} docTypes={DOC_TYPES} />)
+    // The same mount, not a remount — a fresh render would re-seed rows without the departed type
+    // and hide the bug.
+    rerender(<VehicleDocumentsDialog {...props} docTypes={[docType('dt-stnk', 'stnk', 'STNK')]} />)
+    fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    expect(onSubmit.mock.calls[0][0]).toEqual([
+      { docTypeId: 'dt-stnk', nomor: 'A-1', issuedAt: '2026-01-05', expiresAt: '2027-05-01' },
+      { docTypeId: 'dt-kir', nomor: 'JKT-1', issuedAt: '2026-03-10', expiresAt: '2026-09-15' },
+    ])
+  })
+
   // docTypes still loading renders zero rows over a live Simpan button. Submitting [] there would
   // retire every document on the vehicle in one press.
   it('submits every existing document when docTypes is empty', async () => {
