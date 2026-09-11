@@ -31,6 +31,7 @@ import { RouteGroupsModule } from './modules/route-groups/route-groups.module'
 import { VendorGroupsModule } from './modules/vendor-groups/vendor-groups.module'
 import { FleetMasterDataModule } from './modules/fleet-master-data/fleet-master-data.module'
 import { FleetDriversModule } from './modules/fleet-drivers/fleet-drivers.module'
+import { FleetVehiclesModule } from './modules/fleet-vehicles/fleet-vehicles.module'
 
 @Module({
   imports: [
@@ -104,6 +105,7 @@ import { FleetDriversModule } from './modules/fleet-drivers/fleet-drivers.module
     VendorGroupsModule,
     FleetMasterDataModule,
     FleetDriversModule,
+    FleetVehiclesModule,
   ],
   controllers: [AppController],
   providers: [
