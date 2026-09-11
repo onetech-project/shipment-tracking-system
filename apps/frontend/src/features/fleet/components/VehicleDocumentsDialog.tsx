@@ -88,12 +88,13 @@ export function VehicleDocumentsDialog({
           issuedAt: row.issuedAt || null,
           expiresAt: row.expiresAt || null,
         }))
-      // Anything missing from this payload is DELETED by the backend, and only the types in
-      // docTypes get a row. A document whose type was deactivated in the master data — or every
-      // document, while docTypes is still loading — would therefore be retired by a Simpan the
-      // operator pressed without ever seeing it. It has no row to edit, so it rides along as-is.
+      // Anything missing from this payload is DELETED by the backend, and only a type that was in
+      // docTypes at mount has a seeded, editable row above. A document whose type was deactivated
+      // in the master data, or whose type reached docTypes only after mount, or every document
+      // while docTypes is still loading, would therefore be retired by a Simpan the operator
+      // pressed without ever seeing it. With no seeded row to edit, it rides along as-is.
       const carriedThrough: FleetVehicleDocumentPayload[] = vehicle.documents
-        .filter((d) => !docTypes.some((t) => t.id === d.docTypeId))
+        .filter((d) => !(docTypes.some((t) => t.id === d.docTypeId) && d.docTypeId in rows))
         .map((d) => ({
           docTypeId: d.docTypeId,
           nomor: d.nomor,

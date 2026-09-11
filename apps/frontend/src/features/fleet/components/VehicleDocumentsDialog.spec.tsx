@@ -250,6 +250,56 @@ describe('VehicleDocumentsDialog', () => {
     ])
   })
 
+  // rows is seeded once at mount, so a jenis_dokumen created or reactivated while the dialog is
+  // open arrives in docTypes with no seeded row behind it: its blank rendered row drops out of
+  // edited, and being present in docTypes it would also drop out of carry-through. The backend
+  // retires whatever is absent, so that gap silently deletes a document the operator can see the
+  // type of but not the data in.
+  it('carries through a document whose type arrives after mount', async () => {
+    const onSubmit = jest.fn().mockResolvedValue(undefined)
+    const withBoth = vehicle({
+      documents: [
+        {
+          docTypeId: 'dt-stnk',
+          code: 'stnk',
+          label: 'STNK',
+          nomor: 'A-1',
+          issuedAt: '2026-01-05',
+          expiresAt: '2027-05-01',
+          daysLeft: 200,
+          severity: 'ok',
+        },
+        {
+          docTypeId: 'dt-kir',
+          code: 'kir',
+          label: 'KIR',
+          nomor: 'JKT-1',
+          issuedAt: '2026-03-10',
+          expiresAt: '2026-09-15',
+          daysLeft: 5,
+          severity: 'warn',
+        },
+      ],
+    })
+    const props = {
+      open: true,
+      vehicle: withBoth,
+      onSubmit,
+      onClose: jest.fn(),
+    }
+    const { rerender } = render(
+      <VehicleDocumentsDialog {...props} docTypes={[docType('dt-stnk', 'stnk', 'STNK')]} />,
+    )
+    // The same mount, not a remount — a fresh render would re-seed rows and hide the bug.
+    rerender(<VehicleDocumentsDialog {...props} docTypes={DOC_TYPES} />)
+    fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    expect(onSubmit.mock.calls[0][0]).toEqual([
+      { docTypeId: 'dt-stnk', nomor: 'A-1', issuedAt: '2026-01-05', expiresAt: '2027-05-01' },
+      { docTypeId: 'dt-kir', nomor: 'JKT-1', issuedAt: '2026-03-10', expiresAt: '2026-09-15' },
+    ])
+  })
+
   // docTypes still loading renders zero rows over a live Simpan button. Submitting [] there would
   // retire every document on the vehicle in one press.
   it('submits every existing document when docTypes is empty', async () => {
