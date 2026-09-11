@@ -6,7 +6,7 @@ import { FleetVehiclesService } from './fleet-vehicles.service'
 import { FleetVehicleEntity } from './entities/fleet-vehicle.entity'
 import { FleetVehicleDocumentEntity } from './entities/fleet-vehicle-document.entity'
 import { FleetMasterDataEntity } from '../fleet-master-data/entities/fleet-master-data.entity'
-import { severityFor, daysUntil, todayISO } from './fleet-severity'
+import { severityFor, todayISO } from './fleet-severity'
 
 // One live KIR, expiring in 5 days, on a type whose threshold is the default 30.
 const docRow = (over: Record<string, unknown> = {}) => ({
@@ -211,6 +211,20 @@ describe('FleetVehiclesService', () => {
       expect(idQb.orderBy).toHaveBeenCalledWith('v.nopol', 'DESC')
     })
 
+    it('sorts by year oldest-first', async () => {
+      await service.findAll({ sort: 'tahun' })
+      expect(idQb.orderBy).toHaveBeenCalledWith('v.tahun', 'ASC')
+      expect(idQb.addOrderBy).toHaveBeenCalledWith('v.nopol', 'ASC')
+    })
+
+    // tahun is nullable and Postgres puts NULLs FIRST on DESC, so without the COALESCE "tahun
+    // terbaru" opens on every unit whose year was never recorded instead of the newest ones.
+    it('sorts by year newest-first with undated units last', async () => {
+      await service.findAll({ sort: '-tahun' })
+      expect(idQb.orderBy).toHaveBeenCalledWith('COALESCE(v.tahun, 0)', 'DESC')
+      expect(idQb.addOrderBy).toHaveBeenCalledWith('v.nopol', 'ASC')
+    })
+
     // Vehicles with no view row must sort last, not first: COALESCE to 3 puts 'none' behind
     // 'ok'. Without it NULLs would lead the list and bury the expired units the sort exists for.
     it('sorts by severity worst-first with unknown units last', async () => {
@@ -218,6 +232,16 @@ describe('FleetVehiclesService', () => {
       const [expr, dir] = idQb.orderBy.mock.calls[0]
       expect(String(expr)).toContain('COALESCE(vs.severity_rank, 3)')
       expect(dir).toBe('ASC')
+    })
+
+    // The rank alone leaves every unit inside a bucket in arbitrary order. The min_days_left
+    // tiebreaker is what puts the most urgent unit at the top of its own severity band.
+    it('breaks severity ties by the nearest expiry before the plate', async () => {
+      await service.findAll({ sort: 'severity' })
+      expect(idQb.addOrderBy.mock.calls).toEqual([
+        ['vs.min_days_left', 'ASC'],
+        ['v.nopol', 'ASC'],
+      ])
     })
 
     it('paginates with the requested page and size', async () => {
@@ -369,6 +393,15 @@ describe('FleetVehiclesService', () => {
       await expect(service.create({ nopol: 'B 9114 KYZ' })).rejects.not.toBeInstanceOf(
         ConflictException,
       )
+    })
+
+    // The plate index is not the only unique index this module can trip —
+    // uq_fleet_vehicle_documents_current raises 23505 too. Matching on the code alone would
+    // report any of them to the operator as a duplicate licence plate.
+    it('rethrows a unique violation from a different constraint untouched', async () => {
+      const err = { code: '23505', constraint: 'uq_fleet_vehicle_documents_current' }
+      repo.save.mockRejectedValue(err)
+      await expect(service.create({ nopol: 'B 9114 KYZ' })).rejects.toBe(err)
     })
   })
 
@@ -528,6 +561,16 @@ describe('FleetVehiclesService', () => {
       )
     })
 
+    // A document number left blank on the form must land as null, not as '', so the column has
+    // one empty state the way every other optional text column on this module does.
+    it('collapses a blank document number to null', async () => {
+      await service.replaceDocuments('v1', [{ docTypeId: 'dt-kir', nomor: '   ' }])
+      expect(txManager.insert).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ nomor: null }),
+      )
+    })
+
     // Two rows of the same type in one payload would both insert as current and violate
     // uq_fleet_vehicle_documents_current — a 500 where a 400 naming the type is the right answer.
     it('rejects a payload carrying the same type twice', async () => {
@@ -672,6 +715,25 @@ describe('FleetVehiclesService', () => {
       const res = await service.findAll({})
       expect(res.rows[0].driver).toMatchObject({ id: 'dr-1', nama: 'Ahmad Fauzi' })
       expect(res.rows[0].driver?.simSeverity).toBeDefined()
+    })
+
+    // A licence class with no threshold of its own falls back to the module default of 30 days,
+    // the same way a document type does. Falling back to 0 instead would leave a licence
+    // expiring in ten days reading 'ok' right up to the day it lapses.
+    it('falls back to the default licence threshold when the class carries none', async () => {
+      repo.find.mockResolvedValue([
+        vehicleRow({
+          driver: {
+            id: 'dr-1',
+            nama: 'Ahmad Fauzi',
+            simExpiresAt: inDays(10),
+            simJenis: null,
+          },
+        }),
+      ])
+      const res = await service.findAll({})
+      expect(res.rows[0].driver?.simDaysLeft).toBe(10)
+      expect(res.rows[0].driver?.simSeverity).toBe('warn')
     })
 
     // The licence belongs to the person, so it must not colour the vehicle's document badge.
