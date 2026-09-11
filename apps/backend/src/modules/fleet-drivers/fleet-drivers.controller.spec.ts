@@ -41,11 +41,13 @@ describe('FleetDriversController authorization', () => {
       create: permissionOf('create'),
       update: permissionOf('update'),
       remove: permissionOf('remove'),
+      restore: permissionOf('restore'),
     }).toEqual({
       findAll: Permission.READ_FLEET_VEHICLE,
       create: Permission.CREATE_FLEET_VEHICLE,
       update: Permission.UPDATE_FLEET_VEHICLE,
       remove: Permission.DELETE_FLEET_VEHICLE,
+      restore: Permission.UPDATE_FLEET_VEHICLE,
     })
   })
 
@@ -58,7 +60,7 @@ describe('FleetDriversController authorization', () => {
       Permission.UPDATE_FLEET_MASTER_DATA,
       Permission.DELETE_FLEET_MASTER_DATA,
     ]
-    for (const handler of ['findAll', 'create', 'update', 'remove'] as const) {
+    for (const handler of ['findAll', 'create', 'update', 'remove', 'restore'] as const) {
       expect(masterDataPermissions).not.toContain(permissionOf(handler))
     }
   })
