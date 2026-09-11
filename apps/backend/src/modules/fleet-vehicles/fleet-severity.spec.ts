@@ -1,4 +1,4 @@
-import { daysUntil, severityFor, todayISO, worstSeverity } from './fleet-severity'
+import { SEVERITY_RANK, daysUntil, severityFor, todayISO, worstSeverity } from './fleet-severity'
 
 describe('todayISO', () => {
   it('returns a YYYY-MM-DD string', () => {
@@ -60,6 +60,24 @@ describe('daysUntil', () => {
   it('returns null rather than NaN when the reference day is unparseable', () => {
     expect(daysUntil('2026-09-20', 'garbage')).toBeNull()
   })
+
+  // Task 3 calls daysUntil(doc.expiresAt) with one argument, so the default is production wiring,
+  // not a convenience. Every test above passes the reference day explicitly and would still pass
+  // if the default were rewired to a fixed date.
+  it('defaults the reference day to today', () => {
+    expect(daysUntil(todayISO())).toBe(0)
+  })
+
+  // And the default must be the JAKARTA day, not the UTC one: 17:30 UTC is already 2026-09-11 in
+  // WIB, so a document expiring 2026-09-11 has zero days left, not one.
+  it('defaults to the Jakarta day, not the UTC day', () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-09-10T17:30:00Z'))
+    try {
+      expect(daysUntil('2026-09-11')).toBe(0)
+    } finally {
+      jest.useRealTimers()
+    }
+  })
 })
 
 describe('severityFor', () => {
@@ -98,6 +116,15 @@ describe('severityFor', () => {
 
   it('reports a document with no expiry date as none', () => {
     expect(severityFor(null, 30)).toBe('none')
+  })
+})
+
+// The numerals are not arbitrary: they must equal the severity_rank values the SQL view emits
+// (crit 0, warn 1, ok 2), which Task 3's query compares against directly. Covering only the
+// ordering through worstSeverity lets warn drift to 1.5 without a single test noticing.
+describe('SEVERITY_RANK', () => {
+  it('matches the severity_rank values the status view emits', () => {
+    expect(SEVERITY_RANK).toEqual({ crit: 0, warn: 1, ok: 2, none: 3 })
   })
 })
 
