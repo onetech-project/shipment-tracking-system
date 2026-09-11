@@ -1,0 +1,324 @@
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import '@testing-library/jest-dom'
+import FleetVehiclesPage from './page'
+import { useFleetVehicles } from '@/features/fleet/hooks/useFleetVehicles'
+import { FleetVehicle } from '@/features/fleet/types'
+
+const mutations = {
+  create: jest.fn().mockResolvedValue({}),
+  update: jest.fn().mockResolvedValue({}),
+  archive: jest.fn().mockResolvedValue({}),
+  restore: jest.fn().mockResolvedValue({}),
+  documents: jest.fn().mockResolvedValue({}),
+}
+
+const refetchVehicles = jest.fn()
+// The three fields every non-error case shares, so each test states only what makes it
+// different.
+const ok = { isLoading: false, isError: false, refetch: refetchVehicles }
+let listResult: {
+  data?: { rows: FleetVehicle[]; total: number; page: number; pageSize: number }
+  isLoading: boolean
+  isError: boolean
+  refetch: jest.Mock
+} = { data: { rows: [], total: 0, page: 1, pageSize: 25 }, ...ok }
+
+jest.mock('@/features/fleet/hooks/useFleetVehicles', () => ({
+  useFleetVehicles: jest.fn(() => listResult),
+  useFleetVehicle: jest.fn(() => ({ data: undefined })),
+  useCreateFleetVehicle: () => ({ mutateAsync: mutations.create }),
+  useUpdateFleetVehicle: () => ({ mutateAsync: mutations.update }),
+  useArchiveFleetVehicle: () => ({ mutateAsync: mutations.archive }),
+  useRestoreFleetVehicle: () => ({ mutateAsync: mutations.restore }),
+  useReplaceVehicleDocuments: () => ({ mutateAsync: mutations.documents }),
+}))
+
+// A jest.fn rather than an inline arrow, because the permission-gating tests assert on the
+// second argument this page passes. Its signature is annotated rather than inferred: jest.fn
+// takes its call signature from the implementation, and the implementation reads only the
+// category, which would make every toHaveBeenCalledWith(category, opts) below a type error.
+type MasterDataArgs = [string, ({ enabled?: boolean } | undefined)?]
+const mockMasterData: jest.Mock<{ data: unknown[] }, MasterDataArgs> = jest.fn((category: string) => ({
+  data: [{ id: `${category}-1`, category, code: 'c', label: `${category} satu`, sortOrder: 0, isActive: true, warnDays: 30, defaultValidMonths: null, isRequired: null }],
+}))
+jest.mock('@/features/fleet/hooks/useFleetDrivers', () => ({
+  useFleetDrivers: () => ({ data: [{ id: 'dr1', nama: 'Ahmad Fauzi', isActive: true }] }),
+  useFleetMasterDataByCategory: (category: string, opts?: { enabled?: boolean }) =>
+    mockMasterData(category, opts),
+}))
+
+let permissions = [
+  'read.fleet_vehicle',
+  'create.fleet_vehicle',
+  'update.fleet_vehicle',
+  'delete.fleet_vehicle',
+]
+jest.mock('@/shared/hooks/use-permissions', () => ({
+  usePermissions: () => ({ hasPermission: (p: string) => permissions.includes(p) }),
+}))
+
+const vehicle = (over: Partial<FleetVehicle> = {}): FleetVehicle =>
+  ({
+    id: 'v1',
+    nopol: 'B 9114 KYZ',
+    merk: 'Mitsubishi',
+    tipe: 'Canter',
+    tahun: 2021,
+    jenisArmada: null,
+    kepemilikan: null,
+    pool: null,
+    status: null,
+    driver: null,
+    documents: [],
+    worstSeverity: 'none',
+    minDaysLeft: null,
+    isActive: true,
+    ...over,
+  }) as FleetVehicle
+
+beforeEach(() => {
+  jest.clearAllMocks()
+  // clearAllMocks leaves implementations in place, so the paging test's per-filter
+  // implementation would otherwise leak into every test after it.
+  ;(useFleetVehicles as jest.Mock).mockImplementation(() => listResult)
+  permissions = [
+    'read.fleet_vehicle',
+    'create.fleet_vehicle',
+    'update.fleet_vehicle',
+    'delete.fleet_vehicle',
+  ]
+  listResult = {
+    data: { rows: [vehicle()], total: 1, page: 1, pageSize: 25 },
+    ...ok,
+  }
+})
+
+describe('FleetVehiclesPage', () => {
+  it('renders the vehicle rows', () => {
+    render(<FleetVehiclesPage />)
+    expect(screen.getByText('B 9114 KYZ')).toBeInTheDocument()
+  })
+
+  it('shows the page title', () => {
+    render(<FleetVehiclesPage />)
+    expect(screen.getByRole('heading', { name: /armada/i })).toBeInTheDocument()
+  })
+
+  it('opens the create dialog from the header button', () => {
+    render(<FleetVehiclesPage />)
+    fireEvent.click(screen.getByRole('button', { name: /tambah armada/i }))
+    expect(screen.getByRole('heading', { name: /tambah armada/i })).toBeInTheDocument()
+  })
+
+  // Hiding the button is the whole point of the permission — showing it and failing on submit
+  // teaches the operator the app is broken rather than that they lack access.
+  it('hides the add button without the create permission', () => {
+    permissions = ['read.fleet_vehicle']
+    render(<FleetVehiclesPage />)
+    expect(screen.queryByRole('button', { name: /tambah armada/i })).not.toBeInTheDocument()
+  })
+
+  it('hides the row actions without the matching permissions', () => {
+    permissions = ['read.fleet_vehicle']
+    render(<FleetVehiclesPage />)
+    expect(screen.queryByRole('button', { name: 'Ubah' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Arsipkan' })).not.toBeInTheDocument()
+  })
+
+  it('saves a new vehicle through the create mutation', async () => {
+    render(<FleetVehiclesPage />)
+    fireEvent.click(screen.getByRole('button', { name: /tambah armada/i }))
+    fireEvent.change(screen.getByLabelText(/nomor polisi/i), { target: { value: 'B 1 A' } })
+    fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
+    await waitFor(() =>
+      expect(mutations.create).toHaveBeenCalledWith(expect.objectContaining({ nopol: 'B 1 A' })),
+    )
+  })
+
+  it('saves an edit through the update mutation with the row id', async () => {
+    render(<FleetVehiclesPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Ubah' }))
+    fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
+    await waitFor(() =>
+      expect(mutations.update).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'v1' }),
+      ),
+    )
+  })
+
+  // Both dialogs seed their form state in useState initialisers, which run once per mount, and
+  // create/edit share a single mount condition with no key. The unmount on close is therefore
+  // the only thing that makes the second open show the second unit rather than the first.
+  it('seeds the edit dialog from the row that was opened, not the previous one', () => {
+    listResult = {
+      data: {
+        rows: [vehicle(), vehicle({ id: 'v2', nopol: 'D 4567 XY' })],
+        total: 2,
+        page: 1,
+        pageSize: 25,
+      },
+      ...ok,
+    }
+    render(<FleetVehiclesPage />)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Ubah' })[0])
+    expect(screen.getByLabelText(/nomor polisi/i)).toHaveValue('B 9114 KYZ')
+    fireEvent.click(screen.getByRole('button', { name: 'Batal' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Ubah' })[1])
+    expect(screen.getByLabelText(/nomor polisi/i)).toHaveValue('D 4567 XY')
+  })
+
+  it('saves documents through the replace mutation', async () => {
+    render(<FleetVehiclesPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Dokumen' }))
+    fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
+    await waitFor(() =>
+      expect(mutations.documents).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'v1', documents: [] }),
+      ),
+    )
+  })
+
+  // The row button and the dialog's confirm button are both called "Arsipkan", so the confirm
+  // click is scoped to the dialog — the same shape the drivers page spec uses.
+  const openArchiveDialog = () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Arsipkan' }))
+    return within(screen.getByRole('dialog'))
+  }
+
+  // Archiving is not undoable from the operator's seat without finding the row again, so it
+  // asks first.
+  it('confirms before archiving', async () => {
+    render(<FleetVehiclesPage />)
+    const dialog = openArchiveDialog()
+    expect(mutations.archive).not.toHaveBeenCalled()
+    fireEvent.click(dialog.getByRole('button', { name: 'Arsipkan' }))
+    await waitFor(() => expect(mutations.archive).toHaveBeenCalledWith('v1'))
+  })
+
+  it('names the vehicle in the confirmation', () => {
+    render(<FleetVehiclesPage />)
+    const dialog = openArchiveDialog()
+    expect(dialog.getByText(/B 9114 KYZ/)).toBeInTheDocument()
+  })
+
+  // A failed archive must say why. The backend's 409 names the reason and the ConfirmDialog does
+  // not catch, so an uncaught rejection would leave the operator with a dialog that just closed.
+  it('shows the backend message when archiving fails', async () => {
+    mutations.archive.mockRejectedValueOnce({
+      response: { data: { message: 'Kendaraan masih terpakai' } },
+    })
+    render(<FleetVehiclesPage />)
+    const dialog = openArchiveDialog()
+    fireEvent.click(dialog.getByRole('button', { name: 'Arsipkan' }))
+    expect(await screen.findByText(/masih terpakai/i)).toBeInTheDocument()
+  })
+
+  it('restores an archived row without confirming', async () => {
+    listResult = {
+      data: { rows: [vehicle({ isActive: false })], total: 1, page: 1, pageSize: 25 },
+      ...ok,
+    }
+    render(<FleetVehiclesPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Pulihkan' }))
+    await waitFor(() => expect(mutations.restore).toHaveBeenCalledWith('v1'))
+  })
+
+  it('reports the total and the current page', () => {
+    listResult = {
+      data: { rows: [vehicle()], total: 87, page: 2, pageSize: 25 },
+      ...ok,
+    }
+    render(<FleetVehiclesPage />)
+    expect(screen.getByText(/87/)).toBeInTheDocument()
+    expect(screen.getByText(/halaman 2 dari 4/i)).toBeInTheDocument()
+  })
+
+  // The page it displays is the page the server answered with, not the one the filter asked
+  // for, so the flat mock above can never advance past 1. This one echoes the requested page
+  // back the way the real query does once the refetch lands.
+  it('moves to the next page', () => {
+    ;(useFleetVehicles as jest.Mock).mockImplementation((f: { page?: number }) => ({
+      data: { rows: [vehicle()], total: 87, page: f.page ?? 1, pageSize: 25 },
+      ...ok,
+    }))
+    render(<FleetVehiclesPage />)
+    fireEvent.click(screen.getByRole('button', { name: /berikutnya/i }))
+    expect(screen.getByText(/halaman 2 dari 4/i)).toBeInTheDocument()
+  })
+
+  // Paging past either end asks the backend for a page that does not exist and shows an empty
+  // table, which reads as data loss.
+  it('disables Previous on the first page', () => {
+    render(<FleetVehiclesPage />)
+    expect(screen.getByRole('button', { name: /sebelumnya/i })).toBeDisabled()
+  })
+
+  it('disables Next on the last page', () => {
+    listResult = {
+      data: { rows: [vehicle()], total: 10, page: 1, pageSize: 25 },
+      ...ok,
+    }
+    render(<FleetVehiclesPage />)
+    expect(screen.getByRole('button', { name: /berikutnya/i })).toBeDisabled()
+  })
+
+  it('shows at least one page even with no results', () => {
+    listResult = {
+      data: { rows: [], total: 0, page: 1, pageSize: 25 },
+      ...ok,
+    }
+    render(<FleetVehiclesPage />)
+    expect(screen.getByText(/halaman 1 dari 1/i)).toBeInTheDocument()
+  })
+
+  it('passes the loading state down to the table', () => {
+    listResult = { data: undefined, isLoading: true, isError: false, refetch: refetchVehicles }
+    render(<FleetVehiclesPage />)
+    expect(screen.getByText(/loading/i)).toBeInTheDocument()
+  })
+
+  // A failed load must not render the empty-state copy: "Belum ada armada yang cocok" is an
+  // affirmative claim that no unit matches, and an operator who believes it during an outage
+  // starts re-registering units that already exist.
+  it('reports a failed load instead of an empty table', () => {
+    listResult = { data: undefined, isLoading: false, isError: true, refetch: refetchVehicles }
+    render(<FleetVehiclesPage />)
+    expect(screen.getByText(/gagal memuat data armada/i)).toBeInTheDocument()
+    expect(screen.queryByText(/belum ada armada/i)).not.toBeInTheDocument()
+  })
+
+  it('retries a failed load on demand', () => {
+    listResult = { data: undefined, isLoading: false, isError: true, refetch: refetchVehicles }
+    render(<FleetVehiclesPage />)
+    fireEvent.click(screen.getByRole('button', { name: /coba lagi/i }))
+    expect(refetchVehicles).toHaveBeenCalled()
+  })
+
+  // Spec §7's field-operator persona: read.fleet_vehicle without read.fleet_master_data. Five
+  // unconditional master-data queries would be five guaranteed 403s and five empty dropdowns
+  // with no explanation.
+  it('does not query master data without read.fleet_master_data', () => {
+    permissions = ['read.fleet_vehicle']
+    render(<FleetVehiclesPage />)
+    expect(mockMasterData).toHaveBeenCalledWith('jenis_armada', { enabled: false })
+    expect(mockMasterData).toHaveBeenCalledWith('jenis_dokumen', { enabled: false })
+  })
+
+  it('queries master data with read.fleet_master_data', () => {
+    permissions = ['read.fleet_vehicle', 'read.fleet_master_data']
+    render(<FleetVehiclesPage />)
+    expect(mockMasterData).toHaveBeenCalledWith('jenis_armada', { enabled: true })
+  })
+
+  it('explains why the lookup lists are empty', () => {
+    permissions = ['read.fleet_vehicle']
+    render(<FleetVehiclesPage />)
+    expect(screen.getByText(/butuh izin akses master data/i)).toBeInTheDocument()
+  })
+
+  it('does not explain anything when the lists are available', () => {
+    permissions = ['read.fleet_vehicle', 'read.fleet_master_data']
+    render(<FleetVehiclesPage />)
+    expect(screen.queryByText(/butuh izin akses master data/i)).not.toBeInTheDocument()
+  })
+})

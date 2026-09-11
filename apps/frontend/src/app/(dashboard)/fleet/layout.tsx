@@ -8,13 +8,13 @@ import { usePermissions } from '@/shared/hooks/use-permissions'
 // The sidebar's NavLink is flat, so the module's sections live here as a sub-nav — the same shape
 // air-shipments uses. Static rather than fetched: unlike air-shipments' sheet tabs, these three
 // are known at build time.
-//
-// The Armada tab lands in Phase 2; Phase 1 ships the two sections that exist.
 export default function FleetLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const { hasPermission } = usePermissions()
 
+  // Armada leads: it is what the sidebar entry means and what an operator opens the module for.
   const tabs = [
+    { href: '/fleet/vehicles', label: 'Armada', show: hasPermission('read.fleet_vehicle') },
     { href: '/fleet/drivers', label: 'Sopir', show: true },
     {
       href: '/fleet/master-data',

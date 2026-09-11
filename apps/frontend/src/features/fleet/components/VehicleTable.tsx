@@ -15,6 +15,7 @@ interface VehicleTableProps {
   onDocuments: (row: FleetVehicle) => void
   onArchive: (row: FleetVehicle) => void
   onRestore: (row: FleetVehicle) => void
+  showActions?: { edit: boolean; documents: boolean; archive: boolean }
 }
 
 // Each sortable column names its ascending key and the descending key it toggles to, so the
@@ -33,7 +34,10 @@ export function VehicleTable({
   onDocuments,
   onArchive,
   onRestore,
+  showActions,
 }: VehicleTableProps) {
+  const show = showActions ?? { edit: true, documents: true, archive: true }
+
   const sortHeader = (label: string, key: keyof typeof SORT_PAIRS, ariaLabel?: string) => {
     const [asc, desc] = SORT_PAIRS[key]
     const active = sort === asc ? 'asc' : sort === desc ? 'desc' : null
@@ -101,21 +105,26 @@ export function VehicleTable({
       className: 'text-right',
       accessor: (row) => (
         <div className="flex justify-end gap-1">
-          <Button size="sm" variant="ghost" onClick={() => onEdit(row)}>
-            Ubah
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => onDocuments(row)}>
-            Dokumen
-          </Button>
-          {row.isActive ? (
-            <Button size="sm" variant="ghost" onClick={() => onArchive(row)}>
-              Arsipkan
-            </Button>
-          ) : (
-            <Button size="sm" variant="ghost" onClick={() => onRestore(row)}>
-              Pulihkan
+          {show.edit && (
+            <Button size="sm" variant="ghost" onClick={() => onEdit(row)}>
+              Ubah
             </Button>
           )}
+          {show.documents && (
+            <Button size="sm" variant="ghost" onClick={() => onDocuments(row)}>
+              Dokumen
+            </Button>
+          )}
+          {show.archive &&
+            (row.isActive ? (
+              <Button size="sm" variant="ghost" onClick={() => onArchive(row)}>
+                Arsipkan
+              </Button>
+            ) : (
+              <Button size="sm" variant="ghost" onClick={() => onRestore(row)}>
+                Pulihkan
+              </Button>
+            ))}
         </div>
       ),
     },

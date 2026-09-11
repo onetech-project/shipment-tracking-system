@@ -300,4 +300,20 @@ describe('VehicleTable', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Urutkan dokumen' }))
     expect(props.onSortChange).toHaveBeenCalledWith('severity')
   })
+
+  // The page hides actions the operator lacks permission for. A default of "show everything"
+  // keeps every existing caller working; a default of "hide" would blank the column silently.
+  it('shows every action when showActions is not given', () => {
+    setup()
+    expect(screen.getByRole('button', { name: 'Ubah' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Dokumen' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Arsipkan' })).toBeInTheDocument()
+  })
+
+  it('hides the actions it is told to hide', () => {
+    setup({ showActions: { edit: false, documents: true, archive: false } })
+    expect(screen.queryByRole('button', { name: 'Ubah' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Dokumen' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Arsipkan' })).not.toBeInTheDocument()
+  })
 })
