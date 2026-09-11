@@ -49,6 +49,13 @@ export class FleetDriversController {
     return this.service.update(id, dto)
   }
 
+  // The counterpart to DELETE, which now archives an assigned driver rather than removing them.
+  @Post(':id/restore')
+  @Authorize(Permission.UPDATE_FLEET_VEHICLE)
+  restore(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.restore(id)
+  }
+
   @Delete(':id')
   @HttpCode(204)
   @Authorize(Permission.DELETE_FLEET_VEHICLE)

@@ -4,6 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm'
 import { FleetDriversService } from './fleet-drivers.service'
 import { FleetDriverEntity } from './entities/fleet-driver.entity'
 import { FleetMasterDataEntity } from '../fleet-master-data/entities/fleet-master-data.entity'
+import { FleetVehicleEntity } from '../fleet-vehicles/entities/fleet-vehicle.entity'
 
 describe('FleetDriversService', () => {
   let service: FleetDriversService
@@ -17,6 +18,7 @@ describe('FleetDriversService', () => {
     createQueryBuilder: jest.Mock
   }
   let masterRepo: { findOne: jest.Mock }
+  let vehicleRepo: { count: jest.Mock }
   let qb: {
     where: jest.Mock
     andWhere: jest.Mock
@@ -45,12 +47,17 @@ describe('FleetDriversService', () => {
       createQueryBuilder: jest.fn(() => qb),
     }
     masterRepo = { findOne: jest.fn(async () => ({ id: 'sim-1', category: 'jenis_sim' })) }
+    vehicleRepo = { count: jest.fn(async () => 0) }
 
     const module = await Test.createTestingModule({
       providers: [
         FleetDriversService,
         { provide: getRepositoryToken(FleetDriverEntity), useValue: repo },
         { provide: getRepositoryToken(FleetMasterDataEntity), useValue: masterRepo },
+        {
+          provide: getRepositoryToken(FleetVehicleEntity),
+          useValue: vehicleRepo,
+        },
       ],
     }).compile()
     service = module.get(FleetDriversService)
@@ -330,6 +337,58 @@ describe('FleetDriversService', () => {
       repo.findOne.mockResolvedValue({ id: 'd1', nama: 'Budi' })
       await service.remove('d1')
       expect(repo.delete).toHaveBeenCalledWith('d1')
+    })
+
+    // fleet_vehicles.driver_id is ON DELETE SET NULL, so deleting an assigned driver does not
+    // error — the vehicle silently loses its driver and nobody finds out until someone goes
+    // looking. Archiving keeps the row and the assignment intact.
+    it('archives instead of deleting when a vehicle still points at the driver', async () => {
+      repo.findOne.mockResolvedValue({ id: 'd1', nama: 'Budi' })
+      vehicleRepo.count.mockResolvedValue(2)
+      await service.remove('d1')
+      expect(repo.delete).not.toHaveBeenCalled()
+      expect(repo.update).toHaveBeenCalledWith('d1', { isActive: false })
+    })
+
+    it('counts only the vehicles assigned to this driver', async () => {
+      repo.findOne.mockResolvedValue({ id: 'd1', nama: 'Budi' })
+      vehicleRepo.count.mockResolvedValue(1)
+      await service.remove('d1')
+      expect(vehicleRepo.count).toHaveBeenCalledWith({ where: { driverId: 'd1' } })
+      // One vehicle is the boundary the archive branch turns on, and the case above asserts only
+      // the count's argument. Without these two the guard could read `assigned > 1` and pass:
+      // the single vehicle's driver_id would be SET NULL by the delete and orphaned silently,
+      // which is the exact failure archiving exists to prevent.
+      expect(repo.update).toHaveBeenCalledWith('d1', { isActive: false })
+      expect(repo.delete).not.toHaveBeenCalled()
+    })
+
+    // A driver added by mistake and never assigned should still be removable outright, otherwise
+    // the list fills with archived typos.
+    it('hard-deletes a driver no vehicle has ever been assigned to', async () => {
+      repo.findOne.mockResolvedValue({ id: 'd1', nama: 'Budi' })
+      vehicleRepo.count.mockResolvedValue(0)
+      await service.remove('d1')
+      expect(repo.delete).toHaveBeenCalledWith('d1')
+      expect(repo.update).not.toHaveBeenCalled()
+    })
+
+    it('404s on a driver that does not exist', async () => {
+      repo.findOne.mockResolvedValue(null)
+      await expect(service.remove('nope')).rejects.toBeInstanceOf(NotFoundException)
+    })
+  })
+
+  describe('restore', () => {
+    it('brings an archived driver back into the list', async () => {
+      repo.findOne.mockResolvedValue({ id: 'd1', nama: 'Budi' })
+      await service.restore('d1')
+      expect(repo.update).toHaveBeenCalledWith('d1', { isActive: true })
+    })
+
+    it('404s on a driver that does not exist', async () => {
+      repo.findOne.mockResolvedValue(null)
+      await expect(service.restore('nope')).rejects.toBeInstanceOf(NotFoundException)
     })
   })
 })

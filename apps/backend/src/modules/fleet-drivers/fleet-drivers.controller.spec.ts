@@ -9,6 +9,7 @@
 import { Permission } from '@shared/auth'
 import { PERMISSION_KEY } from '../../common/decorators/authorize.decorator'
 import { FleetDriversController } from './fleet-drivers.controller'
+import { FleetDriversService } from './fleet-drivers.service'
 
 const permissionOf = (handler: keyof FleetDriversController): unknown =>
   Reflect.getMetadata(PERMISSION_KEY, FleetDriversController.prototype[handler])
@@ -60,5 +61,23 @@ describe('FleetDriversController authorization', () => {
     for (const handler of ['findAll', 'create', 'update', 'remove'] as const) {
       expect(masterDataPermissions).not.toContain(permissionOf(handler))
     }
+  })
+})
+
+// The authorization suite above reads metadata off the prototype and never builds a controller.
+// The restore route needs an instance to prove it delegates, so this block makes the one the
+// brief's test assumes: the constructor takes only the service, so a plain mock is enough.
+describe('FleetDriversController restore', () => {
+  let controller: FleetDriversController
+  let service: { restore: jest.Mock }
+
+  beforeEach(() => {
+    service = { restore: jest.fn() }
+    controller = new FleetDriversController(service as unknown as FleetDriversService)
+  })
+
+  it('restores an archived driver', async () => {
+    await controller.restore('d1')
+    expect(service.restore).toHaveBeenCalledWith('d1')
   })
 })
