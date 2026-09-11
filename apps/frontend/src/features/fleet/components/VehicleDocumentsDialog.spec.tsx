@@ -1,0 +1,225 @@
+import { createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import '@testing-library/jest-dom'
+import { VehicleDocumentsDialog } from './VehicleDocumentsDialog'
+import { FleetMasterRow, FleetVehicle } from '../types'
+
+const docType = (id: string, code: string, label: string, warnDays = 30): FleetMasterRow => ({
+  id,
+  category: 'jenis_dokumen',
+  code,
+  label,
+  sortOrder: 0,
+  isActive: true,
+  warnDays,
+  defaultValidMonths: null,
+  isRequired: null,
+})
+
+const DOC_TYPES = [docType('dt-stnk', 'stnk', 'STNK'), docType('dt-kir', 'kir', 'KIR')]
+
+const vehicle = (over: Partial<FleetVehicle> = {}): FleetVehicle =>
+  ({
+    id: 'v1',
+    nopol: 'B 9114 KYZ',
+    documents: [],
+    worstSeverity: 'none',
+    minDaysLeft: null,
+    isActive: true,
+    ...over,
+  }) as FleetVehicle
+
+const setup = (over: Record<string, unknown> = {}) => {
+  const onSubmit = jest.fn().mockResolvedValue(undefined)
+  const onClose = jest.fn()
+  render(
+    <VehicleDocumentsDialog
+      open
+      vehicle={vehicle()}
+      docTypes={DOC_TYPES}
+      onSubmit={onSubmit}
+      onClose={onClose}
+      {...over}
+    />,
+  )
+  return { onSubmit, onClose }
+}
+
+describe('VehicleDocumentsDialog', () => {
+  // One row per configured type, always. A form that only shows the documents already recorded
+  // gives the operator no way to add the one that is missing, which is the common case.
+  it('shows a row for every configured document type', () => {
+    setup()
+    expect(screen.getByLabelText(/STNK.*berlaku/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/KIR.*berlaku/i)).toBeInTheDocument()
+  })
+
+  it('names the vehicle it is editing', () => {
+    setup()
+    expect(screen.getByText(/B 9114 KYZ/)).toBeInTheDocument()
+  })
+
+  it('prefills the rows from the existing documents', () => {
+    setup({
+      vehicle: vehicle({
+        documents: [
+          {
+            docTypeId: 'dt-kir',
+            code: 'kir',
+            label: 'KIR',
+            nomor: 'JKT-1',
+            issuedAt: '2026-03-10',
+            expiresAt: '2026-09-15',
+            daysLeft: 5,
+            severity: 'warn',
+          },
+        ],
+      }),
+    })
+    expect(screen.getByLabelText(/KIR.*nomor/i)).toHaveValue('JKT-1')
+    expect(screen.getByLabelText(/KIR.*terbit/i)).toHaveValue('2026-03-10')
+    expect(screen.getByLabelText(/KIR.*berlaku/i)).toHaveValue('2026-09-15')
+  })
+
+  // The badge is the reason the operator opened this dialog; recomputing it in the browser is
+  // exactly what the spec forbids, so it renders the backend's severity as delivered.
+  it('shows the backend severity for a document that has one', () => {
+    setup({
+      vehicle: vehicle({
+        documents: [
+          {
+            docTypeId: 'dt-kir',
+            code: 'kir',
+            label: 'KIR',
+            nomor: null,
+            issuedAt: null,
+            expiresAt: '2020-01-01',
+            daysLeft: -300,
+            severity: 'crit',
+          },
+        ],
+      }),
+    })
+    expect(screen.getByText(/Kadaluarsa/)).toBeInTheDocument()
+    // The day count is part of the badge's accessible name, so asserting the label — not just the
+    // colour word — is what proves daysLeft was passed through rather than dropped.
+    expect(screen.getByRole('img', { name: /Kadaluarsa · Lewat 300 hari/ })).toBeInTheDocument()
+  })
+
+  // The whole set goes in one submit, including the types the operator left blank — the backend
+  // retires anything absent, so omitting a filled row would silently delete that document.
+  it('submits every type the operator filled in', async () => {
+    const { onSubmit } = setup()
+    fireEvent.change(screen.getByLabelText(/STNK.*berlaku/i), {
+      target: { value: '2027-05-01' },
+    })
+    fireEvent.change(screen.getByLabelText(/KIR.*berlaku/i), { target: { value: '2027-01-01' } })
+    fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    const sent = onSubmit.mock.calls[0][0] as { docTypeId: string }[]
+    expect(sent.map((d) => d.docTypeId).sort()).toEqual(['dt-kir', 'dt-stnk'])
+  })
+
+  // An empty row is not a document. Sending it would create a live row with no data and turn the
+  // badge from 'none' into a permanent grey entry.
+  it('leaves out rows the operator did not fill in', async () => {
+    const { onSubmit } = setup()
+    fireEvent.change(screen.getByLabelText(/KIR.*berlaku/i), { target: { value: '2027-01-01' } })
+    fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    expect(onSubmit.mock.calls[0][0]).toHaveLength(1)
+  })
+
+  // The issue date is the third disjunct of the keep-this-row test, and nothing else in the suite
+  // fills it alone: drop it from the predicate and a row holding only a terbit date is silently
+  // discarded, retiring the document the operator was part-way through recording.
+  it('keeps a row that has only an issue date', async () => {
+    const { onSubmit } = setup()
+    fireEvent.change(screen.getByLabelText(/STNK.*terbit/i), { target: { value: '2026-02-02' } })
+    fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    expect(onSubmit.mock.calls[0][0]).toEqual([
+      { docTypeId: 'dt-stnk', nomor: null, issuedAt: '2026-02-02', expiresAt: null },
+    ])
+  })
+
+  // A number with no expiry is still worth recording — some documents do not expire.
+  it('keeps a row that has a number but no dates', async () => {
+    const { onSubmit } = setup()
+    fireEvent.change(screen.getByLabelText(/STNK.*nomor/i), { target: { value: 'A-1' } })
+    fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    expect(onSubmit.mock.calls[0][0]).toEqual([
+      expect.objectContaining({ docTypeId: 'dt-stnk', nomor: 'A-1' }),
+    ])
+  })
+
+  it('sends blank optional values as null', async () => {
+    const { onSubmit } = setup()
+    fireEvent.change(screen.getByLabelText(/KIR.*berlaku/i), { target: { value: '2027-01-01' } })
+    fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    expect(onSubmit.mock.calls[0][0][0].nomor).toBeNull()
+    expect(onSubmit.mock.calls[0][0][0].issuedAt).toBeNull()
+  })
+
+  // The expiry is the field the badge is computed from. Left blank it has to be an explicit null:
+  // a '' would reach the backend as a date it cannot parse, failing the whole transactional PUT.
+  it('sends a blank expiry as null, not an empty string', async () => {
+    const { onSubmit } = setup()
+    fireEvent.change(screen.getByLabelText(/KIR.*nomor/i), { target: { value: 'JKT-9' } })
+    fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    expect(onSubmit.mock.calls[0][0]).toEqual([
+      { docTypeId: 'dt-kir', nomor: 'JKT-9', issuedAt: null, expiresAt: null },
+    ])
+  })
+
+  // Clearing every row is a legitimate submission that retires the lot. Blocking it would leave
+  // a wrongly-entered document with no way to remove it.
+  it('allows submitting an empty set', async () => {
+    const { onSubmit } = setup()
+    fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith([]))
+  })
+
+  it('closes after a successful save', async () => {
+    const { onClose } = setup()
+    fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+  })
+
+  it('shows the backend message when the save is rejected', async () => {
+    const onSubmit = jest.fn().mockRejectedValue({
+      response: { data: { message: 'dt-x is not a jenis_dokumen master row' } },
+    })
+    setup({ onSubmit })
+    fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
+    expect(await screen.findByText(/jenis_dokumen/)).toBeInTheDocument()
+  })
+
+  it('disables the submit button while saving', async () => {
+    let resolve: () => void = () => {}
+    const onSubmit = jest.fn(() => new Promise<void>((r) => (resolve = r)))
+    setup({ onSubmit })
+    fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /menyimpan/i })).toBeDisabled())
+    resolve()
+  })
+
+  // Added beyond the brief: without preventDefault the browser navigates away on submit and the
+  // operator loses every row. jsdom does not navigate, so no other test notices.
+  it('prevents the browser default form submit', () => {
+    setup()
+    const form = document.querySelector('form') as HTMLFormElement
+    const submitEvent = createEvent.submit(form)
+    fireEvent(form, submitEvent)
+    expect(submitEvent.defaultPrevented).toBe(true)
+  })
+
+  it('closes without saving when cancelled', () => {
+    const { onSubmit, onClose } = setup()
+    fireEvent.click(screen.getByRole('button', { name: /batal/i }))
+    expect(onClose).toHaveBeenCalled()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+})
