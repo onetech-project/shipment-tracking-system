@@ -80,12 +80,21 @@ describe('VehicleFormDialog', () => {
     expect(screen.getByRole('heading', { name: /tambah armada/i })).toBeInTheDocument()
   })
 
+  // Every field, with a distinct fixture value each: a prefill wired to the wrong state hook
+  // ships green under partial assertions and silently edits the neighbouring column.
   it('prefills every field when editing', () => {
     setup({ initial: existing })
     expect(screen.getByLabelText(/nomor polisi/i)).toHaveValue('B 9114 KYZ')
     expect(screen.getByLabelText(/merk/i)).toHaveValue('Mitsubishi')
+    expect(screen.getByLabelText(/tipe/i)).toHaveValue('Canter')
     expect(screen.getByLabelText(/tahun/i)).toHaveValue(2021)
+    expect(screen.getByLabelText(/kapasitas/i)).toHaveValue('8 ton')
     expect(screen.getByLabelText(/odometer/i)).toHaveValue(120000)
+    expect(screen.getByLabelText(/nomor rangka/i)).toHaveValue('MHM111')
+    expect(screen.getByLabelText(/nomor mesin/i)).toHaveValue('4D34-1')
+    expect(screen.getByLabelText(/nomor bpkb/i)).toHaveValue('M-01')
+    expect(screen.getByLabelText(/pemilik unit/i)).toHaveValue('PT Sumber Jaya')
+    expect(screen.getByLabelText(/catatan/i)).toHaveValue('Servis rutin')
   })
 
   // The master refs arrive as {id,label} objects but the selects need the id — a mismatch here
@@ -131,10 +140,24 @@ describe('VehicleFormDialog', () => {
     typePlate('B 1 A')
     fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
     await waitFor(() => expect(onSubmit).toHaveBeenCalled())
-    const payload = onSubmit.mock.calls[0][0]
-    expect(payload.merk).toBeNull()
-    expect(payload.catatan).toBeNull()
-    expect(payload.jenisArmadaId).toBeNull()
+    expect(onSubmit.mock.calls[0][0]).toEqual({
+      nopol: 'B 1 A',
+      merk: null,
+      tipe: null,
+      tahun: null,
+      kapasitas: null,
+      noRangka: null,
+      noMesin: null,
+      noBpkb: null,
+      pemilikUnit: null,
+      odometer: null,
+      catatan: null,
+      jenisArmadaId: null,
+      kepemilikanId: null,
+      poolId: null,
+      statusId: null,
+      driverId: null,
+    })
   })
 
   // A blank number input yields '' — Number('') is 0, which would silently register a 1970
@@ -157,6 +180,49 @@ describe('VehicleFormDialog', () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalled())
     expect(onSubmit.mock.calls[0][0].tahun).toBe(2021)
     expect(onSubmit.mock.calls[0][0].odometer).toBe(120000)
+  })
+
+  // One distinct value per field, asserted as a whole payload. Identical placeholders would let a
+  // field cross-wired to its neighbour's setter — the defect a 15-field form actually produces —
+  // pass while writing the wrong column.
+  it('sends every field the operator typed, each to its own key', async () => {
+    const { onSubmit } = setup()
+    fireEvent.change(screen.getByLabelText(/nomor polisi/i), { target: { value: 'B 1 A' } })
+    fireEvent.change(screen.getByLabelText(/merk/i), { target: { value: '  Hino  ' } })
+    fireEvent.change(screen.getByLabelText(/tipe/i), { target: { value: '  Dutro  ' } })
+    fireEvent.change(screen.getByLabelText(/tahun/i), { target: { value: '2019' } })
+    fireEvent.change(screen.getByLabelText(/kapasitas/i), { target: { value: '  5 ton  ' } })
+    fireEvent.change(screen.getByLabelText(/odometer/i), { target: { value: '84000' } })
+    fireEvent.change(screen.getByLabelText(/nomor rangka/i), { target: { value: '  RANGKA-7  ' } })
+    fireEvent.change(screen.getByLabelText(/nomor mesin/i), { target: { value: '  MESIN-8  ' } })
+    fireEvent.change(screen.getByLabelText(/nomor bpkb/i), { target: { value: '  BPKB-9  ' } })
+    fireEvent.change(screen.getByLabelText(/pemilik unit/i), { target: { value: '  CV Andalan  ' } })
+    fireEvent.change(screen.getByLabelText(/catatan/i), { target: { value: '  Ban baru  ' } })
+    fireEvent.change(screen.getByLabelText(/jenis armada/i), { target: { value: 'ja1' } })
+    fireEvent.change(screen.getByLabelText(/kepemilikan/i), { target: { value: 'kp1' } })
+    fireEvent.change(screen.getByLabelText(/pool/i), { target: { value: 'p1' } })
+    fireEvent.change(screen.getByLabelText(/status/i), { target: { value: 's1' } })
+    fireEvent.change(screen.getByLabelText(/sopir/i), { target: { value: 'dr1' } })
+    fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    expect(onSubmit.mock.calls[0][0]).toEqual({
+      nopol: 'B 1 A',
+      merk: 'Hino',
+      tipe: 'Dutro',
+      tahun: 2019,
+      kapasitas: '5 ton',
+      noRangka: 'RANGKA-7',
+      noMesin: 'MESIN-8',
+      noBpkb: 'BPKB-9',
+      pemilikUnit: 'CV Andalan',
+      odometer: 84000,
+      catatan: 'Ban baru',
+      jenisArmadaId: 'ja1',
+      kepemilikanId: 'kp1',
+      poolId: 'p1',
+      statusId: 's1',
+      driverId: 'dr1',
+    })
   })
 
   it('sends the chosen driver', async () => {
@@ -229,6 +295,15 @@ describe('VehicleFormDialog', () => {
     const { onSubmit, onClose } = setup()
     fireEvent.click(screen.getByRole('button', { name: /batal/i }))
     expect(onClose).toHaveBeenCalled()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  // Escape is the only keyboard way out of this dialog; a regression in onOpenChange strands the
+  // operator in it with no exit.
+  it('closes without saving when dismissed with Escape', async () => {
+    const { onSubmit, onClose } = setup()
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
     expect(onSubmit).not.toHaveBeenCalled()
   })
 })

@@ -222,4 +222,138 @@ describe('VehicleDocumentsDialog', () => {
     expect(onClose).toHaveBeenCalled()
     expect(onSubmit).not.toHaveBeenCalled()
   })
+  // The backend retires every isCurrent row absent from this payload, so a document whose type is
+  // no longer rendered — a deactivated jenis_dokumen master row, or docTypes still loading — would
+  // be deleted without the operator ever seeing it. It has no row, so it must simply survive.
+  it('carries through a document whose type has no rendered row', async () => {
+    const { onSubmit } = setup({
+      docTypes: [docType('dt-stnk', 'stnk', 'STNK')],
+      vehicle: vehicle({
+        documents: [
+          {
+            docTypeId: 'dt-kir',
+            code: 'kir',
+            label: 'KIR',
+            nomor: 'JKT-1',
+            issuedAt: '2026-03-10',
+            expiresAt: '2026-09-15',
+            daysLeft: 5,
+            severity: 'warn',
+          },
+        ],
+      }),
+    })
+    fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    expect(onSubmit.mock.calls[0][0]).toEqual([
+      { docTypeId: 'dt-kir', nomor: 'JKT-1', issuedAt: '2026-03-10', expiresAt: '2026-09-15' },
+    ])
+  })
+
+  // docTypes still loading renders zero rows over a live Simpan button. Submitting [] there would
+  // retire every document on the vehicle in one press.
+  it('submits every existing document when docTypes is empty', async () => {
+    const { onSubmit } = setup({
+      docTypes: [],
+      vehicle: vehicle({
+        documents: [
+          {
+            docTypeId: 'dt-stnk',
+            code: 'stnk',
+            label: 'STNK',
+            nomor: 'A-1',
+            issuedAt: null,
+            expiresAt: '2027-05-01',
+            daysLeft: 200,
+            severity: 'ok',
+          },
+          {
+            docTypeId: 'dt-kir',
+            code: 'kir',
+            label: 'KIR',
+            nomor: null,
+            issuedAt: '2026-03-10',
+            expiresAt: null,
+            daysLeft: null,
+            severity: 'none',
+          },
+        ],
+      }),
+    })
+    fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    expect(onSubmit.mock.calls[0][0]).toEqual([
+      { docTypeId: 'dt-stnk', nomor: 'A-1', issuedAt: null, expiresAt: '2027-05-01' },
+      { docTypeId: 'dt-kir', nomor: null, issuedAt: '2026-03-10', expiresAt: null },
+    ])
+  })
+
+  // Carried through is not the same as editable: the type has no master row to label it, so
+  // rendering an input for it would be a field the operator cannot identify.
+  it('does not render an editable row for a carried-through document', () => {
+    setup({
+      docTypes: [docType('dt-stnk', 'stnk', 'STNK')],
+      vehicle: vehicle({
+        documents: [
+          {
+            docTypeId: 'dt-kir',
+            code: 'kir',
+            label: 'KIR',
+            nomor: 'JKT-1',
+            issuedAt: '2026-03-10',
+            expiresAt: '2026-09-15',
+            daysLeft: 5,
+            severity: 'warn',
+          },
+        ],
+      }),
+    })
+    expect(screen.queryByLabelText(/KIR/i)).not.toBeInTheDocument()
+    expect(screen.queryByDisplayValue('JKT-1')).not.toBeInTheDocument()
+  })
+
+  // The operator emptying a row they can see is a deliberate deletion, and the union must not
+  // resurrect it — that is the only way to remove a wrongly-entered document.
+  it('still retires an existing document whose row the operator cleared', async () => {
+    const { onSubmit } = setup({
+      vehicle: vehicle({
+        documents: [
+          {
+            docTypeId: 'dt-kir',
+            code: 'kir',
+            label: 'KIR',
+            nomor: 'JKT-1',
+            issuedAt: '2026-03-10',
+            expiresAt: '2026-09-15',
+            daysLeft: 5,
+            severity: 'warn',
+          },
+        ],
+      }),
+    })
+    fireEvent.change(screen.getByLabelText(/KIR.*nomor/i), { target: { value: '' } })
+    fireEvent.change(screen.getByLabelText(/KIR.*terbit/i), { target: { value: '' } })
+    fireEvent.change(screen.getByLabelText(/KIR.*berlaku/i), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith([]))
+  })
+
+  // A dialog that closes on a failed transactional PUT tells the operator the whole document set
+  // saved when none of it did.
+  it('stays open when the save fails', async () => {
+    const onSubmit = jest.fn().mockRejectedValue(new Error('boom'))
+    const { onClose } = setup({ onSubmit })
+    fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
+    await screen.findByText(/terjadi kesalahan/i)
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  // Escape is the only keyboard way out of this dialog; a regression in onOpenChange strands the
+  // operator in it with no exit.
+  it('closes without saving when dismissed with Escape', async () => {
+    const { onSubmit, onClose } = setup()
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
 })
