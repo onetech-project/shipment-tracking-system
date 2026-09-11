@@ -421,4 +421,34 @@ describe('FleetVehiclesPage', () => {
     expect(optionsOf('Status unit')).toEqual(['— pilih —', 'status_kendaraan satu'])
     expect(optionsOf('Sopir')).toEqual(['— belum ditugaskan —', 'Ahmad Fauzi'])
   })
+
+  // The dialog test above scopes every query to role="dialog" and so cannot see the filter bar,
+  // which is fed from the same three queries at a second call site. A cross-wire there is
+  // invisible from the operator's seat: they narrow by Pool and the list silently narrows by
+  // owner instead, so the page looks like it answered and did not.
+  it('feeds each master-data list to its own filter dropdown', () => {
+    render(<FleetVehiclesPage />)
+    // No dialog is open here, so each label resolves to the filter bar's own select.
+    const optionsOf = (label: string) =>
+      Array.from(screen.getByLabelText(label).querySelectorAll('option')).map((o) => o.textContent)
+    expect(optionsOf('Kepemilikan')).toEqual(['Semua kepemilikan', 'kepemilikan satu'])
+    expect(optionsOf('Pool')).toEqual(['Semua pool', 'pool satu'])
+    expect(optionsOf('Status unit')).toEqual(['Semua status', 'status_kendaraan satu'])
+  })
+
+  // onChange is the only wire between the filter bar and the page's filter state. Cut it and
+  // every control still renders and still looks live, but the table never narrows. Asserting the
+  // query arguments rather than the select's own value is what catches that — a controlled select
+  // whose onChange goes nowhere simply never updates, so its value proves nothing about the page.
+  it('sends a changed filter to the vehicle query', () => {
+    render(<FleetVehiclesPage />)
+    fireEvent.change(screen.getByLabelText('Kepemilikan'), {
+      target: { value: 'kepemilikan-1' },
+    })
+    expect(useFleetVehicles).toHaveBeenLastCalledWith({
+      page: 1,
+      sort: 'nopol',
+      kepemilikanId: 'kepemilikan-1',
+    })
+  })
 })
