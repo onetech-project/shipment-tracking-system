@@ -130,6 +130,17 @@ describe('CreateFleetVehicleDto', () => {
     expect(await validate(build({ odometer: 0 }))).toHaveLength(0)
   })
 
+  // catatan is the one free-text field with no length cap, because its column is TEXT. That makes
+  // @IsString the only guard: without it a JSON object validates and is handed to the text column.
+  it('rejects a catatan that is not a string', async () => {
+    const errors = await validate(build({ catatan: { x: 1 } }))
+    expect(errors.map((e) => e.property)).toContain('catatan')
+  })
+
+  it('accepts a catatan far longer than any VARCHAR field, since the column is TEXT', async () => {
+    expect(await validate(build({ catatan: 'a'.repeat(5000) }))).toHaveLength(0)
+  })
+
   // Each of these is a FK to a UUID primary key. A non-UUID reaches Postgres as an invalid
   // input syntax error rather than a 400 naming the field.
   it.each(['jenisArmadaId', 'kepemilikanId', 'poolId', 'statusId', 'driverId'])(

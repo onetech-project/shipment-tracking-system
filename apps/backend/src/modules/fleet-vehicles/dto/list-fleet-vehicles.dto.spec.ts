@@ -11,6 +11,19 @@ describe('ListFleetVehiclesDto', () => {
     expect(await validate(build())).toHaveLength(0)
   })
 
+  it('accepts a free-text search term', async () => {
+    const dto = build({ q: 'B 9114' })
+    expect(await validate(dto)).toHaveLength(0)
+    expect(dto.q).toBe('B 9114')
+  })
+
+  // ?q[]=a&q[]=b binds q as an array, and the service calls dto.q?.trim() unguarded — without
+  // @IsString that reaches the query builder and 500s on a user-supplied parameter.
+  it('rejects a repeated q that binds as an array', async () => {
+    const errors = await validate(build({ q: ['a', 'b'] }))
+    expect(errors.map((e) => e.property)).toContain('q')
+  })
+
   // Query strings arrive as text. Without @Type(() => Number) the service compares '2' to a
   // number and paginates from NaN.
   it('coerces page and pageSize from their query-string form', async () => {
