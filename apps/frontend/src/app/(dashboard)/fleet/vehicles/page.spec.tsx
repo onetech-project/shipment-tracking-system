@@ -178,6 +178,32 @@ describe('FleetVehiclesPage', () => {
     )
   })
 
+  // Pins the `> 0` half of the documents gate, which the positive case above cannot reach.
+  // The dialog builds its replace payload from the rows it renders, and the backend's PUT
+  // retires every document absent from that payload — so mounted over an empty docTypes it
+  // would show zero rows above a live Simpan, and one click would retire every document on
+  // the unit. The gate must therefore stay closed when jenis_dokumen comes back empty.
+  it('does not open the documents dialog when no document types are configured', () => {
+    // beforeEach clears calls but not implementations, and it restores only useFleetVehicles,
+    // so this override restores itself rather than leaking into the tests that follow.
+    const defaultMasterData = mockMasterData.getMockImplementation()
+    mockMasterData.mockImplementation((category: string) => ({
+      data:
+        category === 'jenis_dokumen'
+          ? []
+          : [{ id: `${category}-1`, category, code: 'c', label: `${category} satu`, sortOrder: 0, isActive: true, warnDays: 30, defaultValidMonths: null, isRequired: null }],
+    }))
+    try {
+      render(<FleetVehiclesPage />)
+      fireEvent.click(screen.getByRole('button', { name: 'Dokumen' }))
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      // The page renders nothing at all in this state, so there is no live Simpan to click.
+      expect(screen.queryByRole('button', { name: /simpan/i })).not.toBeInTheDocument()
+    } finally {
+      mockMasterData.mockImplementation(defaultMasterData!)
+    }
+  })
+
   // The row button and the dialog's confirm button are both called "Arsipkan", so the confirm
   // click is scoped to the dialog — the same shape the drivers page spec uses.
   const openArchiveDialog = () => {
