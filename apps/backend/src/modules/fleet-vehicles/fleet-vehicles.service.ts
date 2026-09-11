@@ -318,7 +318,10 @@ export class FleetVehiclesService {
         qb.orderBy('v.tahun', 'ASC').addOrderBy('v.nopol', 'ASC')
         break
       case '-tahun':
-        qb.orderBy('v.tahun', 'DESC').addOrderBy('v.nopol', 'ASC')
+        // COALESCE to 0 for the same reason the severity sort coalesces: tahun is nullable, and
+        // Postgres puts NULLs FIRST on DESC, so "tahun terbaru" would open on every unit whose
+        // year was never recorded. Ascending needs no guard — NULLs land last there already.
+        qb.orderBy('COALESCE(v.tahun, 0)', 'DESC').addOrderBy('v.nopol', 'ASC')
         break
       case 'severity':
         // COALESCE to 3 so units with no dated document sort behind 'ok' rather than leading the
