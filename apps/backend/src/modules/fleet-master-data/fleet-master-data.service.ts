@@ -10,13 +10,17 @@ const UNIQUE_VIOLATION = '23505'
 const CAT_CODE_UNIQUE_CONSTRAINT = 'uq_fleet_master_data_cat_code'
 
 // Every column that points at fleet_master_data.id, so `remove` can tell an admin what they are
-// about to break. fleet_drivers.sim_jenis_id is the first — its FK is ON DELETE RESTRICT, so
-// without the entry here Postgres raises the violation after the guard has already waved the
-// delete through and the admin gets a bare 500 instead of the 409 that names the count and says
-// to deactivate. Phase 2 and 3 append their columns as those tables arrive — this is the single
-// place a new reference has to be registered.
+// about to break. All of them are ON DELETE RESTRICT, so without the entry here Postgres raises
+// the violation after the guard has already waved the delete through and the admin gets a bare
+// 500 instead of the 409 that names the count and says to deactivate. Phase 3 appends its
+// columns as those tables arrive — this is the single place a new reference has to be registered.
 const REFERENCING_COLUMNS: { table: string; column: string }[] = [
   { table: 'fleet_drivers', column: 'sim_jenis_id' },
+  { table: 'fleet_vehicles', column: 'jenis_armada_id' },
+  { table: 'fleet_vehicles', column: 'kepemilikan_id' },
+  { table: 'fleet_vehicles', column: 'pool_id' },
+  { table: 'fleet_vehicles', column: 'status_id' },
+  { table: 'fleet_vehicle_documents', column: 'doc_type_id' },
 ]
 
 @Injectable()

@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { FleetDriverEntity } from './entities/fleet-driver.entity'
 import { FleetMasterDataEntity } from '../fleet-master-data/entities/fleet-master-data.entity'
+import { FleetVehicleEntity } from '../fleet-vehicles/entities/fleet-vehicle.entity'
 
 interface CreateInput {
   nama: string
@@ -23,6 +24,8 @@ export class FleetDriversService {
     private readonly repo: Repository<FleetDriverEntity>,
     @InjectRepository(FleetMasterDataEntity)
     private readonly masterRepo: Repository<FleetMasterDataEntity>,
+    @InjectRepository(FleetVehicleEntity)
+    private readonly vehicleRepo: Repository<FleetVehicleEntity>,
   ) {}
 
   async findAll(q?: string, includeInactive = false): Promise<FleetDriverEntity[]> {
@@ -77,12 +80,26 @@ export class FleetDriversService {
     return updated
   }
 
+  // fleet_vehicles.driver_id is ON DELETE SET NULL, so deleting an assigned driver would not
+  // error — the vehicle would quietly lose its driver and nobody would find out until someone
+  // went looking. An assigned driver is archived instead; one nobody has ever been assigned to
+  // is still deletable outright, so a typo does not become a permanent archived row.
   async remove(id: string): Promise<void> {
     const existing = await this.repo.findOne({ where: { id } })
     if (!existing) throw new NotFoundException('Driver not found')
-    // A hard delete is safe in Phase 1 because nothing references a driver yet. Phase 2 adds
-    // fleet_vehicles.driver_id and turns this into an archive when the driver is assigned.
+
+    const assigned = await this.vehicleRepo.count({ where: { driverId: id } })
+    if (assigned > 0) {
+      await this.repo.update(id, { isActive: false })
+      return
+    }
     await this.repo.delete(id)
+  }
+
+  async restore(id: string): Promise<void> {
+    const existing = await this.repo.findOne({ where: { id } })
+    if (!existing) throw new NotFoundException('Driver not found')
+    await this.repo.update(id, { isActive: true })
   }
 
   // The foreign key proves the id exists in fleet_master_data; it cannot prove the row is a

@@ -246,6 +246,36 @@ describe('FleetMasterDataService', () => {
       expect(params).toEqual(['r1'])
     })
 
+    // Every FK below is ON DELETE RESTRICT, so an unregistered column means the probe counts
+    // zero, the delete runs, Postgres refuses, and the admin gets a 500 where the 409 naming
+    // the usage count belongs. One case per column so a dropped entry names itself.
+    it.each([
+      ['fleet_vehicles', 'jenis_armada_id'],
+      ['fleet_vehicles', 'kepemilikan_id'],
+      ['fleet_vehicles', 'pool_id'],
+      ['fleet_vehicles', 'status_id'],
+      ['fleet_vehicle_documents', 'doc_type_id'],
+    ])('probes %s.%s', async (table, column) => {
+      repo.findOne.mockResolvedValue({ id: 'r1', category: 'pool', label: 'Pool Cakung' })
+      dataSource.query.mockResolvedValue([{ count: '0' }])
+      await service.remove('r1')
+      const [sql] = dataSource.query.mock.calls[0] as [string, unknown[]]
+      expect(sql.replace(/\s+/g, ' ')).toContain(
+        `SELECT count(*) AS c FROM ${table} WHERE ${column} = $1`,
+      )
+    })
+
+    // The probe sums one subquery per column. If a column is registered twice the count doubles
+    // and a row nothing references reports usage, which blocks a legitimate delete.
+    it('probes each column exactly once', async () => {
+      repo.findOne.mockResolvedValue({ id: 'r1', category: 'pool', label: 'Pool Cakung' })
+      dataSource.query.mockResolvedValue([{ count: '0' }])
+      await service.remove('r1')
+      const [sql] = dataSource.query.mock.calls[0] as [string, unknown[]]
+      const subqueries = sql.match(/SELECT count\(\*\)/g) ?? []
+      expect(subqueries).toHaveLength(6)
+    })
+
     // COALESCE(SUM(c), 0) means an empty result set is legitimately "nothing references this".
     // Number(undefined) is NaN and NaN > 0 is false, so a dropped `?? 0` fails open rather than
     // loudly: the delete proceeds either way. That is why this asserts countUsage's return value
