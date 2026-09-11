@@ -48,6 +48,30 @@ describe('VehicleFilters', () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ page: 1 }))
   })
 
+  // Exact equality, not objectContaining: every other assertion here reads one key, so a patch()
+  // that spreads only the incoming change passes all of them while silently dropping the pool and
+  // severity the operator had set. On screen that repopulates the table with the whole fleet and
+  // reads as "the search matched everything".
+  it('preserves the other filters when one changes', () => {
+    const onChange = setup({ q: 'canter', poolId: 'p1', severity: 'crit' })
+    fireEvent.change(screen.getByLabelText(/cari/i), { target: { value: 'fuso' } })
+    expect(onChange).toHaveBeenCalledWith({ q: 'fuso', poolId: 'p1', severity: 'crit', page: 1 })
+  })
+
+  // The same invariant from the other side: a filter cleared to undefined must not resurrect the
+  // old value from the spread, and the untouched filters must still come through.
+  it('preserves the other filters when one is cleared', () => {
+    const onChange = setup({ q: 'canter', poolId: 'p1', severity: 'crit', includeArchived: true })
+    fireEvent.change(screen.getByLabelText(/pool/i), { target: { value: '' } })
+    expect(onChange).toHaveBeenCalledWith({
+      q: 'canter',
+      poolId: undefined,
+      severity: 'crit',
+      includeArchived: true,
+      page: 1,
+    })
+  })
+
   it('offers every severity option', () => {
     setup()
     const select = screen.getByLabelText(/dokumen/i)
