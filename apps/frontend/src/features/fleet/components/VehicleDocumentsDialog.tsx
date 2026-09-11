@@ -79,7 +79,7 @@ export function VehicleDocumentsDialog({
       // An untouched row is not a document — sending it would create a live row with no data.
       // Everything the operator did fill in goes in one submit, because the backend retires
       // whatever is absent and a dropped row would silently delete that document.
-      const documents: FleetVehicleDocumentPayload[] = docTypes
+      const edited: FleetVehicleDocumentPayload[] = docTypes
         .map((t) => ({ id: t.id, row: rows[t.id] ?? emptyRow }))
         .filter(({ row }) => row.nomor.trim() || row.issuedAt || row.expiresAt)
         .map(({ id, row }) => ({
@@ -88,7 +88,19 @@ export function VehicleDocumentsDialog({
           issuedAt: row.issuedAt || null,
           expiresAt: row.expiresAt || null,
         }))
-      await onSubmit(documents)
+      // Anything missing from this payload is DELETED by the backend, and only the types in
+      // docTypes get a row. A document whose type was deactivated in the master data — or every
+      // document, while docTypes is still loading — would therefore be retired by a Simpan the
+      // operator pressed without ever seeing it. It has no row to edit, so it rides along as-is.
+      const carriedThrough: FleetVehicleDocumentPayload[] = vehicle.documents
+        .filter((d) => !docTypes.some((t) => t.id === d.docTypeId))
+        .map((d) => ({
+          docTypeId: d.docTypeId,
+          nomor: d.nomor,
+          issuedAt: d.issuedAt,
+          expiresAt: d.expiresAt,
+        }))
+      await onSubmit([...edited, ...carriedThrough])
       onClose()
     } catch (err: unknown) {
       setError(apiErrorMessage(err, 'Terjadi kesalahan. Coba lagi.'))
