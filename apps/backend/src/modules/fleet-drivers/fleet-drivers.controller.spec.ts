@@ -33,9 +33,9 @@ describe('FleetDriversController authorization', () => {
     expect(permissionOf('remove')).toBe(Permission.DELETE_FLEET_VEHICLE)
   })
 
-  // Sweeping all four together catches a dropped @Authorize (undefined) and two handlers sharing
+  // Sweeping all five together catches a dropped @Authorize (undefined) and two handlers sharing
   // one permission, neither of which the individual assertions above can see.
-  it('carries the matching verb of the vehicle set on all four handlers', () => {
+  it('carries the matching verb of the vehicle set on all five handlers', () => {
     expect({
       findAll: permissionOf('findAll'),
       create: permissionOf('create'),
