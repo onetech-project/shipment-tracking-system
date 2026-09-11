@@ -118,10 +118,14 @@ describe('FleetVehiclesPage', () => {
     expect(screen.queryByRole('button', { name: /tambah armada/i })).not.toBeInTheDocument()
   })
 
+  // Dokumen is gated by the same update permission as Ubah, and the page also swaps its handler
+  // for a no-op at that permission. Showing it to a read-only operator therefore gives them a
+  // live-looking button that silently does nothing when clicked.
   it('hides the row actions without the matching permissions', () => {
     permissions = ['read.fleet_vehicle']
     render(<FleetVehiclesPage />)
     expect(screen.queryByRole('button', { name: 'Ubah' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Dokumen' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Arsipkan' })).not.toBeInTheDocument()
   })
 
@@ -249,6 +253,23 @@ describe('FleetVehiclesPage', () => {
     await waitFor(() => expect(mutations.restore).toHaveBeenCalledWith('v1'))
   })
 
+  // Restore has no confirmation dialog to hold the operator's attention, so a rejection with
+  // nothing rendered is indistinguishable from success: the row stays archived, the screen says
+  // nothing, and the unit looks deleted. The backend really returns 409 here when another unit
+  // has taken the plate in the meantime, and it names the plate in the message.
+  it('shows the backend message when restoring fails', async () => {
+    mutations.restore.mockRejectedValueOnce({
+      response: { data: { message: 'Nopol sudah dipakai unit lain' } },
+    })
+    listResult = {
+      data: { rows: [vehicle({ isActive: false })], total: 1, page: 1, pageSize: 25 },
+      ...ok,
+    }
+    render(<FleetVehiclesPage />)
+    fireEvent.click(screen.getByRole('button', { name: 'Pulihkan' }))
+    expect(await screen.findByText(/sudah dipakai unit lain/i)).toBeInTheDocument()
+  })
+
   it('reports the total and the current page', () => {
     listResult = {
       data: { rows: [vehicle()], total: 87, page: 2, pageSize: 25 },
@@ -270,6 +291,40 @@ describe('FleetVehiclesPage', () => {
     render(<FleetVehiclesPage />)
     fireEvent.click(screen.getByRole('button', { name: /berikutnya/i }))
     expect(screen.getByText(/halaman 2 dari 4/i)).toBeInTheDocument()
+  })
+
+  // Sebelumnya was only ever asserted disabled, so its handler was free to do anything at all.
+  // An operator on page 3 who clicks Back must land on page 2: a sign flip or a copy-paste from
+  // Berikutnya walks them forward instead, past rows they have not read.
+  it('moves to the previous page', () => {
+    ;(useFleetVehicles as jest.Mock).mockImplementation((f: { page?: number }) => ({
+      data: { rows: [vehicle()], total: 87, page: f.page ?? 1, pageSize: 25 },
+      ...ok,
+    }))
+    render(<FleetVehiclesPage />)
+    fireEvent.click(screen.getByRole('button', { name: /berikutnya/i }))
+    fireEvent.click(screen.getByRole('button', { name: /berikutnya/i }))
+    expect(screen.getByText(/halaman 3 dari 4/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /sebelumnya/i }))
+    expect(screen.getByText(/halaman 2 dari 4/i)).toBeInTheDocument()
+    expect(useFleetVehicles).toHaveBeenLastCalledWith({ page: 2, sort: 'nopol' })
+  })
+
+  // Re-sorting without resetting the page hands the operator page 3 of a brand-new ordering — a
+  // different slice of units entirely, with nothing on screen saying the rows moved underneath
+  // them. VehicleFilters forces the same reset for filter changes; the sort is the same hazard.
+  it('resets to the first page when the sort changes', () => {
+    ;(useFleetVehicles as jest.Mock).mockImplementation((f: { page?: number }) => ({
+      data: { rows: [vehicle()], total: 87, page: f.page ?? 1, pageSize: 25 },
+      ...ok,
+    }))
+    render(<FleetVehiclesPage />)
+    fireEvent.click(screen.getByRole('button', { name: /berikutnya/i }))
+    fireEvent.click(screen.getByRole('button', { name: /berikutnya/i }))
+    expect(useFleetVehicles).toHaveBeenLastCalledWith({ page: 3, sort: 'nopol' })
+    fireEvent.click(screen.getByRole('button', { name: 'Tahun' }))
+    expect(useFleetVehicles).toHaveBeenLastCalledWith({ page: 1, sort: 'tahun' })
+    expect(screen.getByText(/halaman 1 dari 4/i)).toBeInTheDocument()
   })
 
   // Paging past either end asks the backend for a page that does not exist and shows an empty
@@ -346,5 +401,24 @@ describe('FleetVehiclesPage', () => {
     permissions = ['read.fleet_vehicle', 'read.fleet_master_data']
     render(<FleetVehiclesPage />)
     expect(screen.queryByText(/butuh izin akses master data/i)).not.toBeInTheDocument()
+  })
+
+  // The suite proves the five lookup queries fire; this proves their answers land in the right
+  // field. A cross-wire renders four fully populated dropdowns that are all quietly wrong — the
+  // operator picks a pool from the Kepemilikan list and registers the unit against it. Each mock
+  // label carries its own category name, so reading the options under each label catches a swap.
+  it('feeds each master-data list to its own field in the create dialog', () => {
+    render(<FleetVehiclesPage />)
+    fireEvent.click(screen.getByRole('button', { name: /tambah armada/i }))
+    // Scoped to the dialog: the filter bar behind it carries its own Kepemilikan, Pool and
+    // Status unit selects fed from the same three queries.
+    const dialog = within(screen.getByRole('dialog'))
+    const optionsOf = (label: string) =>
+      Array.from(dialog.getByLabelText(label).querySelectorAll('option')).map((o) => o.textContent)
+    expect(optionsOf('Jenis armada')).toEqual(['— pilih —', 'jenis_armada satu'])
+    expect(optionsOf('Kepemilikan')).toEqual(['— pilih —', 'kepemilikan satu'])
+    expect(optionsOf('Pool')).toEqual(['— pilih —', 'pool satu'])
+    expect(optionsOf('Status unit')).toEqual(['— pilih —', 'status_kendaraan satu'])
+    expect(optionsOf('Sopir')).toEqual(['— belum ditugaskan —', 'Ahmad Fauzi'])
   })
 })
