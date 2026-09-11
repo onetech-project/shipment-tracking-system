@@ -73,6 +73,21 @@ describe('VehicleTable', () => {
     expect(screen.getByText(/2021/)).toBeInTheDocument()
   })
 
+  // merk, tipe, tahun, jenisArmada and pool are all nullable: a unit registered with nothing but
+  // a plate is a real state. Without the fallbacks those cells render empty and read as a
+  // rendering hole rather than "not recorded yet". Asserted per cell so dropping any one of the
+  // three fallbacks is caught on its own.
+  it('shows an em-dash for a vehicle with no make, model, year, class or pool', () => {
+    setup({
+      rows: [vehicle({ merk: null, tipe: null, tahun: null, jenisArmada: null, pool: null })],
+    })
+    const cells = screen.getByTestId('vehicle-row').querySelectorAll('td')
+    expect(cells[1].querySelectorAll('span')[0]).toHaveTextContent(/^—$/)
+    expect(cells[1].querySelectorAll('span')[1]).toHaveTextContent(/^—$/)
+    expect(cells[3]).toHaveTextContent(/^—$/)
+    expect(screen.getAllByText('—')).toHaveLength(3)
+  })
+
   it('shows the assigned driver', () => {
     setup()
     expect(screen.getByText('Ahmad Fauzi')).toBeInTheDocument()
@@ -96,11 +111,65 @@ describe('VehicleTable', () => {
     expect(screen.getByText(/5 hari lagi/)).toBeInTheDocument()
   })
 
+  // worstSeverity and minDaysLeft are two independent backend aggregates that can each come from
+  // a different document — warn thresholds are per document type, so the nearest expiry is not
+  // necessarily the worst one. Every single-document fixture makes both indistinguishable from
+  // documents[0], so this row sources the worst severity from the second document, the fewest
+  // days from the third, and leaves the first matching neither.
+  it('reads worstSeverity and minDaysLeft as two independent aggregates', () => {
+    setup({
+      rows: [
+        vehicle({
+          documents: [
+            {
+              docTypeId: 'dt1',
+              code: 'asuransi',
+              label: 'Asuransi',
+              nomor: 'AS-9',
+              issuedAt: null,
+              expiresAt: '2026-10-11',
+              daysLeft: 30,
+              severity: 'ok',
+            },
+            {
+              docTypeId: 'dt2',
+              code: 'kir',
+              label: 'KIR',
+              nomor: 'JKT-1',
+              issuedAt: null,
+              expiresAt: '2026-10-01',
+              daysLeft: 20,
+              severity: 'warn',
+            },
+            {
+              docTypeId: 'dt3',
+              code: 'pajak',
+              label: 'Pajak',
+              nomor: 'PJ-3',
+              issuedAt: null,
+              expiresAt: '2026-09-21',
+              daysLeft: 10,
+              severity: 'ok',
+            },
+          ],
+          worstSeverity: 'warn',
+          minDaysLeft: 10,
+        }),
+      ],
+    })
+    const badge = screen.getByRole('img')
+    expect(badge).toHaveTextContent('Segera')
+    expect(badge).toHaveTextContent('10 hari lagi')
+    // Neither aggregate may be read off the first document.
+    expect(badge).not.toHaveTextContent('Aktif')
+    expect(badge).not.toHaveTextContent('30 hari lagi')
+  })
+
   it('shows a distinct state for a vehicle with no documents', () => {
     setup({ rows: [vehicle({ documents: [], worstSeverity: 'none', minDaysLeft: null })] })
     // /Belum ada/ alone matches both the badge label and its "Belum ada tanggal" suffix, so
     // pin the whole reading: grey "no information" label plus the null-date wording.
-    expect(screen.getByRole('status')).toHaveTextContent(/Belum ada\s*·\s*Belum ada tanggal/)
+    expect(screen.getByRole('img')).toHaveTextContent(/Belum ada\s*·\s*Belum ada tanggal/)
   })
 
   it('renders the empty state when there are no rows', () => {
@@ -145,20 +214,32 @@ describe('VehicleTable', () => {
     expect(screen.getByText(/arsip/i)).toBeInTheDocument()
   })
 
-  // Distinct rows must survive as distinct rows, each keyed by its own id. React only warns on
-  // duplicate keys rather than dropping rows, so the warning is what the assertion has to catch
-  // — a shared key silently corrupts reconciliation when the list re-sorts.
-  it('renders one row per vehicle, keyed by vehicle id', () => {
-    const spy = jest.spyOn(console, 'error').mockImplementation(() => {})
-    try {
-      setup({ rows: [vehicle(), vehicle({ id: 'v2', nopol: 'B 2000 XX' })] })
-      expect(screen.getAllByTestId('vehicle-row')).toHaveLength(2)
-      expect(screen.getByText('B 2000 XX')).toBeInTheDocument()
-      const warnings = spy.mock.calls.map((c) => String(c[0])).join('\n')
-      expect(warnings).not.toMatch(/same key/i)
-    } finally {
-      spy.mockRestore()
+  it('renders one row per vehicle', () => {
+    setup({ rows: [vehicle(), vehicle({ id: 'v2', nopol: 'B 2000 XX' })] })
+    expect(screen.getAllByTestId('vehicle-row')).toHaveLength(2)
+    expect(screen.getByText('B 2000 XX')).toBeInTheDocument()
+  })
+
+  // What a per-vehicle key actually buys is node identity across a re-sort: keyed by id, React
+  // moves the existing <tr>; keyed by anything shared or positional it reuses nodes in place and
+  // silently corrupts reconciliation. Asserted on the DOM node rather than by sniffing React's
+  // duplicate-key warning, whose wording is not ours to depend on.
+  it('keeps each row on its own DOM node when the list re-sorts', () => {
+    const a = vehicle()
+    const b = vehicle({ id: 'v2', nopol: 'B 2000 XX' })
+    const props = {
+      isLoading: false,
+      sort: 'nopol' as const,
+      onSortChange: jest.fn(),
+      onEdit: jest.fn(),
+      onDocuments: jest.fn(),
+      onArchive: jest.fn(),
+      onRestore: jest.fn(),
     }
+    const { rerender } = render(<VehicleTable {...props} rows={[a, b]} />)
+    const firstNode = screen.getByText('B 9114 KYZ').closest('tr')
+    rerender(<VehicleTable {...props} rows={[b, a]} />)
+    expect(screen.getByText('B 9114 KYZ').closest('tr')).toBe(firstNode)
   })
 
   it('shows the pool and the unit status in their own columns', () => {
