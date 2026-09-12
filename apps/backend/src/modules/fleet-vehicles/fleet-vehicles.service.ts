@@ -426,9 +426,18 @@ export class FleetVehiclesService {
     return left === right
   }
 
+  // Read off the LOCAL calendar fields, never toISOString(): pg's date parser builds the Date at
+  // local midnight, so rendering it in UTC reports the previous day everywhere east of Greenwich.
+  // Under the deployment zone Asia/Jakarta that made every unchanged angsuranMulai compare as
+  // different and closed the contract on every save — the churn Exception A exists to stop. This
+  // is what TypeORM's own DateUtils.mixedDateToDateString does, and for the same reason.
   private toDateISO(v: string | Date | null): string | null {
     if (v == null) return null
-    if (v instanceof Date) return v.toISOString().slice(0, 10)
+    if (v instanceof Date) {
+      const month = String(v.getMonth() + 1).padStart(2, '0')
+      const day = String(v.getDate()).padStart(2, '0')
+      return `${v.getFullYear()}-${month}-${day}`
+    }
     const trimmed = v.trim()
     return trimmed === '' ? null : trimmed.slice(0, 10)
   }

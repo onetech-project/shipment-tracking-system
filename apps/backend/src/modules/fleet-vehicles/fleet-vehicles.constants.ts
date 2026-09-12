@@ -13,7 +13,6 @@ export type FleetVehicleSort = (typeof FLEET_VEHICLE_SORTS)[number]
 export const DEFAULT_PAGE_SIZE = 25
 export const MAX_PAGE_SIZE = 100
 
-
 // The one kepemilikan code the service branches on: a rented unit has an owner outside the
 // company, and requirement §2 makes naming them mandatory for exactly that case. Matched by code
 // rather than by id because ids differ per environment while the seeded code does not.

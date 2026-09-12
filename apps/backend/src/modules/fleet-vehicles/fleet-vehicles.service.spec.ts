@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common'
 import { Test } from '@nestjs/testing'
-import { DataSource } from 'typeorm'
+import { DataSource, In, IsNull } from 'typeorm'
 import { getRepositoryToken } from '@nestjs/typeorm'
 import { FleetVehiclesService } from './fleet-vehicles.service'
 import { FleetVehicleEntity } from './entities/fleet-vehicle.entity'
@@ -936,6 +936,19 @@ describe('FleetVehiclesService', () => {
       ).resolves.toBeDefined()
     })
 
+    // A spaces-only name is not a name. The guard trims before it decides, or an operator clears
+    // the field with the space bar and the register still cannot say who the truck goes back to.
+    it('rejects a sewa lepas kunci unit whose pemilikUnit is only whitespace', async () => {
+      masterRepo.findOne.mockImplementation(async (opts: { where: { id: string; category: string } }) =>
+        opts.where.category === 'kepemilikan'
+          ? { id: opts.where.id, category: 'kepemilikan', code: 'sewa_lepas_kunci' }
+          : { id: opts.where.id, category: opts.where.category },
+      )
+      await expect(
+        service.create({ ...payload(), kepemilikanId: 'kp-sewa', pemilikUnit: '   ' }),
+      ).rejects.toBeInstanceOf(BadRequestException)
+    })
+
     // A company-owned unit has no external owner to name, so demanding one would block every
     // normal registration.
     it('does not demand pemilikUnit for a company-owned unit', async () => {
@@ -1061,6 +1074,16 @@ describe('FleetVehiclesService', () => {
       const view = await service.findOne('v1')
       expect(view.lease?.angsuranTerbayarOverride).toBeNull()
       expect(typeof view.lease?.angsuranTerbayar).toBe('number')
+    })
+
+    // Closed contracts are history with no figures to report. Without the closedAt filter a
+    // refinanced unit returns every contract it ever had and the by-vehicle map keeps whichever
+    // row arrived last — quite possibly the one that was paid off years ago.
+    it('asks only for the contract still open on the unit', async () => {
+      await service.findOne('v1')
+      const where = leaseRepo.find.mock.calls[0][0].where
+      expect(where.closedAt).toEqual(IsNull())
+      expect(where.vehicleId).toEqual(In(['v1']))
     })
 
     it('reports no lease for a unit that has no open contract', async () => {
@@ -1200,6 +1223,77 @@ describe('FleetVehiclesService', () => {
         Object.prototype.hasOwnProperty.call(c[1], 'nomorKontrak'),
       )
       expect(openCall).toBeUndefined()
+    })
+
+    // The reviewer's live finding. pg's date parser builds the Date at LOCAL midnight, so reading
+    // it back through toISOString() — which renders in UTC — reports the previous calendar day
+    // anywhere east of Greenwich. Under the deployment zone Asia/Jakarta every unchanged start
+    // date then reads as different and the contract churns on every save, which is the exact bug
+    // Exception A exists to prevent. Constructed with the local-midnight constructor rather than
+    // a 'Z' literal precisely so the suite feels what the driver hands the service.
+    it('reads a local-midnight Date as its own calendar day, not the UTC one', async () => {
+      txManager.findOne.mockResolvedValueOnce(openRow({ angsuranMulai: new Date(2026, 0, 10) }))
+      await service.update('v1', { lease: samePayload() })
+      expect(txManager.update.mock.calls.find((c) => c[2] && 'closedAt' in c[2])).toBeUndefined()
+    })
+
+    // The same day one field over: a string-shaped stored date must be compared to the day, not
+    // truncated to the month, or moving the first instalment within January goes unnoticed.
+    it('closes and reopens when a string-shaped start date moves within the month', async () => {
+      txManager.findOne.mockResolvedValueOnce(openRow({ angsuranMulai: '2026-01-25' }))
+      await service.update('v1', { lease: samePayload() })
+      expect(txManager.update.mock.calls.find((c) => c[2] && 'closedAt' in c[2])).toBeDefined()
+    })
+
+    // Setting an instalment on a contract that had none is a real change. Collapsing null-vs-value
+    // to "same" is the worst failure available here: the save reports success and silently keeps
+    // reporting no instalment.
+    it('closes and reopens when an instalment is set on a contract that had none', async () => {
+      txManager.findOne.mockResolvedValueOnce(openRow({ cicilanPerBulan: null }))
+      await service.update('v1', { lease: samePayload() })
+      expect(txManager.update.mock.calls.find((c) => c[2] && 'closedAt' in c[2])).toBeDefined()
+    })
+
+    // And the mirror: clearing the instalment must not read as "nothing changed" either.
+    it('closes and reopens when the instalment is cleared', async () => {
+      txManager.findOne.mockResolvedValueOnce(openRow())
+      await service.update('v1', { lease: { ...samePayload(), cicilanPerBulan: null } })
+      expect(txManager.update.mock.calls.find((c) => c[2] && 'closedAt' in c[2])).toBeDefined()
+    })
+
+    // Both sides absent is the one case where "no contract" and "no lease" agree. Reported as a
+    // difference it would open a contract out of a null payload on a unit that was never financed.
+    it('treats no contract and no lease as the same nothing', async () => {
+      txManager.findOne.mockResolvedValueOnce(null)
+      await service.update('v1', { lease: null })
+      expect(txManager.save).not.toHaveBeenCalled()
+      expect(txManager.update).not.toHaveBeenCalled()
+    })
+
+    // Pinned on the helper rather than through update(), because update() reads a "different"
+    // verdict here and then finds nothing to close and nothing to open — the two bugs cancel and
+    // the mistake is invisible from outside. It stops cancelling the moment anyone adds an
+    // unconditional write inside that branch, so the contract is stated where it can be seen:
+    // no contract and no lease describe the same nothing.
+    it('reports no contract and no lease as the same contract', () => {
+      const sameContract = (
+        service as unknown as {
+          sameContract: (open: unknown, lease: unknown) => boolean
+        }
+      ).sameContract.bind(service)
+      expect(sameContract(null, null)).toBe(true)
+      expect(sameContract(openRow(), null)).toBe(false)
+      expect(sameContract(null, samePayload())).toBe(false)
+    })
+
+    // Closing is addressed by contract id, not by vehicle id. The two are different columns and
+    // passing the vehicle's would close whatever row happens to carry that id — or nothing at all,
+    // leaving two open contracts on one unit.
+    it('closes the open contract by its own id, not the vehicle id', async () => {
+      txManager.findOne.mockResolvedValueOnce(openRow({ id: 'lc-open' }))
+      await service.update('v1', { lease: { ...samePayload(), nomorKontrak: 'MTF-2' } })
+      const closeCall = txManager.update.mock.calls.find((c) => c[2] && 'closedAt' in c[2])
+      expect(closeCall?.[1]).toBe('lc-open')
     })
 
     // A unit financed for the first time has nothing to close, but the new contract must open.
