@@ -1321,10 +1321,49 @@ describe('FleetVehiclesService', () => {
       expect(dataSource.transaction).not.toHaveBeenCalled()
     })
 
+    // Omitting the key is the easiest request to send, so a create that carries no documents key
+    // at all must fail exactly like one carrying an empty list — otherwise the rule is optional
+    // on the only path that puts a brand-new unit in the register.
+    it('rejects a create that omits the documents key entirely', async () => {
+      await expect(service.create({ nopol: 'B9114KYZ' })).rejects.toBeInstanceOf(
+        BadRequestException,
+      )
+    })
+
+    it('names every missing required type when a create omits the documents key', async () => {
+      await expect(service.create({ nopol: 'B9114KYZ' })).rejects.toThrow(/STNK.*Pajak/)
+    })
+
+    it('rejects such a create before opening a transaction', async () => {
+      await expect(service.create({ nopol: 'B9114KYZ' })).rejects.toBeInstanceOf(
+        BadRequestException,
+      )
+      expect(dataSource.transaction).not.toHaveBeenCalled()
+    })
+
+    it('accepts a create whose documents cover every required type', async () => {
+      // create() reads the row back through findOne(), so the new id has to resolve to something.
+      idQb.getRawMany.mockResolvedValue([{ id: 'v-new' }])
+      repo.find.mockResolvedValue([vehicleRow({ id: 'v-new' })])
+      await expect(
+        service.create({ nopol: 'B9114KYZ', documents: withRequired([]) }),
+      ).resolves.toBeDefined()
+    })
+
     // An absent documents key on a PATCH means "leave the papers alone", which must not be read
     // as "the operator submitted an empty set" and fail every odometer edit.
     it('leaves a patch that does not mention documents alone', async () => {
       await expect(service.update('v1', { odometer: 130000 })).resolves.toBeDefined()
+    })
+
+    // The asymmetry with create() is the point: a partial patch must not touch the document rows
+    // it never mentioned, so nothing may be retired or re-inserted on the way through.
+    it('writes no document rows for a patch that does not mention documents', async () => {
+      await service.update('v1', { odometer: 130000 })
+      expect(txManager.insert).not.toHaveBeenCalled()
+      expect(
+        txManager.update.mock.calls.some((c) => c[0] === FleetVehicleDocumentEntity),
+      ).toBe(false)
     })
 
     // Nothing is flagged required, so nothing is demanded. Guards the empty-master-data case

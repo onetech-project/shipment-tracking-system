@@ -181,7 +181,13 @@ export class FleetVehiclesService {
 
     await this.assertMasterRefs(dto)
     await this.assertOwnerNamedWhenRented(dto.kepemilikanId, dto.pemilikUnit)
-    await this.assertDocumentPayload(dto.documents)
+
+    // A create with no documents key at all is coerced to an empty list so the required-document
+    // rule still runs: omitting the key is the easiest request to send, and letting it through
+    // would make the rule optional on the one path where a unit enters the register with no
+    // papers. update() deliberately keeps the opposite reading — there an absent key means "I am
+    // not touching the documents", so patching only the odometer must not demand a full resend.
+    await this.assertDocumentPayload(dto.documents ?? [])
     await this.assertNopolFree(nopol)
 
     try {
