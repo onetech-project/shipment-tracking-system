@@ -115,4 +115,11 @@ describe('UpdateFleetVehicleDto', () => {
     await validate(dto, { whitelist: true })
     expect({ ...dto }).toEqual({ merk: 'Hino' })
   })
+
+  // PartialType must keep every field optional even now that Create demands them: a PATCH that
+  // renews one document has no business resending the chassis number.
+  it('accepts a patch carrying only one field', async () => {
+    const dto = plainToInstance(UpdateFleetVehicleDto, { odometer: 130000 })
+    expect(await validate(dto)).toHaveLength(0)
+  })
 })
