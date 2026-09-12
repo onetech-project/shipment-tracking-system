@@ -170,7 +170,13 @@ describe('FleetVehiclesService', () => {
     it('matches the plate with separators stripped from both sides', async () => {
       await service.findAll({ q: 'b 9114' })
       const clause = andWhereCall('ILIKE')
-      expect(String(clause?.[0])).toContain('regexp_replace')
+      // Asserted as one whole comparison rather than as loose facts, because the parts only fix
+      // the bug together: comparing the stripped column against :q restores it, a character class
+      // that is not the separators strips nothing useful, and without the 'g' flag only the first
+      // separator goes, so a two-space plate like "B 13 23OE" still finds nothing.
+      expect(String(clause?.[0])).toContain(
+        "regexp_replace(v.nopol, '[[:space:].-]', '', 'g') ILIKE :qNopol",
+      )
       expect(clause?.[1]).toEqual({ q: '%b 9114%', qNopol: '%B9114%' })
     })
 
@@ -179,8 +185,13 @@ describe('FleetVehiclesService', () => {
     it('leaves the other columns matching the term as typed', async () => {
       await service.findAll({ q: 'b 9114' })
       const sql = String(andWhereCall('ILIKE')?.[0])
-      expect(sql).toContain('v.merk ILIKE :q')
-      expect(sql).toContain('dr.nama ILIKE :q')
+      for (const column of ['v.merk', 'v.tipe', 'v.noRangka', 'v.noMesin', 'dr.nama']) {
+        // \b after :q so the as-typed parameter is not satisfied by :qNopol, which starts with it.
+        expect(sql).toMatch(new RegExp(`${column.replace('.', '\\.')} ILIKE :q\\b`))
+      }
+      // The plate is the only column allowed to be stripped, so exactly one call may appear —
+      // naming the five columns alone would not notice a sixth stripped comparison appearing.
+      expect(sql.match(/regexp_replace/g)).toHaveLength(1)
     })
 
     it('ignores a whitespace-only search term', async () => {
