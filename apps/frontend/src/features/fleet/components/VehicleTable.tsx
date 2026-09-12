@@ -1,13 +1,21 @@
 'use client'
 
-import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { useMemo } from 'react'
+import { ArrowDown, ArrowUp, ArrowUpDown, MoreVertical } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { DataTable, DataTableColumn } from '@/components/shared/data-table'
-import { FleetVehicle, FleetVehicleSort } from '../types'
+import { FleetMasterRow, FleetVehicle, FleetVehicleSort } from '../types'
+import { formatTanggal } from '../utils/format-date'
 import { SeverityBadge } from './SeverityBadge'
 
 interface VehicleTableProps {
   rows: FleetVehicle[]
+  docTypes: FleetMasterRow[]
   isLoading: boolean
   sort: FleetVehicleSort
   onSortChange: (sort: FleetVehicleSort) => void
@@ -25,8 +33,14 @@ const SORT_PAIRS: Record<string, [FleetVehicleSort, FleetVehicleSort]> = {
   tahun: ['tahun', '-tahun'],
 }
 
+// Pinned because the table scrolls sideways with a column per document type (spec §7.1): a row
+// whose plate has scrolled off has lost the only thing identifying it. Applied to the header and
+// the body cell alike, via DataTableColumn.className.
+const STICKY_PLATE = 'sticky left-0 z-10 bg-background'
+
 export function VehicleTable({
   rows,
+  docTypes,
   isLoading,
   sort,
   onSortChange,
@@ -38,14 +52,13 @@ export function VehicleTable({
 }: VehicleTableProps) {
   const show = showActions ?? { edit: true, documents: true, archive: true }
 
-  const sortHeader = (label: string, key: keyof typeof SORT_PAIRS, ariaLabel?: string) => {
+  const sortHeader = (label: string, key: keyof typeof SORT_PAIRS) => {
     const [asc, desc] = SORT_PAIRS[key]
     const active = sort === asc ? 'asc' : sort === desc ? 'desc' : null
     const Icon = active === 'asc' ? ArrowUp : active === 'desc' ? ArrowDown : ArrowUpDown
     return (
       <button
         type="button"
-        aria-label={ariaLabel}
         className="inline-flex items-center gap-1 font-medium hover:text-foreground"
         onClick={() => onSortChange(active === 'asc' ? desc : asc)}
       >
@@ -55,13 +68,47 @@ export function VehicleTable({
     )
   }
 
+  // Built from master data rather than from a fixed list (spec §7.1), so a document type the
+  // admin adds gets its own column without a code change. Sorted by the admin's own sortOrder,
+  // and the inactive ones left out — a retired type would be a heading with nothing under it.
+  const documentColumns: DataTableColumn<FleetVehicle>[] = useMemo(
+    () =>
+      docTypes
+        .filter((t) => t.isActive)
+        .slice()
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((type) => ({
+          header: type.label,
+          accessor: (row: FleetVehicle) => {
+            // Matched by docTypeId, never by position: a unit missing one document would
+            // otherwise shift every later column left and report plausible, wrong dates.
+            const doc = row.documents.find((d) => d.docTypeId === type.id)
+            if (!doc) return <span className="text-muted-foreground">—</span>
+            return (
+              <div className="flex flex-col gap-1">
+                <span className="whitespace-nowrap">{formatTanggal(doc.expiresAt)}</span>
+                {/* severity and daysLeft arrive already computed; rendering them is the job.
+                    The badge keeps its own wording rather than a blank label, so the cell's
+                    meaning does not rest on colour alone for a screen reader or a red/green
+                    deficient operator — the reason SeverityBadge carries an aria-label at all. */}
+                <SeverityBadge severity={doc.severity} daysLeft={doc.daysLeft} />
+              </div>
+            )
+          },
+        })),
+    [docTypes],
+  )
+
   const columns: DataTableColumn<FleetVehicle>[] = [
     {
-      header: 'Nopol',
+      header: sortHeader('Nopol', 'nopol'),
+      className: STICKY_PLATE,
       accessor: (row) => (
         <div className="flex flex-col">
           <span className="font-medium">{row.nopol}</span>
-          {!row.isActive && <span className="text-xs text-muted-foreground">Arsip</span>}
+          <span className="text-xs text-muted-foreground">
+            {row.isActive ? (row.status?.label ?? '—') : 'Arsip'}
+          </span>
         </div>
       ),
     },
@@ -71,92 +118,115 @@ export function VehicleTable({
         <div className="flex flex-col">
           <span>{[row.merk, row.tipe].filter(Boolean).join(' ') || '—'}</span>
           <span className="text-xs text-muted-foreground">
-            {[row.tahun, row.jenisArmada?.label].filter(Boolean).join(' · ') || '—'}
+            {[row.jenisArmada?.label, row.tahun, row.kapasitas].filter(Boolean).join(' · ') || '—'}
           </span>
         </div>
       ),
     },
     {
-      header: 'Sopir',
-      accessor: (row) =>
-        row.driver ? (
-          <span>{row.driver.nama}</span>
-        ) : (
-          <span className="text-muted-foreground">Belum ada sopir</span>
-        ),
-    },
-    {
-      header: 'Pool',
-      accessor: (row) => row.pool?.label ?? '—',
-    },
-    {
-      header: 'Status',
-      accessor: (row) => row.status?.label ?? '—',
-    },
-    {
-      header: 'Dokumen',
+      header: 'Kepemilikan',
       accessor: (row) => (
-        // daysLeft comes from the backend already computed; passing it through is the whole job.
-        <SeverityBadge severity={row.worstSeverity} daysLeft={row.minDaysLeft} />
-      ),
-    },
-    {
-      header: 'Aksi',
-      className: 'text-right',
-      accessor: (row) => (
-        <div className="flex justify-end gap-1">
-          {show.edit && (
-            <Button size="sm" variant="ghost" onClick={() => onEdit(row)}>
-              Ubah
-            </Button>
-          )}
-          {show.documents && (
-            <Button size="sm" variant="ghost" onClick={() => onDocuments(row)}>
-              Dokumen
-            </Button>
-          )}
-          {show.archive &&
-            (row.isActive ? (
-              <Button size="sm" variant="ghost" onClick={() => onArchive(row)}>
-                Arsipkan
-              </Button>
-            ) : (
-              <Button size="sm" variant="ghost" onClick={() => onRestore(row)}>
-                Pulihkan
-              </Button>
-            ))}
+        <div className="flex flex-col">
+          <span>{row.kepemilikan?.label ?? '—'}</span>
+          <span className="text-xs text-muted-foreground">
+            {row.lease?.leasing?.label ?? '—'}
+            {/* sisaAngsuran is the backend's figure (spec §5.2), printed as delivered. */}
+            {row.lease && row.lease.sisaAngsuran > 0 && ` · sisa ${row.lease.sisaAngsuran}×`}
+          </span>
         </div>
       ),
     },
-  ]
-
-  return (
-    <>
-      {/* DataTableColumn.header is typed as a string, so the sort controls live in their own
-          row above the table rather than inside <th>. Keeping them here avoids widening the
-          shared component's contract for this one caller. */}
-      <div className="mb-2 flex items-center gap-4 px-1 text-sm text-muted-foreground">
-        <span>Urutkan:</span>
-        {sortHeader('Nopol', 'nopol')}
-        {sortHeader('Tahun', 'tahun')}
+    {
+      header: sortHeader('Tahun', 'tahun'),
+      accessor: (row) => row.tahun ?? '—',
+    },
+    {
+      header: 'Sopir & SIM',
+      accessor: (row) =>
+        row.driver ? (
+          <div className="flex flex-col gap-1">
+            <span>{row.driver.nama}</span>
+            <span className="text-xs text-muted-foreground">{row.pool?.label ?? '—'}</span>
+            <SeverityBadge
+              severity={row.driver.simSeverity}
+              daysLeft={row.driver.simDaysLeft}
+              label={`SIM ${formatTanggal(row.driver.simExpiresAt)}`}
+            />
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1">
+            <span className="text-muted-foreground">Belum ada sopir</span>
+            <span className="text-xs text-muted-foreground">{row.pool?.label ?? '—'}</span>
+          </div>
+        ),
+    },
+    ...documentColumns,
+    {
+      header: (
         <button
           type="button"
           aria-label="Urutkan dokumen"
           className="inline-flex items-center gap-1 font-medium hover:text-foreground"
           onClick={() => onSortChange('severity')}
         >
-          Dokumen
+          Terdekat
           <ArrowUpDown size={13} aria-hidden="true" />
         </button>
-      </div>
-      <DataTable
-        columns={columns}
-        rows={rows}
-        isLoading={isLoading}
-        keyExtractor={(row) => row.id}
-        emptyMessage="Belum ada armada yang cocok dengan filter ini."
-        rowDataTestId="vehicle-row"
-      />
-    </>
+      ),
+      // Tagged because the row now carries several badges — one per document column plus the
+      // driver's SIM — and the tests for the two backend aggregates have to name this one.
+      accessor: (row) => (
+        <span data-testid="worst-severity">
+          <SeverityBadge severity={row.worstSeverity} daysLeft={row.minDaysLeft} />
+        </span>
+      ),
+    },
+    {
+      header: 'Aksi',
+      className: 'text-right',
+      accessor: (row) => {
+        const items = [
+          show.edit && { key: 'edit', label: 'Ubah', run: () => onEdit(row) },
+          show.documents && { key: 'documents', label: 'Dokumen', run: () => onDocuments(row) },
+          show.archive &&
+            (row.isActive
+              ? { key: 'archive', label: 'Arsipkan', run: () => onArchive(row) }
+              : { key: 'restore', label: 'Pulihkan', run: () => onRestore(row) }),
+        ].filter(Boolean) as { key: string; label: string; run: () => void }[]
+
+        // Spec §7.2: a menu whose items are all filtered out is not rendered at all. An empty ⋮
+        // that opens onto nothing is worse than no button — the operator keeps trying it.
+        if (items.length === 0) return null
+
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label={`Aksi ${row.nopol}`}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-muted"
+            >
+              <MoreVertical size={16} aria-hidden="true" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {items.map((item) => (
+                <DropdownMenuItem key={item.key} onSelect={item.run}>
+                  {item.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )
+      },
+    },
+  ]
+
+  return (
+    <DataTable
+      columns={columns}
+      rows={rows}
+      isLoading={isLoading}
+      keyExtractor={(row) => row.id}
+      emptyMessage="Belum ada armada yang cocok dengan filter ini."
+      rowDataTestId="vehicle-row"
+    />
   )
 }
