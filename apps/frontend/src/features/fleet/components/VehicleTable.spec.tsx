@@ -27,6 +27,7 @@ const vehicle = (over: Partial<FleetVehicle> = {}): FleetVehicle => ({
     simDaysLeft: 550,
     simSeverity: 'ok',
   },
+  lease: null,
   documents: [
     {
       docTypeId: 'dt1',

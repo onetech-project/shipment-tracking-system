@@ -60,6 +60,7 @@ function normalizeVehicle(row: FleetVehicleWire): FleetVehicle {
     pool: row.pool ?? null,
     status: row.status ?? null,
     driver: row.driver ?? null,
+    lease: row.lease ?? null,
     documents: (row.documents ?? []).map(normalizeDocument),
     // 'none' rather than 'ok': a backend that did not answer has not said the papers are in
     // order, and a green badge on an unknown state is the one wrong answer here.

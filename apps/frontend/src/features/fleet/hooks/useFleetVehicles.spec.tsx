@@ -32,7 +32,7 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 
 const wireRow = (over: Record<string, unknown> = {}) => ({
   id: 'v1',
-  nopol: 'B 9114 KYZ',
+  nopol: 'B9114KYZ',
   worstSeverity: 'warn',
   ...over,
 })
@@ -241,6 +241,71 @@ describe('useFleetVehicles', () => {
     const { result } = renderHook(() => useFleetVehicles({}), { wrapper })
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data?.rows).toEqual([])
+  })
+
+  // The lease arrives already worked out (spec §5.2). Defaulting it to null rather than to an
+  // empty object keeps "no contract" distinguishable from "a contract with no figures".
+  it('keeps the computed lease as the backend sent it', async () => {
+    mocked.get.mockResolvedValueOnce({
+      data: {
+        rows: [
+          {
+            id: 'v1',
+            nopol: 'B9114KYZ',
+            lease: {
+              id: 'lc1',
+              leasing: { id: 'ls1', label: 'MTF' },
+              nomorKontrak: 'MTF-1',
+              cicilanPerBulan: 8750000,
+              tenorBulan: 36,
+              angsuranMulai: '2026-01-10',
+              angsuranTerbayar: 4,
+              sisaAngsuran: 32,
+              sisaKewajiban: 280000000,
+            },
+          },
+        ],
+        total: 1,
+      },
+    })
+    const { result } = renderHook(() => useFleetVehicles({}), { wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data?.rows[0].lease).toMatchObject({
+      nomorKontrak: 'MTF-1',
+      sisaKewajiban: 280000000,
+    })
+  })
+
+  // A backend that predates the lease field must still render a row, the same way every other
+  // optional field on the wire type behaves.
+  it('reports no lease when the response carries none', async () => {
+    mocked.get.mockResolvedValueOnce({ data: { rows: [{ id: 'v1', nopol: 'B9114KYZ' }], total: 1 } })
+    const { result } = renderHook(() => useFleetVehicles({}), { wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data?.rows[0].lease).toBeNull()
+  })
+
+  // One POST carries all three parts, because the backend writes them in one transaction. Two
+  // calls would put a unit in the register whose papers failed to save.
+  it('posts the lease and documents alongside the vehicle', async () => {
+    mocked.post.mockResolvedValueOnce({ data: { id: 'v1' } })
+    const { result } = renderHook(() => useCreateFleetVehicle(), { wrapper })
+    result.current.mutate({
+      nopol: 'B9114KYZ',
+      lease: {
+        leasingId: 'ls1',
+        nomorKontrak: 'MTF-1',
+        cicilanPerBulan: 8750000,
+        tenorBulan: 36,
+        angsuranMulai: '2026-01-10',
+      },
+      documents: [{ docTypeId: 'dt1', expiresAt: '2031-01-10' }],
+    })
+    await waitFor(() => expect(mocked.post).toHaveBeenCalled())
+    expect(mocked.post.mock.calls[0][1]).toMatchObject({
+      lease: { nomorKontrak: 'MTF-1' },
+      documents: [{ docTypeId: 'dt1' }],
+    })
   })
 })
 

@@ -109,6 +109,35 @@ export interface FleetVehicleRef {
   label: string
 }
 
+// Every figure here arrives computed, for the same reason daysLeft does: the browser clock
+// belongs to the user, and two operators must not disagree about how much is left to pay.
+export interface FleetVehicleLease {
+  id: string
+  leasing: FleetVehicleRef | null
+  nomorKontrak: string | null
+  cicilanPerBulan: number | null
+  tenorBulan: number | null
+  angsuranMulai: string | null
+  // What the operator typed, or null when they left it blank. The form prefills its input from
+  // this, never from angsuranTerbayar: prefilling from the computed figure would freeze a count
+  // that is supposed to keep rising on its own.
+  angsuranTerbayarOverride: number | null
+  angsuranTerbayar: number
+  sisaAngsuran: number
+  sisaKewajiban: number
+}
+
+export interface FleetLeasePayload {
+  leasingId: string
+  nomorKontrak: string
+  cicilanPerBulan: number
+  tenorBulan: number
+  angsuranMulai: string
+  // The one optional field (requirement §2): blank means the backend derives it from the start
+  // date.
+  angsuranTerbayar?: number | null
+}
+
 export interface FleetVehicle {
   id: string
   nopol: string
@@ -127,6 +156,7 @@ export interface FleetVehicle {
   pool: FleetVehicleRef | null
   status: FleetVehicleRef | null
   driver: FleetVehicleDriver | null
+  lease: FleetVehicleLease | null
   documents: FleetVehicleDocument[]
   worstSeverity: FleetSeverity
   minDaysLeft: number | null
@@ -169,6 +199,10 @@ export interface FleetVehiclePayload {
   poolId?: string | null
   statusId?: string | null
   driverId?: string | null
+  // Sent alongside the vehicle so the backend writes all three in one transaction. An explicit
+  // null on lease means "this unit is no longer financed"; absent means "leave it alone".
+  lease?: FleetLeasePayload | null
+  documents?: FleetVehicleDocumentPayload[]
 }
 
 export interface FleetVehicleDocumentPayload {
