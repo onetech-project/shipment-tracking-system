@@ -20,7 +20,7 @@ const DOC_TYPES = [docType('dt-stnk', 'stnk', 'STNK'), docType('dt-kir', 'kir', 
 const vehicle = (over: Partial<FleetVehicle> = {}): FleetVehicle =>
   ({
     id: 'v1',
-    nopol: 'B 9114 KYZ',
+    nopol: 'B9114KYZ',
     documents: [],
     worstSeverity: 'none',
     minDaysLeft: null,
@@ -49,13 +49,35 @@ describe('VehicleDocumentsDialog', () => {
   // gives the operator no way to add the one that is missing, which is the common case.
   it('shows a row for every configured document type', () => {
     setup()
-    expect(screen.getByLabelText(/STNK.*berlaku/i)).toBeInTheDocument()
-    expect(screen.getByLabelText(/KIR.*berlaku/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/masa berlaku STNK/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/masa berlaku KIR sampai/i)).toBeInTheDocument()
+  })
+
+  // Requirement #2: the same document is called the same thing in both dialogs. "Servis Berkala
+  // terbit" is not something an operator would say about a service record.
+  it('names the KIR dates for what they are', () => {
+    setup()
+    expect(screen.getByLabelText(/tanggal uji KIR/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/masa berlaku KIR sampai/i)).toBeInTheDocument()
+  })
+
+  it('names a service record last and next, not issued and expiring', () => {
+    setup({ docTypes: [docType('dt-servis', 'servis', 'Servis Berkala')] })
+    expect(screen.getByLabelText(/servis berkala terakhir/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/servis berkala berikutnya/i)).toBeInTheDocument()
+  })
+
+  // The fallback half of the map (spec §6.2): a document type an admin adds is not in DOC_LABELS,
+  // and must still read as a sentence rather than as a blank or a crash.
+  it('falls back to the type label for a document code it does not know', () => {
+    setup({ docTypes: [docType('dt-tera', 'sertifikat_tera', 'Sertifikat Tera')] })
+    expect(screen.getByLabelText(/sertifikat tera terbit/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/sertifikat tera berlaku sampai/i)).toBeInTheDocument()
   })
 
   it('names the vehicle it is editing', () => {
     setup()
-    expect(screen.getByText(/B 9114 KYZ/)).toBeInTheDocument()
+    expect(screen.getByText(/B9114KYZ/)).toBeInTheDocument()
   })
 
   it('prefills the rows from the existing documents', () => {
@@ -76,8 +98,8 @@ describe('VehicleDocumentsDialog', () => {
       }),
     })
     expect(screen.getByLabelText(/KIR.*nomor/i)).toHaveValue('JKT-1')
-    expect(screen.getByLabelText(/KIR.*terbit/i)).toHaveValue('2026-03-10')
-    expect(screen.getByLabelText(/KIR.*berlaku/i)).toHaveValue('2026-09-15')
+    expect(screen.getByLabelText(/tanggal uji KIR/i)).toHaveValue('2026-03-10')
+    expect(screen.getByLabelText(/masa berlaku KIR sampai/i)).toHaveValue('2026-09-15')
   })
 
   // The badge is the reason the operator opened this dialog; recomputing it in the browser is
@@ -109,10 +131,10 @@ describe('VehicleDocumentsDialog', () => {
   // retires anything absent, so omitting a filled row would silently delete that document.
   it('submits every type the operator filled in', async () => {
     const { onSubmit } = setup()
-    fireEvent.change(screen.getByLabelText(/STNK.*berlaku/i), {
+    fireEvent.change(screen.getByLabelText(/masa berlaku STNK/i), {
       target: { value: '2027-05-01' },
     })
-    fireEvent.change(screen.getByLabelText(/KIR.*berlaku/i), { target: { value: '2027-01-01' } })
+    fireEvent.change(screen.getByLabelText(/masa berlaku KIR sampai/i), { target: { value: '2027-01-01' } })
     fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
     await waitFor(() => expect(onSubmit).toHaveBeenCalled())
     const sent = onSubmit.mock.calls[0][0] as { docTypeId: string }[]
@@ -123,7 +145,7 @@ describe('VehicleDocumentsDialog', () => {
   // badge from 'none' into a permanent grey entry.
   it('leaves out rows the operator did not fill in', async () => {
     const { onSubmit } = setup()
-    fireEvent.change(screen.getByLabelText(/KIR.*berlaku/i), { target: { value: '2027-01-01' } })
+    fireEvent.change(screen.getByLabelText(/masa berlaku KIR sampai/i), { target: { value: '2027-01-01' } })
     fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
     await waitFor(() => expect(onSubmit).toHaveBeenCalled())
     expect(onSubmit.mock.calls[0][0]).toHaveLength(1)
@@ -155,7 +177,7 @@ describe('VehicleDocumentsDialog', () => {
 
   it('sends blank optional values as null', async () => {
     const { onSubmit } = setup()
-    fireEvent.change(screen.getByLabelText(/KIR.*berlaku/i), { target: { value: '2027-01-01' } })
+    fireEvent.change(screen.getByLabelText(/masa berlaku KIR sampai/i), { target: { value: '2027-01-01' } })
     fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
     await waitFor(() => expect(onSubmit).toHaveBeenCalled())
     expect(onSubmit.mock.calls[0][0][0].nomor).toBeNull()
@@ -433,8 +455,8 @@ describe('VehicleDocumentsDialog', () => {
       }),
     })
     fireEvent.change(screen.getByLabelText(/KIR.*nomor/i), { target: { value: '' } })
-    fireEvent.change(screen.getByLabelText(/KIR.*terbit/i), { target: { value: '' } })
-    fireEvent.change(screen.getByLabelText(/KIR.*berlaku/i), { target: { value: '' } })
+    fireEvent.change(screen.getByLabelText(/tanggal uji KIR/i), { target: { value: '' } })
+    fireEvent.change(screen.getByLabelText(/masa berlaku KIR sampai/i), { target: { value: '' } })
     fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
     await waitFor(() => expect(onSubmit).toHaveBeenCalledWith([]))
   })
