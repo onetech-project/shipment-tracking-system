@@ -15,10 +15,14 @@ const docType = (id: string, code: string, label: string, sortOrder: number): Fl
   isRequired: null,
 })
 
+// Deliberately declared out of sortOrder order. Pre-sorted, the column-order assertion below
+// passes on array order alone: dropping the comparator entirely leaves a stable sort returning
+// the same headers, so the one rule spec §7.1 pins — the admin's sortOrder decides the columns —
+// would go untested.
 const DOC_TYPES = [
+  docType('dt3', 'servis', 'Servis Berkala', 3),
   docType('dt1', 'kir', 'KIR', 1),
   docType('dt2', 'stnk', 'STNK', 2),
-  docType('dt3', 'servis', 'Servis Berkala', 3),
 ]
 
 const vehicle = (over: Partial<FleetVehicle> = {}): FleetVehicle => ({
@@ -373,8 +377,10 @@ describe('VehicleTable', () => {
   })
 
   // Requirement #4: a column per document type, its dates visible on the row rather than hidden
-  // behind one aggregate badge.
-  it('renders a column per active document type, in master-data order', () => {
+  // behind one aggregate badge. The expected headers are DOC_TYPES in ascending sortOrder — which
+  // is not the order the fixture declares them in — so this fails if the component takes the list
+  // as given instead of sorting it.
+  it('renders a column per active document type, in master-data sortOrder', () => {
     setup()
     const headers = Array.from(document.querySelectorAll('th')).map((th) => th.textContent)
     expect(headers).toEqual([
