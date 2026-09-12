@@ -24,9 +24,28 @@ export interface FleetVehicleDriverView {
   simSeverity: FleetSeverity
 }
 
-// berkasCount and activeContract are deliberately absent until Phase 3, when their tables
-// exist. The frontend wire type marks them optional, so switching them on later adds a field
-// rather than breaking the contract.
+// Every figure here is settled by the backend (spec §5.2). cicilanPerBulan is a number, not the
+// string TypeORM hands back from a numeric column, so the frontend never has to decide how to
+// parse money.
+export interface FleetVehicleLeaseView {
+  id: string
+  leasing: FleetMasterRef | null
+  nomorKontrak: string | null
+  cicilanPerBulan: number | null
+  tenorBulan: number | null
+  angsuranMulai: string | null
+  // What the operator typed, or null when they left it blank — reported next to the figure the
+  // backend worked out, because the edit form must be able to tell the two apart. Prefilling the
+  // input from angsuranTerbayar would turn a derived count into a fixed one on the next save,
+  // and the unit would stop counting up.
+  angsuranTerbayarOverride: number | null
+  angsuranTerbayar: number
+  sisaAngsuran: number
+  sisaKewajiban: number
+}
+
+// berkasCount is deliberately absent until Phase 3, when object storage exists. The frontend wire
+// type marks it optional, so switching it on later adds a field rather than breaking the contract.
 export interface FleetVehicleView {
   id: string
   nopol: string
@@ -45,6 +64,7 @@ export interface FleetVehicleView {
   pool: FleetMasterRef | null
   status: FleetMasterRef | null
   driver: FleetVehicleDriverView | null
+  lease: FleetVehicleLeaseView | null
   documents: FleetVehicleDocumentView[]
   worstSeverity: FleetSeverity
   minDaysLeft: number | null
