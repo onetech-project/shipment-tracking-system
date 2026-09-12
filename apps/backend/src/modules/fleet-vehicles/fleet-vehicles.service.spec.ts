@@ -23,7 +23,7 @@ const docRow = (over: Record<string, unknown> = {}) => ({
 
 const vehicleRow = (over: Record<string, unknown> = {}) => ({
   id: 'v1',
-  nopol: 'B 9114 KYZ',
+  nopol: 'B9114KYZ',
   merk: 'Mitsubishi',
   tipe: 'Canter',
   tahun: 2021,
@@ -317,7 +317,7 @@ describe('FleetVehiclesService', () => {
 
     it('stores the plate normalised', async () => {
       await service.create({ nopol: 'b  9114   kyz' })
-      expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({ nopol: 'B 9114 KYZ' }))
+      expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({ nopol: 'B9114KYZ' }))
     })
 
     it('rejects a blank plate', async () => {
@@ -328,18 +328,18 @@ describe('FleetVehiclesService', () => {
     // register ambiguous at exactly the moment it is consulted.
     it('refuses a plate an active vehicle already holds', async () => {
       repo.findOne.mockResolvedValue(vehicleRow({ id: 'other' }))
-      await expect(service.create({ nopol: 'B 9114 KYZ' })).rejects.toBeInstanceOf(
+      await expect(service.create({ nopol: 'B9114KYZ' })).rejects.toBeInstanceOf(
         ConflictException,
       )
     })
 
     it('checks the clash against live units only', async () => {
-      await service.create({ nopol: 'B 9114 KYZ' })
+      await service.create({ nopol: 'B9114KYZ' })
       const clashCall = repo.findOne.mock.calls.find(
         (c) => (c[0] as { where?: Record<string, unknown> })?.where?.nopol !== undefined,
       )
       expect((clashCall?.[0] as { where: Record<string, unknown> }).where).toMatchObject({
-        nopol: 'B 9114 KYZ',
+        nopol: 'B9114KYZ',
         isActive: true,
       })
     })
@@ -349,13 +349,13 @@ describe('FleetVehiclesService', () => {
     it('rejects a master id from the wrong category', async () => {
       masterRepo.findOne.mockResolvedValue(null)
       await expect(
-        service.create({ nopol: 'B 1 A', poolId: 'not-a-pool' }),
+        service.create({ nopol: 'B1A', poolId: 'not-a-pool' }),
       ).rejects.toBeInstanceOf(BadRequestException)
     })
 
     it('checks each master field against its own category', async () => {
       await service.create({
-        nopol: 'B 1 A',
+        nopol: 'B1A',
         jenisArmadaId: 'ja-1',
         kepemilikanId: 'kp-1',
         poolId: 'pl-1',
@@ -373,7 +373,7 @@ describe('FleetVehiclesService', () => {
     })
 
     it('collapses blank optional text to null', async () => {
-      await service.create({ nopol: 'B 1 A', merk: '   ', catatan: '' })
+      await service.create({ nopol: 'B1A', merk: '   ', catatan: '' })
       expect(repo.save).toHaveBeenCalledWith(
         expect.objectContaining({ merk: null, catatan: null }),
       )
@@ -383,14 +383,14 @@ describe('FleetVehiclesService', () => {
     // 409 keeps the two paths indistinguishable to the client rather than leaking a 500.
     it('translates a concurrent unique violation into a conflict', async () => {
       repo.save.mockRejectedValue({ code: '23505', constraint: 'uq_fleet_vehicles_nopol_active' })
-      await expect(service.create({ nopol: 'B 9114 KYZ' })).rejects.toBeInstanceOf(
+      await expect(service.create({ nopol: 'B9114KYZ' })).rejects.toBeInstanceOf(
         ConflictException,
       )
     })
 
     it('rethrows an unrelated database error untouched', async () => {
       repo.save.mockRejectedValue({ code: '23503', constraint: 'fk_fleet_vehicles_pool' })
-      await expect(service.create({ nopol: 'B 9114 KYZ' })).rejects.not.toBeInstanceOf(
+      await expect(service.create({ nopol: 'B9114KYZ' })).rejects.not.toBeInstanceOf(
         ConflictException,
       )
     })
@@ -401,7 +401,7 @@ describe('FleetVehiclesService', () => {
     it('rethrows a unique violation from a different constraint untouched', async () => {
       const err = { code: '23505', constraint: 'uq_fleet_vehicle_documents_current' }
       repo.save.mockRejectedValue(err)
-      await expect(service.create({ nopol: 'B 9114 KYZ' })).rejects.toBe(err)
+      await expect(service.create({ nopol: 'B9114KYZ' })).rejects.toBe(err)
     })
   })
 
@@ -433,7 +433,7 @@ describe('FleetVehiclesService', () => {
     // Re-checking on every update would reject a vehicle for colliding with itself. Only a
     // changed plate needs the probe.
     it('does not re-check the plate when it is unchanged', async () => {
-      repo.findOne.mockResolvedValue(vehicleRow({ nopol: 'B 9114 KYZ' }))
+      repo.findOne.mockResolvedValue(vehicleRow({ nopol: 'B9114KYZ' }))
       await service.update('v1', { nopol: 'b 9114 kyz' })
       const clashCall = repo.findOne.mock.calls.find(
         (c) => (c[0] as { where?: Record<string, unknown> })?.where?.nopol !== undefined,
@@ -443,19 +443,19 @@ describe('FleetVehiclesService', () => {
 
     it('checks a changed plate against other live units', async () => {
       repo.findOne
-        .mockResolvedValueOnce(vehicleRow({ nopol: 'B 9114 KYZ' }))
-        .mockResolvedValueOnce(vehicleRow({ id: 'other', nopol: 'B 2 XX' }))
-      await expect(service.update('v1', { nopol: 'B 2 XX' })).rejects.toBeInstanceOf(
+        .mockResolvedValueOnce(vehicleRow({ nopol: 'B9114KYZ' }))
+        .mockResolvedValueOnce(vehicleRow({ id: 'other', nopol: 'B2XX' }))
+      await expect(service.update('v1', { nopol: 'B2XX' })).rejects.toBeInstanceOf(
         ConflictException,
       )
     })
 
     it('normalises a changed plate before storing it', async () => {
       repo.findOne.mockImplementation(async (opts: { where?: Record<string, unknown> }) =>
-        opts?.where?.nopol ? null : vehicleRow({ nopol: 'B 9114 KYZ' }),
+        opts?.where?.nopol ? null : vehicleRow({ nopol: 'B9114KYZ' }),
       )
       await service.update('v1', { nopol: 'b   2   xx' })
-      expect(repo.update).toHaveBeenCalledWith('v1', { nopol: 'B 2 XX' })
+      expect(repo.update).toHaveBeenCalledWith('v1', { nopol: 'B2XX' })
     })
   })
 
