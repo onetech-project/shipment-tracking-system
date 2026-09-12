@@ -9,7 +9,7 @@ export class FleetLeaseContracts20260912000002 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       CREATE TABLE "fleet_lease_contracts" (
-        "id" uuid NOT NULL DEFAULT uuid_generate_v4(),
+        "id" uuid NOT NULL DEFAULT gen_random_uuid(),
         "vehicle_id" uuid NOT NULL,
         "leasing_id" uuid,
         "nomor_kontrak" character varying(60),
