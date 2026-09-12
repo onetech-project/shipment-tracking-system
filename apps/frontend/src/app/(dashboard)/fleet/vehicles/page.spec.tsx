@@ -60,21 +60,68 @@ jest.mock('@/shared/hooks/use-permissions', () => ({
 const vehicle = (over: Partial<FleetVehicle> = {}): FleetVehicle =>
   ({
     id: 'v1',
-    nopol: 'B 9114 KYZ',
+    nopol: 'B9114KYZ',
     merk: 'Mitsubishi',
     tipe: 'Canter',
     tahun: 2021,
-    jenisArmada: null,
-    kepemilikan: null,
-    pool: null,
+    kapasitas: '8 ton',
+    noRangka: 'MHM1234',
+    noMesin: 'EN1234',
+    noBpkb: 'BP1234',
+    pemilikUnit: null,
+    odometer: null,
+    catatan: null,
+    jenisArmada: { id: 'jenis_armada-1', label: 'jenis_armada satu' },
+    kepemilikan: { id: 'kepemilikan-1', label: 'kepemilikan satu' },
+    pool: { id: 'pool-1', label: 'pool satu' },
     status: null,
     driver: null,
+    // The edit dialog seeds its lease fields from here, and Task 13 makes every one of them
+    // except angsuranTerbayar required — an edit over a lease-less fixture could not be saved.
+    lease: {
+      id: 'lc1',
+      leasing: { id: 'leasing-1', label: 'leasing satu' },
+      nomorKontrak: 'MTF-1',
+      cicilanPerBulan: 8750000,
+      tenorBulan: 36,
+      angsuranMulai: '2026-01-10',
+      angsuranTerbayarOverride: null,
+      angsuranTerbayar: 8,
+      sisaAngsuran: 28,
+      sisaKewajiban: 245000000,
+    },
     documents: [],
     worstSeverity: 'none',
     minDaysLeft: null,
     isActive: true,
     ...over,
   }) as FleetVehicle
+
+// Task 13 gates Simpan behind sixteen required fields, so a create test can no longer type one
+// plate and submit. Filled through the labels rather than by reaching into state, because what
+// is being proven is that the dialog's own fields reach the mutation.
+const fillRequired = (nopol = 'B1A') => {
+  const dialog = within(screen.getByRole('dialog'))
+  const type = (label: RegExp | string, value: string) =>
+    fireEvent.change(dialog.getByLabelText(label), { target: { value } })
+  type(/nomor polisi/i, nopol)
+  type(/^merk/i, 'Mitsubishi')
+  type(/^tipe/i, 'Canter')
+  type(/jenis armada/i, 'jenis_armada-1')
+  type(/tahun pembuatan/i, '2021')
+  type(/kapasitas/i, '8 ton')
+  type(/nomor rangka/i, 'MHM1234')
+  type(/nomor mesin/i, 'EN1234')
+  type(/nomor bpkb/i, 'BP1234')
+  type(/status kepemilikan unit/i, 'kepemilikan-1')
+  type(/perusahaan leasing/i, 'leasing-1')
+  type(/nomor kontrak/i, 'MTF-1')
+  type(/cicilan/i, '8750000')
+  type(/total angsuran/i, '36')
+  type(/tanggal angsuran pertama/i, '2026-01-10')
+  type(/pool/i, 'pool-1')
+  // The seeded jenis_dokumen row carries isRequired: null, so no document row blocks the save.
+}
 
 beforeEach(() => {
   jest.clearAllMocks()
@@ -96,7 +143,7 @@ beforeEach(() => {
 describe('FleetVehiclesPage', () => {
   it('renders the vehicle rows', () => {
     render(<FleetVehiclesPage />)
-    expect(screen.getByText('B 9114 KYZ')).toBeInTheDocument()
+    expect(screen.getByText('B9114KYZ')).toBeInTheDocument()
   })
 
   it('shows the page title', () => {
@@ -124,29 +171,58 @@ describe('FleetVehiclesPage', () => {
   it('hides the row actions without the matching permissions', () => {
     permissions = ['read.fleet_vehicle']
     render(<FleetVehiclesPage />)
-    expect(screen.queryByRole('button', { name: 'Ubah' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Dokumen' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Arsipkan' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /aksi/i })).not.toBeInTheDocument()
   })
 
   it('saves a new vehicle through the create mutation', async () => {
     render(<FleetVehiclesPage />)
     fireEvent.click(screen.getByRole('button', { name: /tambah armada/i }))
-    fireEvent.change(screen.getByLabelText(/nomor polisi/i), { target: { value: 'B 1 A' } })
+    fillRequired('B 1 A')
     fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
     await waitFor(() =>
-      expect(mutations.create).toHaveBeenCalledWith(expect.objectContaining({ nopol: 'B 1 A' })),
+      // Normalised on the way in (Task 11), so what reaches the mutation is the tight form.
+      expect(mutations.create).toHaveBeenCalledWith(expect.objectContaining({ nopol: 'B1A' })),
     )
   })
 
+  // The combined payload is the point of Task 8: one mutation carries the unit, its lease and
+  // its documents, so a half-saved unit is not a state the operator can reach.
+  it('sends the lease contract in the same create payload', async () => {
+    render(<FleetVehiclesPage />)
+    fireEvent.click(screen.getByRole('button', { name: /tambah armada/i }))
+    fillRequired()
+    fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
+    await waitFor(() => expect(mutations.create).toHaveBeenCalled())
+    expect(mutations.create.mock.calls[0][0].lease).toEqual(
+      expect.objectContaining({
+        leasingId: 'leasing-1',
+        nomorKontrak: 'MTF-1',
+        cicilanPerBulan: 8750000,
+        tenorBulan: 36,
+        angsuranMulai: '2026-01-10',
+      }),
+    )
+  })
+
+  // The row actions live in a ⋮ menu since Task 17, so every row-action test opens it first.
+  // Radix opens on pointerdown guarded by button === 0, so fireEvent.click leaves it shut.
+  const openRowMenu = (index = 0) =>
+    fireEvent(
+      screen.getAllByRole('button', { name: /aksi/i })[index],
+      new MouseEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 }),
+    )
+
+  const clickRowAction = (name: string, index = 0) => {
+    openRowMenu(index)
+    fireEvent.click(screen.getByRole('menuitem', { name }))
+  }
+
   it('saves an edit through the update mutation with the row id', async () => {
     render(<FleetVehiclesPage />)
-    fireEvent.click(screen.getByRole('button', { name: 'Ubah' }))
+    clickRowAction('Ubah')
     fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
     await waitFor(() =>
-      expect(mutations.update).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'v1' }),
-      ),
+      expect(mutations.update).toHaveBeenCalledWith(expect.objectContaining({ id: 'v1' })),
     )
   })
 
@@ -156,7 +232,7 @@ describe('FleetVehiclesPage', () => {
   it('seeds the edit dialog from the row that was opened, not the previous one', () => {
     listResult = {
       data: {
-        rows: [vehicle(), vehicle({ id: 'v2', nopol: 'D 4567 XY' })],
+        rows: [vehicle(), vehicle({ id: 'v2', nopol: 'D4567XY' })],
         total: 2,
         page: 1,
         pageSize: 25,
@@ -164,16 +240,16 @@ describe('FleetVehiclesPage', () => {
       ...ok,
     }
     render(<FleetVehiclesPage />)
-    fireEvent.click(screen.getAllByRole('button', { name: 'Ubah' })[0])
-    expect(screen.getByLabelText(/nomor polisi/i)).toHaveValue('B 9114 KYZ')
+    clickRowAction('Ubah', 0)
+    expect(screen.getByLabelText(/nomor polisi/i)).toHaveValue('B9114KYZ')
     fireEvent.click(screen.getByRole('button', { name: 'Batal' }))
-    fireEvent.click(screen.getAllByRole('button', { name: 'Ubah' })[1])
-    expect(screen.getByLabelText(/nomor polisi/i)).toHaveValue('D 4567 XY')
+    clickRowAction('Ubah', 1)
+    expect(screen.getByLabelText(/nomor polisi/i)).toHaveValue('D4567XY')
   })
 
   it('saves documents through the replace mutation', async () => {
     render(<FleetVehiclesPage />)
-    fireEvent.click(screen.getByRole('button', { name: 'Dokumen' }))
+    clickRowAction('Dokumen')
     fireEvent.click(screen.getByRole('button', { name: /simpan/i }))
     await waitFor(() =>
       expect(mutations.documents).toHaveBeenCalledWith(
@@ -199,7 +275,7 @@ describe('FleetVehiclesPage', () => {
     }))
     try {
       render(<FleetVehiclesPage />)
-      fireEvent.click(screen.getByRole('button', { name: 'Dokumen' }))
+      clickRowAction('Dokumen')
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
       // The page renders nothing at all in this state, so there is no live Simpan to click.
       expect(screen.queryByRole('button', { name: /simpan/i })).not.toBeInTheDocument()
@@ -211,7 +287,7 @@ describe('FleetVehiclesPage', () => {
   // The row button and the dialog's confirm button are both called "Arsipkan", so the confirm
   // click is scoped to the dialog — the same shape the drivers page spec uses.
   const openArchiveDialog = () => {
-    fireEvent.click(screen.getByRole('button', { name: 'Arsipkan' }))
+    clickRowAction('Arsipkan')
     return within(screen.getByRole('dialog'))
   }
 
@@ -228,7 +304,7 @@ describe('FleetVehiclesPage', () => {
   it('names the vehicle in the confirmation', () => {
     render(<FleetVehiclesPage />)
     const dialog = openArchiveDialog()
-    expect(dialog.getByText(/B 9114 KYZ/)).toBeInTheDocument()
+    expect(dialog.getByText(/B9114KYZ/)).toBeInTheDocument()
   })
 
   // A failed archive must say why. The backend's 409 names the reason and the ConfirmDialog does
@@ -249,7 +325,7 @@ describe('FleetVehiclesPage', () => {
       ...ok,
     }
     render(<FleetVehiclesPage />)
-    fireEvent.click(screen.getByRole('button', { name: 'Pulihkan' }))
+    clickRowAction('Pulihkan')
     await waitFor(() => expect(mutations.restore).toHaveBeenCalledWith('v1'))
   })
 
@@ -266,7 +342,7 @@ describe('FleetVehiclesPage', () => {
       ...ok,
     }
     render(<FleetVehiclesPage />)
-    fireEvent.click(screen.getByRole('button', { name: 'Pulihkan' }))
+    clickRowAction('Pulihkan')
     expect(await screen.findByText(/sudah dipakai unit lain/i)).toBeInTheDocument()
   })
 
@@ -413,13 +489,14 @@ describe('FleetVehiclesPage', () => {
     // Scoped to the dialog: the filter bar behind it carries its own Kepemilikan, Pool and
     // Status unit selects fed from the same three queries.
     const dialog = within(screen.getByRole('dialog'))
-    const optionsOf = (label: string) =>
+    const optionsOf = (label: RegExp | string) =>
       Array.from(dialog.getByLabelText(label).querySelectorAll('option')).map((o) => o.textContent)
-    expect(optionsOf('Jenis armada')).toEqual(['— pilih —', 'jenis_armada satu'])
-    expect(optionsOf('Kepemilikan')).toEqual(['— pilih —', 'kepemilikan satu'])
-    expect(optionsOf('Pool')).toEqual(['— pilih —', 'pool satu'])
-    expect(optionsOf('Status unit')).toEqual(['— pilih —', 'status_kendaraan satu'])
-    expect(optionsOf('Sopir')).toEqual(['— belum ditugaskan —', 'Ahmad Fauzi'])
+    expect(optionsOf(/jenis armada/i)).toEqual(['— pilih —', 'jenis_armada satu'])
+    expect(optionsOf(/status kepemilikan unit/i)).toEqual(['— pilih —', 'kepemilikan satu'])
+    expect(optionsOf(/pool/i)).toEqual(['— pilih —', 'pool satu'])
+    expect(optionsOf(/status kendaraan/i)).toEqual(['— pilih —', 'status_kendaraan satu'])
+    expect(optionsOf(/perusahaan leasing/i)).toEqual(['— pilih —', 'leasing satu'])
+    expect(optionsOf(/sopir penanggung jawab/i)).toEqual(['— pilih —', 'Ahmad Fauzi'])
   })
 
   // The dialog test above scopes every query to role="dialog" and so cannot see the filter bar,
@@ -450,5 +527,45 @@ describe('FleetVehiclesPage', () => {
       sort: 'nopol',
       kepemilikanId: 'kepemilikan-1',
     })
+  })
+
+  // The leasing list is the sixth master-data query and the only new one. Without it the
+  // Perusahaan leasing select renders empty and a required field has no reachable value.
+  it('queries the leasing master data under the same permission', () => {
+    // beforeEach grants the four vehicle permissions but not this one, so it is named here the
+    // same way 'queries master data with read.fleet_master_data' names it.
+    permissions = ['read.fleet_vehicle', 'read.fleet_master_data']
+    render(<FleetVehiclesPage />)
+    expect(mockMasterData).toHaveBeenCalledWith('leasing', { enabled: true })
+  })
+
+  it('does not query the leasing list without read.fleet_master_data', () => {
+    permissions = ['read.fleet_vehicle']
+    render(<FleetVehiclesPage />)
+    expect(mockMasterData).toHaveBeenCalledWith('leasing', { enabled: false })
+  })
+
+  // jenis_dokumen already had a query, feeding the standalone documents dialog. What is new is
+  // that the form dialog needs it too: sections 4-6 are built from it, so a form that does not
+  // receive it renders three empty sections and silently drops every document on save.
+  it('feeds the leasing and document lists to the form dialog', () => {
+    render(<FleetVehiclesPage />)
+    fireEvent.click(screen.getByRole('button', { name: /tambah armada/i }))
+    const dialog = within(screen.getByRole('dialog'))
+    const optionsOf = (label: RegExp | string) =>
+      Array.from(dialog.getByLabelText(label).querySelectorAll('option')).map((o) => o.textContent)
+    expect(optionsOf(/perusahaan leasing/i)).toEqual(['— pilih —', 'leasing satu'])
+    // The document type's own label proves jenisDokumen reached the dialog: its row is rendered
+    // from the master row, not from anything the vehicle carries.
+    expect(dialog.getByLabelText(/jenis_dokumen satu.*berlaku/i)).toBeInTheDocument()
+  })
+
+  // The table's document columns are built from the same list. Passed nothing it falls back to
+  // its fixed columns and the operator loses every expiry date off the list — the one thing
+  // requirement #4 asked for.
+  it('feeds the document types to the table columns', () => {
+    render(<FleetVehiclesPage />)
+    const headers = Array.from(document.querySelectorAll('th')).map((th) => th.textContent)
+    expect(headers).toContain('jenis_dokumen satu')
   })
 })
