@@ -5,9 +5,10 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { DataSource, In, Not, Repository } from 'typeorm'
+import { DataSource, EntityManager, In, IsNull, Not, Repository } from 'typeorm'
 import { FleetVehicleEntity } from './entities/fleet-vehicle.entity'
 import { FleetVehicleDocumentEntity } from './entities/fleet-vehicle-document.entity'
+import { FleetLeaseContractEntity } from './entities/fleet-lease-contract.entity'
 import { FleetMasterDataEntity } from '../fleet-master-data/entities/fleet-master-data.entity'
 import { FleetMasterCategory } from '../fleet-master-data/fleet-master-data.constants'
 import {
@@ -15,12 +16,15 @@ import {
   FleetSeverity,
   FleetVehicleSort,
   MAX_PAGE_SIZE,
+  SEWA_LEPAS_KUNCI_CODE,
 } from './fleet-vehicles.constants'
 import { normalizeNopol } from './fleet-nopol'
+import { computeLease } from './fleet-lease'
 import { daysUntil, severityFor, todayISO, worstSeverity } from './fleet-severity'
 import {
   FleetMasterRef,
   FleetVehicleDocumentView,
+  FleetVehicleLeaseView,
   FleetVehicleListResult,
   FleetVehicleView,
 } from './fleet-vehicles.types'
@@ -54,6 +58,10 @@ export interface CreateInput {
   poolId?: string | null
   statusId?: string | null
   driverId?: string | null
+  // Present means "make this the open contract". Explicit null means "this unit is no longer
+  // financed" — the distinction update() relies on, which is why this is not just optional.
+  lease?: LeaseInput | null
+  documents?: DocumentInput[]
 }
 
 export type UpdateInput = Partial<CreateInput>
@@ -63,6 +71,15 @@ export interface DocumentInput {
   nomor?: string | null
   issuedAt?: string | null
   expiresAt?: string | null
+}
+
+export interface LeaseInput {
+  leasingId: string
+  nomorKontrak: string
+  cicilanPerBulan: number
+  tenorBulan: number
+  angsuranMulai: string
+  angsuranTerbayar?: number | null
 }
 
 const UNIQUE_VIOLATION = '23505'
@@ -87,6 +104,8 @@ export class FleetVehiclesService {
     private readonly docRepo: Repository<FleetVehicleDocumentEntity>,
     @InjectRepository(FleetMasterDataEntity)
     private readonly masterRepo: Repository<FleetMasterDataEntity>,
+    @InjectRepository(FleetLeaseContractEntity)
+    private readonly leaseRepo: Repository<FleetLeaseContractEntity>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -153,16 +172,21 @@ export class FleetVehiclesService {
     return view
   }
 
+  // Vehicle, contract and documents go in together or not at all. Splitting them would let a
+  // unit land in the register with no papers whenever the second write fails, leaving the
+  // operator to guess which half to redo.
   async create(dto: CreateInput): Promise<FleetVehicleView> {
     const nopol = normalizeNopol(dto.nopol)
     if (!nopol) throw new BadRequestException('nopol must not be blank')
 
     await this.assertMasterRefs(dto)
+    await this.assertOwnerNamedWhenRented(dto.kepemilikanId, dto.pemilikUnit)
+    await this.assertDocumentPayload(dto.documents)
     await this.assertNopolFree(nopol)
 
     try {
-      const saved = await this.repo.save(
-        this.repo.create({
+      const id = await this.dataSource.transaction(async (manager) => {
+        const saved = (await manager.save(FleetVehicleEntity, {
           nopol,
           merk: this.blankToNull(dto.merk),
           tipe: this.blankToNull(dto.tipe),
@@ -179,9 +203,13 @@ export class FleetVehiclesService {
           poolId: dto.poolId ?? null,
           statusId: dto.statusId ?? null,
           driverId: dto.driverId ?? null,
-        }),
-      )
-      return this.findOne(saved.id)
+        })) as { id: string }
+
+        if (dto.lease) await this.openContract(manager, saved.id, dto.lease)
+        if (dto.documents) await this.writeDocuments(manager, saved.id, dto.documents)
+        return saved.id
+      })
+      return this.findOne(id)
     } catch (err: unknown) {
       this.throwIfNopolViolation(err, nopol)
       throw err
@@ -193,6 +221,15 @@ export class FleetVehiclesService {
     if (!existing) throw new NotFoundException('Vehicle not found')
 
     await this.assertMasterRefs(dto)
+
+    // The rented-unit rule is checked against whatever the row will hold after this patch, not
+    // against the patch alone: changing only kepemilikan to sewa must still demand an owner, and
+    // clearing only pemilikUnit on an already-rented unit must be refused.
+    await this.assertOwnerNamedWhenRented(
+      dto.kepemilikanId !== undefined ? dto.kepemilikanId : existing.kepemilikanId,
+      dto.pemilikUnit !== undefined ? dto.pemilikUnit : existing.pemilikUnit,
+    )
+    await this.assertDocumentPayload(dto.documents)
 
     // Built key by key rather than spread: an absent field must leave the column alone while an
     // explicit null clears it, and spreading collapses that distinction.
@@ -219,9 +256,34 @@ export class FleetVehiclesService {
     if (dto.statusId !== undefined) patch.statusId = dto.statusId
     if (dto.driverId !== undefined) patch.driverId = dto.driverId
 
-    if (Object.keys(patch).length > 0) {
+    const touchesLease = dto.lease !== undefined
+    const touchesDocs = dto.documents !== undefined
+
+    if (Object.keys(patch).length > 0 || touchesLease || touchesDocs) {
       try {
-        await this.repo.update(id, patch)
+        await this.dataSource.transaction(async (manager) => {
+          if (Object.keys(patch).length > 0) {
+            await manager.update(FleetVehicleEntity, id, patch)
+          }
+          if (touchesLease) {
+            // Closed, never overwritten: a refinanced unit keeps what it used to pay. null means
+            // the unit is no longer financed, so the old contract closes with no replacement.
+            const open = await manager.findOne(FleetLeaseContractEntity, {
+              where: { vehicleId: id, closedAt: IsNull() },
+            })
+            // The form posts the lease block on every save, so "the key is present" is not the
+            // same as "the operator changed the financing". Closing and reopening an identical
+            // contract would stack a closed row on every odometer edit and bury the credit
+            // history the closing mechanism exists to keep.
+            if (!this.sameContract(open, dto.lease ?? null)) {
+              if (open) {
+                await manager.update(FleetLeaseContractEntity, open.id, { closedAt: todayISO() })
+              }
+              if (dto.lease) await this.openContract(manager, id, dto.lease)
+            }
+          }
+          if (touchesDocs) await this.writeDocuments(manager, id, dto.documents ?? [])
+        })
       } catch (err: unknown) {
         this.throwIfNopolViolation(err, String(patch.nopol ?? existing.nopol))
         throw err
@@ -269,14 +331,106 @@ export class FleetVehiclesService {
     await this.repo.delete(id)
   }
 
-  // The whole document set arrives at once because that is the shape of the form. A type present
-  // in the payload with an unchanged expiry keeps its row; a changed expiry supersedes the old
-  // row rather than overwriting it, which is what preserves the renewal history the prototype
-  // threw away. A type absent from the payload is retired.
+  // The whole document set replaces the old one, because that is the shape of the form. Kept
+  // alongside the combined endpoint for quick renewals that do not need the full form open.
   async replaceDocuments(id: string, docs: DocumentInput[]): Promise<FleetVehicleView> {
     const existing = await this.repo.findOne({ where: { id } })
     if (!existing) throw new NotFoundException('Vehicle not found')
 
+    await this.assertDocumentPayload(docs)
+    await this.dataSource.transaction((manager) => this.writeDocuments(manager, id, docs))
+    return this.findOne(id)
+  }
+
+  // A type present with an unchanged expiry keeps its row; a changed expiry supersedes the old
+  // row rather than overwriting it, which is what preserves the renewal history the prototype
+  // threw away. Everything is retired first, then the submitted set is inserted fresh: in that
+  // order, inside one transaction, uq_fleet_vehicle_documents_current holds at commit time
+  // without having to diff old against new.
+  private async writeDocuments(
+    manager: EntityManager,
+    vehicleId: string,
+    docs: DocumentInput[],
+  ): Promise<void> {
+    await manager.update(
+      FleetVehicleDocumentEntity,
+      { vehicleId, isCurrent: true },
+      { isCurrent: false },
+    )
+    for (const doc of docs) {
+      await manager.insert(FleetVehicleDocumentEntity, {
+        vehicleId,
+        docTypeId: doc.docTypeId,
+        nomor: this.blankToNull(doc.nomor),
+        issuedAt: doc.issuedAt || null,
+        expiresAt: doc.expiresAt || null,
+        isCurrent: true,
+      })
+    }
+  }
+
+  private async openContract(
+    manager: EntityManager,
+    vehicleId: string,
+    lease: LeaseInput,
+  ): Promise<void> {
+    await manager.save(FleetLeaseContractEntity, {
+      vehicleId,
+      leasingId: lease.leasingId,
+      nomorKontrak: this.blankToNull(lease.nomorKontrak),
+      cicilanPerBulan: lease.cicilanPerBulan == null ? null : String(lease.cicilanPerBulan),
+      tenorBulan: lease.tenorBulan ?? null,
+      angsuranMulai: lease.angsuranMulai || null,
+      // Blank means "derive it from the start date" (spec §5.2), so an absent value must reach
+      // the column as null rather than as 0 — 0 is a real answer meaning nothing has been paid.
+      angsuranTerbayarOverride: lease.angsuranTerbayar ?? null,
+      closedAt: null,
+    })
+  }
+
+  // Whether the incoming lease block describes the contract already open on this unit. The two
+  // sides arrive in different shapes — the DTO carries JSON numbers and strings, while pg hands
+  // numeric back as a string and date back as either a string or a Date depending on the driver
+  // — so each field is normalised before it is compared. A raw === would report "different"
+  // every time and close a contract on every save.
+  private sameContract(open: FleetLeaseContractEntity | null, lease: LeaseInput | null): boolean {
+    if (!open || !lease) return !open && !lease
+    return (
+      (open.leasingId ?? null) === (lease.leasingId ?? null) &&
+      this.blankToNull(open.nomorKontrak) === this.blankToNull(lease.nomorKontrak) &&
+      this.sameAmount(open.cicilanPerBulan, lease.cicilanPerBulan) &&
+      (open.tenorBulan ?? null) === (lease.tenorBulan ?? null) &&
+      this.sameDate(open.angsuranMulai, lease.angsuranMulai) &&
+      (open.angsuranTerbayarOverride ?? null) === (lease.angsuranTerbayar ?? null)
+    )
+  }
+
+  // numeric(14,2) reads back as '8750000.00' but is typed as 8750000, so the two are compared as
+  // numbers. String equality here would treat every unchanged instalment as a change.
+  private sameAmount(stored: string | null, incoming: number | null | undefined): boolean {
+    if (stored == null || incoming == null) return stored == null && incoming == null
+    return Number(stored) === Number(incoming)
+  }
+
+  // A date column can surface as 'YYYY-MM-DD' or as a Date, depending on the driver's parser
+  // settings, and the DTO always sends an ISO string. Both are reduced to the calendar day.
+  private sameDate(stored: string | Date | null, incoming: string | null | undefined): boolean {
+    const left = this.toDateISO(stored)
+    const right = this.toDateISO(incoming ?? null)
+    return left === right
+  }
+
+  private toDateISO(v: string | Date | null): string | null {
+    if (v == null) return null
+    if (v instanceof Date) return v.toISOString().slice(0, 10)
+    const trimmed = v.trim()
+    return trimmed === '' ? null : trimmed.slice(0, 10)
+  }
+
+  // Duplicate types and unknown types are both rejected before any write starts, so a bad payload
+  // never gets as far as a half-applied transaction.
+  private async assertDocumentPayload(docs?: DocumentInput[]): Promise<void> {
+    if (!docs) return
     const seen = new Set<string>()
     for (const doc of docs) {
       if (seen.has(doc.docTypeId)) {
@@ -285,29 +439,70 @@ export class FleetVehiclesService {
       seen.add(doc.docTypeId)
     }
     await this.assertDocTypes([...seen])
+    await this.assertRequiredDocuments(docs)
+  }
 
-    await this.dataSource.transaction(async (manager) => {
-      // Everything is retired first, then the submitted set is inserted fresh. Doing it in this
-      // order inside one transaction keeps uq_fleet_vehicle_documents_current satisfied at
-      // commit time without needing to diff old against new.
-      await manager.update(
-        FleetVehicleDocumentEntity,
-        { vehicleId: id, isCurrent: true },
-        { isCurrent: false },
-      )
-      for (const doc of docs) {
-        await manager.insert(FleetVehicleDocumentEntity, {
-          vehicleId: id,
-          docTypeId: doc.docTypeId,
-          nomor: this.blankToNull(doc.nomor),
-          issuedAt: doc.issuedAt || null,
-          expiresAt: doc.expiresAt || null,
-          isCurrent: true,
-        })
-      }
+  // Spec §5.1: the types master data marks is_required must arrive with an expiry date, because
+  // the expiry is what every reminder and every badge is computed from — a row with a number and
+  // no date is invisible to all of them. The flag is read from master data rather than hardcoded
+  // so an admin can change the policy from the Master Data screen. is_required is nullable and a
+  // type an admin adds is born NULL, so only an explicit TRUE demands a date.
+  private async assertRequiredDocuments(docs: DocumentInput[]): Promise<void> {
+    const required = await this.masterRepo.find({
+      where: { category: 'jenis_dokumen', isRequired: true },
     })
+    if (required.length === 0) return
 
-    return this.findOne(id)
+    const datedTypes = new Set(
+      docs.filter((d) => this.blankToNull(d.expiresAt)).map((d) => d.docTypeId),
+    )
+    const missing = required.filter((row) => !datedTypes.has(row.id))
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `Missing expiry date for required document type(s): ${missing
+          .map((row) => row.label || row.code)
+          .join(', ')}`,
+      )
+    }
+  }
+
+  // Requirement §2: a rented unit belongs to someone outside the company, and a register that
+  // does not name them cannot answer who the truck goes back to. Checked here rather than in the
+  // DTO because it needs the kepemilikan row's code, and a DTO has no repository.
+  private async assertOwnerNamedWhenRented(
+    kepemilikanId?: string | null,
+    pemilikUnit?: string | null,
+  ): Promise<void> {
+    if (!kepemilikanId) return
+    if (this.blankToNull(pemilikUnit)) return
+    const row = await this.masterRepo.findOne({
+      where: { id: kepemilikanId, category: 'kepemilikan' },
+    })
+    if (row?.code === SEWA_LEPAS_KUNCI_CODE) {
+      throw new BadRequestException('pemilikUnit is required for a sewa lepas kunci vehicle')
+    }
+  }
+
+  private toLeaseView(row: FleetLeaseContractEntity | null): FleetVehicleLeaseView | null {
+    if (!row) return null
+    // pg hands numeric back as a string. Parsed once here so no consumer has to decide how.
+    const cicilan = row.cicilanPerBulan == null ? null : Number(row.cicilanPerBulan)
+    const totals = computeLease({
+      cicilanPerBulan: cicilan,
+      tenorBulan: row.tenorBulan,
+      angsuranMulai: row.angsuranMulai,
+      angsuranTerbayarOverride: row.angsuranTerbayarOverride,
+    })
+    return {
+      id: row.id,
+      leasing: this.toRef(row.leasing),
+      nomorKontrak: row.nomorKontrak,
+      cicilanPerBulan: cicilan,
+      tenorBulan: row.tenorBulan,
+      angsuranMulai: row.angsuranMulai,
+      angsuranTerbayarOverride: row.angsuranTerbayarOverride,
+      ...totals,
+    }
   }
 
   private applySort(
@@ -366,6 +561,13 @@ export class FleetVehiclesService {
       docsByVehicle.set(doc.vehicleId, list)
     }
 
+    // Only the open contract. Closed ones are history and have no figures to report.
+    const leases = await this.leaseRepo.find({
+      where: { vehicleId: In(ids), closedAt: IsNull() },
+      relations: { leasing: true },
+    })
+    const leaseByVehicle = new Map(leases.map((l) => [l.vehicleId, l]))
+
     // One `today` for the whole page so two rows on the same response can never be measured
     // against different days, which is possible if the request straddles midnight.
     const today = todayISO()
@@ -375,13 +577,14 @@ export class FleetVehiclesService {
     return ids
       .map((id) => byId.get(id))
       .filter((e): e is FleetVehicleEntity => e !== undefined)
-      .map((e) => this.toView(e, docsByVehicle.get(e.id) ?? [], today))
+      .map((e) => this.toView(e, docsByVehicle.get(e.id) ?? [], today, leaseByVehicle.get(e.id) ?? null))
   }
 
   private toView(
     e: FleetVehicleEntity,
     docs: FleetVehicleDocumentEntity[],
     today: string,
+    lease: FleetLeaseContractEntity | null,
   ): FleetVehicleView {
     const documents: FleetVehicleDocumentView[] = docs.map((d) => {
       const daysLeft = daysUntil(d.expiresAt, today)
@@ -433,6 +636,7 @@ export class FleetVehiclesService {
       pool: this.toRef(e.pool),
       status: this.toRef(e.status),
       driver,
+      lease: this.toLeaseView(lease),
       documents,
       worstSeverity: worstSeverity(documents.map((d) => d.severity)),
       minDaysLeft: dated.length > 0 ? Math.min(...dated.map((d) => d.daysLeft as number)) : null,
