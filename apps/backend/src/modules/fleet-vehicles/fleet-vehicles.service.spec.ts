@@ -154,7 +154,6 @@ describe('FleetVehiclesService', () => {
     it('searches plate, make, type, chassis, engine and driver name', async () => {
       await service.findAll({ q: 'canter' })
       const clause = andWhereCall('ILIKE')
-      expect(clause?.[1]).toEqual({ q: '%canter%' })
       const sql = String(clause?.[0])
       expect(sql).toContain('v.nopol')
       expect(sql).toContain('v.merk')
@@ -162,6 +161,26 @@ describe('FleetVehiclesService', () => {
       expect(sql).toContain('v.noRangka')
       expect(sql).toContain('v.noMesin')
       expect(sql).toContain('dr.nama')
+    })
+
+    // Plates are stored closed-up but operators type them spaced, the way they read off the
+    // vehicle. Comparing the stripped column against the stripped term is what keeps "B 9114"
+    // finding B9114KYZ; without it the search box silently returns nothing for the one format
+    // every operator actually types.
+    it('matches the plate with separators stripped from both sides', async () => {
+      await service.findAll({ q: 'b 9114' })
+      const clause = andWhereCall('ILIKE')
+      expect(String(clause?.[0])).toContain('regexp_replace')
+      expect(clause?.[1]).toEqual({ q: '%b 9114%', qNopol: '%B9114%' })
+    })
+
+    // Only the plate is stripped. Doing it to merk as well would make "Colt Diesel" match
+    // "ColtDiesel" and, worse, make the driver name search ignore the spaces that separate names.
+    it('leaves the other columns matching the term as typed', async () => {
+      await service.findAll({ q: 'b 9114' })
+      const sql = String(andWhereCall('ILIKE')?.[0])
+      expect(sql).toContain('v.merk ILIKE :q')
+      expect(sql).toContain('dr.nama ILIKE :q')
     })
 
     it('ignores a whitespace-only search term', async () => {

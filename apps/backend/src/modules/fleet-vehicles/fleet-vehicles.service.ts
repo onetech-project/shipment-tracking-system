@@ -108,10 +108,14 @@ export class FleetVehiclesService {
 
     const q = dto.q?.trim()
     if (q) {
+      // The plate is stored closed-up (see normalizeNopol) but read aloud and typed spaced, so
+      // both sides of that one comparison are stripped. The remaining columns match the term as
+      // typed: stripping a driver's name would join their given and family names together.
       idQb.andWhere(
-        `(v.nopol ILIKE :q OR v.merk ILIKE :q OR v.tipe ILIKE :q
+        `(regexp_replace(v.nopol, '[[:space:].-]', '', 'g') ILIKE :qNopol
+          OR v.merk ILIKE :q OR v.tipe ILIKE :q
           OR v.noRangka ILIKE :q OR v.noMesin ILIKE :q OR dr.nama ILIKE :q)`,
-        { q: `%${q}%` },
+        { q: `%${q}%`, qNopol: `%${normalizeNopol(q)}%` },
       )
     }
 
