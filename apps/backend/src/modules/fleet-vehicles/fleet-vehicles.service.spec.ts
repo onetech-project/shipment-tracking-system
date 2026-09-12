@@ -5,6 +5,7 @@ import { getRepositoryToken } from '@nestjs/typeorm'
 import { FleetVehiclesService } from './fleet-vehicles.service'
 import { FleetVehicleEntity } from './entities/fleet-vehicle.entity'
 import { FleetVehicleDocumentEntity } from './entities/fleet-vehicle-document.entity'
+import { FleetLeaseContractEntity } from './entities/fleet-lease-contract.entity'
 import { FleetMasterDataEntity } from '../fleet-master-data/entities/fleet-master-data.entity'
 import { severityFor, todayISO } from './fleet-severity'
 
@@ -73,11 +74,18 @@ describe('FleetVehiclesService', () => {
     createQueryBuilder: jest.Mock
   }
   let docRepo: { find: jest.Mock; count: jest.Mock; createQueryBuilder: jest.Mock }
-  let masterRepo: { findOne: jest.Mock }
+  let leaseRepo: { find: jest.Mock }
+  let masterRepo: { findOne: jest.Mock; find: jest.Mock }
   let dataSource: { transaction: jest.Mock }
   let idQb: Record<string, jest.Mock>
   let docQb: Record<string, jest.Mock>
-  let txManager: { update: jest.Mock; insert: jest.Mock; save: jest.Mock; create: jest.Mock }
+  let txManager: {
+    update: jest.Mock
+    insert: jest.Mock
+    save: jest.Mock
+    create: jest.Mock
+    findOne: jest.Mock
+  }
 
   beforeEach(async () => {
     idQb = {
@@ -114,12 +122,21 @@ describe('FleetVehiclesService', () => {
       count: jest.fn(async () => 0),
       createQueryBuilder: jest.fn(() => docQb),
     }
-    masterRepo = { findOne: jest.fn(async () => ({ id: 'ja-1', category: 'jenis_armada' })) }
+    masterRepo = {
+      findOne: jest.fn(async (opts: { where: { id: string; category: string } }) => {
+        const { id, category } = opts.where
+        if (category === 'kepemilikan') return { id, category, code: 'milik_gms' }
+        return { id, category }
+      }),
+      find: jest.fn(async () => []),
+    }
+    leaseRepo = { find: jest.fn(async () => []) }
     txManager = {
       update: jest.fn(),
       insert: jest.fn(),
-      save: jest.fn(async (_e, v) => v),
+      save: jest.fn(async (_e, v) => ({ id: 'v-new', ...(v as object) })),
       create: jest.fn((_e, v) => v),
+      findOne: jest.fn(async () => null),
     }
     dataSource = { transaction: jest.fn(async (cb: (m: unknown) => unknown) => cb(txManager)) }
 
@@ -129,6 +146,7 @@ describe('FleetVehiclesService', () => {
         { provide: getRepositoryToken(FleetVehicleEntity), useValue: repo },
         { provide: getRepositoryToken(FleetVehicleDocumentEntity), useValue: docRepo },
         { provide: getRepositoryToken(FleetMasterDataEntity), useValue: masterRepo },
+        { provide: getRepositoryToken(FleetLeaseContractEntity), useValue: leaseRepo },
         { provide: DataSource, useValue: dataSource },
       ],
     }).compile()
@@ -347,7 +365,10 @@ describe('FleetVehiclesService', () => {
 
     it('stores the plate normalised', async () => {
       await service.create({ nopol: 'b  9114   kyz' })
-      expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({ nopol: 'B9114KYZ' }))
+      expect(txManager.save).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ nopol: 'B9114KYZ' }),
+      )
     })
 
     it('rejects a blank plate', async () => {
@@ -394,17 +415,21 @@ describe('FleetVehiclesService', () => {
       const categories = masterRepo.findOne.mock.calls.map(
         (c) => (c[0] as { where: { category: string } }).where.category,
       )
+      // The trailing kepemilikan probe is assertOwnerNamedWhenRented reading the code it
+      // branches on, which the FK cannot express.
       expect(categories).toEqual([
         'jenis_armada',
         'kepemilikan',
         'pool',
         'status_kendaraan',
+        'kepemilikan',
       ])
     })
 
     it('collapses blank optional text to null', async () => {
       await service.create({ nopol: 'B1A', merk: '   ', catatan: '' })
-      expect(repo.save).toHaveBeenCalledWith(
+      expect(txManager.save).toHaveBeenCalledWith(
+        expect.anything(),
         expect.objectContaining({ merk: null, catatan: null }),
       )
     })
@@ -412,14 +437,17 @@ describe('FleetVehiclesService', () => {
     // The check-then-act above still loses a race. Surfacing the constraint violation as the same
     // 409 keeps the two paths indistinguishable to the client rather than leaking a 500.
     it('translates a concurrent unique violation into a conflict', async () => {
-      repo.save.mockRejectedValue({ code: '23505', constraint: 'uq_fleet_vehicles_nopol_active' })
+      txManager.save.mockRejectedValue({
+        code: '23505',
+        constraint: 'uq_fleet_vehicles_nopol_active',
+      })
       await expect(service.create({ nopol: 'B9114KYZ' })).rejects.toBeInstanceOf(
         ConflictException,
       )
     })
 
     it('rethrows an unrelated database error untouched', async () => {
-      repo.save.mockRejectedValue({ code: '23503', constraint: 'fk_fleet_vehicles_pool' })
+      txManager.save.mockRejectedValue({ code: '23503', constraint: 'fk_fleet_vehicles_pool' })
       await expect(service.create({ nopol: 'B9114KYZ' })).rejects.not.toBeInstanceOf(
         ConflictException,
       )
@@ -430,7 +458,7 @@ describe('FleetVehiclesService', () => {
     // report any of them to the operator as a duplicate licence plate.
     it('rethrows a unique violation from a different constraint untouched', async () => {
       const err = { code: '23505', constraint: 'uq_fleet_vehicle_documents_current' }
-      repo.save.mockRejectedValue(err)
+      txManager.save.mockRejectedValue(err)
       await expect(service.create({ nopol: 'B9114KYZ' })).rejects.toBe(err)
     })
   })
@@ -447,17 +475,20 @@ describe('FleetVehiclesService', () => {
     // DTO would write undefined over every untouched column.
     it('patches only the fields present in the payload', async () => {
       await service.update('v1', { merk: 'Hino' })
-      expect(repo.update).toHaveBeenCalledWith('v1', { merk: 'Hino' })
+      expect(txManager.update).toHaveBeenCalledWith(expect.anything(), 'v1', { merk: 'Hino' })
     })
 
     it('clears a column when the payload sends null', async () => {
       await service.update('v1', { odometer: null })
-      expect(repo.update).toHaveBeenCalledWith('v1', { odometer: null })
+      expect(txManager.update).toHaveBeenCalledWith(expect.anything(), 'v1', { odometer: null })
     })
 
+    // Asserted against the transaction rather than the repository: with nothing to patch, no
+    // lease and no documents, update must not open one at all.
     it('skips the write entirely for an empty payload', async () => {
       await service.update('v1', {})
-      expect(repo.update).not.toHaveBeenCalled()
+      expect(dataSource.transaction).not.toHaveBeenCalled()
+      expect(txManager.update).not.toHaveBeenCalled()
     })
 
     // Re-checking on every update would reject a vehicle for colliding with itself. Only a
@@ -485,7 +516,7 @@ describe('FleetVehiclesService', () => {
         opts?.where?.nopol ? null : vehicleRow({ nopol: 'B9114KYZ' }),
       )
       await service.update('v1', { nopol: 'b   2   xx' })
-      expect(repo.update).toHaveBeenCalledWith('v1', { nopol: 'B2XX' })
+      expect(txManager.update).toHaveBeenCalledWith(expect.anything(), 'v1', { nopol: 'B2XX' })
     })
   })
 
@@ -795,6 +826,512 @@ describe('FleetVehiclesService', () => {
       const res = await service.findAll({})
       expect(res.rows[0].jenisArmada).toEqual({ id: 'ja-1', label: 'Colt Diesel Engkel' })
       expect(res.rows[0].pool).toBeNull()
+    })
+  })
+
+
+  describe('create with lease and documents', () => {
+    beforeEach(() => {
+      repo.findOne.mockImplementation(async (opts: { where?: Record<string, unknown> }) =>
+        opts?.where?.nopol ? null : vehicleRow(),
+      )
+      idQb.getRawMany.mockResolvedValue([{ id: 'v-new' }])
+      repo.find.mockResolvedValue([vehicleRow({ id: 'v-new' })])
+    })
+
+    const payload = () => ({
+      nopol: 'B9114KYZ',
+      merk: 'Mitsubishi',
+      tipe: 'Canter',
+      lease: {
+        leasingId: 'ls-1',
+        nomorKontrak: 'MTF-1',
+        cicilanPerBulan: 8750000,
+        tenorBulan: 36,
+        angsuranMulai: '2026-01-10',
+        angsuranTerbayar: 4,
+      },
+      documents: [{ docTypeId: 'dt-kir', nomor: 'JKT-II/1', expiresAt: inDays(30) }],
+    })
+
+    // The point of the combined endpoint: one operator action is one transaction. Saving the
+    // vehicle outside it would leave a unit registered with no papers whenever the document
+    // insert fails, and nothing on screen to say which half went in.
+    it('writes the vehicle, the contract and the documents in one transaction', async () => {
+      await service.create(payload())
+      expect(dataSource.transaction).toHaveBeenCalledTimes(1)
+      expect(repo.save).not.toHaveBeenCalled()
+      expect(txManager.save).toHaveBeenCalled()
+      expect(txManager.insert).toHaveBeenCalled()
+    })
+
+    // Spec §8 pins this explicitly. The assertion is that the failure propagates rather than
+    // being swallowed — the rollback itself is the transaction's job, and letting the error out
+    // is what triggers it.
+    it('lets a document failure abort the whole save', async () => {
+      txManager.insert.mockRejectedValueOnce(new Error('insert failed'))
+      await expect(service.create(payload())).rejects.toThrow('insert failed')
+    })
+
+    it('stores the contract against the vehicle it just created', async () => {
+      await service.create(payload())
+      const contractCall = txManager.save.mock.calls.find((c) =>
+        Object.prototype.hasOwnProperty.call(c[1], 'nomorKontrak'),
+      )
+      expect(contractCall?.[1]).toMatchObject({ vehicleId: 'v-new', leasingId: 'ls-1' })
+    })
+
+    // The override column carries the operator's answer; the DTO field is named for what the
+    // operator sees. Wiring one to the other by the wrong name silently discards the override
+    // and the figure reverts to the derived one on the next read.
+    it('stores angsuranTerbayar in the override column', async () => {
+      await service.create(payload())
+      const contractCall = txManager.save.mock.calls.find((c) =>
+        Object.prototype.hasOwnProperty.call(c[1], 'nomorKontrak'),
+      )
+      expect(contractCall?.[1]).toMatchObject({ angsuranTerbayarOverride: 4 })
+    })
+
+    it('leaves the override null when the operator left the field blank', async () => {
+      const dto = payload()
+      dto.lease.angsuranTerbayar = undefined as unknown as number
+      await service.create(dto)
+      const contractCall = txManager.save.mock.calls.find((c) =>
+        Object.prototype.hasOwnProperty.call(c[1], 'nomorKontrak'),
+      )
+      expect(contractCall?.[1]).toMatchObject({ angsuranTerbayarOverride: null })
+    })
+
+    it('saves a vehicle with no lease at all', async () => {
+      const dto = payload()
+      dto.lease = null as never
+      await service.create(dto)
+      const contractCall = txManager.save.mock.calls.find((c) =>
+        Object.prototype.hasOwnProperty.call(c[1], 'nomorKontrak'),
+      )
+      expect(contractCall).toBeUndefined()
+    })
+
+    // Requirement §2: a rented unit's owner is someone outside the company, and a register that
+    // does not name them cannot answer who to return the truck to.
+    it('rejects a sewa lepas kunci unit with no pemilikUnit', async () => {
+      masterRepo.findOne.mockImplementation(async (opts: { where: { id: string; category: string } }) =>
+        opts.where.category === 'kepemilikan'
+          ? { id: opts.where.id, category: 'kepemilikan', code: 'sewa_lepas_kunci' }
+          : { id: opts.where.id, category: opts.where.category },
+      )
+      await expect(
+        service.create({ ...payload(), kepemilikanId: 'kp-sewa', pemilikUnit: null }),
+      ).rejects.toBeInstanceOf(BadRequestException)
+    })
+
+    it('accepts a sewa lepas kunci unit that names its owner', async () => {
+      masterRepo.findOne.mockImplementation(async (opts: { where: { id: string; category: string } }) =>
+        opts.where.category === 'kepemilikan'
+          ? { id: opts.where.id, category: 'kepemilikan', code: 'sewa_lepas_kunci' }
+          : { id: opts.where.id, category: opts.where.category },
+      )
+      await expect(
+        service.create({ ...payload(), kepemilikanId: 'kp-sewa', pemilikUnit: 'CV Andalan' }),
+      ).resolves.toBeDefined()
+    })
+
+    // A company-owned unit has no external owner to name, so demanding one would block every
+    // normal registration.
+    it('does not demand pemilikUnit for a company-owned unit', async () => {
+      await expect(service.create({ ...payload(), pemilikUnit: null })).resolves.toBeDefined()
+    })
+  })
+
+  describe('update with a replacement lease', () => {
+    // A refinanced unit gets a new contract; the old one is closed, not overwritten. Overwriting
+    // is what the prototype did, and it is why no unit there could show what it used to pay.
+    it('closes the open contract instead of overwriting it', async () => {
+      txManager.findOne.mockResolvedValueOnce({ id: 'lc-old', vehicleId: 'v1', closedAt: null })
+      await service.update('v1', {
+        lease: {
+          leasingId: 'ls-2',
+          nomorKontrak: 'MTF-2',
+          cicilanPerBulan: 9000000,
+          tenorBulan: 24,
+          angsuranMulai: '2026-06-01',
+        },
+      })
+      const closeCall = txManager.update.mock.calls.find((c) => c[2] && 'closedAt' in c[2])
+      expect(closeCall?.[2].closedAt).toEqual(expect.any(String))
+    })
+
+    it('opens the replacement contract in the same transaction', async () => {
+      txManager.findOne.mockResolvedValueOnce({ id: 'lc-old', vehicleId: 'v1', closedAt: null })
+      await service.update('v1', {
+        lease: {
+          leasingId: 'ls-2',
+          nomorKontrak: 'MTF-2',
+          cicilanPerBulan: 9000000,
+          tenorBulan: 24,
+          angsuranMulai: '2026-06-01',
+        },
+      })
+      const openCall = txManager.save.mock.calls.find((c) =>
+        Object.prototype.hasOwnProperty.call(c[1], 'nomorKontrak'),
+      )
+      expect(openCall?.[1]).toMatchObject({ nomorKontrak: 'MTF-2', closedAt: null })
+    })
+
+    // An explicit null is the operator saying the unit is no longer financed. Leaving the old
+    // contract open would keep reporting instalments on a truck that is paid off.
+    it('closes the contract and opens no replacement when lease is null', async () => {
+      txManager.findOne.mockResolvedValueOnce({ id: 'lc-old', vehicleId: 'v1', closedAt: null })
+      await service.update('v1', { lease: null })
+      expect(txManager.update.mock.calls.find((c) => c[2] && 'closedAt' in c[2])).toBeDefined()
+      const openCall = txManager.save.mock.calls.find((c) =>
+        Object.prototype.hasOwnProperty.call(c[1], 'nomorKontrak'),
+      )
+      expect(openCall).toBeUndefined()
+    })
+
+    // Absent means "leave it alone" — the same patch semantics every other field has. A PATCH
+    // that only bumps the odometer must not close the lease.
+    it('leaves the contract untouched when lease is absent', async () => {
+      await service.update('v1', { odometer: 130000 })
+      expect(txManager.findOne).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('lease view', () => {
+    // The view carries figures, not raw columns: the frontend renders sisaKewajiban and must
+    // never be the place that multiplies it out (spec §5.2).
+    it('reports the instalments paid, remaining and still owed', async () => {
+      leaseRepo.find.mockResolvedValueOnce([{
+        id: 'lc-1',
+        vehicleId: 'v1',
+        leasingId: 'ls-1',
+        leasing: { id: 'ls-1', label: 'MTF' },
+        nomorKontrak: 'MTF-1',
+        cicilanPerBulan: '8750000.00',
+        tenorBulan: 36,
+        angsuranMulai: '2026-01-10',
+        angsuranTerbayarOverride: 4,
+        closedAt: null,
+      }])
+      const view = await service.findOne('v1')
+      expect(view.lease).toMatchObject({
+        nomorKontrak: 'MTF-1',
+        angsuranTerbayar: 4,
+        sisaAngsuran: 32,
+        sisaKewajiban: 32 * 8750000,
+      })
+    })
+
+    // numeric columns come back from pg as strings. Left as one, cicilanPerBulan * sisaAngsuran
+    // in any consumer becomes string repetition or NaN.
+    it('hands back the instalment amount as a number', async () => {
+      leaseRepo.find.mockResolvedValueOnce([{
+        id: 'lc-1',
+        vehicleId: 'v1',
+        leasingId: null,
+        leasing: null,
+        nomorKontrak: null,
+        cicilanPerBulan: '8750000.00',
+        tenorBulan: 36,
+        angsuranMulai: '2026-01-10',
+        angsuranTerbayarOverride: 4,
+        closedAt: null,
+      }])
+      const view = await service.findOne('v1')
+      expect(view.lease?.cicilanPerBulan).toBe(8750000)
+    })
+
+    // The derived count and the typed one are reported separately. Collapsed into one field, the
+    // edit form cannot tell "the operator said four" from "four months have passed", and saving
+    // an untouched form would pin a rising count in place.
+    it('distinguishes an override the operator typed from a derived count', async () => {
+      leaseRepo.find.mockResolvedValueOnce([{
+        id: 'lc-1',
+        vehicleId: 'v1',
+        leasingId: null,
+        leasing: null,
+        nomorKontrak: null,
+        cicilanPerBulan: '8750000.00',
+        tenorBulan: 36,
+        angsuranMulai: '2026-01-10',
+        angsuranTerbayarOverride: null,
+        closedAt: null,
+      }])
+      const view = await service.findOne('v1')
+      expect(view.lease?.angsuranTerbayarOverride).toBeNull()
+      expect(typeof view.lease?.angsuranTerbayar).toBe('number')
+    })
+
+    it('reports no lease for a unit that has no open contract', async () => {
+      leaseRepo.find.mockResolvedValueOnce([])
+      const view = await service.findOne('v1')
+      expect(view.lease).toBeNull()
+    })
+  })
+
+
+  // Exception A. The form posts the lease block on every save, so "the key is present" cannot be
+  // read as "the operator refinanced the unit". Without a substance comparison, saving a vehicle
+  // after editing only its odometer would close the open contract and open an identical
+  // replacement — a closed row per save, burying the credit history the closing mechanism exists
+  // to keep.
+  describe('update with an unchanged lease', () => {
+    // The shape pg actually returns: numeric as a string, date as a Date. A === against the DTO's
+    // JSON numbers and ISO strings reports "different" on every field and reproduces the bug.
+    const openRow = (over: Record<string, unknown> = {}) => ({
+      id: 'lc-open',
+      vehicleId: 'v1',
+      leasingId: 'ls-1',
+      nomorKontrak: 'MTF-1',
+      cicilanPerBulan: '8750000.00',
+      tenorBulan: 36,
+      angsuranMulai: new Date('2026-01-10T00:00:00Z'),
+      angsuranTerbayarOverride: 4,
+      closedAt: null,
+      ...over,
+    })
+
+    const samePayload = () => ({
+      leasingId: 'ls-1',
+      nomorKontrak: 'MTF-1',
+      cicilanPerBulan: 8750000,
+      tenorBulan: 36,
+      angsuranMulai: '2026-01-10',
+      angsuranTerbayar: 4,
+    })
+
+    it('leaves an identical contract completely untouched', async () => {
+      txManager.findOne.mockResolvedValueOnce(openRow())
+      await service.update('v1', { lease: samePayload() })
+      expect(txManager.update.mock.calls.find((c) => c[2] && 'closedAt' in c[2])).toBeUndefined()
+      const openCall = txManager.save.mock.calls.find((c) =>
+        Object.prototype.hasOwnProperty.call(c[1], 'nomorKontrak'),
+      )
+      expect(openCall).toBeUndefined()
+    })
+
+    // The proof the human partner asked for: two saves of the same lease leave exactly one row
+    // in fleet_lease_contracts, not one plus a closed twin per save.
+    it('leaves exactly one contract row after saving the same lease twice', async () => {
+      const rows: Record<string, unknown>[] = [openRow()]
+      txManager.findOne.mockImplementation(async () => rows.find((r) => r.closedAt === null) ?? null)
+      txManager.update.mockImplementation(async (_e: unknown, id: unknown, patch: Record<string, unknown>) => {
+        if (patch && 'closedAt' in patch) {
+          const row = rows.find((r) => r.id === id)
+          if (row) row.closedAt = patch.closedAt
+        }
+      })
+      txManager.save.mockImplementation(async (_e: unknown, v: Record<string, unknown>) => {
+        if (Object.prototype.hasOwnProperty.call(v, 'nomorKontrak')) {
+          const row = { id: `lc-${rows.length + 1}`, ...v }
+          rows.push(row)
+          return row
+        }
+        return { id: 'v-new', ...v }
+      })
+
+      await service.update('v1', { lease: samePayload() })
+      await service.update('v1', { lease: samePayload() })
+
+      expect(rows).toHaveLength(1)
+      expect(rows[0].closedAt).toBeNull()
+    })
+
+    // Each field on its own: a comparison that ignores any one of the six silently drops a real
+    // refinancing on the floor and keeps reporting the old instalment.
+    it.each([
+      ['leasingId', { leasingId: 'ls-2' }],
+      ['nomorKontrak', { nomorKontrak: 'MTF-9' }],
+      ['cicilanPerBulan', { cicilanPerBulan: 9000000 }],
+      ['tenorBulan', { tenorBulan: 24 }],
+      ['angsuranMulai', { angsuranMulai: '2026-06-01' }],
+      ['angsuranTerbayar', { angsuranTerbayar: 7 }],
+    ])('closes and reopens when %s changed', async (_field, change) => {
+      txManager.findOne.mockResolvedValueOnce(openRow())
+      await service.update('v1', { lease: { ...samePayload(), ...change } })
+      expect(txManager.update.mock.calls.find((c) => c[2] && 'closedAt' in c[2])).toBeDefined()
+      const openCall = txManager.save.mock.calls.find((c) =>
+        Object.prototype.hasOwnProperty.call(c[1], 'nomorKontrak'),
+      )
+      expect(openCall).toBeDefined()
+    })
+
+    // Clearing the operator's override is a change, and null vs 4 must not collapse through a
+    // loose comparison — the derived count and a typed 4 are different answers.
+    it('closes and reopens when the override is cleared', async () => {
+      txManager.findOne.mockResolvedValueOnce(openRow())
+      const dto = samePayload()
+      delete (dto as { angsuranTerbayar?: number | null }).angsuranTerbayar
+      await service.update('v1', { lease: dto })
+      expect(txManager.update.mock.calls.find((c) => c[2] && 'closedAt' in c[2])).toBeDefined()
+    })
+
+    // 0 is a real answer meaning nothing has been paid, so it must not be read as "blank" and
+    // compared equal to a null override.
+    it('treats a zero override as different from no override', async () => {
+      txManager.findOne.mockResolvedValueOnce(openRow({ angsuranTerbayarOverride: null }))
+      await service.update('v1', { lease: { ...samePayload(), angsuranTerbayar: 0 } })
+      expect(txManager.update.mock.calls.find((c) => c[2] && 'closedAt' in c[2])).toBeDefined()
+    })
+
+    // numeric arrives as '8750000.00' and the DTO sends 8750000. Compared as strings these differ
+    // and the contract churns on every save; compared as numbers they are the same money.
+    it('reads a numeric column and a JSON number as the same amount', async () => {
+      txManager.findOne.mockResolvedValueOnce(openRow({ cicilanPerBulan: '8750000.00' }))
+      await service.update('v1', { lease: samePayload() })
+      expect(txManager.update.mock.calls.find((c) => c[2] && 'closedAt' in c[2])).toBeUndefined()
+    })
+
+    // Some driver settings hand a date column back as 'YYYY-MM-DD' rather than a Date. Both
+    // spellings of the same calendar day must compare equal.
+    it('reads a date string and a Date as the same day', async () => {
+      txManager.findOne.mockResolvedValueOnce(openRow({ angsuranMulai: '2026-01-10' }))
+      await service.update('v1', { lease: samePayload() })
+      expect(txManager.update.mock.calls.find((c) => c[2] && 'closedAt' in c[2])).toBeUndefined()
+    })
+
+    // A unit that was never financed and still is not: nothing to close, nothing to open.
+    it('writes nothing when lease is null and no contract is open', async () => {
+      txManager.findOne.mockResolvedValueOnce(null)
+      await service.update('v1', { lease: null })
+      expect(txManager.update.mock.calls.find((c) => c[2] && 'closedAt' in c[2])).toBeUndefined()
+      const openCall = txManager.save.mock.calls.find((c) =>
+        Object.prototype.hasOwnProperty.call(c[1], 'nomorKontrak'),
+      )
+      expect(openCall).toBeUndefined()
+    })
+
+    // A unit financed for the first time has nothing to close, but the new contract must open.
+    it('opens a first contract when none was open', async () => {
+      txManager.findOne.mockResolvedValueOnce(null)
+      await service.update('v1', { lease: samePayload() })
+      expect(txManager.update.mock.calls.find((c) => c[2] && 'closedAt' in c[2])).toBeUndefined()
+      const openCall = txManager.save.mock.calls.find((c) =>
+        Object.prototype.hasOwnProperty.call(c[1], 'nomorKontrak'),
+      )
+      expect(openCall?.[1]).toMatchObject({ nomorKontrak: 'MTF-1', closedAt: null })
+    })
+  })
+
+  // Exception B. Spec §5.1 makes the required-document rule binding at the DTO and at the form,
+  // but a DTO cannot read master data to learn which types carry the flag. What the backend
+  // enforces is the expiry date being present: that date is what every badge and reminder is
+  // computed from, so a row with a number and no date is invisible to all of them.
+  describe('required documents', () => {
+    const requiredRows = [
+      { id: 'dt-stnk', code: 'stnk', label: 'STNK', isRequired: true },
+      { id: 'dt-pajak', code: 'pajak', label: 'Pajak', isRequired: true },
+    ]
+
+    const withRequired = (docs: { docTypeId: string; nomor?: string | null; expiresAt?: string | null }[]) => [
+      { docTypeId: 'dt-stnk', expiresAt: inDays(200) },
+      { docTypeId: 'dt-pajak', expiresAt: inDays(100) },
+      ...docs,
+    ]
+
+    beforeEach(() => {
+      masterRepo.find.mockResolvedValue(requiredRows)
+      repo.findOne.mockImplementation(async (opts: { where?: Record<string, unknown> }) =>
+        opts?.where?.nopol ? null : vehicleRow(),
+      )
+    })
+
+    it('reads the flag from master data rather than hardcoding the type list', async () => {
+      await service.replaceDocuments('v1', withRequired([]))
+      expect(masterRepo.find).toHaveBeenCalledWith({
+        where: { category: 'jenis_dokumen', isRequired: true },
+      })
+    })
+
+    it('rejects a create whose payload omits a required type', async () => {
+      await expect(
+        service.create({
+          nopol: 'B9114KYZ',
+          documents: [{ docTypeId: 'dt-stnk', expiresAt: inDays(200) }],
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException)
+    })
+
+    it('rejects an update whose payload omits a required type', async () => {
+      await expect(
+        service.update('v1', {
+          documents: [{ docTypeId: 'dt-stnk', expiresAt: inDays(200) }],
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException)
+    })
+
+    // The rule cannot be bypassed by going around the combined endpoint.
+    it('rejects a documents-only replacement that omits a required type', async () => {
+      await expect(
+        service.replaceDocuments('v1', [{ docTypeId: 'dt-stnk', expiresAt: inDays(200) }]),
+      ).rejects.toBeInstanceOf(BadRequestException)
+    })
+
+    // What is enforced is the expiry date, not the number: a required type present with a number
+    // and no date still fails, because the date is what the reminders read.
+    it('rejects a required type present with a number but no expiry date', async () => {
+      await expect(
+        service.replaceDocuments('v1', [
+          { docTypeId: 'dt-stnk', expiresAt: inDays(200) },
+          { docTypeId: 'dt-pajak', nomor: 'PJK-1' },
+        ]),
+      ).rejects.toBeInstanceOf(BadRequestException)
+    })
+
+    it('rejects a required type whose expiry date is blank', async () => {
+      await expect(
+        service.replaceDocuments('v1', [
+          { docTypeId: 'dt-stnk', expiresAt: inDays(200) },
+          { docTypeId: 'dt-pajak', expiresAt: '   ' },
+        ]),
+      ).rejects.toBeInstanceOf(BadRequestException)
+    })
+
+    // Global Constraints: nomor stays optional for every type, required ones included.
+    it('accepts a required type dated but unnumbered', async () => {
+      await expect(
+        service.replaceDocuments('v1', [
+          { docTypeId: 'dt-stnk', expiresAt: inDays(200) },
+          { docTypeId: 'dt-pajak', expiresAt: inDays(100) },
+        ]),
+      ).resolves.toBeDefined()
+    })
+
+    // A type an admin adds from the Master Data page is born is_required NULL, so the query must
+    // ask for TRUE rather than for "not false" — otherwise every new type becomes mandatory the
+    // moment it is created.
+    it('does not demand a type whose flag is null', async () => {
+      masterRepo.find.mockResolvedValue(requiredRows)
+      await expect(
+        service.replaceDocuments('v1', withRequired([{ docTypeId: 'dt-servis' }])),
+      ).resolves.toBeDefined()
+    })
+
+    it('names the missing types in the message', async () => {
+      await expect(
+        service.replaceDocuments('v1', [{ docTypeId: 'dt-stnk', expiresAt: inDays(200) }]),
+      ).rejects.toThrow(/Pajak/)
+    })
+
+    it('rejects before opening a transaction', async () => {
+      await expect(
+        service.replaceDocuments('v1', [{ docTypeId: 'dt-stnk', expiresAt: inDays(200) }]),
+      ).rejects.toBeInstanceOf(BadRequestException)
+      expect(dataSource.transaction).not.toHaveBeenCalled()
+    })
+
+    // An absent documents key on a PATCH means "leave the papers alone", which must not be read
+    // as "the operator submitted an empty set" and fail every odometer edit.
+    it('leaves a patch that does not mention documents alone', async () => {
+      await expect(service.update('v1', { odometer: 130000 })).resolves.toBeDefined()
+    })
+
+    // Nothing is flagged required, so nothing is demanded. Guards the empty-master-data case
+    // rather than letting it throw on every save.
+    it('demands nothing when no type carries the flag', async () => {
+      masterRepo.find.mockResolvedValue([])
+      await expect(service.replaceDocuments('v1', [{ docTypeId: 'dt-kir' }])).resolves.toBeDefined()
     })
   })
 
