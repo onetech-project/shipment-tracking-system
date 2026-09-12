@@ -57,6 +57,7 @@ export default function FleetVehiclesPage() {
   const master = { enabled: canReadMaster }
   const { data: jenisArmada } = useFleetMasterDataByCategory('jenis_armada', master)
   const { data: kepemilikan } = useFleetMasterDataByCategory('kepemilikan', master)
+  const { data: leasing } = useFleetMasterDataByCategory('leasing', master)
   const { data: pool } = useFleetMasterDataByCategory('pool', master)
   const { data: statusKendaraan } = useFleetMasterDataByCategory('status_kendaraan', master)
   const { data: docTypes } = useFleetMasterDataByCategory('jenis_dokumen', master)
@@ -118,8 +119,8 @@ export default function FleetVehiclesPage() {
 
       {!canReadMaster && (
         <p className="mb-4 text-sm text-muted-foreground">
-          Daftar kepemilikan, pool dan status tidak tersedia — butuh izin akses master data.
-          Filter dan pilihan terkait dikosongkan.
+          Daftar jenis armada, kepemilikan, leasing, pool, status dan jenis dokumen tidak tersedia
+          — butuh izin akses master data. Filter dan pilihan terkait dikosongkan.
         </p>
       )}
 
@@ -145,6 +146,7 @@ export default function FleetVehiclesPage() {
         <>
           <VehicleTable
             rows={rows}
+            docTypes={docTypes ?? []}
             isLoading={isLoading}
             sort={filters.sort ?? 'nopol'}
             onSortChange={(sort: FleetVehicleSort) => setFilters({ ...filters, sort, page: 1 })}
@@ -189,8 +191,10 @@ export default function FleetVehiclesPage() {
           masterData={{
             jenisArmada: jenisArmada ?? [],
             kepemilikan: kepemilikan ?? [],
+            leasing: leasing ?? [],
             pool: pool ?? [],
             status: statusKendaraan ?? [],
+            jenisDokumen: docTypes ?? [],
           }}
           drivers={drivers ?? []}
           onSubmit={handleSubmit}
