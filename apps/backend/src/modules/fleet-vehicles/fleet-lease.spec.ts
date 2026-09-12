@@ -1,4 +1,5 @@
 import { computeLease, monthsBetween } from './fleet-lease'
+import { todayISO } from './fleet-severity'
 
 describe('monthsBetween', () => {
   it('counts whole months', () => {
@@ -26,6 +27,49 @@ describe('monthsBetween', () => {
   // A start date in the future is a data-entry slip, not a negative instalment count.
   it('never goes negative', () => {
     expect(monthsBetween('2026-06-10', '2026-01-10')).toBe(0)
+  })
+
+  // Instalment convention: a contract falling due on the 31st falls due on the last day of any
+  // month that has no 31st. Without the clamp every February and every 30-day month reports a
+  // month short, then silently corrects itself once a long month comes round.
+  it('treats the last day of a shorter month as the due date', () => {
+    expect(monthsBetween('2026-01-31', '2026-02-28')).toBe(1)
+  })
+
+  it('keeps a 31st start counting through a 30-day month', () => {
+    expect(monthsBetween('2026-01-31', '2026-04-30')).toBe(3)
+  })
+
+  it('still withholds the month a day before the shorter month ends', () => {
+    expect(monthsBetween('2026-01-31', '2026-02-27')).toBe(0)
+  })
+
+  // The clamp is to the real length of the target month, not a fixed 28.
+  it('clamps a 31st start to 29 February in a leap year', () => {
+    expect(monthsBetween('2024-01-31', '2024-02-29')).toBe(1)
+  })
+
+  it('does not credit a 31st start on 28 February of a leap year', () => {
+    expect(monthsBetween('2024-01-31', '2024-02-28')).toBe(0)
+  })
+
+  it('clamps a 30th start to the end of February', () => {
+    expect(monthsBetween('2026-01-30', '2026-02-28')).toBe(1)
+  })
+
+  it('clamps a 29th start to the end of a non-leap February', () => {
+    expect(monthsBetween('2026-01-29', '2026-02-28')).toBe(1)
+  })
+
+  // February 2024 has a 29th, so nothing is clamped and the ordinary day-of-month guard applies.
+  it('leaves a 29th start uncredited on 28 February of a leap year', () => {
+    expect(monthsBetween('2024-01-29', '2024-02-28')).toBe(0)
+  })
+
+  // The clamp must fire only where the day is genuinely missing: March has a 31st, so the 30th
+  // is still one day early.
+  it('does not shorten a month that has the start day', () => {
+    expect(monthsBetween('2026-01-31', '2026-03-30')).toBe(1)
   })
 })
 
@@ -102,5 +146,52 @@ describe('computeLease', () => {
     const out = computeLease({ ...base, cicilanPerBulan: null }, '2026-04-10')
     expect(out.sisaAngsuran).toBe(32)
     expect(out.sisaKewajiban).toBe(0)
+  })
+
+  // The boundary the future-start guard must not swallow: on the start date one instalment is
+  // genuinely due and paid.
+  it('counts one instalment on the start date itself', () => {
+    expect(computeLease(base, '2026-01-10').angsuranTerbayar).toBe(1)
+  })
+
+  // A unit under contract but not yet due owes the whole thing. Crediting an instalment here
+  // would understate the fleet's debt by one payment on every unit booked in advance.
+  it('reports nothing paid the day before the contract starts', () => {
+    const out = computeLease(base, '2026-01-09')
+    expect(out.angsuranTerbayar).toBe(0)
+    expect(out.sisaAngsuran).toBe(36)
+    expect(out.sisaKewajiban).toBe(36 * 8750000)
+  })
+
+  it('reports nothing paid for a start date months away', () => {
+    const out = computeLease({ ...base, angsuranMulai: '2027-01-10' }, '2026-04-10')
+    expect(out.angsuranTerbayar).toBe(0)
+    expect(out.sisaAngsuran).toBe(36)
+    expect(out.sisaKewajiban).toBe(315000000)
+  })
+
+  it('carries the short-month clamp into the derived total', () => {
+    const out = computeLease({ ...base, angsuranMulai: '2026-01-31' }, '2026-02-28')
+    expect(out.angsuranTerbayar).toBe(2)
+    expect(out.sisaAngsuran).toBe(34)
+  })
+
+  // The operator's own figure outranks every derivation, the future-start guard included.
+  it('lets an override win over a start date that has not arrived', () => {
+    const out = computeLease({ ...base, angsuranMulai: '2027-01-10', angsuranTerbayarOverride: 3 }, '2026-04-10')
+    expect(out.angsuranTerbayar).toBe(3)
+  })
+
+  it('lets an override win over a short-month start date', () => {
+    const out = computeLease({ ...base, angsuranMulai: '2026-01-31', angsuranTerbayarOverride: 7 }, '2026-02-28')
+    expect(out.angsuranTerbayar).toBe(7)
+  })
+
+  // Task 8 calls computeLease with one argument. Every test above pins `today` itself, so a
+  // hardcoded default would sail through all of them; this is the only cover on that seam.
+  // Compared against todayISO() rather than a literal so it does not rot overnight.
+  it('falls back to the Jakarta business day when today is not given', () => {
+    expect(computeLease({ ...base, angsuranMulai: todayISO() }).angsuranTerbayar).toBe(1)
+    expect(computeLease(base)).toEqual(computeLease(base, todayISO()))
   })
 })
