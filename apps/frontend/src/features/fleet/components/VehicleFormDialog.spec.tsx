@@ -43,6 +43,7 @@ const existing = {
   pool: { id: 'p1', label: 'Pool Cakung' },
   status: { id: 's1', label: 'Beroperasi' },
   driver: null,
+  lease: null,
   documents: [],
   worstSeverity: 'none',
   minDaysLeft: null,
