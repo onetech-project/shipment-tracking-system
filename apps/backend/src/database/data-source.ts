@@ -9,7 +9,9 @@ export const AppDataSource = new DataSource({
   type: 'postgres',
   url: process.env.DATABASE_URL,
   entities: [join(__dirname, '../**/*.entity{.ts,.js}')],
-  migrations: [join(__dirname, './migrations/*{.ts,.js}')],
+  // The spec files that sit beside the migrations must be excluded: this glob is require()d
+  // directly, so a describe() block loaded as a migration crashes migration:run.
+  migrations: [join(__dirname, './migrations/!(*.spec)*{.ts,.js}')],
   migrationsRun: false,
   synchronize: false,
   logging: process.env.NODE_ENV === 'development',
