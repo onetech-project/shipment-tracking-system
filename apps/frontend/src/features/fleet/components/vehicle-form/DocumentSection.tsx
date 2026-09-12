@@ -16,11 +16,20 @@ interface DocumentSectionProps {
   // Section 6 sets this false: a service record has no document number to type, and asking for
   // one puts a question on the form that has no answer.
   showNomor?: boolean
+  // Section 6 passes the vehicle's own catatan field down here. It is not a document, but it
+  // belongs on that section — and a fieldset with two legends is not a thing.
+  children?: React.ReactNode
 }
 
 // Serves sections 4, 5 and 6 — they differ only in which document types they list and in what
 // their dates are called. Three near-identical components would drift apart on the first change.
-export function DocumentSection({ title, form, types, showNomor = true }: DocumentSectionProps) {
+export function DocumentSection({
+  title,
+  form,
+  types,
+  showNomor = true,
+  children,
+}: DocumentSectionProps) {
   const { docRow, setDocField, errors } = form
 
   return (
@@ -69,6 +78,7 @@ export function DocumentSection({ title, form, types, showNomor = true }: Docume
           </React.Fragment>
         )
       })}
+      {children}
     </Section>
   )
 }
