@@ -222,6 +222,14 @@ describe('CreateFleetVehicleDto', () => {
     expect(errors.map((e) => e.property)).toContain('documents')
   })
 
+  // `each: true` silently skips a value that is not iterable, so a bare object reaches the service
+  // as a non-array and breaks the insert. @IsArray is the only rule that refuses it here.
+  it('rejects a single document sent as a bare object', async () => {
+    const errors = await validate(build({ documents: { docTypeId: 'nope' } }))
+    expect(errors.map((e) => e.property)).toContain('documents')
+    expect(errors.find((e) => e.property === 'documents')?.constraints).toHaveProperty('isArray')
+  })
+
   // The bad entry sits at index 1 on purpose: ValidateNested without `each` still reports the
   // first element, so only a later one proves the rules run against every entry.
   it('validates every document, not just the first', async () => {
