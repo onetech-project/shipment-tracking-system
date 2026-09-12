@@ -7,7 +7,7 @@ import { CreateFleetVehicleDto } from './create-fleet-vehicle.dto'
 // always fills everything would leave no test pinning any single field as required.
 const build = (overrides: Record<string, unknown> = {}) =>
   plainToInstance(CreateFleetVehicleDto, {
-    nopol: 'B 9114 KYZ',
+    nopol: 'B9114KYZ',
     merk: 'Mitsubishi',
     tipe: 'Canter',
     tahun: 2021,
@@ -23,19 +23,19 @@ const build = (overrides: Record<string, unknown> = {}) =>
     poolId: '3f2504e0-4f89-41d3-9a0c-0305e82c3303',
     statusId: '3f2504e0-4f89-41d3-9a0c-0305e82c3304',
     driverId: '3f2504e0-4f89-41d3-9a0c-0305e82c3305',
+    lease: {
+      leasingId: '3f2504e0-4f89-41d3-9a0c-0305e82c3401',
+      nomorKontrak: 'MTF-2024-03-11872',
+      cicilanPerBulan: 8750000,
+      tenorBulan: 36,
+      angsuranMulai: '2026-01-10',
+    },
     ...overrides,
   })
 
 describe('CreateFleetVehicleDto', () => {
   it('accepts a fully specified vehicle', async () => {
     expect(await validate(build())).toHaveLength(0)
-  })
-
-  // The plate is the only thing the service insists on; a unit can be registered before anyone
-  // has looked up its chassis number.
-  it('accepts a vehicle carrying only a plate', async () => {
-    const dto = plainToInstance(CreateFleetVehicleDto, { nopol: 'B 1 A' })
-    expect(await validate(dto)).toHaveLength(0)
   })
 
   it('rejects a vehicle with no plate', async () => {
@@ -150,4 +150,106 @@ describe('CreateFleetVehicleDto', () => {
       expect(errors.map((e) => e.property)).toContain(field)
     },
   )
+  // Requirement §1 and §3: the identity block plus the pool are what make a register row usable.
+  // Enforced here rather than only in the form, so an API client cannot write the half-filled
+  // rows the form refuses.
+  it.each([
+    'merk',
+    'tipe',
+    'jenisArmadaId',
+    'tahun',
+    'kapasitas',
+    'noRangka',
+    'noMesin',
+    'noBpkb',
+    'poolId',
+  ])('rejects a vehicle missing %s', async (field) => {
+    const errors = await validate(build({ [field]: undefined }))
+    expect(errors.map((e) => e.property)).toContain(field)
+  })
+
+  it.each(['merk', 'tipe', 'kapasitas', 'noRangka', 'noMesin', 'noBpkb'])(
+    'rejects an empty %s',
+    async (field) => {
+      const errors = await validate(build({ [field]: '   ' }))
+      expect(errors.map((e) => e.property)).toContain(field)
+    },
+  )
+
+  // Requirement §3 keeps these optional: a unit can be registered before a driver is assigned to
+  // it, and the odometer is read at the next service.
+  it.each(['driverId', 'statusId', 'odometer', 'catatan'])(
+    'accepts a vehicle with no %s',
+    async (field) => {
+      expect(await validate(build({ [field]: undefined }))).toHaveLength(0)
+    },
+  )
+
+  // The nested rules only run with both @ValidateNested and @Type. Without them the lease and
+  // documents reach the service unvalidated and fail at insert time as a 500.
+  it('validates the nested lease', async () => {
+    const errors = await validate(build({ lease: { leasingId: 'not-a-uuid' } }))
+    expect(errors.map((e) => e.property)).toContain('lease')
+  })
+
+  it('accepts a vehicle with no lease at all', async () => {
+    expect(await validate(build({ lease: undefined }))).toHaveLength(0)
+  })
+
+  // The nested validator walks an array happily and reports nothing when its entries are valid,
+  // so @IsObject is the only guard that refuses one. The entry here is deliberately a well-formed
+  // contract: a malformed one would fail on its own and prove nothing about @IsObject.
+  it('rejects a well-formed lease sent as an array', async () => {
+    const errors = await validate(
+      build({
+        lease: [
+          {
+            leasingId: '3f2504e0-4f89-41d3-9a0c-0305e82c3401',
+            nomorKontrak: 'MTF-2024-03-11872',
+            cicilanPerBulan: 8750000,
+            tenorBulan: 36,
+            angsuranMulai: '2026-01-10',
+          },
+        ],
+      }),
+    )
+    expect(errors.map((e) => e.property)).toContain('lease')
+    expect(errors.find((e) => e.property === 'lease')?.constraints).toHaveProperty('isObject')
+  })
+
+  it('validates the nested documents', async () => {
+    const errors = await validate(build({ documents: [{ docTypeId: 'not-a-uuid' }] }))
+    expect(errors.map((e) => e.property)).toContain('documents')
+  })
+
+  // The bad entry sits at index 1 on purpose: ValidateNested without `each` still reports the
+  // first element, so only a later one proves the rules run against every entry.
+  it('validates every document, not just the first', async () => {
+    const errors = await validate(
+      build({
+        documents: [
+          { docTypeId: '3f2504e0-4f89-41d3-9a0c-0305e82c3501' },
+          { docTypeId: 'not-a-uuid' },
+        ],
+      }),
+    )
+    expect(errors.map((e) => e.property)).toContain('documents')
+    expect(errors.find((e) => e.property === 'documents')?.children?.map((c) => c.property)).toContain('1')
+  })
+
+  it('accepts a valid document list', async () => {
+    const errors = await validate(
+      build({
+        documents: [
+          {
+            docTypeId: '3f2504e0-4f89-41d3-9a0c-0305e82c3501',
+            nomor: 'STNK-1',
+            issuedAt: '2026-01-10',
+            expiresAt: '2031-01-10',
+          },
+        ],
+      }),
+    )
+    expect(errors).toHaveLength(0)
+  })
 })
