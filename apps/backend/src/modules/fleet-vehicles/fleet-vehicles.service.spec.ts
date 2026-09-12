@@ -1334,7 +1334,7 @@ describe('FleetVehiclesService', () => {
     it('reads the flag from master data rather than hardcoding the type list', async () => {
       await service.replaceDocuments('v1', withRequired([]))
       expect(masterRepo.find).toHaveBeenCalledWith({
-        where: { category: 'jenis_dokumen', isRequired: true },
+        where: { category: 'jenis_dokumen', isRequired: true, isActive: true },
       })
     })
 
@@ -1465,6 +1465,54 @@ describe('FleetVehiclesService', () => {
     it('demands nothing when no type carries the flag', async () => {
       masterRepo.find.mockResolvedValue([])
       await expect(service.replaceDocuments('v1', [{ docTypeId: 'dt-kir' }])).resolves.toBeDefined()
+    })
+
+    // The form only ever renders active types, so a required type an admin has deactivated has
+    // no field to fill. Demanding it anyway would fail every save on every vehicle with no way
+    // back through the UI — deactivating a type is how an admin retires the policy.
+    describe('deactivated types', () => {
+      // A real repository applies the where clause it is handed; a mock that answers with a fixed
+      // list cannot see the isActive term at all, so this one filters like the database would.
+      const catalogue: Record<string, unknown>[] = [
+        {
+          id: 'dt-stnk',
+          code: 'stnk',
+          label: 'STNK',
+          category: 'jenis_dokumen',
+          isRequired: true,
+          isActive: true,
+        },
+        {
+          id: 'dt-asuransi',
+          code: 'asuransi',
+          label: 'Asuransi',
+          category: 'jenis_dokumen',
+          isRequired: true,
+          isActive: false,
+        },
+      ]
+
+      beforeEach(() => {
+        masterRepo.find.mockImplementation(async (opts: { where?: Record<string, unknown> }) =>
+          catalogue.filter((row) =>
+            Object.entries(opts?.where ?? {}).every(([key, value]) => row[key] === value),
+          ),
+        )
+      })
+
+      it('does not demand a required type that has been deactivated', async () => {
+        await expect(
+          service.replaceDocuments('v1', [{ docTypeId: 'dt-stnk', expiresAt: inDays(200) }]),
+        ).resolves.toBeDefined()
+      })
+
+      // Deactivation is the only thing that lifts the demand: an active required type arriving
+      // without an expiry date is still rejected.
+      it('still demands an active required type left without an expiry date', async () => {
+        await expect(
+          service.replaceDocuments('v1', [{ docTypeId: 'dt-stnk', nomor: 'STNK-1' }]),
+        ).rejects.toBeInstanceOf(BadRequestException)
+      })
     })
   })
 
