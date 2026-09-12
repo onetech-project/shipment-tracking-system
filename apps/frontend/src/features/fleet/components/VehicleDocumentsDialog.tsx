@@ -18,6 +18,7 @@ import {
   FleetVehicleDocumentPayload,
 } from '../types'
 import { apiErrorMessage } from '../utils/api-error'
+import { docLabels } from '../utils/doc-labels'
 import { SeverityBadge } from './SeverityBadge'
 
 interface VehicleDocumentsDialogProps {
@@ -124,6 +125,9 @@ export function VehicleDocumentsDialog({
           {docTypes.map((t) => {
             const row = rows[t.id] ?? emptyRow
             const existing = existingFor(t.id)
+            // The same map the full form uses (spec §6.2), so a document is called the same
+            // thing whichever dialog the operator opened it from.
+            const labels = docLabels(t.code, t.label)
             return (
               <div key={t.id} className="rounded-md border p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
@@ -150,7 +154,7 @@ export function VehicleDocumentsDialog({
                       className="text-xs text-muted-foreground"
                       htmlFor={`doc-${t.id}-issued`}
                     >
-                      {t.label} terbit
+                      {labels.issued}
                     </label>
                     <Input
                       id={`doc-${t.id}-issued`}
@@ -164,7 +168,7 @@ export function VehicleDocumentsDialog({
                       className="text-xs text-muted-foreground"
                       htmlFor={`doc-${t.id}-expires`}
                     >
-                      {t.label} berlaku sampai
+                      {labels.expires}
                     </label>
                     <Input
                       id={`doc-${t.id}-expires`}
