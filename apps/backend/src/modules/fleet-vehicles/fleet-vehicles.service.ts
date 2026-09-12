@@ -462,9 +462,13 @@ export class FleetVehiclesService {
   // no date is invisible to all of them. The flag is read from master data rather than hardcoded
   // so an admin can change the policy from the Master Data screen. is_required is nullable and a
   // type an admin adds is born NULL, so only an explicit TRUE demands a date.
+  //
+  // Deactivated types are excluded because the form only ever renders active ones: demanding a
+  // type the operator has no field for would lock every save on every vehicle behind a 400 with
+  // no way back through the UI. Deactivating a type is how an admin retires the policy.
   private async assertRequiredDocuments(docs: DocumentInput[]): Promise<void> {
     const required = await this.masterRepo.find({
-      where: { category: 'jenis_dokumen', isRequired: true },
+      where: { category: 'jenis_dokumen', isRequired: true, isActive: true },
     })
     if (required.length === 0) return
 

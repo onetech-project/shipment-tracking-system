@@ -19,7 +19,7 @@ const SEWA_LEPAS_KUNCI_CODE = 'sewa_lepas_kunci'
 const NO_FINANCING_CODES = ['lunas', 'tanpa_leasing']
 
 // Every value is a string, because that is what an HTML input holds. Keeping numbers as numbers
-// here would mean every input needed its own "is this the empty string or a zero" branch;
+// here would mean every input needed its own "is this the empty string or a zero" branch
 // instead the conversion happens once, in buildPayload.
 export interface VehicleFormValues {
   nopol: string
