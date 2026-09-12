@@ -273,7 +273,7 @@ describe('FleetMasterDataService', () => {
       await service.remove('r1')
       const [sql] = dataSource.query.mock.calls[0] as [string, unknown[]]
       const subqueries = sql.match(/SELECT count\(\*\)/g) ?? []
-      expect(subqueries).toHaveLength(6)
+      expect(subqueries).toHaveLength(7)
     })
 
     // COALESCE(SUM(c), 0) means an empty result set is legitimately "nothing references this".
@@ -287,6 +287,26 @@ describe('FleetMasterDataService', () => {
         countUsage: (id: string) => Promise<number>
       }).countUsage('r1')
       expect(count).toBe(0)
+    })
+
+    // Without this row in REFERENCING_COLUMNS, deleting a leasing company still used by an open
+    // contract passes the service's own check and then fails on the FK as a 500. The operator sees
+    // "Internal server error" instead of being told which rows still point at it.
+    it('counts open lease contracts when deciding whether a leasing row is in use', async () => {
+      // Every sibling case in this block seeds findOne; without it remove() throws
+      // NotFoundException before the probe it is meant to assert on ever runs.
+      repo.findOne.mockResolvedValue({ id: 'm1', category: 'leasing', label: 'MTF' })
+      dataSource.query.mockResolvedValue([{ count: '0' }])
+      await service.remove('m1')
+      const sql = String(dataSource.query.mock.calls[0][0])
+      expect(sql).toContain('fleet_lease_contracts')
+      expect(sql).toContain('leasing_id')
+      // Substring checks alone pass on a typo'd 'leasing_idz', which still contains 'leasing_id'
+      // yet counts nothing and lets the 500 through. Pin the whole subquery, whitespace-normalised
+      // so it constrains the identifiers rather than the SQL's formatting.
+      expect(sql.replace(/\s+/g, ' ')).toContain(
+        'SELECT count(*) AS c FROM fleet_lease_contracts WHERE leasing_id = $1',
+      )
     })
   })
 })

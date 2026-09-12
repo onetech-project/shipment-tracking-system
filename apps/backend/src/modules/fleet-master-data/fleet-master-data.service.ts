@@ -21,6 +21,7 @@ const REFERENCING_COLUMNS: { table: string; column: string }[] = [
   { table: 'fleet_vehicles', column: 'pool_id' },
   { table: 'fleet_vehicles', column: 'status_id' },
   { table: 'fleet_vehicle_documents', column: 'doc_type_id' },
+  { table: 'fleet_lease_contracts', column: 'leasing_id' },
 ]
 
 @Injectable()
