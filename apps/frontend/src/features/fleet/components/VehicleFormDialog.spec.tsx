@@ -158,6 +158,18 @@ describe('VehicleFormDialog', () => {
     expect(servis).toContainElement(screen.getByLabelText(/servis berkala berikutnya/i))
   })
 
+  // Every other section runs three across; this one asks for two, because without a document
+  // number it has only two date fields and a third column would open a gap. Pinned on the dialog
+  // rather than on DocumentSection, because the count is chosen here at the call site — dropping
+  // it leaves the section rendering happily at the wrong width with nothing else to notice.
+  it('lays the service section out in two columns, unlike the rest', () => {
+    setup()
+    const grid = (name: RegExp | string) =>
+      screen.getByRole('group', { name }).querySelector('div') as HTMLElement
+    expect(grid('Servis dan Perawatan').className).toContain('sm:grid-cols-2')
+    expect(grid(/dokumen kendaraan/i).className).toContain('sm:grid-cols-3')
+  })
+
   it('puts every other document type in the dokumen section', () => {
     setup()
     const dokumen = screen.getByRole('group', { name: /dokumen kendaraan/i })

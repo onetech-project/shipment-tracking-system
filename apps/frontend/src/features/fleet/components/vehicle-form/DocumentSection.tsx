@@ -19,6 +19,7 @@ interface DocumentSectionProps {
   // Section 6 passes the vehicle's own catatan field down here. It is not a document, but it
   // belongs on that section — and a fieldset with two legends is not a thing.
   children?: React.ReactNode
+  cols?: number
 }
 
 // Serves sections 4, 5 and 6 — they differ only in which document types they list and in what
@@ -29,11 +30,12 @@ export function DocumentSection({
   types,
   showNomor = true,
   children,
+  cols = 3,
 }: DocumentSectionProps) {
   const { docRow, setDocField, errors } = form
 
   return (
-    <Section title={title}>
+    <Section title={title} cols={cols}>
       {types.map((type) => {
         const labels = docLabels(type.code, type.label)
         const row = docRow(type.id)
