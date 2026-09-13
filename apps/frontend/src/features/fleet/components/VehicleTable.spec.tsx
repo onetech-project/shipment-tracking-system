@@ -38,10 +38,10 @@ const vehicle = (over: Partial<FleetVehicle> = {}): FleetVehicle => ({
   pemilikUnit: null,
   odometer: null,
   catatan: null,
-  jenisArmada: { id: 'ja1', label: 'CDE' },
+  jenisArmada: { id: 'ja1', code: 'cde', label: 'CDE' },
   kepemilikan: null,
-  pool: { id: 'p1', label: 'Pool Cakung' },
-  status: { id: 's1', label: 'Beroperasi' },
+  pool: { id: 'p1', code: 'cakung', label: 'Pool Cakung' },
+  status: { id: 's1', code: 'aktif', label: 'Beroperasi' },
   driver: {
     id: 'dr1',
     nama: 'Ahmad Fauzi',
@@ -205,6 +205,122 @@ describe('VehicleTable', () => {
     expect(badge).not.toHaveTextContent('30 hari lagi')
   })
 
+  // The Terdekat cell holds the whole column, badge and caption alike, so the caption is read
+  // from the cell rather than from the badge's own testid.
+  const nearestCell = () => screen.getByTestId('worst-severity').parentElement as HTMLElement
+
+  // "10 hari lagi" without a name sends the operator hunting across a dozen document columns for
+  // the one that is actually expiring. The caption must name the document minDaysLeft came from,
+  // and must not name the ones it did not: the fixture's other two documents sit at 30 and 20 days.
+  it('names the document the nearest expiry belongs to', () => {
+    setup({
+      rows: [
+        vehicle({
+          documents: [
+            {
+              docTypeId: 'dt1',
+              code: 'asuransi',
+              label: 'Asuransi',
+              nomor: 'AS-9',
+              issuedAt: null,
+              expiresAt: '2026-10-11',
+              daysLeft: 30,
+              severity: 'ok',
+            },
+            {
+              docTypeId: 'dt2',
+              code: 'kir',
+              label: 'KIR',
+              nomor: 'JKT-1',
+              issuedAt: null,
+              expiresAt: '2026-10-01',
+              daysLeft: 20,
+              severity: 'warn',
+            },
+            {
+              docTypeId: 'dt3',
+              code: 'pajak',
+              label: 'Pajak',
+              nomor: 'PJ-3',
+              issuedAt: null,
+              expiresAt: '2026-09-21',
+              daysLeft: 10,
+              severity: 'ok',
+            },
+          ],
+          worstSeverity: 'warn',
+          minDaysLeft: 10,
+        }),
+      ],
+    })
+    expect(nearestCell()).toHaveTextContent('Pajak')
+    expect(nearestCell()).not.toHaveTextContent('Asuransi')
+    expect(nearestCell()).not.toHaveTextContent('KIR')
+  })
+
+  // Two documents can fall on the same day. Naming one arbitrarily would point the operator at a
+  // document no more urgent than the one left unmentioned, so both are named.
+  it('names every document sharing the nearest expiry', () => {
+    setup({
+      rows: [
+        vehicle({
+          documents: [
+            {
+              docTypeId: 'dt1',
+              code: 'stnk',
+              label: 'STNK',
+              nomor: 'ST-1',
+              issuedAt: null,
+              expiresAt: '2026-09-21',
+              daysLeft: 10,
+              severity: 'warn',
+            },
+            {
+              docTypeId: 'dt2',
+              code: 'pajak',
+              label: 'Pajak',
+              nomor: 'PJ-3',
+              issuedAt: null,
+              expiresAt: '2026-09-21',
+              daysLeft: 10,
+              severity: 'warn',
+            },
+          ],
+          worstSeverity: 'warn',
+          minDaysLeft: 10,
+        }),
+      ],
+    })
+    expect(nearestCell()).toHaveTextContent('STNK')
+    expect(nearestCell()).toHaveTextContent('Pajak')
+  })
+
+  // A document with no expiry has daysLeft null and cannot be the nearest one. Naming it would
+  // caption the grey "Belum ada tanggal" badge with a document that has no date at all.
+  it('names no document when nothing has a date', () => {
+    setup({
+      rows: [
+        vehicle({
+          documents: [
+            {
+              docTypeId: 'dt1',
+              code: 'kir',
+              label: 'KIR',
+              nomor: 'JKT-1',
+              issuedAt: '2026-03-10',
+              expiresAt: null,
+              daysLeft: null,
+              severity: 'none',
+            },
+          ],
+          worstSeverity: 'none',
+          minDaysLeft: null,
+        }),
+      ],
+    })
+    expect(nearestCell()).not.toHaveTextContent('KIR')
+  })
+
   it('shows a distinct state for a vehicle with no documents', () => {
     setup({ rows: [vehicle({ documents: [], worstSeverity: 'none', minDaysLeft: null })] })
     // /Belum ada/ alone matches both the badge label and its "Belum ada tanggal" suffix, so
@@ -299,10 +415,50 @@ describe('VehicleTable', () => {
   // Pool rides under the driver and the unit status under the plate, as in the prototype: with a
   // column per document type there is no room left for two columns holding one word each.
   it('shows the pool under the driver and the unit status under the plate', () => {
-    setup({ rows: [vehicle({ pool: { id: 'p9', label: 'Pool Bekasi' } })] })
+    setup({ rows: [vehicle({ pool: { id: 'p9', code: 'bekasi', label: 'Pool Bekasi' } })] })
     const cells = screen.getByTestId('vehicle-row').querySelectorAll('td')
     expect(cells[0]).toHaveTextContent('Beroperasi')
     expect(cells[4]).toHaveTextContent('Pool Bekasi')
+  })
+
+  // The prototype colours the status chip green on the road, amber in the workshop, grey
+  // otherwise. Read from the chip's own class rather than the cell's, so a colour landing on some
+  // wrapper instead of the chip does not pass.
+  const statusChip = () =>
+    screen.getByTestId('vehicle-row').querySelectorAll('td')[0].querySelectorAll('span')[1]
+
+  it.each([
+    ['aktif', 'emerald'],
+    ['servis', 'amber'],
+    ['nonaktif', 'slate'],
+  ])('tints the status chip for a %s unit', (code, tint) => {
+    setup({ rows: [vehicle({ status: { id: 's9', code, label: 'Label apa pun' } })] })
+    expect(statusChip()).toHaveTextContent('Label apa pun')
+    expect(statusChip().className).toContain(tint)
+  })
+
+  // Keyed on the master row's code, never its label: an admin renaming "Aktif" to "Beroperasi"
+  // must not silently turn the chip grey. The default fixture is exactly that pair.
+  it('tints the chip from the code even when the label was renamed', () => {
+    setup()
+    expect(statusChip()).toHaveTextContent('Beroperasi')
+    expect(statusChip().className).toContain('emerald')
+  })
+
+  // A code this table has never seen gets the plain tint, not a guessed colour — the honest
+  // reading of a status nobody has decided a meaning for.
+  it('leaves an unknown status code untinted', () => {
+    setup({ rows: [vehicle({ status: { id: 's9', code: 'dikandangkan', label: 'Dikandangkan' } })] })
+    expect(statusChip().className).toContain('slate')
+  })
+
+  // Archived is the row's own state and outranks the status it was archived with: a unit in the
+  // bin is not "Beroperasi", whatever the column says.
+  it('shows an archived unit as Arsip rather than its stored status', () => {
+    setup({ rows: [vehicle({ isActive: false })] })
+    expect(statusChip()).toHaveTextContent('Arsip')
+    expect(statusChip()).not.toHaveTextContent('Beroperasi')
+    expect(statusChip().className).toContain('slate')
   })
 
   it('sorts by plate when the plate header is clicked', () => {
@@ -471,10 +627,10 @@ describe('VehicleTable', () => {
     setup({
       rows: [
         vehicle({
-          kepemilikan: { id: 'kp1', label: 'Milik ESP' },
+          kepemilikan: { id: 'kp1', code: 'milik_esp', label: 'Milik ESP' },
           lease: {
             id: 'lc1',
-            leasing: { id: 'ls1', label: 'MTF' },
+            leasing: { id: 'ls1', code: 'mtf', label: 'MTF' },
             nomorKontrak: 'MTF-1',
             cicilanPerBulan: 8750000,
             tenorBulan: 36,
@@ -495,7 +651,7 @@ describe('VehicleTable', () => {
   })
 
   it('says so for a unit with no open lease contract', () => {
-    setup({ rows: [vehicle({ kepemilikan: { id: 'kp1', label: 'Milik ESP' }, lease: null })] })
+    setup({ rows: [vehicle({ kepemilikan: { id: 'kp1', code: 'milik_esp', label: 'Milik ESP' }, lease: null })] })
     const cells = screen.getByTestId('vehicle-row').querySelectorAll('td')
     expect(cells[2]).toHaveTextContent('Milik ESP')
     expect(cells[2]).not.toHaveTextContent(/sisa/)
