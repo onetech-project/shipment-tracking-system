@@ -19,7 +19,9 @@ export function OperationalSection({ form, pool, status, drivers }: OperationalS
   return (
     <Section title="Operasional & Sopir">
       {/* Drivers are rows of fleet_drivers, not master data, so this select is written out rather
-          than routed through MasterSelect — the option label is the driver's name. */}
+          than routed through MasterSelect — the option label is the driver's name. Driver is
+          optional, so the empty option states the unit's condition rather than instructing the
+          operator, matching the "belum ada sopir" the list already shows for a driverless row. */}
       <FormField label="Sopir Penanggung Jawab" htmlFor="vf-sopir">
         <select
           id="vf-sopir"
@@ -27,7 +29,7 @@ export function OperationalSection({ form, pool, status, drivers }: OperationalS
           value={values.driverId}
           onChange={(e) => setValue('driverId', e.target.value)}
         >
-          <option value="">— pilih —</option>
+          <option value="">— belum ditugaskan —</option>
           {drivers.map((d) => (
             <option key={d.id} value={d.id}>
               {d.nama}

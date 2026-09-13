@@ -496,7 +496,7 @@ describe('FleetVehiclesPage', () => {
     expect(optionsOf(/pool/i)).toEqual(['— pilih —', 'pool satu'])
     expect(optionsOf(/status kendaraan/i)).toEqual(['— pilih —', 'status_kendaraan satu'])
     expect(optionsOf(/perusahaan leasing/i)).toEqual(['— pilih —', 'leasing satu'])
-    expect(optionsOf(/sopir penanggung jawab/i)).toEqual(['— pilih —', 'Ahmad Fauzi'])
+    expect(optionsOf(/sopir penanggung jawab/i)).toEqual(['— belum ditugaskan —', 'Ahmad Fauzi'])
   })
 
   // The dialog test above scopes every query to role="dialog" and so cannot see the filter bar,

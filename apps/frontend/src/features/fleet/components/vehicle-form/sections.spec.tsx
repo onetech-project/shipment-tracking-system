@@ -238,6 +238,15 @@ describe('OperationalSection', () => {
     expect(screen.getByRole('option', { name: 'Ahmad Fauzi' })).toBeInTheDocument()
   })
 
+  // Driver is optional, so the empty option describes the unit rather than ordering the operator
+  // about — and it says the same thing the vehicle table already says for a driverless row.
+  it('names the empty driver option for the unit\'s condition', () => {
+    renderOps()
+    const empty = screen.getByLabelText(/sopir penanggung jawab/i).querySelector('option')
+    expect(empty).toHaveTextContent('— belum ditugaskan —')
+    expect(empty).toHaveValue('')
+  })
+
   // Requirement #1 and spec §6: the licence is the driver's, held once in the Sopir module. The
   // form shows it and never stores a second copy.
   it('fills the SIM fields from the chosen driver', () => {
