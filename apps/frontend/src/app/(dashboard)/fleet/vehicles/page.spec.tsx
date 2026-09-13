@@ -146,9 +146,24 @@ describe('FleetVehiclesPage', () => {
     expect(screen.getByText('B9114KYZ')).toBeInTheDocument()
   })
 
+  // Pinned to the prototype's masthead wording rather than a loose /armada/i, which passed on the
+  // old "Armada" title too and so proved nothing about the copy the partner signed off.
   it('shows the page title', () => {
     render(<FleetVehiclesPage />)
-    expect(screen.getByRole('heading', { name: /armada/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Registrasi Armada' })).toBeInTheDocument()
+  })
+
+  it('shows the eyebrow above the title', () => {
+    render(<FleetVehiclesPage />)
+    expect(screen.getByText('Buku induk kendaraan · angkutan barang')).toBeInTheDocument()
+  })
+
+  // The description says what the module covers and, in its last sentence, the one thing an
+  // operator has to trust: the warning arrives without being asked for.
+  it('shows the description, including when warnings appear', () => {
+    render(<FleetVehiclesPage />)
+    expect(screen.getByText(/angsuran leasing dalam satu tempat/i)).toBeInTheDocument()
+    expect(screen.getByText(/30 hari sebelum jatuh tempo/i)).toBeInTheDocument()
   })
 
   it('opens the create dialog from the header button', () => {

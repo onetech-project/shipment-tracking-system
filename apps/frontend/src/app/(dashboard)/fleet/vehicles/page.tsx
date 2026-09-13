@@ -101,9 +101,14 @@ export default function FleetVehiclesPage() {
 
   return (
     <div>
+      {/* Eyebrow, title and description follow the prototype's masthead verbatim, so the operator
+          meets the same words here as in the document they signed off. */}
+      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Buku induk kendaraan · angkutan barang
+      </p>
       <PageHeader
-        title="Armada"
-        subtitle="Daftar unit beserta status dokumennya. Peringatan dihitung di server."
+        title="Registrasi Armada"
+        subtitle="Data kendaraan, masa berlaku KIR & STNK, softcopy dokumen, status kepemilikan, dan angsuran leasing dalam satu tempat. Peringatan muncul otomatis 30 hari sebelum jatuh tempo."
         action={
           canCreate ? (
             <Button onClick={() => setModal({ type: 'create' })}>+ Tambah armada</Button>
