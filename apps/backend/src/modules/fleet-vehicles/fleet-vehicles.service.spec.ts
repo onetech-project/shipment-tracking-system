@@ -22,6 +22,19 @@ const docRow = (over: Record<string, unknown> = {}) => ({
   ...over,
 })
 
+// A persisted document row as manager.find hands it back inside the transaction: the stored
+// columns only, no docType join — writeDocuments compares substance, not the rendered view.
+const liveDoc = (over: Record<string, unknown> = {}) => ({
+  id: 'd1',
+  vehicleId: 'v1',
+  docTypeId: 'dt-kir',
+  nomor: 'JKT-II/1',
+  issuedAt: '2026-03-10',
+  expiresAt: '2026-09-15',
+  isCurrent: true,
+  ...over,
+})
+
 const vehicleRow = (over: Record<string, unknown> = {}) => ({
   id: 'v1',
   nopol: 'B9114KYZ',
@@ -85,6 +98,7 @@ describe('FleetVehiclesService', () => {
     save: jest.Mock
     create: jest.Mock
     findOne: jest.Mock
+    find: jest.Mock
   }
 
   beforeEach(async () => {
@@ -137,6 +151,7 @@ describe('FleetVehiclesService', () => {
       save: jest.fn(async (_e, v) => ({ id: 'v-new', ...(v as object) })),
       create: jest.fn((_e, v) => v),
       findOne: jest.fn(async () => null),
+      find: jest.fn(async () => []),
     }
     dataSource = { transaction: jest.fn(async (cb: (m: unknown) => unknown) => cb(txManager)) }
 
@@ -593,11 +608,15 @@ describe('FleetVehiclesService', () => {
       expect(dataSource.transaction).toHaveBeenCalledTimes(1)
     })
 
-    it('retires the existing live rows before inserting', async () => {
+    // uq_fleet_vehicle_documents_current allows one live row per type, so the row being superseded
+    // has to stop being current before its replacement goes in — the other order deadlocks on the
+    // index inside the transaction and the renewal never lands.
+    it('retires the superseded row before inserting its replacement', async () => {
+      txManager.find.mockResolvedValueOnce([liveDoc({ expiresAt: '2026-09-15' })])
       await service.replaceDocuments('v1', [{ docTypeId: 'dt-kir', expiresAt: '2027-01-01' }])
       expect(txManager.update).toHaveBeenCalledWith(
         expect.anything(),
-        { vehicleId: 'v1', isCurrent: true },
+        { id: expect.objectContaining({ type: 'in', value: ['d1'] }) },
         { isCurrent: false },
       )
       const updateOrder = txManager.update.mock.invocationCallOrder[0]
@@ -669,6 +688,7 @@ describe('FleetVehiclesService', () => {
     // An empty set is a legitimate submission — it retires everything and leaves the vehicle
     // with no live documents.
     it('accepts an empty set and only retires', async () => {
+      txManager.find.mockResolvedValueOnce([liveDoc()])
       await service.replaceDocuments('v1', [])
       expect(txManager.update).toHaveBeenCalled()
       expect(txManager.insert).not.toHaveBeenCalled()
@@ -680,6 +700,194 @@ describe('FleetVehiclesService', () => {
     })
   })
 
+  // The live database showed the damage this describes: four identical KIR rows and three
+  // identical STNK rows on one unit, because the six-section form posts the entire document set on
+  // every save and writeDocuments retired and re-inserted all of it regardless. Asserted against a
+  // simulated table rather than against call counts, because "one row per type survives two saves"
+  // is the claim, and a mock that only records calls cannot state it.
+  describe('writeDocuments against a simulated document table', () => {
+    // Stands in for fleet_vehicle_documents. Dates are stored the way pg hands them back through
+    // TypeORM — 'YYYY-MM-DD' strings — and one case below swaps in Date objects instead, which is
+    // the other shape the driver can produce.
+    let rows: Record<string, unknown>[]
+    let nextId: number
+
+    const seed = (seeds: Record<string, unknown>[]) => {
+      rows = seeds.map((r) => ({ ...r }))
+      nextId = rows.length + 1
+      txManager.find.mockImplementation(async (_e: unknown, opts: { where: Record<string, unknown> }) =>
+        rows.filter((r) => r.vehicleId === opts.where.vehicleId && r.isCurrent === opts.where.isCurrent),
+      )
+      txManager.update.mockImplementation(
+        async (_e: unknown, where: Record<string, unknown>, patch: Record<string, unknown>) => {
+          const ids = (where.id as { value?: string[] })?.value ?? []
+          for (const row of rows) if (ids.includes(row.id as string)) Object.assign(row, patch)
+        },
+      )
+      txManager.insert.mockImplementation(async (_e: unknown, v: Record<string, unknown>) => {
+        rows.push({ id: `new-${nextId++}`, ...v })
+      })
+    }
+
+    const live = () => rows.filter((r) => r.isCurrent)
+    const ofType = (docTypeId: string) => rows.filter((r) => r.docTypeId === docTypeId)
+
+    beforeEach(() => {
+      masterRepo.findOne.mockImplementation(async (opts: { where: { id: string; category: string } }) => ({
+        id: opts.where.id,
+        category: opts.where.category,
+      }))
+    })
+
+    const kir = { docTypeId: 'dt-kir', nomor: 'JKT-II/1', issuedAt: '2026-03-10', expiresAt: '2026-09-15' }
+    const stnk = { docTypeId: 'dt-stnk', nomor: 'STNK-7', issuedAt: '2026-01-05', expiresAt: '2027-01-05' }
+
+    // The bug in one test. Two saves of the same form is the ordinary case — an operator edits the
+    // odometer, saves, spots a typo, saves again — and it used to leave four rows.
+    it('leaves the original rows untouched when the same set is saved twice', async () => {
+      seed([
+        liveDoc({ id: 'd-kir', docTypeId: 'dt-kir', ...kir }),
+        liveDoc({ id: 'd-stnk', docTypeId: 'dt-stnk', ...stnk }),
+      ])
+      await service.replaceDocuments('v1', [kir, stnk])
+      await service.replaceDocuments('v1', [kir, stnk])
+      expect(rows).toHaveLength(2)
+      expect(live().map((r) => r.id).sort()).toEqual(['d-kir', 'd-stnk'])
+      expect(live().every((r) => r.isCurrent === true)).toBe(true)
+    })
+
+    // An unchanged row must not be retired even for an instant. Retiring and re-inserting the same
+    // values would leave the table looking right while every save still burned a row.
+    it('issues no write at all when nothing in the set changed', async () => {
+      seed([liveDoc({ id: 'd-kir', docTypeId: 'dt-kir', ...kir })])
+      await service.replaceDocuments('v1', [kir])
+      expect(txManager.update).not.toHaveBeenCalled()
+      expect(txManager.insert).not.toHaveBeenCalled()
+    })
+
+    // A real renewal still supersedes rather than overwrites — that is what the history is for —
+    // and it must not drag its siblings along with it.
+    it('retires only the document whose expiry changed and leaves its siblings alone', async () => {
+      seed([
+        liveDoc({ id: 'd-kir', docTypeId: 'dt-kir', ...kir }),
+        liveDoc({ id: 'd-stnk', docTypeId: 'dt-stnk', ...stnk }),
+      ])
+      await service.replaceDocuments('v1', [{ ...kir, expiresAt: '2027-09-15' }, stnk])
+      expect(rows.find((r) => r.id === 'd-kir')?.isCurrent).toBe(false)
+      expect(rows.find((r) => r.id === 'd-stnk')).toMatchObject({ isCurrent: true })
+      expect(ofType('dt-stnk')).toHaveLength(1)
+      expect(ofType('dt-kir')).toHaveLength(2)
+      expect(live().find((r) => r.docTypeId === 'dt-kir')).toMatchObject({
+        expiresAt: '2027-09-15',
+        isCurrent: true,
+      })
+    })
+
+    // Dropping a type from the payload is how an operator deletes a document. Comparing before
+    // replacing must not turn that into a no-op.
+    it('still retires a type the payload no longer carries', async () => {
+      seed([
+        liveDoc({ id: 'd-kir', docTypeId: 'dt-kir', ...kir }),
+        liveDoc({ id: 'd-stnk', docTypeId: 'dt-stnk', ...stnk }),
+      ])
+      await service.replaceDocuments('v1', [kir])
+      expect(rows.find((r) => r.id === 'd-stnk')?.isCurrent).toBe(false)
+      expect(rows.find((r) => r.id === 'd-kir')?.isCurrent).toBe(true)
+      expect(rows).toHaveLength(2)
+    })
+
+    // The number is as much the document as the expiry is: a corrected certificate number on the
+    // same dates is a real edit, and skipping it would leave the register quoting the old one.
+    it('replaces the row when only the document number changed', async () => {
+      seed([liveDoc({ id: 'd-kir', docTypeId: 'dt-kir', ...kir })])
+      await service.replaceDocuments('v1', [{ ...kir, nomor: 'JKT-II/2' }])
+      expect(rows.find((r) => r.id === 'd-kir')?.isCurrent).toBe(false)
+      expect(live()[0]).toMatchObject({ nomor: 'JKT-II/2' })
+    })
+
+    it('replaces the row when only the issue date changed', async () => {
+      seed([liveDoc({ id: 'd-kir', docTypeId: 'dt-kir', ...kir })])
+      await service.replaceDocuments('v1', [{ ...kir, issuedAt: '2026-03-11' }])
+      expect(rows.find((r) => r.id === 'd-kir')?.isCurrent).toBe(false)
+      expect(live()[0]).toMatchObject({ issuedAt: '2026-03-11' })
+    })
+
+    // The type normalisation hazard, same one sameContract was written for. pg's date parser can
+    // hand a date column back as a Date built at LOCAL midnight; the DTO always sends an ISO
+    // string. Compared raw these never match, every row is replaced on every save, and the fix
+    // silently does nothing. Constructed with the local-midnight constructor on purpose — rendered
+    // through toISOString() this reports the previous day anywhere east of Greenwich, which is the
+    // deployment zone.
+    it('reads a local-midnight Date and an ISO string as the same day', async () => {
+      seed([
+        liveDoc({
+          id: 'd-kir',
+          docTypeId: 'dt-kir',
+          nomor: 'JKT-II/1',
+          issuedAt: new Date(2026, 2, 10),
+          expiresAt: new Date(2026, 8, 15),
+        }),
+      ])
+      await service.replaceDocuments('v1', [kir])
+      expect(txManager.update).not.toHaveBeenCalled()
+      expect(txManager.insert).not.toHaveBeenCalled()
+      expect(rows).toHaveLength(1)
+    })
+
+    // A number the operator cleared with the space bar is the same emptiness as a stored null, so
+    // it must not read as a change and churn the row on every save.
+    it('reads a whitespace-only number and a stored null as the same emptiness', async () => {
+      seed([liveDoc({ id: 'd-kir', docTypeId: 'dt-kir', nomor: null, issuedAt: null, expiresAt: null })])
+      await service.replaceDocuments('v1', [{ docTypeId: 'dt-kir', nomor: '   ' }])
+      expect(txManager.update).not.toHaveBeenCalled()
+      expect(txManager.insert).not.toHaveBeenCalled()
+    })
+
+    // The mirror: clearing a number that was really set is a change. Collapsed to "same", the save
+    // would report success and keep quoting a certificate number the operator deleted.
+    it('replaces the row when a number that was set is cleared', async () => {
+      seed([liveDoc({ id: 'd-kir', docTypeId: 'dt-kir', ...kir })])
+      await service.replaceDocuments('v1', [{ ...kir, nomor: '' }])
+      expect(rows.find((r) => r.id === 'd-kir')?.isCurrent).toBe(false)
+      expect(live()[0]).toMatchObject({ nomor: null })
+    })
+
+    // A first-ever document for a type has nothing to compare against and must simply insert.
+    it('inserts a type that has no live row yet', async () => {
+      seed([liveDoc({ id: 'd-kir', docTypeId: 'dt-kir', ...kir })])
+      await service.replaceDocuments('v1', [kir, stnk])
+      expect(rows.find((r) => r.id === 'd-kir')?.isCurrent).toBe(true)
+      expect(ofType('dt-stnk')).toHaveLength(1)
+      expect(ofType('dt-stnk')[0]).toMatchObject({ isCurrent: true, nomor: 'STNK-7' })
+    })
+
+    // Superseded rows are not candidates for a match — comparing against one would resurrect an
+    // expired certificate instead of inserting the renewal the operator just typed.
+    it('compares only against live rows, never against superseded ones', async () => {
+      seed([
+        liveDoc({ id: 'd-old', docTypeId: 'dt-kir', ...kir, isCurrent: false }),
+        liveDoc({ id: 'd-kir', docTypeId: 'dt-kir', ...kir, expiresAt: '2027-09-15' }),
+      ])
+      await service.replaceDocuments('v1', [kir])
+      expect(rows.find((r) => r.id === 'd-old')?.isCurrent).toBe(false)
+      expect(rows.find((r) => r.id === 'd-kir')?.isCurrent).toBe(false)
+      expect(live()).toHaveLength(1)
+      expect(live()[0].id).toBe('new-3')
+    })
+
+    // update() routes through the same helper, and it is the path the reported damage came in on:
+    // the operator edits the odometer and the form posts all seven documents alongside it.
+    it('leaves the documents alone when update only bumps the odometer', async () => {
+      seed([
+        liveDoc({ id: 'd-kir', docTypeId: 'dt-kir', ...kir }),
+        liveDoc({ id: 'd-stnk', docTypeId: 'dt-stnk', ...stnk }),
+      ])
+      await service.update('v1', { odometer: 130000, documents: [kir, stnk] })
+      expect(txManager.insert).not.toHaveBeenCalled()
+      expect(rows).toHaveLength(2)
+      expect(live().map((r) => r.id).sort()).toEqual(['d-kir', 'd-stnk'])
+    })
+  })
   describe('view mapping', () => {
     it('computes severity per document from its own threshold', async () => {
       docQb.getMany.mockResolvedValue([
