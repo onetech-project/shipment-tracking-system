@@ -696,7 +696,7 @@ export class FleetVehiclesService {
   }
 
   private toRef(row?: FleetMasterDataEntity | null): FleetMasterRef | null {
-    return row ? { id: row.id, label: row.label } : null
+    return row ? { id: row.id, code: row.code, label: row.label } : null
   }
 
   private async assertMasterRefs(dto: UpdateInput): Promise<void> {
