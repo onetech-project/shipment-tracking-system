@@ -348,22 +348,41 @@ export class FleetVehiclesService {
     return this.findOne(id)
   }
 
-  // A type present with an unchanged expiry keeps its row; a changed expiry supersedes the old
-  // row rather than overwriting it, which is what preserves the renewal history the prototype
-  // threw away. Everything is retired first, then the submitted set is inserted fresh: in that
-  // order, inside one transaction, uq_fleet_vehicle_documents_current holds at commit time
-  // without having to diff old against new.
+  // The form posts the whole document set on every save, so "a type is present in the payload"
+  // does not mean the operator touched it. Each type is compared against the row already live and
+  // an unchanged one is left exactly where it is: not retired, not re-inserted. Without that, an
+  // odometer edit stacked a fresh row per type per save and buried the renewal history this table
+  // keeps superseded rows for. A genuinely changed type is superseded rather than overwritten, and
+  // a type the payload drops is retired with no replacement — that is how an operator deletes a
+  // document. The retirements all land before any insert because
+  // uq_fleet_vehicle_documents_current allows one live row per type, so a renewal cannot be
+  // inserted while the row it supersedes is still current.
   private async writeDocuments(
     manager: EntityManager,
     vehicleId: string,
     docs: DocumentInput[],
   ): Promise<void> {
-    await manager.update(
-      FleetVehicleDocumentEntity,
-      { vehicleId, isCurrent: true },
-      { isCurrent: false },
-    )
+    const live = await manager.find(FleetVehicleDocumentEntity, {
+      where: { vehicleId, isCurrent: true },
+    })
+    const liveByType = new Map(live.map((row) => [row.docTypeId, row]))
+
+    const keptIds = new Set<string>()
+    const renewals: DocumentInput[] = []
     for (const doc of docs) {
+      const open = liveByType.get(doc.docTypeId)
+      if (open && this.sameDocument(open, doc)) {
+        keptIds.add(open.id)
+        continue
+      }
+      renewals.push(doc)
+    }
+
+    const retireIds = live.filter((row) => !keptIds.has(row.id)).map((row) => row.id)
+    if (retireIds.length > 0) {
+      await manager.update(FleetVehicleDocumentEntity, { id: In(retireIds) }, { isCurrent: false })
+    }
+    for (const doc of renewals) {
       await manager.insert(FleetVehicleDocumentEntity, {
         vehicleId,
         docTypeId: doc.docTypeId,
@@ -373,6 +392,19 @@ export class FleetVehiclesService {
         isCurrent: true,
       })
     }
+  }
+
+  // Whether the incoming document describes the row already live for its type. Same reason
+  // sameContract exists and same hazard: the DTO carries JSON strings-or-null while pg hands a
+  // date column back as either 'YYYY-MM-DD' or a Date, so a raw === would report "different" on
+  // every save and replace every row regardless. The type id is not compared — it is the key the
+  // two sides were matched on.
+  private sameDocument(open: FleetVehicleDocumentEntity, doc: DocumentInput): boolean {
+    return (
+      this.blankToNull(open.nomor) === this.blankToNull(doc.nomor) &&
+      this.sameDate(open.issuedAt, doc.issuedAt) &&
+      this.sameDate(open.expiresAt, doc.expiresAt)
+    )
   }
 
   private async openContract(
