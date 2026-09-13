@@ -92,7 +92,7 @@ export function VehicleFormDialog({
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       {/* Wider than the two-column dialogs elsewhere (spec §6): six sections at sm:max-w-2xl
           turn into a column the operator has to scroll for a minute. */}
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-7xl">
         <DialogHeader>
           <DialogTitle>{initial ? 'Ubah armada' : 'Tambah armada'}</DialogTitle>
         </DialogHeader>
@@ -125,6 +125,7 @@ export function VehicleFormDialog({
             form={form}
             types={servis}
             showNomor={false}
+            cols={2}
           >
             <FormField label="Catatan" htmlFor="vf-catatan" className="sm:col-span-2">
               <textarea

@@ -1,10 +1,13 @@
 import * as React from 'react'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { IdentitySection } from './IdentitySection'
 import { LeaseSection } from './LeaseSection'
 import { OperationalSection } from './OperationalSection'
 import { DocumentSection } from './DocumentSection'
+import { Section } from './form-primitives'
 import { useVehicleForm, VehicleFormApi } from './useVehicleForm'
 import { FleetDriver, FleetMasterRow } from '../../types'
 
@@ -71,6 +74,17 @@ const renderWithForm = (
 
   render(<Harness />)
   return { result }
+}
+
+// Same harness, but handing back the container: the grid tests read a class off the rendered
+// markup rather than querying by role or label.
+const renderWithFormIn = (render_: (form: VehicleFormApi) => React.ReactElement) => {
+  function Harness() {
+    const form = useVehicleForm({ docTypes, kepemilikan, leasing, drivers })
+    return render_(form)
+  }
+
+  return render(<Harness />)
 }
 
 describe('IdentitySection', () => {
@@ -275,6 +289,82 @@ describe('OperationalSection', () => {
     const { result } = renderOps()
     fireEvent.change(screen.getByLabelText(/odometer/i), { target: { value: '120000' } })
     expect(result.current.values.odometer).toBe('120000')
+  })
+})
+
+// Tailwind scans source files as text, so a class built by interpolation — `sm:grid-cols-${cols}`
+// — is never generated and the grid silently falls back to one column. Neither tsc nor a
+// behavioural test notices: the markup still renders, just in the wrong shape. These read the
+// class off the DOM, and the literal spelling is exactly what has to survive.
+describe('Section grid', () => {
+  const gridOf = (el: HTMLElement) => el.querySelector('fieldset > div') as HTMLElement
+
+  it('lays the form sections out in three columns by default', () => {
+    const { container } = render(
+      <Section title="Apa saja">
+        <span />
+      </Section>,
+    )
+    expect(gridOf(container).className).toContain('sm:grid-cols-3')
+  })
+
+  // Asked for 2, which is the count that differs from the default — passing 3 here would agree
+  // with the default and prove nothing about the prop being read at all.
+  it('takes the column count it is given', () => {
+    const { container } = render(
+      <Section title="Apa saja" cols={2}>
+        <span />
+      </Section>,
+    )
+    expect(gridOf(container).className).toContain('sm:grid-cols-2')
+    expect(gridOf(container).className).not.toContain('sm:grid-cols-3')
+  })
+
+  // A count with no literal behind it must fall back to a real class rather than emit
+  // "sm:grid-cols-9", which Tailwind would not generate and the browser would ignore.
+  it('falls back to the default for a count it has no class for', () => {
+    const { container } = render(
+      <Section title="Apa saja" cols={9}>
+        <span />
+      </Section>,
+    )
+    expect(gridOf(container).className).toContain('sm:grid-cols-3')
+    expect(gridOf(container).className).not.toContain('sm:grid-cols-9')
+  })
+
+  // Read from the source text, not the DOM, because the DOM cannot tell the two apart: an
+  // interpolated `sm:grid-cols-${cols}` produces exactly the same className as a literal, and
+  // every rendering assertion above passes either way. Tailwind's scanner sees only this file's
+  // text, so the text is where the invariant actually lives — the class must be spelled out in
+  // full or the stylesheet never contains it and the grid collapses to one column in the browser.
+  it('spells every grid class out in full rather than interpolating it', () => {
+    const source = readFileSync(join(__dirname, 'form-primitives.tsx'), 'utf8')
+    expect(source).not.toMatch(/grid-cols-\$\{/)
+    expect(source).toContain("'sm:grid-cols-2'")
+    expect(source).toContain("'sm:grid-cols-3'")
+  })
+
+  it('keeps the document section at three columns', () => {
+    const { container } = renderWithFormIn((form) => (
+      <DocumentSection title="Dokumen Kendaraan" form={form} types={[docTypes[0]]} />
+    ))
+    expect(gridOf(container).className).toContain('sm:grid-cols-3')
+  })
+
+  // Servis dan Perawatan is the one section that asks for 2: without a document number it has
+  // only two date fields, so a third column would open a gap rather than fill one.
+  it('narrows the service section to two columns', () => {
+    const { container } = renderWithFormIn((form) => (
+      <DocumentSection
+        title="Servis dan Perawatan"
+        form={form}
+        types={[docTypes[1]]}
+        showNomor={false}
+        cols={2}
+      />
+    ))
+    expect(gridOf(container).className).toContain('sm:grid-cols-2')
+    expect(gridOf(container).className).not.toContain('sm:grid-cols-3')
   })
 })
 
