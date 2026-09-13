@@ -106,6 +106,9 @@ export interface FleetVehicleDriver {
 
 export interface FleetVehicleRef {
   id: string
+  // Carried alongside the label so a consumer can branch on the row's meaning — colouring a
+  // status chip, say — without matching on Indonesian display text an admin is free to rename.
+  code: string
   label: string
 }
 
