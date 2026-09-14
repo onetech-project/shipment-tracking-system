@@ -10,8 +10,8 @@ describe('buildFilter', () => {
 
   it('range mode still emits the lower bound and the IS NOT NULL guard', () => {
     const { where } = buildFilter(undefined, undefined, '2026-05-10', '2026-05-15')
-    expect(where).toContain('date_ata IS NOT NULL')
-    expect(where).toContain('date_ata >= $1::DATE')
+    expect(where).toContain('shipment_date IS NOT NULL')
+    expect(where).toContain('shipment_date >= $1::DATE')
   })
 
   it('cycle mode is unaffected: equality on cycleCol bound to a single param', () => {
@@ -20,7 +20,7 @@ describe('buildFilter', () => {
     expect(params).toEqual(['2026-07-1H'])
   })
 
-  it('resolves the date/cycle columns per basis, falling back to ata for unknown basis', () => {
+  it('resolves the date/cycle columns per basis, falling back to `date` for unknown basis', () => {
     expect(buildFilter('atd_origin', undefined, '2026-05-10', '2026-05-15')).toMatchObject({
       dateCol: 'date_atd',
       cycleCol: 'cycle_atd',
@@ -29,18 +29,26 @@ describe('buildFilter', () => {
       dateCol: 'date_completed',
       cycleCol: 'cycle_completed',
     })
+    expect(
+      buildFilter('ata_vendor_wh_destination', undefined, '2026-05-10', '2026-05-15'),
+    ).toMatchObject({ dateCol: 'date_ata', cycleCol: 'cycle_ata' })
+    // `date` maps to shipment_date (20260808000001) rather than a date_* column of its own.
+    expect(buildFilter('date', undefined, '2026-05-10', '2026-05-15')).toMatchObject({
+      dateCol: 'shipment_date',
+      cycleCol: 'cycle_date',
+    })
     expect(buildFilter('some-unknown-basis', undefined, '2026-05-10', '2026-05-15')).toMatchObject(
-      { dateCol: 'date_ata', cycleCol: 'cycle_ata' },
+      { dateCol: 'shipment_date', cycleCol: 'cycle_date' },
     )
     expect(buildFilter(undefined, undefined, '2026-05-10', '2026-05-15')).toMatchObject({
-      dateCol: 'date_ata',
-      cycleCol: 'cycle_ata',
+      dateCol: 'shipment_date',
+      cycleCol: 'cycle_date',
     })
   })
 
   it('prefixes columns with the alias when given', () => {
     const { where, dateCol, cycleCol } = buildFilter(
-      'ata_vendor_wh_destination',
+      'ata_vendor_wh_destination', // explicit, not the default — the alias must prefix any basis
       undefined,
       '2026-05-10',
       '2026-05-15',

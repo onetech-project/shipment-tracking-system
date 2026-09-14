@@ -69,13 +69,13 @@ type FilterMode = 'cycle' | 'range'
 // Order is deliberate — the default basis comes first. Labels come from BASIS_LABELS so the
 // drilldown's date column header can never disagree with this dropdown.
 const BASIS_OPTIONS: { value: DateBasis; label: string }[] = (
-  ['ata_vendor_wh_destination', 'atd_origin', 'completed_time'] satisfies DateBasis[]
+  ['date', 'ata_vendor_wh_destination', 'atd_origin', 'completed_time'] satisfies DateBasis[]
 ).map((value) => ({ value, label: BASIS_LABELS[value] }))
 
 type PnlView = 'estimate' | 'actual' | 'daily' | 'routes' | 'vendors' | 'analytics'
 
 const VIEW_SUBTITLE: Record<PnlView, string> = {
-  estimate: 'Estimated P&L based on arrival date — not yet billed',
+  estimate: 'Estimated P&L over the selected date basis — not yet billed',
   actual: 'Actual revenue from settled invoices vs estimate',
   daily: 'Daily revenue and profit margin per origin and destination',
   routes: 'Revenue, cost and margin per date, compared across routes and route groups',

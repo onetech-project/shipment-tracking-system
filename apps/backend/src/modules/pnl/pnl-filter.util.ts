@@ -5,16 +5,21 @@
  */
 
 // Date basis the cycle/period and date-range filters run off. Each maps to a pair of precomputed
-// v_pnl_to columns (parsed in migration 20260605000002). Default is ata_vendor_wh_destination.
-export type DateBasis = 'completed_time' | 'ata_vendor_wh_destination' | 'atd_origin'
+// v_pnl_to columns (parsed in migrations 20260605000002 and 20260914000001). Default is `date`,
+// the TO's own date from the sheet — the other three record a movement event, so they date a TO by
+// when it moved rather than by the shipment itself, and each leaves some rows unparseable.
+export type DateBasis = 'date' | 'completed_time' | 'ata_vendor_wh_destination' | 'atd_origin'
 
 export const BASIS_COLS: Record<DateBasis, { cycle: string; date: string }> = {
+  // shipment_date is a DATE, not a TIMESTAMP like the other three. Every consumer casts with
+  // ::DATE and the range bounds below are exact on a DATE, so the narrower type changes nothing.
+  date: { cycle: 'cycle_date', date: 'shipment_date' },
   completed_time: { cycle: 'cycle_completed', date: 'date_completed' },
   ata_vendor_wh_destination: { cycle: 'cycle_ata', date: 'date_ata' },
   atd_origin: { cycle: 'cycle_atd', date: 'date_atd' },
 }
 
-const DEFAULT_BASIS: DateBasis = 'ata_vendor_wh_destination'
+const DEFAULT_BASIS: DateBasis = 'date'
 
 export function resolveBasis(basis?: string): DateBasis {
   return basis && basis in BASIS_COLS ? (basis as DateBasis) : DEFAULT_BASIS

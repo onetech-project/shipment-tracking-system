@@ -1,12 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/client'
 
-export type DateBasis = 'completed_time' | 'ata_vendor_wh_destination' | 'atd_origin'
-export const DEFAULT_DATE_BASIS: DateBasis = 'ata_vendor_wh_destination'
+export type DateBasis = 'date' | 'completed_time' | 'ata_vendor_wh_destination' | 'atd_origin'
+export const DEFAULT_DATE_BASIS: DateBasis = 'date'
 
 // One source of truth for how a date basis is named in the UI: the header dropdown and the
 // drilldown's date column header must never drift apart.
 export const BASIS_LABELS: Record<DateBasis, string> = {
+  date: 'Date',
   ata_vendor_wh_destination: 'ATA Vendor WH dest',
   atd_origin: 'ATD origin',
   completed_time: 'Completed time',

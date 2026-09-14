@@ -60,10 +60,10 @@ describe('PnlService', () => {
       expect(result).toEqual(['2026-04-2H', '2026-04-1H'])
     })
 
-    it('defaults to the ata cycle column', async () => {
+    it('defaults to the `date` cycle column', async () => {
       dataSource.query.mockResolvedValueOnce([])
       await service.getCycles()
-      expect(dataSource.query.mock.calls[0][0]).toContain('cycle_ata')
+      expect(dataSource.query.mock.calls[0][0]).toContain('cycle_date')
     })
 
     it('uses the atd cycle column when basis=atd_origin', async () => {
@@ -106,12 +106,28 @@ describe('PnlService', () => {
       expect(params).toEqual(['2026-05-01', '2026-05-15'])
     })
 
-    it('falls back to the ata date column for an unknown basis', async () => {
+    it('falls back to the `date` basis columns for an unknown basis', async () => {
       dataSource.query.mockResolvedValueOnce([{
         total_tos: '0', total_awbs: '0', total_revenue: '0', total_discount: '0', total_cost: '0',
       }])
       await service.getSummary(undefined, '2026-05-01', '2026-05-15', 'bogus')
-      expect(dataSource.query.mock.calls[0][0]).toContain('date_ata')
+      expect(dataSource.query.mock.calls[0][0]).toContain('shipment_date')
+    })
+
+    it('getSummary filters on shipment_date when basis=date', async () => {
+      dataSource.query.mockResolvedValueOnce([{
+        total_tos: '0', total_awbs: '0', total_revenue: '0', total_discount: '0', total_cost: '0',
+      }])
+      await service.getSummary(undefined, '2026-05-01', '2026-05-15', 'date')
+      const [sql, params] = dataSource.query.mock.calls[0]
+      expect(sql).toContain('shipment_date')
+      expect(params).toEqual(['2026-05-01', '2026-05-15'])
+    })
+
+    it('getCycles uses the cycle_date column when basis=date', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getCycles('date')
+      expect(dataSource.query.mock.calls[0][0]).toContain('cycle_date')
     })
   })
 
@@ -251,9 +267,9 @@ describe('PnlService', () => {
         '(m.origin_station, m.dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
       )
       // The period filter is re-applied inside the subquery, reusing $1 rather than rebinding it.
-      expect(sql).toContain('m.cycle_ata = $1')
+      expect(sql).toContain('m.cycle_date = $1')
       // The outer filter runs against the aliased view, not the bare v_pnl_to columns.
-      expect(sql).toContain('v.cycle_ata = $1')
+      expect(sql).toContain('v.cycle_date = $1')
       expect(params).toEqual(['2026-04-2H', ['Jabo'], ['Aceh'], 50, 0])
     })
 
@@ -268,8 +284,8 @@ describe('PnlService', () => {
       expect(sql).toContain(
         '(m.origin_station, m.dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
       )
-      expect(sql).toContain('m.date_ata >= $4::DATE')
-      expect(sql).toContain("m.date_ata < ($5::DATE + INTERVAL '1 day')")
+      expect(sql).toContain('m.shipment_date >= $4::DATE')
+      expect(sql).toContain("m.shipment_date < ($5::DATE + INTERVAL '1 day')")
       expect(params).toEqual([
         '2026-04-2H',
         ['Jabo'],
@@ -603,7 +619,8 @@ describe('PnlService', () => {
       await service.getStations()
       const [sql, params] = dataSource.query.mock.calls[0]
       expect(sql).toContain('SELECT DISTINCT origin_station, dest_station')
-      expect(sql).not.toContain('cycle_ata')
+      // No period filter of any basis — the station list spans the whole view.
+      expect(sql).not.toMatch(/cycle_(date|ata|atd|completed)/)
       expect(params).toBeUndefined()
     })
   })
