@@ -2,7 +2,9 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 
 export interface DataTableColumn<T> {
-  header: string;
+  // ReactNode, not string, so a sort control can live inside the header cell it sorts rather
+  // than in a separate row above the table. Existing string headers stay valid.
+  header: React.ReactNode;
   accessor: (row: T) => React.ReactNode;
   className?: string;
 }

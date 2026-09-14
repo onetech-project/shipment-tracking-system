@@ -22,6 +22,7 @@ import {
   Package,
   Route,
   Truck,
+  Container,
 } from 'lucide-react'
 
 interface NavLinkProps {
@@ -159,6 +160,15 @@ export function Sidebar({ onNavClick, collapsed = false, onToggleCollapse }: Sid
                 href="/vendor-groups"
                 icon={<Truck size={16} />}
                 label="Vendor Group"
+                onClick={onNavClick}
+                collapsed={collapsed}
+              />
+            )}
+            {hasPermission('read.fleet_vehicle') && (
+              <NavLink
+                href="/fleet"
+                icon={<Container size={16} />}
+                label="Registrasi Armada"
                 onClick={onNavClick}
                 collapsed={collapsed}
               />
