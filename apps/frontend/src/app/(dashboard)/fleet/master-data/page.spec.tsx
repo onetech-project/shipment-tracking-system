@@ -239,6 +239,7 @@ describe('FleetMasterDataPage', () => {
       isLoading: false,
     })
     render(<FleetMasterDataPage />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Jenis Dokumen' }))
 
     expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual([
       'Label',
@@ -261,9 +262,33 @@ describe('FleetMasterDataPage', () => {
   it('renders the em dash only when the row genuinely has no threshold', () => {
     mockUseFleetMasterData.mockReturnValue({ data: [{ ...row, warnDays: null }], isLoading: false })
     render(<FleetMasterDataPage />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Jenis Dokumen' }))
     const cells = within(screen.getAllByRole('row')[1]).getAllByRole('cell')
     expect(cells[3].textContent).toBe('\u2014')
   })
+
+  // Only documents and SIM expire, so every other tab would show a column of em dashes that
+  // reads as missing data rather than as a column that does not apply.
+  it.each(['Jenis Dokumen', 'Jenis SIM'])('shows the threshold column on %s', (tab) => {
+    render(<FleetMasterDataPage />)
+    fireEvent.click(screen.getByRole('tab', { name: tab }))
+    expect(screen.getByRole('columnheader', { name: 'Ambang (hari)' })).toBeInTheDocument()
+  })
+
+  it.each(['Jenis Armada', 'Kepemilikan', 'Leasing', 'Status Kendaraan', 'Pool', 'Jenis Berkas'])(
+    'hides the threshold column on %s',
+    (tab) => {
+      render(<FleetMasterDataPage />)
+      fireEvent.click(screen.getByRole('tab', { name: tab }))
+      expect(screen.queryByRole('columnheader', { name: 'Ambang (hari)' })).not.toBeInTheDocument()
+      expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual([
+        'Label',
+        'Kode',
+        'Urutan',
+        '',
+      ])
+    },
+  )
 
   // The badge is the only signal a row is deactivated — without it the row looks live and the
   // 'Aktifkan' button reads as a mistake.

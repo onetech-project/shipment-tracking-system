@@ -17,6 +17,7 @@ import {
 } from '@/features/fleet/hooks/useFleetMasterData'
 import { apiErrorMessage } from '@/features/fleet/utils/api-error'
 import {
+  CATEGORIES_WITH_WARN_DAYS,
   FLEET_CATEGORY_LABELS,
   FLEET_MASTER_CATEGORIES,
   FleetMasterCategory,
@@ -44,6 +45,10 @@ export default function FleetMasterDataPage() {
   const canCreate = hasPermission('create.fleet_master_data')
   const canUpdate = hasPermission('update.fleet_master_data')
   const canDelete = hasPermission('delete.fleet_master_data')
+
+  // Only the expiring categories carry a threshold; on the rest the column would be a full width
+  // of em dashes, so it is left out of those tabs entirely.
+  const showWarnDays = CATEGORIES_WITH_WARN_DAYS.includes(category)
 
   const handleSubmit = async (payload: FleetMasterPayload) => {
     if (modal?.type === 'edit') {
@@ -120,7 +125,9 @@ export default function FleetMasterDataPage() {
           },
           { header: 'Kode', accessor: (r) => <code className="text-xs">{r.code}</code> },
           { header: 'Urutan', accessor: (r) => r.sortOrder },
-          { header: 'Ambang (hari)', accessor: (r) => r.warnDays ?? '—' },
+          ...(showWarnDays
+            ? [{ header: 'Ambang (hari)', accessor: (r: FleetMasterRow) => r.warnDays ?? '—' }]
+            : []),
           {
             header: '',
             className: 'text-right',
