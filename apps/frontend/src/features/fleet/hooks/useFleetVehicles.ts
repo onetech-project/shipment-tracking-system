@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/client'
 import {
+  FleetBerkasCount,
   FleetSeverity,
   FleetVehicle,
   FleetVehicleDocument,
@@ -66,6 +67,10 @@ function normalizeVehicle(row: FleetVehicleWire): FleetVehicle {
     // order, and a green badge on an unknown state is the one wrong answer here.
     worstSeverity: (row.worstSeverity as FleetSeverity) ?? 'none',
     minDaysLeft: row.minDaysLeft ?? null,
+    // Defaulted rather than required, following the wire-type convention this file already
+    // documents: a backend that predates Phase 3 must still render, and 0/0 renders as a neutral
+    // chip rather than a false claim that files are missing.
+    berkasCount: row.berkasCount ?? ({ ada: 0, wajib: 0 } satisfies FleetBerkasCount),
     isActive: row.isActive ?? true,
   }
 }
