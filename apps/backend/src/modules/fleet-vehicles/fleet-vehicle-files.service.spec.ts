@@ -158,6 +158,41 @@ describe('confirm', () => {
     await expect(service.confirm('veh-1', 'slot-1', CONFIRM, 'user-1')).resolves.toBeDefined()
     expect(fileRepo.save).toHaveBeenCalled()
   })
+
+  // TypeORM's RETURNING excludes create-date columns on an UPDATE (only asExpression, update-date
+  // and version columns come back), so a slot that already held a file previously came back with
+  // uploadedAt === undefined and toView() rendered the literal string "undefined". The default
+  // save() mock returns exactly what the payload contains, same as a real UPDATE's merge of the
+  // RETURNING row onto the entity — so this only passes if the service puts uploadedAt in the
+  // payload itself.
+  it('returns a valid uploadedAt when replacing a file already in the slot', async () => {
+    const existing = { id: 'file-1', storageKey: 'fleet/veh-1/stnk/old.pdf', externalUrl: null }
+    const { service } = build({ file: { findOne: jest.fn(async () => existing) } })
+    const view = await service.confirm('veh-1', 'slot-1', CONFIRM, 'user-1')
+
+    expect(view.uploadedAt).not.toBe('undefined')
+    // Pins the format, not just parseability: String(someDate) also parses via `new Date(...)`,
+    // so a looser check would not catch toView() losing its `instanceof Date` branch.
+    expect(view.uploadedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+    expect(Number.isFinite(new Date(view.uploadedAt).getTime())).toBe(true)
+  })
+
+  // Insert-path counterpart: TypeORM's RETURNING on an INSERT does include create-date columns,
+  // so a real save() hands back a generated Date without the service asking for one. The save()
+  // mock here reproduces that generated value the way a real INSERT would, rather than inventing
+  // one the code under test does not itself produce.
+  it('returns a valid uploadedAt for a slot with no existing file (insert path)', async () => {
+    const { service } = build({
+      file: { save: jest.fn(async (row) => ({ id: 'file-1', ...row, uploadedAt: new Date() })) },
+    })
+    const view = await service.confirm('veh-1', 'slot-1', CONFIRM, 'user-1')
+
+    expect(view.uploadedAt).not.toBe('undefined')
+    // Pins the format, not just parseability: String(someDate) also parses via `new Date(...)`,
+    // so a looser check would not catch toView() losing its `instanceof Date` branch.
+    expect(view.uploadedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+    expect(Number.isFinite(new Date(view.uploadedAt).getTime())).toBe(true)
+  })
 })
 
 describe('setExternalUrl', () => {
@@ -188,6 +223,46 @@ describe('setExternalUrl', () => {
     const { service, storage } = build({ file: { findOne: jest.fn(async () => existing) } })
     await service.setExternalUrl('veh-1', 'slot-1', { url: 'https://a.example/b.pdf' }, 'user-1')
     expect(storage.deleteObject).toHaveBeenCalledWith('fleet/veh-1/stnk/old.pdf')
+  })
+
+  // Same asymmetry as confirm(): TypeORM's UPDATE-path RETURNING drops create-date columns, so
+  // this only comes back valid if the service puts uploadedAt in the save payload itself.
+  it('returns a valid uploadedAt when replacing a file already in the slot', async () => {
+    const existing = { id: 'file-1', storageKey: 'fleet/veh-1/stnk/old.pdf', externalUrl: null }
+    const { service } = build({ file: { findOne: jest.fn(async () => existing) } })
+    const view = await service.setExternalUrl(
+      'veh-1',
+      'slot-1',
+      { url: 'https://a.example/b.pdf' },
+      'user-1',
+    )
+
+    expect(view.uploadedAt).not.toBe('undefined')
+    // Pins the format, not just parseability: String(someDate) also parses via `new Date(...)`,
+    // so a looser check would not catch toView() losing its `instanceof Date` branch.
+    expect(view.uploadedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+    expect(Number.isFinite(new Date(view.uploadedAt).getTime())).toBe(true)
+  })
+
+  // Insert-path counterpart, mirroring the one in confirm(): a real INSERT's RETURNING does
+  // include create-date columns, so the mock reproduces that generated value rather than the
+  // service needing to set it itself.
+  it('returns a valid uploadedAt for a slot with no existing file (insert path)', async () => {
+    const { service } = build({
+      file: { save: jest.fn(async (row) => ({ id: 'file-1', ...row, uploadedAt: new Date() })) },
+    })
+    const view = await service.setExternalUrl(
+      'veh-1',
+      'slot-1',
+      { url: 'https://a.example/b.pdf' },
+      'user-1',
+    )
+
+    expect(view.uploadedAt).not.toBe('undefined')
+    // Pins the format, not just parseability: String(someDate) also parses via `new Date(...)`,
+    // so a looser check would not catch toView() losing its `instanceof Date` branch.
+    expect(view.uploadedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+    expect(Number.isFinite(new Date(view.uploadedAt).getTime())).toBe(true)
   })
 })
 

@@ -88,7 +88,12 @@ export class FleetVehicleFilesService {
 
     const existing = await this.fileRepo.findOne({ where: { vehicleId, slotId } })
     const saved = await this.fileRepo.save({
-      ...(existing ? { id: existing.id } : {}),
+      // On an insert, TypeORM's own RETURNING includes the create-date column, so uploadedAt comes
+      // back as a real Date with no help from us. On an update (this branch), TypeORM's RETURNING
+      // excludes create-date columns, so without this the column, and the response, would carry
+      // whatever the row already had — or nothing at all. It also matches what "uploaded_at" means
+      // here: a re-uploaded file is the file now, so the timestamp moves to this upload's time.
+      ...(existing ? { id: existing.id, uploadedAt: new Date() } : {}),
       vehicleId,
       slotId,
       storageKey: dto.storageKey,
@@ -123,7 +128,9 @@ export class FleetVehicleFilesService {
 
     const existing = await this.fileRepo.findOne({ where: { vehicleId, slotId } })
     const saved = await this.fileRepo.save({
-      ...(existing ? { id: existing.id } : {}),
+      // See the matching comment in confirm(): TypeORM's RETURNING drops create-date columns on
+      // an update, and a re-pointed slot means the file (here, the link) is new as of now.
+      ...(existing ? { id: existing.id, uploadedAt: new Date() } : {}),
       vehicleId,
       slotId,
       storageKey: null,
