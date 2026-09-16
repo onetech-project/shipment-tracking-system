@@ -1096,6 +1096,41 @@ describe('FleetVehiclesService', () => {
       const res = await service.findAll({})
       expect(res.rows[0].berkasCount.wajib).toBe(2)
     })
+
+    // A real WHERE clause only hands back rows for the ids it was asked to filter by. The fixed
+    // getRawMany stub every other test in this block uses cannot tell a scoped query from an
+    // unscoped one, so it stays green even if the page restriction is deleted from the service.
+    // This fake behaves like the real query instead: it records the ids .where() was actually
+    // given and filters the fixture rows by them, the same technique masterRepo.count above uses
+    // for its catalogue. Drop the IN (:...ids) predicate and no ids are ever recorded, so the fake
+    // falls back to none and the per-vehicle counts below come back wrong.
+    it('scopes each vehicle on the page to its own file count', async () => {
+      repo.find.mockResolvedValue([
+        vehicleRow({ id: 'v1' }),
+        vehicleRow({ id: 'v2', nopol: 'B2233XYZ' }),
+      ])
+      idQb.getRawMany.mockResolvedValue([{ id: 'v1' }, { id: 'v2' }])
+      masterRepo.count.mockResolvedValue(3)
+
+      const allFileRows = [
+        { vehicleId: 'v1', count: '2' },
+        { vehicleId: 'v2', count: '1' },
+        { vehicleId: 'v3', count: '9' },
+      ]
+      let calledIds: string[] = []
+      fileQb.where.mockImplementation((_sql: string, params?: { ids: string[] }) => {
+        calledIds = params?.ids ?? []
+        return fileQb
+      })
+      fileQb.getRawMany.mockImplementation(async () =>
+        allFileRows.filter((r) => calledIds.includes(r.vehicleId)),
+      )
+
+      const res = await service.findAll({})
+      expect(res.rows.find((r) => r.id === 'v1')?.berkasCount).toEqual({ ada: 2, wajib: 3 })
+      expect(res.rows.find((r) => r.id === 'v2')?.berkasCount).toEqual({ ada: 1, wajib: 3 })
+      expect(fileQb.where).toHaveBeenCalledWith('f.vehicle_id IN (:...ids)', { ids: ['v1', 'v2'] })
+    })
   })
 
 
