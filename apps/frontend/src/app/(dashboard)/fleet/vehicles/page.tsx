@@ -265,6 +265,12 @@ export default function FleetVehiclesPage() {
       )}
 
       {tab === 'berkas' && (
+        // The key looks redundant today — {tab === 'berkas' && …} already unmounts BerkasTab on
+        // every tab switch, which resets its local completeness filter on its own. It starts
+        // pulling weight the day BerkasTab gains a same-tab "jump to this unit" affordance (spec
+        // §6.4's dead-end case, from inside the tab rather than from the row action): without the
+        // key, navigating unit-to-unit while already on Berkas would reuse the mounted instance and
+        // keep whatever filter was active. Keep it rather than pruning it as dead code.
         <BerkasTab
           key={focusVehicleId ?? 'all'}
           vehicles={rows}

@@ -45,18 +45,19 @@ describe('AngsuranTab', () => {
 
   // Every figure arrives settled from the backend; the table formats and never recomputes.
   //
-  // FLEET-RULES minimum-fix exception: as supplied this test used getByText for the cicilan and
-  // sisaKewajiban figures, but with a single vehicle in the fixture the row's own figure equals
-  // the footer total (same one contract), so both amounts render twice and getByText throws on
-  // the duplicate. Widened to getAllByText to keep the assertion's intent — the formatted figure
-  // is on screen — without touching the verbatim component.
+  // With a single vehicle in the fixture the row's own figure equals the footer total (same one
+  // contract), so both amounts render twice — getByText alone throws on the duplicate. Scoped to
+  // the row instead of widened to getAllByText: that keeps the assertion bound to the row this
+  // test is actually about, rather than merely proving the figure is somewhere on the page (which
+  // would pass just as well if the row printed the wrong number and only the footer got it right).
   it('shows the instalment figures the backend settled', () => {
     render(<AngsuranTab vehicles={[vehicle({ lease: LEASE })]} />)
-    expect(screen.getAllByText(/8\.750\.000/).length).toBeGreaterThan(0)
+    const row = within(screen.getAllByRole('rowgroup')[1]).getAllByRole('row')[0]
+    expect(within(row).getByText(/8\.750\.000/)).toBeInTheDocument()
     expect(screen.getByText(/48 bln/)).toBeInTheDocument()
     expect(screen.getByText(/30 bln/)).toBeInTheDocument()
     expect(screen.getByText(/18 bln/)).toBeInTheDocument()
-    expect(screen.getAllByText(/157\.500\.000/).length).toBeGreaterThan(0)
+    expect(within(row).getByText(/157\.500\.000/)).toBeInTheDocument()
   })
 
   it('shows progress as a percentage of the tenor', () => {

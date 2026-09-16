@@ -778,5 +778,52 @@ describe('FleetVehiclesPage', () => {
       expect(screen.getByRole('button', { name: 'Semua' })).toHaveAttribute('aria-pressed', 'true')
       expect(screen.getByRole('button', { name: 'Lengkap' })).toHaveAttribute('aria-pressed', 'false')
     })
+
+    // Nothing else in this file opens the upload dialog: a reviewer proved that by wiring
+    // BerkasUploadDialog's vehicle prop to rows[0] instead of modal.vehicle and watching all 104
+    // tests stay green. Two units in the fixture so the wrong one is actually distinguishable —
+    // with one vehicle, feeding it the wrong id would look identical to feeding it the right one.
+    it('uploads through the dialog against the unit whose slot was clicked, not any other row', async () => {
+      listResult = {
+        data: {
+          rows: [
+            vehicle({ id: 'v1', nopol: 'B9114KYZ', berkasCount: { ada: 0, wajib: 1 } }),
+            vehicle({ id: 'v2', nopol: 'D2222XY', berkasCount: { ada: 0, wajib: 1 } }),
+          ],
+          total: 2,
+          page: 1,
+          pageSize: 25,
+        },
+        ...ok,
+      }
+      render(<FleetVehiclesPage />)
+      fireEvent.click(screen.getByRole('tab', { name: /softcopy berkas/i }))
+
+      // Each unit gets its own card with its own "Unggah" button, so the click is scoped to
+      // D2222XY's card — clicking the first "Unggah" found on the page would not prove anything.
+      const card = screen.getByText('D2222XY').closest('article')
+      if (!card) throw new Error('vehicle card for D2222XY not found')
+      fireEvent.click(within(card).getByRole('button', { name: 'Unggah' }))
+
+      // BerkasUploadDialog is a plain overlay div, not built on the Radix primitive the other
+      // dialogs use, so it carries no role="dialog" — scoped instead via the panel its own
+      // heading sits in, the same way the row's card was scoped above.
+      const panel = screen.getByRole('heading', { name: /softcopy/i }).closest('div')
+      if (!panel) throw new Error('upload dialog panel not found')
+      const dialog = within(panel as HTMLElement)
+      expect(dialog.getByText('D2222XY')).toBeInTheDocument()
+
+      const file = new File(['isi'], 'stnk.pdf', { type: 'application/pdf' })
+      fireEvent.change(dialog.getByLabelText(/pilih berkas/i), { target: { files: [file] } })
+      fireEvent.click(dialog.getByRole('button', { name: 'Unggah' }))
+
+      await waitFor(() =>
+        expect(mutations.upload).toHaveBeenCalledWith({
+          vehicleId: 'v2',
+          slotId: 'jenis_berkas-1',
+          file,
+        }),
+      )
+    })
   })
 })
