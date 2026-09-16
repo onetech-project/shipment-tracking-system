@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import { FleetVehiclesService } from './fleet-vehicles.service'
 import { FleetSummary } from './fleet-vehicles.types'
+import { toCsv } from './fleet-csv'
 
 // Large enough to cover the whole register in one pass. This is a summary of every unit, not of a
 // page, and the register is in the hundreds — a fleet that outgrows this wants a SQL aggregate,
@@ -45,5 +46,17 @@ export class FleetSummaryService {
       cicilanPerBulan,
       sisaKewajiban,
     }
+  }
+
+  // The same rows the register shows, so an export can never contain a unit the operator cannot
+  // see on screen — archived units included (spec §8).
+  async exportCsv(): Promise<string> {
+    const { rows } = await this.vehicles.findAll({
+      page: 1,
+      pageSize: SUMMARY_PAGE_SIZE,
+      includeArchived: false,
+      sort: 'nopol',
+    })
+    return toCsv(rows)
   }
 }

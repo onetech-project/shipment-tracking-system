@@ -85,4 +85,17 @@ describe('FleetSummaryService', () => {
       includeArchived: false,
     })
   })
+
+  // An archived unit (a sold or retired truck) must not appear in the export any more than it
+  // appears on the register screen the export mirrors.
+  it('excludes archived units from the CSV export', async () => {
+    const { service, vehicles } = build([])
+    await service.exportCsv()
+    expect(vehicles.findAll).toHaveBeenCalledWith({
+      page: 1,
+      pageSize: 1000,
+      includeArchived: false,
+      sort: 'nopol',
+    })
+  })
 })
