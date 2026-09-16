@@ -249,6 +249,33 @@ describe('softcopy SIM', () => {
     expect(onUploadSim).not.toHaveBeenCalled()
   })
 
+  // The `accept` attribute is only a picker filter, not a validator: a user can choose "All
+  // files" or drag-drop past it, so the handler must reject an unsupported MIME type itself.
+  // userEvent.upload defaults to applyAccept: true, which would silently drop this file before
+  // it ever reaches the handler and pass for the wrong reason — applyAccept: false is required
+  // so the file actually gets through to the onChange handler under test.
+  it('refuses a file of an unsupported type', async () => {
+    const user = userEvent.setup({ applyAccept: false })
+    const onUploadSim = jest.fn()
+    render(
+      <DriverFormDialog
+        open
+        simTypes={simTypes}
+        initial={savedDriver}
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+        onUploadSim={onUploadSim}
+      />,
+    )
+    const file = new File(['x'], 'sim.exe', { type: 'application/x-msdownload' })
+    await user.upload(screen.getByLabelText(/unggah sim/i), file)
+
+    expect(
+      await screen.findByText(/^Format tidak didukung\. Pilih jpg, png, webp, atau pdf\.$/),
+    ).toBeInTheDocument()
+    expect(onUploadSim).not.toHaveBeenCalled()
+  })
+
   // Beyond the brief's sketch: without this, the 10 MB test above could pass even if the upload
   // path were wired to the wrong driver id or never called the file through at all.
   it('hands a valid file to the upload callback with the driver id', async () => {

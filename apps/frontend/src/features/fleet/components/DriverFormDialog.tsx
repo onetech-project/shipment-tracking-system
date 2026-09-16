@@ -16,6 +16,11 @@ import { FleetDriver, FleetDriverPayload, FleetMasterRow } from '../types'
 import { apiErrorMessage } from '../utils/api-error'
 import { formatBytes } from '../utils/format-bytes'
 
+// Mirrors the backend allow-list (storage.constants.ts), same as BerkasUploadDialog. The input's
+// accept attribute is only a picker filter — a user can still choose "All files" or drag-drop a
+// file past it — so the handler below re-checks the type itself before it ever reaches the server.
+const ACCEPTED_SIM_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
+
 interface DriverFormDialogProps {
   open: boolean
   initial?: FleetDriver
@@ -163,11 +168,15 @@ export function DriverFormDialog({
                 <label className="inline-flex">
                   <input
                     type="file"
-                    accept="image/jpeg,image/png,image/webp,application/pdf"
+                    accept={ACCEPTED_SIM_TYPES.join(',')}
                     className="sr-only"
                     onChange={(e) => {
                       const file = e.target.files?.[0]
                       if (!file) return
+                      if (!ACCEPTED_SIM_TYPES.includes(file.type)) {
+                        setSimError('Format tidak didukung. Pilih jpg, png, webp, atau pdf.')
+                        return
+                      }
                       if (file.size > 10 * 1024 * 1024) {
                         setSimError('Ukuran berkas maksimal 10 MB.')
                         return
