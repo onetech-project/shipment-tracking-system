@@ -11,6 +11,7 @@ import { VehicleFormDialog } from '@/features/fleet/components/VehicleFormDialog
 import { VehicleDocumentsDialog } from '@/features/fleet/components/VehicleDocumentsDialog'
 import { FleetSummaryCards } from '@/features/fleet/components/FleetSummaryCards'
 import { VehiclesTabs, VehiclesTab } from '@/features/fleet/components/VehiclesTabs'
+import { FleetAlertList } from '@/features/fleet/components/FleetAlertList'
 import { BerkasTab } from '@/features/fleet/components/BerkasTab'
 import { BerkasUploadDialog } from '@/features/fleet/components/BerkasUploadDialog'
 import { AngsuranTab } from '@/features/fleet/components/AngsuranTab'
@@ -28,6 +29,7 @@ import {
 } from '@/features/fleet/hooks/useFleetDrivers'
 import { useFleetSummary } from '@/features/fleet/hooks/useFleetSummary'
 import { useFleetExport } from '@/features/fleet/hooks/useFleetExport'
+import { useFleetAlerts } from '@/features/fleet/hooks/useFleetAlerts'
 import {
   useDeleteVehicleFile,
   useFileDownloadUrl,
@@ -77,6 +79,7 @@ export default function FleetVehiclesPage() {
 
   const { data, isLoading, isError, refetch } = useFleetVehicles(filters)
   const { data: summary, isLoading: summaryLoading } = useFleetSummary()
+  const { data: alerts, isLoading: alertsLoading, isError: alertsError } = useFleetAlerts(50)
   const exportCsv = useFleetExport()
   const { data: drivers } = useFleetDrivers({})
   const master = { enabled: canReadMaster }
@@ -162,6 +165,18 @@ export default function FleetVehiclesPage() {
     }
   }
 
+  // Opens the unit the row is about. The vehicle may not be on the page the operator is looking
+  // at, so the filters are reset to the plate rather than the row being looked up in `rows` —
+  // searching finds it whatever page, filter or sort is active.
+  const handleOpenAlert = (vehicleId: string) => {
+    const match = rows.find((v) => v.id === vehicleId)
+    if (match && canUpdate) {
+      setModal({ type: 'edit', vehicle: match })
+      return
+    }
+    setFilters({ page: 1, sort: 'severity', severity: undefined })
+  }
+
   return (
     <div>
       {/* Eyebrow, title and description follow the prototype's masthead verbatim, so the operator
@@ -201,6 +216,13 @@ export default function FleetVehiclesPage() {
 
       {tab === 'armada' && (
         <>
+          <FleetAlertList
+            alerts={alerts ?? []}
+            isLoading={alertsLoading}
+            isError={alertsError}
+            onOpen={handleOpenAlert}
+          />
+
           <VehicleFilters
             value={filters}
             onChange={setFilters}

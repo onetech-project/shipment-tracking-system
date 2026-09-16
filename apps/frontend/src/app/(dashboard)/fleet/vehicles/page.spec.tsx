@@ -56,6 +56,12 @@ jest.mock('@/features/fleet/hooks/useFleetExport', () => ({
   useFleetExport: jest.fn(() => ({ mutateAsync: mutations.export, isPending: false })),
 }))
 
+// FleetAlertList is exercised by its own spec; here the page only needs the hook to exist so it
+// does not reach for a live QueryClient.
+jest.mock('@/features/fleet/hooks/useFleetAlerts', () => ({
+  useFleetAlerts: jest.fn(() => ({ data: [], isLoading: false, isError: false })),
+}))
+
 // A jest.fn rather than a fixed value, so the §6.4 filter-reset test can give one vehicle files
 // and leave the other empty — BerkasTab renders a card per vehicle, each calling this itself.
 const mockVehicleFiles: jest.Mock<{ data: FleetVehicleFile[] }, [string]> = jest.fn(
