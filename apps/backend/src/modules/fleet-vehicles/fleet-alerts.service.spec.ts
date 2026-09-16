@@ -181,9 +181,29 @@ describe('FleetAlertsService.list', () => {
 
   // A driver with no vehicle still holds a licence, and it still expires. The row is reported
   // with no plate rather than dropped.
+  // Two papers falling due on the same day still need a stable order, or the list reshuffles
+  // between requests and an operator loses their place.
+  it('breaks a tie on the plate', async () => {
+    const { service } = build([
+      docRow({ docTypeId: 'a', label: 'STNK', nopol: 'B 9222 XYZ', expiresAt: '2026-09-20' }),
+      docRow({ docTypeId: 'b', label: 'KIR', nopol: 'B 9114 KYZ', expiresAt: '2026-09-20' }),
+    ])
+    const alerts = await service.list(50, TODAY)
+    expect(alerts.map((a) => a.nopol)).toEqual(['B 9114 KYZ', 'B 9222 XYZ'])
+  })
+
   it('reports a licence for a driver assigned to no vehicle', async () => {
     const { service } = build([], [simRow({ vehicleId: null, nopol: null })])
     const [alert] = await service.list(50, TODAY)
-    expect(alert).toMatchObject({ kind: 'sim', vehicleId: null, nopol: null, driverName: 'Ahmad Fauzi' })
+    // subjectId is the DRIVER's id, not the vehicle's: the UI keys its rows on it, and a licence
+    // held by a driver with no vehicle would otherwise key on null and collapse against any other
+    // such row.
+    expect(alert).toMatchObject({
+      kind: 'sim',
+      vehicleId: null,
+      nopol: null,
+      subjectId: 'dr-1',
+      driverName: 'Ahmad Fauzi',
+    })
   })
 })
