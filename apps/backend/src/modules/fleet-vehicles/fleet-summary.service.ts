@@ -49,7 +49,7 @@ export class FleetSummaryService {
   }
 
   // The same rows the register shows, so an export can never contain a unit the operator cannot
-  // see on screen — archived units included (spec §8).
+  // see on screen. Archived units are excluded, exactly as they are from the list and the tiles.
   async exportCsv(): Promise<string> {
     const { rows } = await this.vehicles.findAll({
       page: 1,

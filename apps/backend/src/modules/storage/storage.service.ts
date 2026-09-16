@@ -33,12 +33,21 @@ export class StorageService {
         accessKeyId: this.config.get<string>('S3_ACCESS_KEY') ?? '',
         secretAccessKey: this.config.get<string>('S3_SECRET_KEY') ?? '',
       },
+      // Since aws-sdk-js-v3 v3.729 the default WHEN_SUPPORTED signs an x-amz-checksum-crc32 into
+      // every presigned PutObject. There is no body at signing time, so the value is the CRC32 of
+      // zero bytes — a store that validates it rejects every real upload, and the failure reads
+      // like a CORS or signature problem rather than a checksum one. The browser sends no checksum
+      // header, so requiring none is also the honest description of the request we are signing.
+      requestChecksumCalculation: 'WHEN_REQUIRED',
     })
   }
 
-  // ContentType and ContentLength are part of the signature, so the browser cannot upload a
-  // different type or a larger file than the intent was granted for — the size limit is enforced
-  // by MinIO itself rather than by our trust in the client.
+  // ContentLength is signed, so the browser cannot upload a larger file than the intent granted —
+  // that limit is enforced by the store rather than by our trust in the client. ContentType is NOT
+  // signed: the presigner adds content-type to its unsignable set, so X-Amz-SignedHeaders carries
+  // only content-length and host. The type is pinned instead by confirm()'s HEAD, which refuses
+  // when the stored object's mime disagrees with the confirmation — do not drop that check on the
+  // strength of this signature.
   async createUploadUrl(key: string, mime: string, maxBytes: number): Promise<string> {
     const command = new PutObjectCommand({
       Bucket: this.bucket,

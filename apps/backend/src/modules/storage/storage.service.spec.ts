@@ -64,6 +64,19 @@ describe('StorageService', () => {
     )
   })
 
+  // Since aws-sdk-js-v3 v3.729 the default (WHEN_SUPPORTED) signs an x-amz-checksum-crc32 of the
+  // EMPTY body into every presigned PutObject, because there is no body at signing time. A store
+  // that validates that parameter rejects every real upload, and the error reads like a CORS or
+  // signature fault rather than a checksum one. Mocked tests cannot see it, so the construction
+  // option is pinned here instead.
+  it('asks the SDK not to precompute a checksum it cannot know', () => {
+    build()
+
+    expect(mockS3ClientCtor).toHaveBeenCalledWith(
+      expect.objectContaining({ requestChecksumCalculation: 'WHEN_REQUIRED' }),
+    )
+  })
+
   it('signs a PUT that pins the content type and length', async () => {
     const service = build()
     await service.createUploadUrl('fleet/v1/stnk/abc.pdf', 'application/pdf', 1234)
