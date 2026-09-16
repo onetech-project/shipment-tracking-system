@@ -94,10 +94,6 @@ export function BerkasUploadDialog({ open, vehicle, slot, onUpload, onSetUrl, on
             onChange={(e) => chooseFile(e.target.files?.[0] ?? null)}
             className="mt-1 block w-full text-sm"
           />
-          {/* Worded so it never shares a literal substring with the error messages below — an
-              earlier version read "jpg, png, webp, atau pdf · maksimal 10 MB" verbatim, which made
-              screen.findByText ambiguous (this hint plus the real error both matched) whenever an
-              error was shown, hiding the difference between the check firing and not firing. */}
           <p className="mt-1 text-xs text-muted-foreground">
             jpg, png, webp, atau pdf · maksimal 10 MB
           </p>
