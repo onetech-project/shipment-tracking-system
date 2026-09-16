@@ -12,11 +12,38 @@ const OPEN = {
   angsuranMulai: '2024-03-11',
   angsuranTerbayarOverride: null,
   closedAt: null,
+  createdAt: '2024-03-11',
+}
+
+// The two fields list() actually orders by. NULLS FIRST on ASC so the open contract (closedAt
+// null) leads regardless of how many closed ones follow it — the same rule Postgres's own ASC
+// default applies here.
+function sortByOrder(rows: Record<string, unknown>[], order: Record<string, 'ASC' | 'DESC'> = {}) {
+  const keys = Object.entries(order)
+  return [...rows].sort((a, b) => {
+    for (const [key, dir] of keys) {
+      const av = a[key] as string | null
+      const bv = b[key] as string | null
+      if (av === bv) continue
+      if (av == null) return dir === 'ASC' ? -1 : 1
+      if (bv == null) return dir === 'ASC' ? 1 : -1
+      const cmp = av < bv ? -1 : 1
+      return dir === 'ASC' ? cmp : -cmp
+    }
+    return 0
+  })
 }
 
 function build(rows: unknown[] = [OPEN], one: unknown = OPEN) {
   const repo = {
-    find: jest.fn(async () => rows),
+    // A fixed array can't tell a sorted query from an unsorted one — it would stay green even if
+    // the order option were dropped or reversed. This fake sorts the fixture the way a real
+    // repository would, the same technique masterRepo.count uses for its catalogue in
+    // fleet-vehicles.service.spec.ts, so the row-order assertions below exercise the actual ORDER
+    // BY the service asks for.
+    find: jest.fn(async (opts: { order?: Record<string, 'ASC' | 'DESC'> }) =>
+      sortByOrder(rows as Record<string, unknown>[], opts?.order),
+    ),
     findOne: jest.fn(async () => one),
     update: jest.fn(async () => ({ affected: 1 })),
   }
@@ -40,11 +67,19 @@ describe('list', () => {
 
   // Closed contracts are the whole reason this table exists rather than columns on the vehicle:
   // a refinanced unit keeps what it used to pay.
+  //
+  // Protects against a silently unordered history panel: fed straight through, a mock repo can't
+  // tell a sorted query from an unsorted one, so a prior version of this test passed a fixture
+  // already in the expected order and would have stayed green even if list() dropped its order
+  // option entirely. Rows here are given out of order, and two contracts share a closedAt date
+  // (same-day closures), so only the fake's order-aware sort — and the createdAt DESC fallback it
+  // is asked for — can produce the expected result.
   it('reports closed contracts too, newest first', async () => {
-    const closed = { ...OPEN, id: 'c-0', closedAt: '2024-02-28' }
-    const { service } = build([OPEN, closed])
+    const closedEarlier = { ...OPEN, id: 'c-0', closedAt: '2024-02-28', createdAt: '2023-11-01' }
+    const closedLater = { ...OPEN, id: 'c-2', closedAt: '2024-02-28', createdAt: '2024-01-15' }
+    const { service } = build([closedLater, OPEN, closedEarlier])
     const rows = await service.list('v-1')
-    expect(rows.map((r) => r.id)).toEqual(['c-1', 'c-0'])
+    expect(rows.map((r) => r.id)).toEqual(['c-1', 'c-2', 'c-0'])
   })
 
   // The mock repo returns whatever array it is built with, order option or not — so the row-order

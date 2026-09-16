@@ -69,11 +69,20 @@ describe('FleetSummaryService', () => {
   // Archived units are out of the register (spec §8): a sold truck must not inflate the count or
   // the obligation. findAll's default already excludes them, which is why it is reused rather
   // than queried afresh.
-  it('asks for active units only', async () => {
+  //
+  // Protects against a truncated summary: this is a count of the whole register, not of a page
+  // of it, so page/pageSize must cover every unit in one pass. A mutation that shrinks pageSize
+  // would silently make the tiles report a PARTIAL total for any fleet larger than that page, and
+  // every fixture in this file is small enough that only pinning the call shape (not the totals
+  // it produces) can catch that. SUMMARY_PAGE_SIZE is not exported by the service, so the literal
+  // it holds today (1000) is asserted directly rather than imported.
+  it('asks for the whole register in one pass, not a page of it', async () => {
     const { service, vehicles } = build([])
     await service.summary()
-    expect(vehicles.findAll).toHaveBeenCalledWith(
-      expect.objectContaining({ includeArchived: false }),
-    )
+    expect(vehicles.findAll).toHaveBeenCalledWith({
+      page: 1,
+      pageSize: 1000,
+      includeArchived: false,
+    })
   })
 })
