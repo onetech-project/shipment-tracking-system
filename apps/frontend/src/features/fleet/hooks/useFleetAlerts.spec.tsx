@@ -101,6 +101,33 @@ describe('useFleetAlerts', () => {
     expect(result.current.data).toEqual([])
   })
 
+  // The backend's real empty answer is [], not null — its own spec asserts toEqual([]). The null
+  // case above guards select's fallback; this one covers what actually comes over the wire.
+  it('reads an empty array as an empty list', async () => {
+    mocked.get.mockResolvedValue({ data: [] })
+    const { result } = renderHook(() => useFleetAlerts(), { wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toEqual([])
+  })
+
+  // Every other test resolves a single row, so a select that dropped all but the first would pass
+  // them all — and delivering the backend's whole ordered list is this hook's entire job.
+  it('delivers every row the backend sent, in order', async () => {
+    mocked.get.mockResolvedValue({
+      data: [
+        wireRow({ subjectId: 'dt-1', label: 'KIR', daysLeft: -7, severity: 'crit' }),
+        wireRow({ subjectId: 'dt-2', label: 'STNK', daysLeft: 2 }),
+        wireRow({ subjectId: 'dr-1', kind: 'sim', label: 'SIM B2 Umum', daysLeft: 9 }),
+      ],
+    })
+    const { result } = renderHook(() => useFleetAlerts(), { wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(result.current.data).toHaveLength(3)
+    // The order is the backend's, reproduced untouched — the hook never sorts.
+    expect(result.current.data?.map((a) => a.label)).toEqual(['KIR', 'STNK', 'SIM B2 Umum'])
+  })
+
   // The limit is part of the cache key, otherwise switching limits serves the previous limit's
   // rows from cache until the refetch lands.
   //
