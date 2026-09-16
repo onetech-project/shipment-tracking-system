@@ -391,4 +391,36 @@ describe('FleetDriversService', () => {
       await expect(service.restore('nope')).rejects.toBeInstanceOf(NotFoundException)
     })
   })
+
+  // Added beyond the brief: Task 7 puts the licence scan's storage key on the entity but the
+  // response must never carry it — the browser reaches the object only through a presigned URL.
+  // Nothing above exercises the sim_* columns at all, so a leak here would pass the whole suite.
+  describe('simFile mapping', () => {
+    it('reports simFile and never the storage key when a driver has a scan', async () => {
+      repo.findOne.mockResolvedValue({
+        id: 'd1',
+        nama: 'Budi',
+        simStorageKey: 'fleet/drivers/d1/sim/x.png',
+        simOriginalName: 'sim.png',
+        simMimeType: 'image/png',
+        simSizeBytes: '2048',
+      })
+      const row = await service.update('d1', {})
+
+      expect(row.simFile).toEqual({
+        originalName: 'sim.png',
+        mimeType: 'image/png',
+        sizeBytes: 2048,
+      })
+      expect(typeof (row.simFile as { sizeBytes: unknown }).sizeBytes).toBe('number')
+      expect(row).not.toHaveProperty('simStorageKey')
+      expect(JSON.stringify(row)).not.toContain('fleet/drivers/d1/sim/x.png')
+    })
+
+    it('reports simFile as null when a driver has no scan', async () => {
+      repo.findOne.mockResolvedValue({ id: 'd1', nama: 'Budi', simStorageKey: null })
+      const row = await service.update('d1', {})
+      expect(row.simFile).toBeNull()
+    })
+  })
 })
