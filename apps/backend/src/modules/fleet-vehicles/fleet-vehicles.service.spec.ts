@@ -6,6 +6,7 @@ import { FleetVehiclesService } from './fleet-vehicles.service'
 import { FleetVehicleEntity } from './entities/fleet-vehicle.entity'
 import { FleetVehicleDocumentEntity } from './entities/fleet-vehicle-document.entity'
 import { FleetLeaseContractEntity } from './entities/fleet-lease-contract.entity'
+import { FleetVehicleFileEntity } from './entities/fleet-vehicle-file.entity'
 import { FleetMasterDataEntity } from '../fleet-master-data/entities/fleet-master-data.entity'
 import { severityFor, todayISO } from './fleet-severity'
 
@@ -88,10 +89,12 @@ describe('FleetVehiclesService', () => {
   }
   let docRepo: { find: jest.Mock; count: jest.Mock; createQueryBuilder: jest.Mock }
   let leaseRepo: { find: jest.Mock }
-  let masterRepo: { findOne: jest.Mock; find: jest.Mock }
+  let fileRepo: { createQueryBuilder: jest.Mock }
+  let masterRepo: { findOne: jest.Mock; find: jest.Mock; count: jest.Mock }
   let dataSource: { transaction: jest.Mock }
   let idQb: Record<string, jest.Mock>
   let docQb: Record<string, jest.Mock>
+  let fileQb: Record<string, jest.Mock>
   let txManager: {
     update: jest.Mock
     insert: jest.Mock
@@ -121,6 +124,13 @@ describe('FleetVehiclesService', () => {
       orderBy: jest.fn().mockReturnThis(),
       getMany: jest.fn(async () => [docRow()]),
     }
+    fileQb = {
+      select: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      groupBy: jest.fn().mockReturnThis(),
+      getRawMany: jest.fn(async () => []),
+    }
     repo = {
       find: jest.fn(async () => [vehicleRow()]),
       findOne: jest.fn(async () => vehicleRow()),
@@ -143,8 +153,10 @@ describe('FleetVehiclesService', () => {
         return { id, category }
       }),
       find: jest.fn(async () => []),
+      count: jest.fn(async () => 0),
     }
     leaseRepo = { find: jest.fn(async () => []) }
+    fileRepo = { createQueryBuilder: jest.fn(() => fileQb) }
     txManager = {
       update: jest.fn(),
       insert: jest.fn(),
@@ -162,6 +174,7 @@ describe('FleetVehiclesService', () => {
         { provide: getRepositoryToken(FleetVehicleDocumentEntity), useValue: docRepo },
         { provide: getRepositoryToken(FleetMasterDataEntity), useValue: masterRepo },
         { provide: getRepositoryToken(FleetLeaseContractEntity), useValue: leaseRepo },
+        { provide: getRepositoryToken(FleetVehicleFileEntity), useValue: fileRepo },
         { provide: DataSource, useValue: dataSource },
       ],
     }).compile()
@@ -1034,6 +1047,54 @@ describe('FleetVehiclesService', () => {
       const res = await service.findAll({})
       expect(res.rows[0].jenisArmada).toEqual({ id: 'ja-1', label: 'Colt Diesel Engkel' })
       expect(res.rows[0].pool).toBeNull()
+    })
+  })
+
+  describe('berkasCount', () => {
+    // "wajib" is how many jenis_berkas slots are active, not a constant: an admin who adds a
+    // fifth slot must see 2/5, not 2/4. The prototype hardcoded four (BERKAS at line 331) and
+    // had no way to add a fifth.
+    it('counts filled slots against the number of active jenis_berkas rows', async () => {
+      // pg's grouped COUNT(*) comes back as a string, the same reason cicilanPerBulan does.
+      fileQb.getRawMany.mockResolvedValue([{ vehicleId: 'v1', count: '2' }])
+      masterRepo.count.mockResolvedValue(3)
+      const res = await service.findAll({})
+      expect(res.rows[0].berkasCount).toEqual({ ada: 2, wajib: 3 })
+      expect(masterRepo.count).toHaveBeenCalledWith({
+        where: { category: 'jenis_berkas', isActive: true },
+      })
+    })
+
+    it('reports zero filled when a vehicle has no files at all', async () => {
+      fileQb.getRawMany.mockResolvedValue([])
+      masterRepo.count.mockResolvedValue(3)
+      const res = await service.findAll({})
+      expect(res.rows[0].berkasCount).toEqual({ ada: 0, wajib: 3 })
+    })
+
+    // A deactivated slot is retired policy; counting it would leave every unit permanently
+    // short. A real repository applies the where clause it is handed; a mock that answers with a
+    // fixed number cannot see the isActive or category terms at all, so this one filters a small
+    // catalogue the way the database would — the same technique the deactivated jenis_dokumen
+    // test above uses for masterRepo.find.
+    it('leaves a deactivated slot out of the required count', async () => {
+      const catalogue: Record<string, unknown>[] = [
+        { id: 'jb-1', category: 'jenis_berkas', isActive: true },
+        { id: 'jb-2', category: 'jenis_berkas', isActive: true },
+        { id: 'jb-3', category: 'jenis_berkas', isActive: false },
+        // Active rows of a different category: if the query ever dropped its category filter,
+        // these would wrongly be swept into the count too.
+        { id: 'jd-1', category: 'jenis_dokumen', isActive: true },
+        { id: 'jd-2', category: 'jenis_dokumen', isActive: true },
+      ]
+      masterRepo.count.mockImplementation(async (opts: { where?: Record<string, unknown> }) =>
+        catalogue.filter((row) =>
+          Object.entries(opts?.where ?? {}).every(([key, value]) => row[key] === value),
+        ).length,
+      )
+      fileQb.getRawMany.mockResolvedValue([])
+      const res = await service.findAll({})
+      expect(res.rows[0].berkasCount.wajib).toBe(2)
     })
   })
 

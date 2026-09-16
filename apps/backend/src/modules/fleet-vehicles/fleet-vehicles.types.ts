@@ -61,8 +61,14 @@ export interface FleetVehicleFileView {
   uploadedAt: string
 }
 
-// berkasCount is deliberately absent until Phase 3, when object storage exists. The frontend wire
-// type marks it optional, so switching it on later adds a field rather than breaking the contract.
+// ada / wajib rather than a ratio string, so the frontend can colour the chip on the comparison
+// without parsing text back apart. wajib counts ACTIVE jenis_berkas rows: deactivating a slot
+// retires the requirement rather than leaving every unit permanently short.
+export interface FleetVehicleBerkasCount {
+  ada: number
+  wajib: number
+}
+
 export interface FleetVehicleView {
   id: string
   nopol: string
@@ -85,6 +91,7 @@ export interface FleetVehicleView {
   documents: FleetVehicleDocumentView[]
   worstSeverity: FleetSeverity
   minDaysLeft: number | null
+  berkasCount: FleetVehicleBerkasCount
   isActive: boolean
 }
 
