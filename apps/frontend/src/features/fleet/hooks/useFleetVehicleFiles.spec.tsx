@@ -64,6 +64,13 @@ describe('useVehicleFiles', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.data?.[0].sizeBytes).toBeNull()
     expect(result.current.data?.[0].slotLabel).toBe('')
+    // null rather than '': a slot card branches on externalUrl to decide whether it holds a link
+    // or an uploaded file, and an empty string is falsy in a way that reads the same as absent
+    // right up until someone renders it as an href.
+    expect(result.current.data?.[0].externalUrl).toBeNull()
+    expect(result.current.data?.[0].originalName).toBeNull()
+    expect(result.current.data?.[0].mimeType).toBeNull()
+    expect(result.current.data?.[0].uploadedAt).toBe('')
   })
 })
 
