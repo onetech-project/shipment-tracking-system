@@ -53,6 +53,7 @@ describe('DriverFormDialog', () => {
           simJenisId: 'sim-1',
           simJenis: null,
           simExpiresAt: '2027-01-01',
+          simFile: null,
           isActive: true,
         }}
         onSubmit={onSubmit}
@@ -146,6 +147,7 @@ describe('DriverFormDialog', () => {
           simJenisId: 'sim-1',
           simJenis: null,
           simExpiresAt: '2027-01-01',
+          simFile: null,
           isActive: true,
         }}
         onSubmit={onSubmit}

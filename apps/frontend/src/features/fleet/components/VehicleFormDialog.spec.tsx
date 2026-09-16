@@ -41,6 +41,7 @@ const driver: FleetDriver = {
   simNomor: '3201-1122-3344',
   simJenisId: null,
   simExpiresAt: '2027-03-14',
+  simFile: null,
   isActive: true,
 }
 
