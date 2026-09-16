@@ -10,6 +10,10 @@ import { VehicleTable } from '@/features/fleet/components/VehicleTable'
 import { VehicleFormDialog } from '@/features/fleet/components/VehicleFormDialog'
 import { VehicleDocumentsDialog } from '@/features/fleet/components/VehicleDocumentsDialog'
 import { FleetSummaryCards } from '@/features/fleet/components/FleetSummaryCards'
+import { VehiclesTabs, VehiclesTab } from '@/features/fleet/components/VehiclesTabs'
+import { BerkasTab } from '@/features/fleet/components/BerkasTab'
+import { BerkasUploadDialog } from '@/features/fleet/components/BerkasUploadDialog'
+import { AngsuranTab } from '@/features/fleet/components/AngsuranTab'
 import {
   useArchiveFleetVehicle,
   useCreateFleetVehicle,
@@ -24,10 +28,18 @@ import {
 } from '@/features/fleet/hooks/useFleetDrivers'
 import { useFleetSummary } from '@/features/fleet/hooks/useFleetSummary'
 import { useFleetExport } from '@/features/fleet/hooks/useFleetExport'
+import {
+  useDeleteVehicleFile,
+  useFileDownloadUrl,
+  useSetExternalUrl,
+  useUploadVehicleFile,
+  useVehicleFiles,
+} from '@/features/fleet/hooks/useFleetVehicleFiles'
 import { apiErrorMessage } from '@/features/fleet/utils/api-error'
 import {
   FleetVehicle,
   FleetVehicleDocumentPayload,
+  FleetVehicleFile,
   FleetVehicleFilters,
   FleetVehiclePayload,
   FleetVehicleSort,
@@ -38,6 +50,8 @@ type Modal =
   | { type: 'edit'; vehicle: FleetVehicle }
   | { type: 'documents'; vehicle: FleetVehicle }
   | { type: 'archive'; vehicle: FleetVehicle }
+  | { type: 'upload'; vehicle: FleetVehicle; slotId: string }
+  | { type: 'deleteFile'; vehicle: FleetVehicle; file: FleetVehicleFile }
   | null
 
 export default function FleetVehiclesPage() {
@@ -45,6 +59,12 @@ export default function FleetVehiclesPage() {
   const [filters, setFilters] = useState<FleetVehicleFilters>({ page: 1, sort: 'nopol' })
   const [modal, setModal] = useState<Modal>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [tab, setTab] = useState<VehiclesTab>('armada')
+  // The unit a row's Berkas action was opened for. Keyed onto BerkasTab so a fresh navigation
+  // always remounts it — spec §6.4: BerkasTab's completeness filter is local useState, and a
+  // stale 'Lengkap' filter carried over from a previous visit must not hide the unit the operator
+  // just clicked through to.
+  const [focusVehicleId, setFocusVehicleId] = useState<string | null>(null)
 
   const canCreate = hasPermission('create.fleet_vehicle')
   const canUpdate = hasPermission('update.fleet_vehicle')
@@ -66,12 +86,17 @@ export default function FleetVehiclesPage() {
   const { data: pool } = useFleetMasterDataByCategory('pool', master)
   const { data: statusKendaraan } = useFleetMasterDataByCategory('status_kendaraan', master)
   const { data: docTypes } = useFleetMasterDataByCategory('jenis_dokumen', master)
+  const { data: jenisBerkas } = useFleetMasterDataByCategory('jenis_berkas', master)
 
   const createVehicle = useCreateFleetVehicle()
   const updateVehicle = useUpdateFleetVehicle()
   const archiveVehicle = useArchiveFleetVehicle()
   const restoreVehicle = useRestoreFleetVehicle()
   const replaceDocuments = useReplaceVehicleDocuments()
+  const uploadFile = useUploadVehicleFile()
+  const setExternalUrl = useSetExternalUrl()
+  const deleteFile = useDeleteVehicleFile()
+  const downloadUrl = useFileDownloadUrl()
 
   const rows = data?.rows ?? []
   const total = data?.total ?? 0
@@ -102,6 +127,30 @@ export default function FleetVehiclesPage() {
     } catch (err: unknown) {
       setActionError(apiErrorMessage(err, 'Gagal memulihkan armada.'))
     }
+  }
+
+  // Opening a file fetches a fresh presigned URL rather than reusing a cached one: a GET expires
+  // in two minutes, so a URL cached with the row would be dead by the time it was clicked.
+  const handleViewFile = async (vehicle: FleetVehicle, file: FleetVehicleFile) => {
+    setActionError(null)
+    try {
+      const url = file.externalUrl
+        ? file.externalUrl
+        : await downloadUrl.mutateAsync({ vehicleId: vehicle.id, fileId: file.id })
+      // noopener so the opened document cannot reach back through window.opener.
+      window.open(url, '_blank', 'noopener,noreferrer')
+    } catch (err: unknown) {
+      setActionError(apiErrorMessage(err, 'Gagal membuka berkas.'))
+    }
+  }
+
+  // Spec §6.4: the row's Berkas action jumps to the Berkas tab focused on this unit. Changing
+  // focusVehicleId remounts BerkasTab (see its key below), which resets its local completeness
+  // filter — otherwise a filter left on 'Lengkap' from an earlier visit could hide the very unit
+  // the operator just clicked through to.
+  const handleFocusBerkas = (vehicle: FleetVehicle) => {
+    setTab('berkas')
+    setFocusVehicleId(vehicle.id)
   }
 
   const handleExport = async () => {
@@ -141,6 +190,8 @@ export default function FleetVehiclesPage() {
 
       <FleetSummaryCards summary={summary} isLoading={summaryLoading} />
 
+      <VehiclesTabs value={tab} onChange={setTab} />
+
       {!canReadMaster && (
         <p className="mb-4 text-sm text-muted-foreground">
           Daftar jenis armada, kepemilikan, leasing, pool, status dan jenis dokumen tidak tersedia
@@ -148,65 +199,84 @@ export default function FleetVehiclesPage() {
         </p>
       )}
 
-      <VehicleFilters
-        value={filters}
-        onChange={setFilters}
-        kepemilikanOptions={kepemilikan ?? []}
-        poolOptions={pool ?? []}
-        statusOptions={statusKendaraan ?? []}
-      />
-
-      {isError ? (
-        // The empty-state copy is an affirmative claim that no unit matches. During an outage
-        // that claim is false, and an operator who believes it starts re-registering units that
-        // already exist.
-        <div className="rounded-lg border bg-card p-8 text-center">
-          <p className="text-sm text-muted-foreground">Gagal memuat data armada.</p>
-          <button onClick={() => refetch()} className="mt-2 text-sm text-primary underline">
-            Coba lagi
-          </button>
-        </div>
-      ) : (
+      {tab === 'armada' && (
         <>
-          <VehicleTable
-            rows={rows}
-            docTypes={docTypes ?? []}
-            isLoading={isLoading}
-            sort={filters.sort ?? 'nopol'}
-            onSortChange={(sort: FleetVehicleSort) => setFilters({ ...filters, sort, page: 1 })}
-            onEdit={canUpdate ? (v) => setModal({ type: 'edit', vehicle: v }) : () => {}}
-            onDocuments={canUpdate ? (v) => setModal({ type: 'documents', vehicle: v }) : () => {}}
-            onArchive={canDelete ? (v) => setModal({ type: 'archive', vehicle: v }) : () => {}}
-            onRestore={canDelete ? handleRestore : () => {}}
-            showActions={{ edit: canUpdate, documents: canUpdate, archive: canDelete }}
+          <VehicleFilters
+            value={filters}
+            onChange={setFilters}
+            kepemilikanOptions={kepemilikan ?? []}
+            poolOptions={pool ?? []}
+            statusOptions={statusKendaraan ?? []}
           />
 
-          <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
-            <span>{total} armada</span>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page <= 1}
-                onClick={() => setFilters({ ...filters, page: page - 1 })}
-              >
-                Sebelumnya
-              </Button>
-              <span>
-                Halaman {page} dari {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page >= totalPages}
-                onClick={() => setFilters({ ...filters, page: page + 1 })}
-              >
-                Berikutnya
-              </Button>
+          {isError ? (
+            // The empty-state copy is an affirmative claim that no unit matches. During an outage
+            // that claim is false, and an operator who believes it starts re-registering units
+            // that already exist.
+            <div className="rounded-lg border bg-card p-8 text-center">
+              <p className="text-sm text-muted-foreground">Gagal memuat data armada.</p>
+              <button onClick={() => refetch()} className="mt-2 text-sm text-primary underline">
+                Coba lagi
+              </button>
             </div>
-          </div>
+          ) : (
+            <>
+              <VehicleTable
+                rows={rows}
+                docTypes={docTypes ?? []}
+                isLoading={isLoading}
+                sort={filters.sort ?? 'nopol'}
+                onSortChange={(sort: FleetVehicleSort) => setFilters({ ...filters, sort, page: 1 })}
+                onEdit={canUpdate ? (v) => setModal({ type: 'edit', vehicle: v }) : () => {}}
+                onDocuments={canUpdate ? (v) => setModal({ type: 'documents', vehicle: v }) : () => {}}
+                onArchive={canDelete ? (v) => setModal({ type: 'archive', vehicle: v }) : () => {}}
+                onRestore={canDelete ? handleRestore : () => {}}
+                onBerkas={canUpdate ? handleFocusBerkas : undefined}
+                showActions={{ edit: canUpdate, documents: canUpdate, archive: canDelete }}
+              />
+
+              <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+                <span>{total} armada</span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page <= 1}
+                    onClick={() => setFilters({ ...filters, page: page - 1 })}
+                  >
+                    Sebelumnya
+                  </Button>
+                  <span>
+                    Halaman {page} dari {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page >= totalPages}
+                    onClick={() => setFilters({ ...filters, page: page + 1 })}
+                  >
+                    Berikutnya
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
         </>
       )}
+
+      {tab === 'berkas' && (
+        <BerkasTab
+          key={focusVehicleId ?? 'all'}
+          vehicles={rows}
+          slots={jenisBerkas ?? []}
+          canEdit={canUpdate}
+          onUpload={(vehicle, slotId) => setModal({ type: 'upload', vehicle, slotId })}
+          onView={handleViewFile}
+          onDelete={(vehicle, file) => setModal({ type: 'deleteFile', vehicle, file })}
+        />
+      )}
+
+      {tab === 'angsuran' && <AngsuranTab vehicles={rows} />}
 
       {(modal?.type === 'create' || modal?.type === 'edit') && (
         <VehicleFormDialog
@@ -260,6 +330,51 @@ export default function FleetVehiclesPage() {
             await archiveVehicle.mutateAsync(modal.vehicle.id)
           } catch (err: unknown) {
             setActionError(apiErrorMessage(err, 'Gagal mengarsipkan armada.'))
+          }
+        }}
+      />
+
+      {modal?.type === 'upload' && (
+        <BerkasUploadDialog
+          open
+          vehicle={modal.vehicle}
+          slot={
+            (jenisBerkas ?? []).find((s) => s.id === modal.slotId) ?? {
+              id: modal.slotId,
+              code: '',
+              label: 'Berkas',
+            }
+          }
+          onUpload={(file) =>
+            uploadFile.mutateAsync({ vehicleId: modal.vehicle.id, slotId: modal.slotId, file })
+          }
+          onSetUrl={(url) =>
+            setExternalUrl.mutateAsync({ vehicleId: modal.vehicle.id, slotId: modal.slotId, url })
+          }
+          onClose={() => setModal(null)}
+        />
+      )}
+
+      {/* Spec §6.4: every deletion goes through a confirmation. The prototype deleted straight
+          from the edit modal, so one mis-click removed a vehicle and its four files. */}
+      <ConfirmDialog
+        open={modal?.type === 'deleteFile'}
+        onOpenChange={(v) => !v && setModal(null)}
+        title="Hapus berkas"
+        description={
+          modal?.type === 'deleteFile'
+            ? `Hapus ${modal.file.originalName ?? 'berkas'} dari ${modal.vehicle.nopol}?`
+            : undefined
+        }
+        confirmLabel="Hapus"
+        destructive
+        onConfirm={async () => {
+          if (modal?.type !== 'deleteFile') return
+          setActionError(null)
+          try {
+            await deleteFile.mutateAsync({ vehicleId: modal.vehicle.id, fileId: modal.file.id })
+          } catch (err: unknown) {
+            setActionError(apiErrorMessage(err, 'Gagal menghapus berkas.'))
           }
         }}
       />
