@@ -15,6 +15,11 @@ import {
   useFleetMasterDataByCategory,
   useUpdateFleetDriver,
 } from '@/features/fleet/hooks/useFleetDrivers'
+import {
+  useDeleteDriverSim,
+  useDriverSimDownloadUrl,
+  useUploadDriverSim,
+} from '@/features/fleet/hooks/useDriverSimFile'
 import { apiErrorMessage } from '@/features/fleet/utils/api-error'
 import { FleetDriver, FleetDriverPayload } from '@/features/fleet/types'
 
@@ -38,12 +43,46 @@ export default function FleetDriversPage() {
   const createDriver = useCreateFleetDriver()
   const updateDriver = useUpdateFleetDriver()
   const deleteDriver = useDeleteFleetDriver()
+  const uploadSim = useUploadDriverSim()
+  const viewSim = useDriverSimDownloadUrl()
+  const deleteSim = useDeleteDriverSim()
+  const [simError, setSimError] = useState<string | null>(null)
 
   const handleSubmit = async (payload: FleetDriverPayload) => {
     if (modal?.type === 'edit') {
       await updateDriver.mutateAsync({ id: modal.driver.id, payload })
     } else {
       await createDriver.mutateAsync(payload)
+    }
+  }
+
+  // A fresh presigned URL every click, never a cached one: a GET expires in two minutes, the same
+  // reason the vehicle files tab re-fetches on every "Lihat".
+  const handleViewSim = async (driverId: string) => {
+    setSimError(null)
+    try {
+      const url = await viewSim.mutateAsync(driverId)
+      window.open(url, '_blank', 'noopener,noreferrer')
+    } catch (err: unknown) {
+      setSimError(apiErrorMessage(err, 'Gagal membuka berkas SIM.'))
+    }
+  }
+
+  const handleUploadSim = async (driverId: string, file: File) => {
+    setSimError(null)
+    try {
+      await uploadSim.mutateAsync({ driverId, file })
+    } catch (err: unknown) {
+      setSimError(apiErrorMessage(err, 'Gagal mengunggah SIM.'))
+    }
+  }
+
+  const handleDeleteSim = async (driverId: string) => {
+    setSimError(null)
+    try {
+      await deleteSim.mutateAsync(driverId)
+    } catch (err: unknown) {
+      setSimError(apiErrorMessage(err, 'Gagal menghapus SIM.'))
     }
   }
 
@@ -60,6 +99,12 @@ export default function FleetDriversPage() {
       {deleteError && (
         <p className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {deleteError}
+        </p>
+      )}
+
+      {simError && (
+        <p className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {simError}
         </p>
       )}
 
@@ -122,6 +167,9 @@ export default function FleetDriversPage() {
           simTypesUnavailable={!canReadMaster}
           onSubmit={handleSubmit}
           onClose={() => setModal(null)}
+          onUploadSim={handleUploadSim}
+          onViewSim={handleViewSim}
+          onDeleteSim={handleDeleteSim}
         />
       )}
 

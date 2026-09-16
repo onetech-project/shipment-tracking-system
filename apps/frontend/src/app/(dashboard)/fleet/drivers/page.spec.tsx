@@ -9,6 +9,7 @@
  */
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
+import userEvent from '@testing-library/user-event'
 import FleetDriversPage from './page'
 import { FleetDriver, FleetMasterRow } from '@/features/fleet/types'
 
@@ -22,6 +23,9 @@ const mockUseSimTypes = jest.fn()
 const mockCreate = jest.fn()
 const mockUpdate = jest.fn()
 const mockDelete = jest.fn()
+const mockUploadSim = jest.fn()
+const mockViewSim = jest.fn()
+const mockDeleteSim = jest.fn()
 
 jest.mock('@/features/fleet/hooks/useFleetDrivers', () => ({
   useFleetDrivers: (params: unknown) => mockUseFleetDrivers(params),
@@ -32,6 +36,15 @@ jest.mock('@/features/fleet/hooks/useFleetDrivers', () => ({
   useCreateFleetDriver: () => ({ mutateAsync: mockCreate }),
   useUpdateFleetDriver: () => ({ mutateAsync: mockUpdate }),
   useDeleteFleetDriver: () => ({ mutateAsync: mockDelete }),
+}))
+
+// The real hooks call useMutation, which needs a QueryClientProvider this page never wraps
+// itself with (the app root does). Mocked here the same way the driver mutations above are, so
+// the SIM wiring can be asserted without dragging react-query's provider into every test.
+jest.mock('@/features/fleet/hooks/useDriverSimFile', () => ({
+  useUploadDriverSim: () => ({ mutateAsync: mockUploadSim }),
+  useDriverSimDownloadUrl: () => ({ mutateAsync: mockViewSim }),
+  useDeleteDriverSim: () => ({ mutateAsync: mockDeleteSim }),
 }))
 
 const driver: FleetDriver = {
@@ -72,6 +85,9 @@ describe('FleetDriversPage', () => {
     mockCreate.mockResolvedValue(undefined)
     mockUpdate.mockResolvedValue(undefined)
     mockDelete.mockResolvedValue(undefined)
+    mockUploadSim.mockResolvedValue(undefined)
+    mockViewSim.mockResolvedValue('https://signed/get')
+    mockDeleteSim.mockResolvedValue(undefined)
   })
 
   const openDeleteDialog = () => {
@@ -453,6 +469,70 @@ describe('FleetDriversPage', () => {
       })
       render(<FleetDriversPage />)
       expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('the SIM slot', () => {
+    const driverWithScan: FleetDriver = {
+      ...driver,
+      simFile: { originalName: 'sim.png', mimeType: 'image/png', sizeBytes: 524288 },
+    }
+
+    it('opens a freshly fetched presigned URL for the scan', async () => {
+      mockUseFleetDrivers.mockReturnValue({
+        data: [driverWithScan],
+        isLoading: false,
+        isError: false,
+        refetch: jest.fn(),
+      })
+      const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null)
+      render(<FleetDriversPage />)
+      fireEvent.click(screen.getByRole('button', { name: 'Ubah' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Lihat' }))
+
+      await waitFor(() => expect(mockViewSim).toHaveBeenCalledWith('d1'))
+      expect(openSpy).toHaveBeenCalledWith('https://signed/get', '_blank', 'noopener,noreferrer')
+      openSpy.mockRestore()
+    })
+
+    it('uploads the chosen scan for the driver being edited', async () => {
+      render(<FleetDriversPage />)
+      fireEvent.click(screen.getByRole('button', { name: 'Ubah' }))
+      const file = new File(['x'], 'sim.png', { type: 'image/png' })
+      await userEvent.upload(screen.getByLabelText(/unggah sim/i), file)
+
+      await waitFor(() => expect(mockUploadSim).toHaveBeenCalledWith({ driverId: 'd1', file }))
+    })
+
+    it('deletes the scan for the driver being edited', async () => {
+      mockUseFleetDrivers.mockReturnValue({
+        data: [driverWithScan],
+        isLoading: false,
+        isError: false,
+        refetch: jest.fn(),
+      })
+      render(<FleetDriversPage />)
+      fireEvent.click(screen.getByRole('button', { name: 'Ubah' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Hapus' }))
+
+      await waitFor(() => expect(mockDeleteSim).toHaveBeenCalledWith('d1'))
+    })
+
+    // A failed view must not fail silently — an operator clicking "Lihat" on a broken link with
+    // no feedback would assume the scan is simply gone.
+    it('surfaces a failed view instead of doing nothing', async () => {
+      mockUseFleetDrivers.mockReturnValue({
+        data: [driverWithScan],
+        isLoading: false,
+        isError: false,
+        refetch: jest.fn(),
+      })
+      mockViewSim.mockRejectedValue({ response: { data: { message: 'Berkas tidak ditemukan.' } } })
+      render(<FleetDriversPage />)
+      fireEvent.click(screen.getByRole('button', { name: 'Ubah' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Lihat' }))
+
+      expect(await screen.findByText('Berkas tidak ditemukan.')).toBeInTheDocument()
     })
   })
 })

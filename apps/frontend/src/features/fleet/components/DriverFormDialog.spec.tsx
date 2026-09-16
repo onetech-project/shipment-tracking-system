@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom'
+import userEvent from '@testing-library/user-event'
 import { DriverFormDialog } from './DriverFormDialog'
 import { FleetMasterRow } from '../types'
 
@@ -166,5 +167,156 @@ describe('DriverFormDialog', () => {
         simExpiresAt: '2027-01-01',
       }),
     )
+  })
+})
+
+describe('softcopy SIM', () => {
+  const savedDriver = {
+    id: 'd1',
+    nama: 'Budi',
+    telepon: null,
+    simNomor: null,
+    simJenisId: null,
+    simJenis: null,
+    simExpiresAt: null,
+    simFile: null,
+    isActive: true,
+  }
+
+  const withScan = {
+    ...savedDriver,
+    simFile: { originalName: 'sim.png', mimeType: 'image/png', sizeBytes: 524288 },
+  }
+
+  it('says the driver has no scan yet', () => {
+    render(
+      <DriverFormDialog
+        open
+        simTypes={simTypes}
+        initial={savedDriver}
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    )
+    expect(screen.getByText(/belum ada softcopy/i)).toBeInTheDocument()
+  })
+
+  it('reports the filename and size of an existing scan', () => {
+    render(
+      <DriverFormDialog
+        open
+        simTypes={simTypes}
+        initial={withScan}
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    )
+    expect(screen.getByText(/sim\.png/)).toBeInTheDocument()
+    expect(screen.getByText(/512 KB/)).toBeInTheDocument()
+  })
+
+  // A new driver has no id yet, so there is nowhere to attach a file to. Checked against both the
+  // upload affordance and the section heading, so a mutation that renders the slot on some
+  // unrelated condition (e.g. always true) cannot slip past on the strength of one dropped query.
+  it('offers no upload until the driver has been saved', () => {
+    render(
+      <DriverFormDialog open simTypes={simTypes} onSubmit={jest.fn()} onClose={jest.fn()} />,
+    )
+    expect(screen.queryByText('Softcopy SIM')).not.toBeInTheDocument()
+    expect(screen.queryByText(/unggah sim/i)).not.toBeInTheDocument()
+  })
+
+  it('refuses a file over 10 MB', async () => {
+    const onUploadSim = jest.fn()
+    render(
+      <DriverFormDialog
+        open
+        simTypes={simTypes}
+        initial={savedDriver}
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+        onUploadSim={onUploadSim}
+      />,
+    )
+    const file = new File(['x'], 'big.png', { type: 'image/png' })
+    Object.defineProperty(file, 'size', { value: 11 * 1024 * 1024 })
+    await userEvent.upload(screen.getByLabelText(/unggah sim/i), file)
+
+    // Anchored: BerkasUploadDialog's equivalent test already found that an unanchored match can
+    // bind to a static hint sharing the same "10 MB" substring. This slot has no such hint today,
+    // but anchoring costs nothing and keeps the assertion meaningful if one is ever added.
+    expect(await screen.findByText(/^Ukuran berkas maksimal 10 MB\.$/)).toBeInTheDocument()
+    expect(onUploadSim).not.toHaveBeenCalled()
+  })
+
+  // Beyond the brief's sketch: without this, the 10 MB test above could pass even if the upload
+  // path were wired to the wrong driver id or never called the file through at all.
+  it('hands a valid file to the upload callback with the driver id', async () => {
+    const onUploadSim = jest.fn().mockResolvedValue(undefined)
+    render(
+      <DriverFormDialog
+        open
+        simTypes={simTypes}
+        initial={savedDriver}
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+        onUploadSim={onUploadSim}
+      />,
+    )
+    const file = new File(['x'], 'sim.png', { type: 'image/png' })
+    await userEvent.upload(screen.getByLabelText(/unggah sim/i), file)
+
+    await waitFor(() => expect(onUploadSim).toHaveBeenCalledWith('d1', file))
+  })
+
+  // Beyond the brief's sketch: "Lihat" and "Hapus" are the other two callbacks Step 4 wires up,
+  // and neither was in the comment sketch. Left untested, a click that silently did nothing would
+  // still pass every other test in this file.
+  it('opens the scan through the view callback', async () => {
+    const onViewSim = jest.fn().mockResolvedValue(undefined)
+    render(
+      <DriverFormDialog
+        open
+        simTypes={simTypes}
+        initial={withScan}
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+        onViewSim={onViewSim}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Lihat' }))
+    expect(onViewSim).toHaveBeenCalledWith('d1')
+  })
+
+  it('deletes the scan through the delete callback', async () => {
+    const onDeleteSim = jest.fn().mockResolvedValue(undefined)
+    render(
+      <DriverFormDialog
+        open
+        simTypes={simTypes}
+        initial={withScan}
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+        onDeleteSim={onDeleteSim}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Hapus' }))
+    expect(onDeleteSim).toHaveBeenCalledWith('d1')
+  })
+
+  // Without a scan there is nothing to view or remove — offering these buttons anyway would let an
+  // operator click through to a download URL or delete request for a file that does not exist.
+  it('offers no Lihat or Hapus button when there is no scan yet', () => {
+    render(
+      <DriverFormDialog
+        open
+        simTypes={simTypes}
+        initial={savedDriver}
+        onSubmit={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    )
+    expect(screen.queryByRole('button', { name: 'Lihat' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Hapus' })).not.toBeInTheDocument()
   })
 })
