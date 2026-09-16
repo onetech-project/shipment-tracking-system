@@ -88,7 +88,12 @@ describe('FleetSummaryService', () => {
 
   // An archived unit (a sold or retired truck) must not appear in the export any more than it
   // appears on the register screen the export mirrors.
-  it('excludes archived units from the CSV export', async () => {
+  //
+  // pageSize and sort are pinned for the same reason the summary() call above is: an export is a
+  // dump of the whole register, not one page of it, so a mutation that shrinks pageSize would
+  // silently truncate the file for any fleet larger than that page. SUMMARY_PAGE_SIZE is not
+  // exported by the service, so the literal it holds today (1000) is asserted directly.
+  it('asks for the whole register in one pass, active units only, sorted by nopol', async () => {
     const { service, vehicles } = build([])
     await service.exportCsv()
     expect(vehicles.findAll).toHaveBeenCalledWith({

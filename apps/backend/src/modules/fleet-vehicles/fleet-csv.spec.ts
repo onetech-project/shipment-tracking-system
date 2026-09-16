@@ -1,5 +1,19 @@
 import { toCsv } from './fleet-csv'
-import { FleetVehicleView } from './fleet-vehicles.types'
+import { FleetVehicleView, FleetVehicleDocumentView } from './fleet-vehicles.types'
+
+function doc(over: Partial<FleetVehicleDocumentView> = {}): FleetVehicleDocumentView {
+  return {
+    docTypeId: 'dt-1',
+    code: 'kir',
+    label: 'KIR',
+    nomor: 'JKT-II/778812',
+    issuedAt: '2026-03-02',
+    expiresAt: '2026-09-02',
+    daysLeft: -7,
+    severity: 'crit',
+    ...over,
+  }
+}
 
 function row(over: Partial<FleetVehicleView> = {}): FleetVehicleView {
   return {
@@ -140,25 +154,51 @@ describe('toCsv', () => {
   // One column per document type, filled from whatever that unit actually holds: the type list
   // is master data and the export must follow it rather than a hardcoded set of twelve.
   it('gives every document type met in the data its own expiry column', () => {
-    const csv = toCsv([
-      row({
-        documents: [
-          {
-            docTypeId: 'dt-1',
-            code: 'kir',
-            label: 'KIR',
-            nomor: 'JKT-II/778812',
-            issuedAt: '2026-03-02',
-            expiresAt: '2026-09-02',
-            daysLeft: -7,
-            severity: 'crit',
-          },
-        ],
-      }),
-    ])
+    const csv = toCsv([row({ documents: [doc()] })])
     const [header, first] = csv.split('\r\n')
     expect(header).toContain('KIR Berlaku Sampai')
     expect(first).toContain('2026-09-02')
+  })
+
+  // A seeded/hardcoded column set would show up here even though no row in this register holds
+  // that document type — the master-data promise is that the column list tracks the data, not a
+  // fixed catalogue. "Berlaku Sampai" is the suffix every document column carries, so this needs
+  // no knowledge of which type a hardcoded seed might pick.
+  it('adds no document column for a type that is absent from every row', () => {
+    const [header] = toCsv([row({ documents: [] })]).split('\r\n')
+    expect(header).not.toContain('Berlaku Sampai')
+  })
+
+  // Two vehicles, two different document types: each type earns its own column, and a vehicle
+  // missing a type leaves that cell empty rather than the remaining cells sliding left into it.
+  it('gives two vehicles their own column per document type without shifting either row', () => {
+    const csv = toCsv([
+      row({
+        id: 'v-1',
+        nopol: 'B 1',
+        documents: [doc({ code: 'kir', label: 'KIR', expiresAt: '2026-09-02' })],
+      }),
+      row({
+        id: 'v-2',
+        nopol: 'B 2',
+        documents: [doc({ code: 'stnk', label: 'STNK', expiresAt: '2027-01-15' })],
+      }),
+    ])
+    const [header, first, second] = csv.split('\r\n')
+    const columns = header.split(',')
+
+    expect(columns).toContain('KIR Berlaku Sampai')
+    expect(columns).toContain('STNK Berlaku Sampai')
+
+    const kirIndex = columns.indexOf('KIR Berlaku Sampai')
+    const stnkIndex = columns.indexOf('STNK Berlaku Sampai')
+    const firstCells = first.split(',')
+    const secondCells = second.split(',')
+
+    expect(firstCells[kirIndex]).toBe('2026-09-02')
+    expect(firstCells[stnkIndex]).toBe('')
+    expect(secondCells[kirIndex]).toBe('')
+    expect(secondCells[stnkIndex]).toBe('2027-01-15')
   })
 
   it('returns a header-only file for an empty register', () => {
