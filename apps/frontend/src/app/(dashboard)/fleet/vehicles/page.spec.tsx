@@ -3,7 +3,7 @@ import '@testing-library/jest-dom'
 import FleetVehiclesPage from './page'
 import { useFleetVehicles } from '@/features/fleet/hooks/useFleetVehicles'
 import { useFleetSummary } from '@/features/fleet/hooks/useFleetSummary'
-import { FleetVehicle, FleetSummary, FleetVehicleFile } from '@/features/fleet/types'
+import { FleetVehicle, FleetSummary, FleetVehicleFile, FleetAlert } from '@/features/fleet/types'
 
 const mutations = {
   create: jest.fn().mockResolvedValue({}),
@@ -56,10 +56,17 @@ jest.mock('@/features/fleet/hooks/useFleetExport', () => ({
   useFleetExport: jest.fn(() => ({ mutateAsync: mutations.export, isPending: false })),
 }))
 
-// FleetAlertList is exercised by its own spec; here the page only needs the hook to exist so it
-// does not reach for a live QueryClient.
+// FleetAlertList's own rendering is exercised by its own spec; what belongs here is the page's
+// wiring — handleOpenAlert(vehicleId) looking up the right row in `rows` — which a fixed empty
+// list can never reach. Mutable like listResult/summaryResult, so the wiring test below can give
+// it two alerts pointing at two different vehicles.
+let alertsResult: { data: FleetAlert[]; isLoading: boolean; isError: boolean } = {
+  data: [],
+  isLoading: false,
+  isError: false,
+}
 jest.mock('@/features/fleet/hooks/useFleetAlerts', () => ({
-  useFleetAlerts: jest.fn(() => ({ data: [], isLoading: false, isError: false })),
+  useFleetAlerts: jest.fn(() => alertsResult),
 }))
 
 // A jest.fn rather than a fixed value, so the §6.4 filter-reset test can give one vehicle files
@@ -182,6 +189,25 @@ beforeEach(() => {
     ...ok,
   }
   summaryResult = { data: undefined, isLoading: false }
+  alertsResult = { data: [], isLoading: false, isError: false }
+})
+
+// Two alerts, two different vehicleIds — a fixture with a single alert cannot tell handleOpenAlert
+// apart from a bug that always opens rows[0], since there would be nothing else for it to open.
+const alert = (over: Partial<FleetAlert> = {}): FleetAlert => ({
+  kind: 'document',
+  vehicleId: 'v1',
+  nopol: 'B9114KYZ',
+  merk: 'Mitsubishi',
+  tipe: 'Canter',
+  pool: 'Pool Cakung',
+  subjectId: 'dt-1',
+  label: 'KIR',
+  expiresAt: '2026-09-20',
+  daysLeft: 4,
+  severity: 'warn',
+  driverName: null,
+  ...over,
 })
 
 describe('FleetVehiclesPage', () => {
@@ -303,6 +329,35 @@ describe('FleetVehiclesPage', () => {
     expect(screen.getByLabelText(/nomor polisi/i)).toHaveValue('B9114KYZ')
     fireEvent.click(screen.getByRole('button', { name: 'Batal' }))
     clickRowAction('Ubah', 1)
+    expect(screen.getByLabelText(/nomor polisi/i)).toHaveValue('D4567XY')
+  })
+
+  // A reviewer swapped handleOpenAlert's rows.find(v => v.id === vehicleId) for rows[0] and all
+  // existing tests passed, because the only alerts fixture in this file was always empty. Two
+  // alerts pointing at two different vehicles is the point: clicking the second one must open the
+  // second unit, which a single-alert fixture could not distinguish from the rows[0] bug.
+  it('opens the edit modal for the vehicle the clicked alert names, not the first row', () => {
+    listResult = {
+      data: {
+        rows: [vehicle(), vehicle({ id: 'v2', nopol: 'D4567XY' })],
+        total: 2,
+        page: 1,
+        pageSize: 25,
+      },
+      ...ok,
+    }
+    alertsResult = {
+      data: [
+        alert({ vehicleId: 'v1', nopol: 'B9114KYZ', subjectId: 'dt-1', label: 'KIR' }),
+        alert({ vehicleId: 'v2', nopol: 'D4567XY', subjectId: 'dt-2', label: 'STNK' }),
+      ],
+      isLoading: false,
+      isError: false,
+    }
+    render(<FleetVehiclesPage />)
+    // Scoped to /STNK/ rather than the plate alone: the row's own "Aksi D4567XY" menu button also
+    // matches the plate, and clicking that would prove nothing about handleOpenAlert.
+    fireEvent.click(screen.getByRole('button', { name: /STNK/ }))
     expect(screen.getByLabelText(/nomor polisi/i)).toHaveValue('D4567XY')
   })
 

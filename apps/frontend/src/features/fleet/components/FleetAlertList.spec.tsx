@@ -87,6 +87,25 @@ describe('FleetAlertList', () => {
     expect(screen.getByText(/Ahmad Fauzi/)).toBeInTheDocument()
   })
 
+  // Rows are keyed on kind + subjectId + vehicleId. A unit with both its KIR and its STNK due is
+  // an ordinary case, not an edge case — if subjectId ever dropped out of that key, the two would
+  // collide and one would silently vanish from the list with nothing but a console warning to show
+  // for it. Asserted on the rendered rows themselves, not the subheading's count text, which is
+  // computed straight from alerts.length and so cannot see a row go missing underneath it.
+  it('renders both alerts when two documents on the same vehicle are due', () => {
+    render(
+      <FleetAlertList
+        alerts={[alert({ subjectId: 'dt-1', label: 'KIR' }), alert({ subjectId: 'dt-2', label: 'STNK' })]}
+        isLoading={false}
+        isError={false}
+        onOpen={noop}
+      />,
+    )
+    expect(screen.getAllByRole('listitem')).toHaveLength(2)
+    expect(screen.getByText(/· KIR/)).toBeInTheDocument()
+    expect(screen.getByText(/· STNK/)).toBeInTheDocument()
+  })
+
   it('opens the vehicle the row is about', async () => {
     const onOpen = jest.fn()
     render(<FleetAlertList alerts={[alert()]} isLoading={false} isError={false} onOpen={onOpen} />)
