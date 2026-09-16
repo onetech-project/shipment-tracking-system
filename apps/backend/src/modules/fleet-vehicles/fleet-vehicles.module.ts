@@ -9,6 +9,9 @@ import { FleetVehiclesService } from './fleet-vehicles.service'
 import { FleetVehiclesController } from './fleet-vehicles.controller'
 import { FleetVehicleFilesService } from './fleet-vehicle-files.service'
 import { FleetVehicleFilesController } from './fleet-vehicle-files.controller'
+import { FleetSummaryService } from './fleet-summary.service'
+import { FleetContractsService } from './fleet-contracts.service'
+import { FleetContractsController } from './fleet-contracts.controller'
 
 @Module({
   // FleetMasterDataEntity is registered here so the service can check that a submitted id really
@@ -23,8 +26,8 @@ import { FleetVehicleFilesController } from './fleet-vehicle-files.controller'
       FleetMasterDataEntity,
     ]),
   ],
-  providers: [FleetVehiclesService, FleetVehicleFilesService],
-  controllers: [FleetVehiclesController, FleetVehicleFilesController],
+  providers: [FleetVehiclesService, FleetVehicleFilesService, FleetSummaryService, FleetContractsService],
+  controllers: [FleetVehiclesController, FleetVehicleFilesController, FleetContractsController],
   exports: [FleetVehiclesService],
 })
 export class FleetVehiclesModule {}

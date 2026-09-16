@@ -556,6 +556,7 @@ export class FleetVehiclesService {
       tenorBulan: row.tenorBulan,
       angsuranMulai: row.angsuranMulai,
       angsuranTerbayarOverride: row.angsuranTerbayarOverride,
+      closedAt: row.closedAt,
       ...totals,
     }
   }

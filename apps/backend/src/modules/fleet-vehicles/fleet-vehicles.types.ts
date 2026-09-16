@@ -45,6 +45,9 @@ export interface FleetVehicleLeaseView {
   angsuranTerbayar: number
   sisaAngsuran: number
   sisaKewajiban: number
+  // null on the unit's current financing. A dated one is history, which is what the panel beneath
+  // the open contract lists.
+  closedAt: string | null
 }
 
 // sizeBytes is a number here even though the column is bigint and pg hands it back as a string —
@@ -100,4 +103,14 @@ export interface FleetVehicleListResult {
   total: number
   page: number
   pageSize: number
+}
+
+// The five tiles above the register. Every figure is settled here rather than summed in the
+// browser, for the reason every other figure in this module is: two operators must not disagree.
+export interface FleetSummary {
+  totalUnit: number
+  dokumenKedaluwarsa: number
+  jatuhTempo30Hari: number
+  cicilanPerBulan: number
+  sisaKewajiban: number
 }
