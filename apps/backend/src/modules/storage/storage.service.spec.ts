@@ -7,8 +7,14 @@ jest.mock('@aws-sdk/s3-request-presigner', () => ({
 }))
 
 const send = jest.fn()
+// Named with the mock prefix because jest.mock factories are hoisted above imports and can only
+// close over variables whose names begin with "mock"
+const mockS3ClientCtor = jest.fn()
 jest.mock('@aws-sdk/client-s3', () => ({
-  S3Client: jest.fn().mockImplementation(() => ({ send: (...a: unknown[]) => send(...a) })),
+  S3Client: jest.fn().mockImplementation((...args: unknown[]) => {
+    mockS3ClientCtor(...args)
+    return { send: (...a: unknown[]) => send(...a) }
+  }),
   PutObjectCommand: jest.fn().mockImplementation((input) => ({ __cmd: 'put', input })),
   GetObjectCommand: jest.fn().mockImplementation((input) => ({ __cmd: 'get', input })),
   HeadObjectCommand: jest.fn().mockImplementation((input) => ({ __cmd: 'head', input })),
@@ -34,10 +40,30 @@ function build(): StorageService {
 beforeEach(() => {
   getSignedUrl.mockReset()
   send.mockReset()
+  mockS3ClientCtor.mockReset()
   getSignedUrl.mockResolvedValue('https://signed.example/url')
 })
 
 describe('StorageService', () => {
+  // A presigned URL must be signed for the host the BROWSER will call, not the host the backend
+  // reaches MinIO on over the compose network - swapping the ?? operand order (or the
+  // forcePathStyle/credentials wiring) signs for the wrong host and MinIO answers every upload
+  // with SignatureDoesNotMatch even though the credentials themselves are correct
+  it('constructs the S3 client against the browser-facing endpoint', () => {
+    build()
+
+    expect(mockS3ClientCtor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        endpoint: 'http://localhost:9000',
+        forcePathStyle: true,
+        credentials: {
+          accessKeyId: 'minioadmin',
+          secretAccessKey: 'minioadmin',
+        },
+      })
+    )
+  })
+
   it('signs a PUT that pins the content type and length', async () => {
     const service = build()
     await service.createUploadUrl('fleet/v1/stnk/abc.pdf', 'application/pdf', 1234)
