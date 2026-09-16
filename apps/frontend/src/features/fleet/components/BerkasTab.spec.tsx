@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { BerkasTab } from './BerkasTab'
 import { FleetMasterRow, FleetVehicle, FleetVehicleFile } from '../types'
@@ -53,6 +53,21 @@ const vehicle = (over: Partial<FleetVehicle> = {}): FleetVehicle => ({
   ...over,
 })
 
+// Distinct defaults matter here: two fixtures built off this helper without overrides would be
+// indistinguishable, and an indistinguishable pair cannot catch a cross-wire between them.
+const fileFixture = (over: Partial<FleetVehicleFile> = {}): FleetVehicleFile => ({
+  id: 'f1',
+  slotId: 's1',
+  slotCode: 'stnk',
+  slotLabel: 'STNK',
+  originalName: 'berkas.pdf',
+  mimeType: 'application/pdf',
+  sizeBytes: 102400,
+  externalUrl: null,
+  uploadedAt: '2024-01-01T00:00:00.000Z',
+  ...over,
+})
+
 const noop = () => {}
 
 const setup = (over: Partial<Parameters<typeof BerkasTab>[0]> = {}) => {
@@ -89,6 +104,40 @@ describe('BerkasTab', () => {
     expect(screen.getAllByText('STNK')).toHaveLength(2)
     expect(screen.getAllByText('KIR')).toHaveLength(2)
     expect(screen.getAllByText('Pajak')).toHaveLength(2)
+  })
+
+  it("shows each vehicle its own files, never another unit's", () => {
+    // Arrange: v1 holds a STNK file, v2 holds a different file in a different slot. If the card
+    // ever fetched files for the wrong vehicle id, one plate would show the other unit's papers.
+    filesFor = {
+      v1: [fileFixture({ id: 'f1', originalName: 'stnk-v1.pdf' })],
+      v2: [fileFixture({ id: 'f2', slotId: 's2', slotCode: 'kir', slotLabel: 'KIR', originalName: 'kir-v2.pdf' })],
+    }
+    setup({
+      vehicles: [
+        vehicle({ id: 'v1', nopol: 'B9114KYZ' }),
+        vehicle({ id: 'v2', nopol: 'D4567XY' }),
+      ],
+    })
+    const v1Card = screen.getByText('B9114KYZ').closest('article') as HTMLElement
+    const v2Card = screen.getByText('D4567XY').closest('article') as HTMLElement
+    // An operator must never see another unit's registration papers under their own plate.
+    expect(within(v1Card).getByText(/stnk-v1\.pdf/)).toBeInTheDocument()
+    expect(within(v1Card).queryByText(/kir-v2\.pdf/)).not.toBeInTheDocument()
+    expect(within(v2Card).getByText(/kir-v2\.pdf/)).toBeInTheDocument()
+    expect(within(v2Card).queryByText(/stnk-v1\.pdf/)).not.toBeInTheDocument()
+  })
+
+  it('puts a file under the slot it belongs to, leaving sibling slots empty', () => {
+    // Arrange: one file for v1, filed under the KIR slot only — STNK and Pajak stay unfilled
+    filesFor = {
+      v1: [fileFixture({ id: 'f3', slotId: 's2', slotCode: 'kir', slotLabel: 'KIR', originalName: 'kir-only.pdf', sizeBytes: 51200 })],
+    }
+    setup({ vehicles: [vehicle({ id: 'v1' })] })
+    // A lookup keyed on the wrong field (slot.code instead of slot.id) would either misfile this
+    // under STNK/Pajak or hide it from every slot at once — a STNK-under-BPKB mix-up either way.
+    expect(screen.getByText('kir-only.pdf · 50 KB')).toBeInTheDocument()
+    expect(screen.getAllByText('belum ada berkas')).toHaveLength(2)
   })
 
   it('chips the filled count against the number of slots', () => {
