@@ -2,7 +2,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import '@testing-library/jest-dom'
 import FleetVehiclesPage from './page'
 import { useFleetVehicles } from '@/features/fleet/hooks/useFleetVehicles'
-import { FleetVehicle } from '@/features/fleet/types'
+import { useFleetSummary } from '@/features/fleet/hooks/useFleetSummary'
+import { FleetVehicle, FleetSummary } from '@/features/fleet/types'
 
 const mutations = {
   create: jest.fn().mockResolvedValue({}),
@@ -24,6 +25,13 @@ let listResult: {
   refetch: jest.Mock
 } = { data: { rows: [], total: 0, page: 1, pageSize: 25 }, ...ok }
 
+// Mutable like listResult above, so individual tests can prove the page threads what this hook
+// returns (loading state, figures) through to FleetSummaryCards rather than fixed props.
+let summaryResult: { data?: FleetSummary; isLoading: boolean } = {
+  data: undefined,
+  isLoading: false,
+}
+
 jest.mock('@/features/fleet/hooks/useFleetVehicles', () => ({
   useFleetVehicles: jest.fn(() => listResult),
   useFleetVehicle: jest.fn(() => ({ data: undefined })),
@@ -35,9 +43,10 @@ jest.mock('@/features/fleet/hooks/useFleetVehicles', () => ({
 }))
 
 // Summary cards and export are exercised by their own specs; here the page only needs the
-// hooks to exist so it does not reach for a live QueryClient.
+// hooks to exist so it does not reach for a live QueryClient. Reads summaryResult, not a fixed
+// value, so the wiring tests below can vary it the same way listResult varies useFleetVehicles.
 jest.mock('@/features/fleet/hooks/useFleetSummary', () => ({
-  useFleetSummary: jest.fn(() => ({ data: undefined, isLoading: false })),
+  useFleetSummary: jest.fn(() => summaryResult),
 }))
 jest.mock('@/features/fleet/hooks/useFleetExport', () => ({
   useFleetExport: jest.fn(() => ({ mutateAsync: mutations.export, isPending: false })),
@@ -138,6 +147,7 @@ beforeEach(() => {
   // clearAllMocks leaves implementations in place, so the paging test's per-filter
   // implementation would otherwise leak into every test after it.
   ;(useFleetVehicles as jest.Mock).mockImplementation(() => listResult)
+  ;(useFleetSummary as jest.Mock).mockImplementation(() => summaryResult)
   permissions = [
     'read.fleet_vehicle',
     'create.fleet_vehicle',
@@ -148,6 +158,7 @@ beforeEach(() => {
     data: { rows: [vehicle()], total: 1, page: 1, pageSize: 25 },
     ...ok,
   }
+  summaryResult = { data: undefined, isLoading: false }
 })
 
 describe('FleetVehiclesPage', () => {
@@ -592,5 +603,31 @@ describe('FleetVehiclesPage', () => {
     render(<FleetVehiclesPage />)
     const headers = Array.from(document.querySelectorAll('th')).map((th) => th.textContent)
     expect(headers).toContain('jenis_dokumen satu')
+  })
+
+  // useFleetSummary's mock had a fixed { isLoading: false } no matter what the test needed, so
+  // nothing proved the page passes ITS isLoading through rather than a hardcoded value — the
+  // page compiles and every other test still passes if that prop is wired wrong.
+  it('shows the summary skeleton while the summary is loading', () => {
+    summaryResult = { data: undefined, isLoading: true }
+    render(<FleetVehiclesPage />)
+    expect(screen.getByTestId('summary-skeleton')).toBeInTheDocument()
+  })
+
+  // Same gap for the data half of the wire: a summary the hook resolves must actually reach a
+  // tile, not just a prop the component happens to receive as undefined in every other test.
+  it('renders a figure the summary hook resolves', () => {
+    summaryResult = {
+      data: {
+        totalUnit: 5,
+        dokumenKedaluwarsa: 1,
+        jatuhTempo30Hari: 0,
+        cicilanPerBulan: 1000000,
+        sisaKewajiban: 2000000,
+      },
+      isLoading: false,
+    }
+    render(<FleetVehiclesPage />)
+    expect(screen.getByText('5')).toBeInTheDocument()
   })
 })
