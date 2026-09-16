@@ -3,9 +3,12 @@ import { TypeOrmModule } from '@nestjs/typeorm'
 import { FleetVehicleEntity } from './entities/fleet-vehicle.entity'
 import { FleetVehicleDocumentEntity } from './entities/fleet-vehicle-document.entity'
 import { FleetLeaseContractEntity } from './entities/fleet-lease-contract.entity'
+import { FleetVehicleFileEntity } from './entities/fleet-vehicle-file.entity'
 import { FleetMasterDataEntity } from '../fleet-master-data/entities/fleet-master-data.entity'
 import { FleetVehiclesService } from './fleet-vehicles.service'
 import { FleetVehiclesController } from './fleet-vehicles.controller'
+import { FleetVehicleFilesService } from './fleet-vehicle-files.service'
+import { FleetVehicleFilesController } from './fleet-vehicle-files.controller'
 
 @Module({
   // FleetMasterDataEntity is registered here so the service can check that a submitted id really
@@ -16,11 +19,12 @@ import { FleetVehiclesController } from './fleet-vehicles.controller'
       FleetVehicleEntity,
       FleetVehicleDocumentEntity,
       FleetLeaseContractEntity,
+      FleetVehicleFileEntity,
       FleetMasterDataEntity,
     ]),
   ],
-  providers: [FleetVehiclesService],
-  controllers: [FleetVehiclesController],
+  providers: [FleetVehiclesService, FleetVehicleFilesService],
+  controllers: [FleetVehiclesController, FleetVehicleFilesController],
   exports: [FleetVehiclesService],
 })
 export class FleetVehiclesModule {}

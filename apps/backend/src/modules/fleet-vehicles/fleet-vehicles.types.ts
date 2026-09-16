@@ -47,6 +47,20 @@ export interface FleetVehicleLeaseView {
   sisaKewajiban: number
 }
 
+// sizeBytes is a number here even though the column is bigint and pg hands it back as a string —
+// parsed once at this boundary, the same way cicilanPerBulan is.
+export interface FleetVehicleFileView {
+  id: string
+  slotId: string
+  slotCode: string
+  slotLabel: string
+  originalName: string | null
+  mimeType: string | null
+  sizeBytes: number | null
+  externalUrl: string | null
+  uploadedAt: string
+}
+
 // berkasCount is deliberately absent until Phase 3, when object storage exists. The frontend wire
 // type marks it optional, so switching it on later adds a field rather than breaking the contract.
 export interface FleetVehicleView {
