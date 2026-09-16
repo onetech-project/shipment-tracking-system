@@ -105,6 +105,26 @@ export interface FleetVehicleListResult {
   pageSize: number
 }
 
+// One row of the "Perlu tindakan" list. Documents and licences are reported in one shape so the
+// frontend renders a single sorted list rather than merging two of its own — merging in the
+// browser is how the ordering starts disagreeing with the badges.
+export interface FleetAlertView {
+  kind: 'document' | 'sim'
+  // Null for a licence held by a driver assigned to no vehicle: the licence still expires.
+  vehicleId: string | null
+  nopol: string | null
+  merk: string | null
+  tipe: string | null
+  pool: string | null
+  // The document type id, or the driver id for a licence — what the row is about.
+  subjectId: string
+  label: string
+  expiresAt: string
+  daysLeft: number
+  severity: FleetSeverity
+  driverName: string | null
+}
+
 // The five tiles above the register. Every figure is settled here rather than summed in the
 // browser, for the reason every other figure in this module is: two operators must not disagree.
 export interface FleetSummary {
