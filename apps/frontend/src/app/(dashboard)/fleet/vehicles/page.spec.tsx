@@ -10,6 +10,7 @@ const mutations = {
   archive: jest.fn().mockResolvedValue({}),
   restore: jest.fn().mockResolvedValue({}),
   documents: jest.fn().mockResolvedValue({}),
+  export: jest.fn().mockResolvedValue({}),
 }
 
 const refetchVehicles = jest.fn()
@@ -31,6 +32,15 @@ jest.mock('@/features/fleet/hooks/useFleetVehicles', () => ({
   useArchiveFleetVehicle: () => ({ mutateAsync: mutations.archive }),
   useRestoreFleetVehicle: () => ({ mutateAsync: mutations.restore }),
   useReplaceVehicleDocuments: () => ({ mutateAsync: mutations.documents }),
+}))
+
+// Summary cards and export are exercised by their own specs; here the page only needs the
+// hooks to exist so it does not reach for a live QueryClient.
+jest.mock('@/features/fleet/hooks/useFleetSummary', () => ({
+  useFleetSummary: jest.fn(() => ({ data: undefined, isLoading: false })),
+}))
+jest.mock('@/features/fleet/hooks/useFleetExport', () => ({
+  useFleetExport: jest.fn(() => ({ mutateAsync: mutations.export, isPending: false })),
 }))
 
 // A jest.fn rather than an inline arrow, because the permission-gating tests assert on the

@@ -9,6 +9,7 @@ import { VehicleFilters } from '@/features/fleet/components/VehicleFilters'
 import { VehicleTable } from '@/features/fleet/components/VehicleTable'
 import { VehicleFormDialog } from '@/features/fleet/components/VehicleFormDialog'
 import { VehicleDocumentsDialog } from '@/features/fleet/components/VehicleDocumentsDialog'
+import { FleetSummaryCards } from '@/features/fleet/components/FleetSummaryCards'
 import {
   useArchiveFleetVehicle,
   useCreateFleetVehicle,
@@ -21,6 +22,8 @@ import {
   useFleetDrivers,
   useFleetMasterDataByCategory,
 } from '@/features/fleet/hooks/useFleetDrivers'
+import { useFleetSummary } from '@/features/fleet/hooks/useFleetSummary'
+import { useFleetExport } from '@/features/fleet/hooks/useFleetExport'
 import { apiErrorMessage } from '@/features/fleet/utils/api-error'
 import {
   FleetVehicle,
@@ -53,6 +56,8 @@ export default function FleetVehiclesPage() {
   const canReadMaster = hasPermission('read.fleet_master_data')
 
   const { data, isLoading, isError, refetch } = useFleetVehicles(filters)
+  const { data: summary, isLoading: summaryLoading } = useFleetSummary()
+  const exportCsv = useFleetExport()
   const { data: drivers } = useFleetDrivers({})
   const master = { enabled: canReadMaster }
   const { data: jenisArmada } = useFleetMasterDataByCategory('jenis_armada', master)
@@ -99,6 +104,15 @@ export default function FleetVehiclesPage() {
     }
   }
 
+  const handleExport = async () => {
+    setActionError(null)
+    try {
+      await exportCsv.mutateAsync()
+    } catch (err: unknown) {
+      setActionError(apiErrorMessage(err, 'Gagal mengunduh CSV.'))
+    }
+  }
+
   return (
     <div>
       {/* Eyebrow, title and description follow the prototype's masthead verbatim, so the operator
@@ -110,9 +124,12 @@ export default function FleetVehiclesPage() {
         title="Registrasi Armada"
         subtitle="Data kendaraan, masa berlaku KIR & STNK, softcopy dokumen, status kepemilikan, dan angsuran leasing dalam satu tempat. Peringatan muncul otomatis 30 hari sebelum jatuh tempo."
         action={
-          canCreate ? (
-            <Button onClick={() => setModal({ type: 'create' })}>+ Tambah armada</Button>
-          ) : undefined
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleExport} disabled={exportCsv.isPending}>
+              {exportCsv.isPending ? 'Menyiapkan…' : 'Ekspor CSV'}
+            </Button>
+            {canCreate && <Button onClick={() => setModal({ type: 'create' })}>+ Tambah armada</Button>}
+          </div>
         }
       />
 
@@ -121,6 +138,8 @@ export default function FleetVehiclesPage() {
           {actionError}
         </p>
       )}
+
+      <FleetSummaryCards summary={summary} isLoading={summaryLoading} />
 
       {!canReadMaster && (
         <p className="mb-4 text-sm text-muted-foreground">
