@@ -255,3 +255,25 @@ export interface FleetVehicleDocumentPayload {
   issuedAt?: string | null
   expiresAt?: string | null
 }
+
+export const FLEET_ALERT_KINDS = ['document', 'sim'] as const
+export type FleetAlertKind = (typeof FLEET_ALERT_KINDS)[number]
+
+// daysLeft and severity arrive computed, for the reason every other date in this module does: the
+// browser clock belongs to the user, and two operators must not see a different order.
+export interface FleetAlert {
+  kind: FleetAlertKind
+  // Null for a licence held by a driver assigned to no vehicle — the row is still shown, it just
+  // has nothing to open.
+  vehicleId: string | null
+  nopol: string | null
+  merk: string | null
+  tipe: string | null
+  pool: string | null
+  subjectId: string
+  label: string
+  expiresAt: string
+  daysLeft: number
+  severity: FleetSeverity
+  driverName: string | null
+}
