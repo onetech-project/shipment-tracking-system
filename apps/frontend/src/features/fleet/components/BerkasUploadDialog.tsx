@@ -99,7 +99,7 @@ export function BerkasUploadDialog({ open, vehicle, slot, onUpload, onSetUrl, on
               screen.findByText ambiguous (this hint plus the real error both matched) whenever an
               error was shown, hiding the difference between the check firing and not firing. */}
           <p className="mt-1 text-xs text-muted-foreground">
-            Format didukung: JPG, PNG, WEBP, PDF (maks. 10 MB)
+            jpg, png, webp, atau pdf · maksimal 10 MB
           </p>
           <Button
             className="mt-2"

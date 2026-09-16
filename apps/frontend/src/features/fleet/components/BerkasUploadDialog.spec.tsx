@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import userEvent from '@testing-library/user-event'
 import { BerkasUploadDialog } from './BerkasUploadDialog'
@@ -61,8 +61,31 @@ describe('BerkasUploadDialog', () => {
       />,
     )
     await userEvent.upload(screen.getByLabelText(/pilih berkas/i), pdf('big.pdf', 11 * 1024 * 1024))
-    expect(await screen.findByText(/maksimal 10 MB/i)).toBeInTheDocument()
+    // Anchored to the full error string: the static hint below also contains "maksimal 10 MB"
+    // as a substring, so an unanchored match binds to whichever node comes first in the DOM.
+    expect(await screen.findByText(/^Ukuran berkas maksimal 10 MB\.$/)).toBeInTheDocument()
     expect(onUpload).not.toHaveBeenCalled()
+  })
+
+  it('clears a stale error once a valid file is chosen', async () => {
+    const onUpload = jest.fn().mockResolvedValue(undefined)
+    render(
+      <BerkasUploadDialog
+        open
+        vehicle={VEHICLE as never}
+        slot={SLOT}
+        onUpload={onUpload}
+        onSetUrl={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    )
+    await userEvent.upload(screen.getByLabelText(/pilih berkas/i), pdf('big.pdf', 11 * 1024 * 1024))
+    expect(await screen.findByText(/^Ukuran berkas maksimal 10 MB\.$/)).toBeInTheDocument()
+
+    // Picking a valid file after a rejected one should clear the stale message, not just
+    // leave it sitting there next to a now-armed upload button.
+    await userEvent.upload(screen.getByLabelText(/pilih berkas/i), pdf())
+    expect(screen.queryByText(/^Ukuran berkas maksimal 10 MB\.$/)).not.toBeInTheDocument()
   })
 
   it('refuses a type outside the allow-list', async () => {
@@ -84,7 +107,11 @@ describe('BerkasUploadDialog', () => {
     // browser's file-picker simulation.
     const user = userEvent.setup({ applyAccept: false })
     await user.upload(screen.getByLabelText(/pilih berkas/i), exe)
-    expect(await screen.findByText(/jpg, png, webp, atau pdf/i)).toBeInTheDocument()
+    // Anchored for the same reason as the size error: the hint also contains
+    // "jpg, png, webp, atau pdf" as a substring.
+    expect(
+      await screen.findByText(/^Format tidak didukung\. Pilih jpg, png, webp, atau pdf\.$/),
+    ).toBeInTheDocument()
     expect(onUpload).not.toHaveBeenCalled()
   })
 
@@ -129,7 +156,9 @@ describe('BerkasUploadDialog', () => {
       />,
     )
     await userEvent.upload(screen.getByLabelText(/pilih berkas/i), pdf('exact.pdf', 10 * 1024 * 1024))
-    expect(screen.queryByText(/maksimal 10 MB/i)).not.toBeInTheDocument()
+    // Unanchored, this would always match the static hint regardless of whether the error
+    // actually fired — anchoring pins the assertion to the error element specifically.
+    expect(screen.queryByText(/^Ukuran berkas maksimal 10 MB\.$/)).not.toBeInTheDocument()
   })
 
   it('reports a failed upload and stays open', async () => {
@@ -165,6 +194,38 @@ describe('BerkasUploadDialog', () => {
       />,
     )
     await userEvent.type(screen.getByLabelText(/tautan/i), 'https://arsip.example/stnk.pdf')
+    await userEvent.click(screen.getByRole('button', { name: /simpan tautan/i }))
+
+    await waitFor(() => expect(onSetUrl).toHaveBeenCalledWith('https://arsip.example/stnk.pdf'))
+  })
+
+  // A paste from a PDF viewer or an email client routinely carries leading/trailing whitespace;
+  // the trim has to actually happen before the value is sent, not just before it is validated.
+  it('trims whitespace from a pasted link before saving it', async () => {
+    const onSetUrl = jest.fn().mockResolvedValue(undefined)
+    render(
+      <BerkasUploadDialog
+        open
+        vehicle={VEHICLE as never}
+        slot={SLOT}
+        onUpload={jest.fn()}
+        onSetUrl={onSetUrl}
+        onClose={jest.fn()}
+      />,
+    )
+    const input = screen.getByLabelText(/tautan/i) as HTMLInputElement
+    // A real `<input type="url">` runs the HTML "value sanitization algorithm" on every value
+    // assignment, silently stripping leading/trailing whitespace at the DOM level before React
+    // ever sees it — so userEvent.type(' https://...') loses the space before onChange fires and
+    // proves nothing. Defining `value` as an own property shadows that native accessor so the
+    // whitespace survives long enough to reach the component's own onChange and its `.trim()`.
+    Object.defineProperty(input, 'value', {
+      configurable: true,
+      value: ' https://arsip.example/stnk.pdf',
+    })
+    fireEvent.input(input)
+    // Confirm the leading space actually reached the input before asserting on the outcome.
+    expect(input.value).toBe(' https://arsip.example/stnk.pdf')
     await userEvent.click(screen.getByRole('button', { name: /simpan tautan/i }))
 
     await waitFor(() => expect(onSetUrl).toHaveBeenCalledWith('https://arsip.example/stnk.pdf'))
