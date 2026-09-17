@@ -60,8 +60,13 @@ describe('FleetVehicleFilesController', () => {
   })
 
   it('signs a download', async () => {
-    await controller.downloadUrl('v1', 'f1')
-    expect(service.downloadUrl).toHaveBeenCalledWith('v1', 'f1')
+    await controller.downloadUrl('v1', 'f1', {})
+    expect(service.downloadUrl).toHaveBeenCalledWith('v1', 'f1', undefined)
+  })
+
+  it('passes a requested inline disposition through to the service', async () => {
+    await controller.downloadUrl('v1', 'f1', { disposition: 'inline' })
+    expect(service.downloadUrl).toHaveBeenCalledWith('v1', 'f1', 'inline')
   })
 
   it('removes a file', async () => {

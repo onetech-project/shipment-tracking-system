@@ -127,7 +127,32 @@ describe('FleetDriverFilesService', () => {
     const out = await service.downloadUrl('drv-1')
 
     expect(out.url).toBe('https://signed.example/get')
-    expect(storage.createDownloadUrl).toHaveBeenCalledWith('fleet/drivers/drv-1/sim/a.png', 'sim.png')
+    // Undefined rather than absent: the storage service is what turns "no preference" into an
+    // attachment, and this asserts we hand the decision over rather than making it here.
+    expect(storage.createDownloadUrl).toHaveBeenCalledWith(
+      'fleet/drivers/drv-1/sim/a.png',
+      'sim.png',
+      undefined,
+    )
+  })
+
+  it('passes a requested disposition down to the signer', async () => {
+    const { service, storage } = build({
+      driver: {
+        findOne: jest.fn(async () => ({
+          ...DRIVER,
+          simStorageKey: 'fleet/drivers/drv-1/sim/a.png',
+          simOriginalName: 'sim.png',
+        })),
+      },
+    })
+    await service.downloadUrl('drv-1', 'inline')
+
+    expect(storage.createDownloadUrl).toHaveBeenCalledWith(
+      'fleet/drivers/drv-1/sim/a.png',
+      'sim.png',
+      'inline',
+    )
   })
 
   it('refuses a download when the driver has no scan', async () => {

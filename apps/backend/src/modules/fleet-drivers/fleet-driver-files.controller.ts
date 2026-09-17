@@ -7,6 +7,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common'
 import { ApiTags } from '@nestjs/swagger'
@@ -16,6 +17,9 @@ import { Authorize } from '../../common/decorators/authorize.decorator'
 import { FleetDriverFilesService } from './fleet-driver-files.service'
 import { UploadIntentDto } from '../fleet-vehicles/dto/upload-intent.dto'
 import { ConfirmUploadDto } from '../fleet-vehicles/dto/confirm-upload.dto'
+// The same shape as the vehicle files endpoint, imported rather than copied: a second copy is a
+// second thing to keep in step with what StorageService will sign.
+import { DownloadUrlQueryDto } from '../fleet-vehicles/dto/download-url-query.dto'
 
 // Drivers ride the vehicle permissions, the same way documents and contracts do (spec §7).
 @ApiTags('Fleet Driver Files')
@@ -40,8 +44,8 @@ export class FleetDriverFilesController {
 
   @Get('download-url')
   @Authorize(Permission.READ_FLEET_VEHICLE)
-  downloadUrl(@Param('id', ParseUUIDPipe) id: string) {
-    return this.service.downloadUrl(id)
+  downloadUrl(@Param('id', ParseUUIDPipe) id: string, @Query() query: DownloadUrlQueryDto) {
+    return this.service.downloadUrl(id, query.disposition)
   }
 
   @Delete()

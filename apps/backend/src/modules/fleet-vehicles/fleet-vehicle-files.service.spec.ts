@@ -280,7 +280,32 @@ describe('downloadUrl', () => {
     const out = await service.downloadUrl('veh-1', 'file-1')
 
     expect(out.url).toBe('https://signed.example/get')
-    expect(storage.createDownloadUrl).toHaveBeenCalledWith('fleet/veh-1/stnk/abc.pdf', 'stnk.pdf')
+    // Undefined rather than absent: the storage service is what turns "no preference" into an
+    // attachment, and this asserts we hand the decision over rather than making it here.
+    expect(storage.createDownloadUrl).toHaveBeenCalledWith(
+      'fleet/veh-1/stnk/abc.pdf',
+      'stnk.pdf',
+      undefined,
+    )
+  })
+
+  it('passes a requested disposition down to the signer', async () => {
+    const file = {
+      id: 'file-1',
+      vehicleId: 'veh-1',
+      storageKey: 'fleet/veh-1/stnk/abc.pdf',
+      originalName: 'stnk.pdf',
+      externalUrl: null,
+      slot: SLOT,
+    }
+    const { service, storage } = build({ file: { findOne: jest.fn(async () => file) } })
+    await service.downloadUrl('veh-1', 'file-1', 'inline')
+
+    expect(storage.createDownloadUrl).toHaveBeenCalledWith(
+      'fleet/veh-1/stnk/abc.pdf',
+      'stnk.pdf',
+      'inline',
+    )
   })
 
   // An external link is already a URL; re-signing it is meaningless and calling S3 would fail.

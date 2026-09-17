@@ -146,7 +146,11 @@ export class FleetVehicleFilesService {
     return this.toView(saved)
   }
 
-  async downloadUrl(vehicleId: string, fileId: string): Promise<{ url: string }> {
+  async downloadUrl(
+    vehicleId: string,
+    fileId: string,
+    disposition?: 'inline' | 'attachment',
+  ): Promise<{ url: string }> {
     const file = await this.fileRepo.findOne({
       where: { id: fileId, vehicleId },
       relations: { slot: true },
@@ -158,7 +162,7 @@ export class FleetVehicleFilesService {
     if (!file.storageKey) throw new NotFoundException('File has no content')
 
     const filename = file.originalName ?? `${file.slot?.code ?? 'berkas'}`
-    return { url: await this.storage.createDownloadUrl(file.storageKey, filename) }
+    return { url: await this.storage.createDownloadUrl(file.storageKey, filename, disposition) }
   }
 
   async remove(vehicleId: string, fileId: string): Promise<void> {

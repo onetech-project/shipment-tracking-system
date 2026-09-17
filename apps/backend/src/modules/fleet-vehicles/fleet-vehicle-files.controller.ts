@@ -7,6 +7,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common'
 import { ApiTags } from '@nestjs/swagger'
@@ -18,6 +19,7 @@ import { FleetVehicleFilesService } from './fleet-vehicle-files.service'
 import { UploadIntentDto } from './dto/upload-intent.dto'
 import { ConfirmUploadDto } from './dto/confirm-upload.dto'
 import { ExternalUrlDto } from './dto/external-url.dto'
+import { DownloadUrlQueryDto } from './dto/download-url-query.dto'
 
 // Files ride the vehicle's permissions (spec §7): whoever may edit a unit may attach its papers.
 @ApiTags('Fleet Vehicle Files')
@@ -72,8 +74,9 @@ export class FleetVehicleFilesController {
   downloadUrl(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('fileId', ParseUUIDPipe) fileId: string,
+    @Query() query: DownloadUrlQueryDto,
   ) {
-    return this.service.downloadUrl(id, fileId)
+    return this.service.downloadUrl(id, fileId, query.disposition)
   }
 
   @Delete(':fileId')

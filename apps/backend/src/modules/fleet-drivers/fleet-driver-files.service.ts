@@ -65,11 +65,14 @@ export class FleetDriverFilesService {
     await this.dropObject(driver.simStorageKey)
   }
 
-  async downloadUrl(driverId: string): Promise<{ url: string }> {
+  async downloadUrl(
+    driverId: string,
+    disposition?: 'inline' | 'attachment',
+  ): Promise<{ url: string }> {
     const driver = await this.assertDriver(driverId)
     if (!driver.simStorageKey) throw new NotFoundException('Driver has no licence scan')
     const filename = driver.simOriginalName ?? `sim-${driver.nama}`
-    return { url: await this.storage.createDownloadUrl(driver.simStorageKey, filename) }
+    return { url: await this.storage.createDownloadUrl(driver.simStorageKey, filename, disposition) }
   }
 
   async remove(driverId: string): Promise<void> {

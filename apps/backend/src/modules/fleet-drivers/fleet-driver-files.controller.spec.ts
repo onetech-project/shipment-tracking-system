@@ -38,8 +38,13 @@ describe('FleetDriverFilesController', () => {
   })
 
   it('signs a download', async () => {
-    await controller.downloadUrl('d1')
-    expect(service.downloadUrl).toHaveBeenCalledWith('d1')
+    await controller.downloadUrl('d1', {})
+    expect(service.downloadUrl).toHaveBeenCalledWith('d1', undefined)
+  })
+
+  it('passes a requested inline disposition through to the service', async () => {
+    await controller.downloadUrl('d1', { disposition: 'inline' })
+    expect(service.downloadUrl).toHaveBeenCalledWith('d1', 'inline')
   })
 
   it('removes the scan', async () => {
