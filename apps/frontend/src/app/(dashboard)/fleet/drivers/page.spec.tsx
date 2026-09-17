@@ -504,6 +504,66 @@ describe('FleetDriversPage', () => {
       openSpy.mockRestore()
     })
 
+    // The upload invalidates ['fleet','drivers'], so the list behind the dialog refetches. The
+    // dialog has to read that answer: a copy of the row taken when "Ubah" was clicked leaves the
+    // operator looking at "Belum ada softcopy" over a file that is already in the bucket.
+    it('reflects the uploaded scan without reopening the dialog', async () => {
+      mockUseFleetDrivers.mockReturnValue({
+        data: [driver],
+        isLoading: false,
+        isError: false,
+        refetch: jest.fn(),
+      })
+      const { rerender } = render(<FleetDriversPage />)
+      fireEvent.click(screen.getByRole('button', { name: 'Ubah' }))
+      expect(screen.getByText('Belum ada softcopy.')).toBeInTheDocument()
+
+      const file = new File(['x'], 'sim.png', { type: 'image/png' })
+      await userEvent.upload(screen.getByLabelText(/unggah sim/i), file)
+      await waitFor(() => expect(mockUploadSim).toHaveBeenCalled())
+
+      // What the refetch triggered by the upload's invalidation brings back. The rerender stands
+      // in for react-query pushing that answer into the page; the mock cannot do it itself.
+      mockUseFleetDrivers.mockReturnValue({
+        data: [driverWithScan],
+        isLoading: false,
+        isError: false,
+        refetch: jest.fn(),
+      })
+      rerender(<FleetDriversPage />)
+
+      expect(await screen.findByText(/sim\.png/)).toBeInTheDocument()
+      expect(screen.queryByText('Belum ada softcopy.')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Lihat' })).toBeInTheDocument()
+      expect(screen.getByLabelText(/ganti sim/i)).toBeInTheDocument()
+    })
+
+    // The mirror case: deleting leaves the dialog claiming a file that is gone.
+    it('reflects a deleted scan without reopening the dialog', async () => {
+      mockUseFleetDrivers.mockReturnValue({
+        data: [driverWithScan],
+        isLoading: false,
+        isError: false,
+        refetch: jest.fn(),
+      })
+      const { rerender } = render(<FleetDriversPage />)
+      fireEvent.click(screen.getByRole('button', { name: 'Ubah' }))
+      expect(screen.getByText(/sim\.png/)).toBeInTheDocument()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Hapus' }))
+      await waitFor(() => expect(mockDeleteSim).toHaveBeenCalled())
+
+      mockUseFleetDrivers.mockReturnValue({
+        data: [driver],
+        isLoading: false,
+        isError: false,
+        refetch: jest.fn(),
+      })
+      rerender(<FleetDriversPage />)
+
+      expect(await screen.findByText('Belum ada softcopy.')).toBeInTheDocument()
+    })
+
     it('uploads the chosen scan for the driver being edited', async () => {
       render(<FleetDriversPage />)
       fireEvent.click(screen.getByRole('button', { name: 'Ubah' }))

@@ -214,7 +214,16 @@ export default function FleetDriversPage() {
       {(modal?.type === 'create' || modal?.type === 'edit') && (
         <DriverFormDialog
           open
-          initial={modal.type === 'edit' ? modal.driver : undefined}
+          // Resolved from the live list on every render rather than read off `modal`. Uploading or
+          // deleting a scan invalidates ['fleet','drivers'], so the row behind this dialog is
+          // already correct; the copy `setModal` captured when "Ubah" was clicked is not, and it
+          // would keep saying "Belum ada softcopy" over a file that is in the bucket. Falls back to
+          // that copy so a row that leaves the list does not blank the form mid-edit.
+          initial={
+            modal.type === 'edit'
+              ? ((drivers ?? []).find((d) => d.id === modal.driver.id) ?? modal.driver)
+              : undefined
+          }
           simTypes={simTypes ?? []}
           simTypesUnavailable={!canReadMaster}
           onSubmit={handleSubmit}
