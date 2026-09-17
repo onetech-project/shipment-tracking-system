@@ -102,6 +102,24 @@ describe('StorageService', () => {
     expect(options).toMatchObject({ expiresIn: 120 })
   })
 
+  // The default is the security-relevant half of this pair: a caller that says nothing must not
+  // start serving objects inline because some other caller wanted a preview.
+  it('defaults to an attachment when no disposition is asked for', async () => {
+    const service = build()
+    await service.createDownloadUrl('fleet/v1/stnk/abc.pdf', 'stnk.pdf')
+
+    const [, command] = getSignedUrl.mock.calls[0]
+    expect(command.input.ResponseContentDisposition).toMatch(/^attachment;/)
+  })
+
+  it('signs a GET the browser will render when asked for inline', async () => {
+    const service = build()
+    await service.createDownloadUrl('fleet/v1/stnk/abc.pdf', 'stnk.pdf', 'inline')
+
+    const [, command] = getSignedUrl.mock.calls[0]
+    expect(command.input.ResponseContentDisposition).toBe('inline; filename="stnk.pdf"')
+  })
+
   it('reports an object size and type', async () => {
     send.mockResolvedValue({ ContentLength: 2048, ContentType: 'image/png' })
     const service = build()

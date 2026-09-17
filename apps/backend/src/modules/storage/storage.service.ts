@@ -58,12 +58,19 @@ export class StorageService {
     return getSignedUrl(this.client, command, { expiresIn: UPLOAD_URL_TTL_SECONDS })
   }
 
-  async createDownloadUrl(key: string, filename: string): Promise<string> {
+  // The disposition is the caller's to choose but not the client's: it is signed into the URL, so
+  // it comes from a closed list at the controller edge (DownloadUrlQueryDto) and never from raw
+  // input. Defaulting to attachment keeps every existing caller downloading.
+  async createDownloadUrl(
+    key: string,
+    filename: string,
+    disposition: 'inline' | 'attachment' = 'attachment',
+  ): Promise<string> {
     const command = new GetObjectCommand({
       Bucket: this.bucket,
       Key: key,
       // Quotes escaped so a filename containing one cannot terminate the header value early.
-      ResponseContentDisposition: `attachment; filename="${filename.replace(/"/g, '')}"`,
+      ResponseContentDisposition: `${disposition}; filename="${filename.replace(/"/g, '')}"`,
     })
     return getSignedUrl(this.client, command, { expiresIn: DOWNLOAD_URL_TTL_SECONDS })
   }
