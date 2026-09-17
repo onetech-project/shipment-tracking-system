@@ -730,10 +730,9 @@ describe('FleetVehiclesPage', () => {
       expect(screen.getByText('Total kewajiban berjalan')).toBeInTheDocument()
     })
 
-    // Two properties the wiring must get right (§ the task's own emphasis): a fresh presigned url
-    // is fetched on every click rather than reused, and window.open carries noopener,noreferrer so
-    // the opened document cannot reach back through window.opener.
-    it('opens an uploaded file through a freshly fetched download url with noopener', async () => {
+    // The slot card's own spec covers its buttons; what belongs here is that "Lihat" now means
+    // looking. A fresh presigned URL is still fetched per click — a GET expires in two minutes.
+    it('shows an uploaded file in a dialog rather than fetching it away', async () => {
       mockVehicleFiles.mockReturnValue({
         data: [
           {
@@ -757,8 +756,125 @@ describe('FleetVehiclesPage', () => {
       render(<FleetVehiclesPage />)
       fireEvent.click(screen.getByRole('tab', { name: /softcopy berkas/i }))
       fireEvent.click(screen.getByRole('button', { name: 'Lihat' }))
+
       await waitFor(() =>
-        expect(mutations.downloadUrl).toHaveBeenCalledWith({ vehicleId: 'v1', fileId: 'f1' }),
+        expect(mutations.downloadUrl).toHaveBeenCalledWith({
+          vehicleId: 'v1',
+          fileId: 'f1',
+          disposition: 'inline',
+        }),
+      )
+      const dialog = within(await screen.findByRole('dialog'))
+      expect(dialog.getByTitle('stnk.pdf')).toHaveAttribute(
+        'src',
+        'https://files.example.com/presigned?sig=1',
+      )
+      expect(openSpy).not.toHaveBeenCalled()
+      openSpy.mockRestore()
+    })
+
+    // An arbitrary host can refuse to be framed, and an empty frame reads as a lost document. The
+    // link is also not ours to sign, so there is no inline URL to ask for.
+    it('still opens an external link in a new tab', async () => {
+      mockVehicleFiles.mockReturnValue({
+        data: [
+          {
+            id: 'f1',
+            slotId: 'jenis_berkas-1',
+            slotCode: 'c',
+            slotLabel: 'jenis_berkas satu',
+            originalName: null,
+            mimeType: null,
+            sizeBytes: null,
+            externalUrl: 'https://arsip.example/stnk.pdf',
+            uploadedAt: '2026-01-01',
+          },
+        ],
+      })
+      listResult = {
+        data: { rows: [vehicle({ berkasCount: { ada: 1, wajib: 1 } })], total: 1, page: 1, pageSize: 25 },
+        ...ok,
+      }
+      const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null)
+      render(<FleetVehiclesPage />)
+      fireEvent.click(screen.getByRole('tab', { name: /softcopy berkas/i }))
+      fireEvent.click(screen.getByRole('button', { name: 'Lihat' }))
+
+      await waitFor(() =>
+        expect(openSpy).toHaveBeenCalledWith(
+          'https://arsip.example/stnk.pdf',
+          '_blank',
+          'noopener,noreferrer',
+        ),
+      )
+      expect(mutations.downloadUrl).not.toHaveBeenCalled()
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      openSpy.mockRestore()
+    })
+
+    // The failure belongs where the operator is looking, not in a banner behind the dialog.
+    it('reports a failed fetch inside the dialog', async () => {
+      mockVehicleFiles.mockReturnValue({
+        data: [
+          {
+            id: 'f1',
+            slotId: 'jenis_berkas-1',
+            slotCode: 'c',
+            slotLabel: 'jenis_berkas satu',
+            originalName: 'stnk.pdf',
+            mimeType: 'application/pdf',
+            sizeBytes: 1024,
+            externalUrl: null,
+            uploadedAt: '2026-01-01',
+          },
+        ],
+      })
+      listResult = {
+        data: { rows: [vehicle({ berkasCount: { ada: 1, wajib: 1 } })], total: 1, page: 1, pageSize: 25 },
+        ...ok,
+      }
+      mutations.downloadUrl.mockRejectedValueOnce({
+        response: { data: { message: 'Berkas tidak ditemukan.' } },
+      })
+      render(<FleetVehiclesPage />)
+      fireEvent.click(screen.getByRole('tab', { name: /softcopy berkas/i }))
+      fireEvent.click(screen.getByRole('button', { name: 'Lihat' }))
+
+      const dialog = within(await screen.findByRole('dialog'))
+      expect(await dialog.findByText('Berkas tidak ditemukan.')).toBeInTheDocument()
+    })
+
+    // Unduh asks the endpoint again with no disposition: the attachment URL is a different URL,
+    // and <a download> is ignored across origins, which is what MinIO is from here.
+    it('fetches a second, attachment URL when asked to download', async () => {
+      mockVehicleFiles.mockReturnValue({
+        data: [
+          {
+            id: 'f1',
+            slotId: 'jenis_berkas-1',
+            slotCode: 'c',
+            slotLabel: 'jenis_berkas satu',
+            originalName: 'stnk.pdf',
+            mimeType: 'application/pdf',
+            sizeBytes: 1024,
+            externalUrl: null,
+            uploadedAt: '2026-01-01',
+          },
+        ],
+      })
+      listResult = {
+        data: { rows: [vehicle({ berkasCount: { ada: 1, wajib: 1 } })], total: 1, page: 1, pageSize: 25 },
+        ...ok,
+      }
+      const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null)
+      render(<FleetVehiclesPage />)
+      fireEvent.click(screen.getByRole('tab', { name: /softcopy berkas/i }))
+      fireEvent.click(screen.getByRole('button', { name: 'Lihat' }))
+      const dialog = within(await screen.findByRole('dialog'))
+      fireEvent.click(await dialog.findByRole('button', { name: 'Unduh' }))
+
+      await waitFor(() =>
+        expect(mutations.downloadUrl).toHaveBeenLastCalledWith({ vehicleId: 'v1', fileId: 'f1' }),
       )
       expect(openSpy).toHaveBeenCalledWith(
         'https://files.example.com/presigned?sig=1',

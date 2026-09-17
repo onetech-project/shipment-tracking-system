@@ -14,8 +14,9 @@ interface Props {
 }
 
 // No preview thumbnail is rendered from file content. The prototype put the raw data URI into an
-// <img src> (lines 585, 754), which is precisely the XSS this port removes: a file is reached
-// only through a presigned URL, opened on demand (spec §4.3).
+// <img src> (lines 585, 754), which is precisely the XSS this port removes. The card links to a
+// file; "Lihat" opens it in FilePreviewDialog through a presigned URL (spec §4.3), which is a
+// different thing from rendering bytes the row carries.
 export function BerkasSlotCard({ slot, file, canEdit, onUpload, onView, onDelete }: Props) {
   const status = !file
     ? 'belum ada berkas'

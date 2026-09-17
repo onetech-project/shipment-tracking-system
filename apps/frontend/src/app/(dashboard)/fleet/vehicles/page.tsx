@@ -14,6 +14,10 @@ import { VehiclesTabs, VehiclesTab } from '@/features/fleet/components/VehiclesT
 import { FleetAlertList } from '@/features/fleet/components/FleetAlertList'
 import { BerkasTab } from '@/features/fleet/components/BerkasTab'
 import { BerkasUploadDialog } from '@/features/fleet/components/BerkasUploadDialog'
+import {
+  FilePreviewDialog,
+  FilePreviewState,
+} from '@/features/fleet/components/FilePreviewDialog'
 import { AngsuranTab } from '@/features/fleet/components/AngsuranTab'
 import {
   useArchiveFleetVehicle,
@@ -67,6 +71,11 @@ export default function FleetVehiclesPage() {
   // stale 'Lengkap' filter carried over from a previous visit must not hide the unit the operator
   // just clicked through to.
   const [focusVehicleId, setFocusVehicleId] = useState<string | null>(null)
+  // Separate from `modal`: a preview is opened over whatever the operator was already doing in the
+  // Berkas tab, and it carries its own fetch state rather than a vehicle-and-slot selection.
+  const [preview, setPreview] = useState<
+    { file: FleetVehicleFile; vehicle: FleetVehicle; state: FilePreviewState } | null
+  >(null)
 
   const canCreate = hasPermission('create.fleet_vehicle')
   const canUpdate = hasPermission('update.fleet_vehicle')
@@ -132,18 +141,66 @@ export default function FleetVehiclesPage() {
     }
   }
 
-  // Opening a file fetches a fresh presigned URL rather than reusing a cached one: a GET expires
-  // in two minutes, so a URL cached with the row would be dead by the time it was clicked.
+  // A fresh presigned URL per click rather than one cached with the row: a GET expires in two
+  // minutes, so a cached one would be dead by the time an operator clicked it.
   const handleViewFile = async (vehicle: FleetVehicle, file: FleetVehicleFile) => {
     setActionError(null)
-    try {
-      const url = file.externalUrl
-        ? file.externalUrl
-        : await downloadUrl.mutateAsync({ vehicleId: vehicle.id, fileId: file.id })
+    // Not ours to sign, and not ours to frame: an arbitrary host may refuse with X-Frame-Options,
+    // and an empty frame reads as a lost document rather than an unframeable one.
+    if (file.externalUrl) {
       // noopener so the opened document cannot reach back through window.opener.
+      window.open(file.externalUrl, '_blank', 'noopener,noreferrer')
+      return
+    }
+
+    setPreview({ vehicle, file, state: { status: 'loading' } })
+    try {
+      const url = await downloadUrl.mutateAsync({
+        vehicleId: vehicle.id,
+        fileId: file.id,
+        disposition: 'inline',
+      })
+      // Keyed on the file so a second click while the first was in flight does not have its
+      // answer overwritten by the slower one.
+      setPreview((current) =>
+        current?.file.id === file.id
+          ? {
+              ...current,
+              state: {
+                status: 'ready',
+                url,
+                mimeType: file.mimeType,
+                filename: file.originalName,
+              },
+            }
+          : current,
+      )
+    } catch (err: unknown) {
+      const message = apiErrorMessage(err, 'Gagal membuka berkas.')
+      setPreview((current) =>
+        current?.file.id === file.id ? { ...current, state: { status: 'error', message } } : current,
+      )
+    }
+  }
+
+  // A second request rather than a saved URL: the inline one is signed with a different
+  // disposition, and `<a download>` is ignored across origins — which is what the object store is
+  // from here. Two minutes of validity makes the first URL not worth keeping anyway.
+  const handleDownloadPreview = async () => {
+    if (!preview) return
+    const { vehicle, file } = preview
+    try {
+      const url = await downloadUrl.mutateAsync({ vehicleId: vehicle.id, fileId: file.id })
       window.open(url, '_blank', 'noopener,noreferrer')
     } catch (err: unknown) {
-      setActionError(apiErrorMessage(err, 'Gagal membuka berkas.'))
+      setPreview((current) =>
+        current?.file.id === file.id
+          ? {
+              ...current,
+              state: { status: 'error', message: apiErrorMessage(err, 'Gagal mengunduh berkas.') },
+            }
+          : current,
+      )
     }
   }
 
@@ -380,6 +437,17 @@ export default function FleetVehiclesPage() {
             setExternalUrl.mutateAsync({ vehicleId: modal.vehicle.id, slotId: modal.slotId, url })
           }
           onClose={() => setModal(null)}
+        />
+      )}
+
+      {preview && (
+        <FilePreviewDialog
+          open
+          title={`Softcopy ${preview.file.slotLabel}`}
+          subtitle={preview.vehicle.nopol}
+          state={preview.state}
+          onDownload={() => void handleDownloadPreview()}
+          onClose={() => setPreview(null)}
         />
       )}
 
