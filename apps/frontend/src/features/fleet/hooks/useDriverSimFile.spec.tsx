@@ -114,13 +114,25 @@ describe('useUploadDriverSim', () => {
 describe('useDriverSimDownloadUrl', () => {
   // Fetched on demand rather than cached with the driver: a presigned GET expires in two
   // minutes, so a URL cached with the row would be dead by the time "Lihat" was clicked.
-  it('fetches a fresh presigned URL by driver id', async () => {
+  it('asks for a URL the browser will render when previewing', async () => {
+    mocked.get.mockResolvedValue({ data: { url: 'https://signed/inline' } })
+    const { result } = renderHook(() => useDriverSimDownloadUrl(), { wrapper })
+    const url = await result.current.mutateAsync({ driverId: 'd1', disposition: 'inline' })
+
+    expect(mocked.get).toHaveBeenCalledWith('/fleet/drivers/d1/sim-file/download-url', {
+      params: { disposition: 'inline' },
+    })
+    expect(url).toBe('https://signed/inline')
+  })
+
+  it('asks for nothing in particular when downloading', async () => {
     mocked.get.mockResolvedValue({ data: { url: 'https://signed/get' } })
     const { result } = renderHook(() => useDriverSimDownloadUrl(), { wrapper })
-    const url = await result.current.mutateAsync('d1')
+    await result.current.mutateAsync({ driverId: 'd1' })
 
-    expect(mocked.get).toHaveBeenCalledWith('/fleet/drivers/d1/sim-file/download-url')
-    expect(url).toBe('https://signed/get')
+    expect(mocked.get).toHaveBeenCalledWith('/fleet/drivers/d1/sim-file/download-url', {
+      params: {},
+    })
   })
 })
 

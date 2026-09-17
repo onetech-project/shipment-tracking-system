@@ -102,12 +102,23 @@ export function useDeleteVehicleFile() {
 }
 
 // Fetched on demand rather than cached with the row: a presigned GET expires in two minutes, and
-// a cached one would be dead by the time an operator clicked it.
+// a cached one would be dead by the time an operator clicked it. That also makes the second fetch
+// behind the preview's Unduh button cheap — there was nothing worth keeping from the first.
 export function useFileDownloadUrl() {
   return useMutation({
-    mutationFn: ({ vehicleId, fileId }: { vehicleId: string; fileId: string }) =>
+    mutationFn: ({
+      vehicleId,
+      fileId,
+      disposition,
+    }: {
+      vehicleId: string
+      fileId: string
+      disposition?: 'inline' | 'attachment'
+    }) =>
       apiClient
-        .get(`/fleet/vehicles/${vehicleId}/files/${fileId}/download-url`)
+        .get(`/fleet/vehicles/${vehicleId}/files/${fileId}/download-url`, {
+          params: disposition ? { disposition } : {},
+        })
         .then((r) => (r.data as { url: string }).url),
   })
 }

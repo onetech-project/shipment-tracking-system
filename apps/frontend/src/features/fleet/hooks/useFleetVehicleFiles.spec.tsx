@@ -4,6 +4,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { apiClient } from '@/shared/api/client'
 import {
   useDeleteVehicleFile,
+  useFileDownloadUrl,
   useSetExternalUrl,
   useUploadVehicleFile,
   useVehicleFiles,
@@ -186,6 +187,37 @@ describe('useSetExternalUrl', () => {
     })
     expect(mocked.post).toHaveBeenCalledWith('/fleet/vehicles/v1/files/s1/external-url', {
       url: 'https://arsip.example/a.pdf',
+    })
+  })
+})
+
+describe('useFileDownloadUrl', () => {
+  // Fetched on demand rather than cached with the row: a presigned GET expires in two minutes, so
+  // a URL cached with the row would be dead by the time "Lihat" was clicked.
+  it('asks for a URL the browser will render when previewing', async () => {
+    mocked.get.mockResolvedValue({ data: { url: 'https://signed/inline' } })
+    const { result } = renderHook(() => useFileDownloadUrl(), { wrapper })
+    const url = await result.current.mutateAsync({
+      vehicleId: 'v1',
+      fileId: 'f1',
+      disposition: 'inline',
+    })
+
+    expect(mocked.get).toHaveBeenCalledWith('/fleet/vehicles/v1/files/f1/download-url', {
+      params: { disposition: 'inline' },
+    })
+    expect(url).toBe('https://signed/inline')
+  })
+
+  // No param at all rather than disposition=undefined: the backend's default is the download, and
+  // saying nothing is how every caller before this asked for it.
+  it('asks for nothing in particular when downloading', async () => {
+    mocked.get.mockResolvedValue({ data: { url: 'https://signed/get' } })
+    const { result } = renderHook(() => useFileDownloadUrl(), { wrapper })
+    await result.current.mutateAsync({ vehicleId: 'v1', fileId: 'f1' })
+
+    expect(mocked.get).toHaveBeenCalledWith('/fleet/vehicles/v1/files/f1/download-url', {
+      params: {},
     })
   })
 })

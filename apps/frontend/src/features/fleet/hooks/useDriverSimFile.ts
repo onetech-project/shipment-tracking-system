@@ -40,9 +40,17 @@ export function useUploadDriverSim() {
 
 export function useDriverSimDownloadUrl() {
   return useMutation({
-    mutationFn: (driverId: string) =>
+    mutationFn: ({
+      driverId,
+      disposition,
+    }: {
+      driverId: string
+      disposition?: 'inline' | 'attachment'
+    }) =>
       apiClient
-        .get(`/fleet/drivers/${driverId}/sim-file/download-url`)
+        .get(`/fleet/drivers/${driverId}/sim-file/download-url`, {
+          params: disposition ? { disposition } : {},
+        })
         .then((r) => (r.data as { url: string }).url),
   })
 }
