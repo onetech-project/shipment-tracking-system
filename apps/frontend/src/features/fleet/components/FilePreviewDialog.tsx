@@ -68,8 +68,9 @@ function PreviewBody({ state }: { state: FilePreviewState }) {
   const name = state.filename ?? 'berkas'
 
   if (state.mimeType?.startsWith('image/')) {
-    // eslint-disable-next-line @next/next/no-img-element -- next/image wants a configured remote
-    // host, and this src is a presigned URL on whatever endpoint the deployment signs for.
+    // next/image wants its remote hosts configured up front; this src is a presigned URL on
+    // whatever endpoint the deployment signs for, which is an env var, not a build-time constant.
+    // eslint-disable-next-line @next/next/no-img-element
     return <img src={state.url} alt={name} className="max-h-[70vh] w-auto object-contain" />
   }
 
