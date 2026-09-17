@@ -9,6 +9,10 @@ import { Input } from '@/components/ui/input'
 import { usePermissions } from '@/shared/hooks/use-permissions'
 import { DriverFormDialog } from '@/features/fleet/components/DriverFormDialog'
 import {
+  FilePreviewDialog,
+  FilePreviewState,
+} from '@/features/fleet/components/FilePreviewDialog'
+import {
   useCreateFleetDriver,
   useDeleteFleetDriver,
   useFleetDrivers,
@@ -47,6 +51,11 @@ export default function FleetDriversPage() {
   const viewSim = useDriverSimDownloadUrl()
   const deleteSim = useDeleteDriverSim()
   const [simError, setSimError] = useState<string | null>(null)
+  // The form dialog stays open underneath: the preview is a look at one of its fields, not a
+  // different place to be.
+  const [preview, setPreview] = useState<{ driver: FleetDriver; state: FilePreviewState } | null>(
+    null,
+  )
 
   const handleSubmit = async (payload: FleetDriverPayload) => {
     if (modal?.type === 'edit') {
@@ -59,12 +68,55 @@ export default function FleetDriversPage() {
   // A fresh presigned URL every click, never a cached one: a GET expires in two minutes, the same
   // reason the vehicle files tab re-fetches on every "Lihat".
   const handleViewSim = async (driverId: string) => {
+    const driver = (drivers ?? []).find((d) => d.id === driverId)
+    if (!driver) return
     setSimError(null)
+    setPreview({ driver, state: { status: 'loading' } })
     try {
-      const url = await viewSim.mutateAsync(driverId)
+      const url = await viewSim.mutateAsync({ driverId, disposition: 'inline' })
+      setPreview((current) =>
+        current?.driver.id === driverId
+          ? {
+              ...current,
+              state: {
+                status: 'ready',
+                url,
+                mimeType: driver.simFile?.mimeType ?? null,
+                filename: driver.simFile?.originalName ?? null,
+              },
+            }
+          : current,
+      )
+    } catch (err: unknown) {
+      const message = apiErrorMessage(err, 'Gagal membuka berkas SIM.')
+      setPreview((current) =>
+        current?.driver.id === driverId
+          ? { ...current, state: { status: 'error', message } }
+          : current,
+      )
+    }
+  }
+
+  // Asking again without a disposition gets the attachment URL. `<a download>` is ignored across
+  // origins, and the object store is a different origin from here.
+  const handleDownloadSim = async () => {
+    if (!preview) return
+    const { driver } = preview
+    try {
+      const url = await viewSim.mutateAsync({ driverId: driver.id })
       window.open(url, '_blank', 'noopener,noreferrer')
     } catch (err: unknown) {
-      setSimError(apiErrorMessage(err, 'Gagal membuka berkas SIM.'))
+      setPreview((current) =>
+        current?.driver.id === driver.id
+          ? {
+              ...current,
+              state: {
+                status: 'error',
+                message: apiErrorMessage(err, 'Gagal mengunduh berkas SIM.'),
+              },
+            }
+          : current,
+      )
     }
   }
 
@@ -198,6 +250,17 @@ export default function FleetDriversPage() {
           }
         }}
       />
+
+      {preview && (
+        <FilePreviewDialog
+          open
+          title="Softcopy SIM"
+          subtitle={preview.driver.nama}
+          state={preview.state}
+          onDownload={() => void handleDownloadSim()}
+          onClose={() => setPreview(null)}
+        />
+      )}
     </div>
   )
 }

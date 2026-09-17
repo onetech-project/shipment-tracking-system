@@ -478,20 +478,29 @@ describe('FleetDriversPage', () => {
       simFile: { originalName: 'sim.png', mimeType: 'image/png', sizeBytes: 524288 },
     }
 
-    it('opens a freshly fetched presigned URL for the scan', async () => {
+    it('shows the scan in a dialog rather than fetching it away', async () => {
       mockUseFleetDrivers.mockReturnValue({
         data: [driverWithScan],
         isLoading: false,
         isError: false,
         refetch: jest.fn(),
       })
+      mockViewSim.mockResolvedValue('https://signed/inline')
       const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null)
       render(<FleetDriversPage />)
       fireEvent.click(screen.getByRole('button', { name: 'Ubah' }))
       await userEvent.click(screen.getByRole('button', { name: 'Lihat' }))
 
-      await waitFor(() => expect(mockViewSim).toHaveBeenCalledWith('d1'))
-      expect(openSpy).toHaveBeenCalledWith('https://signed/get', '_blank', 'noopener,noreferrer')
+      await waitFor(() =>
+        expect(mockViewSim).toHaveBeenCalledWith({ driverId: 'd1', disposition: 'inline' }),
+      )
+      // Two dialogs are open — the driver form underneath, the preview above it. Pick the preview
+      // by the image it renders rather than by getByRole('dialog'), which would find both.
+      expect(await screen.findByRole('img', { name: 'sim.png' })).toHaveAttribute(
+        'src',
+        'https://signed/inline',
+      )
+      expect(openSpy).not.toHaveBeenCalled()
       openSpy.mockRestore()
     })
 
@@ -519,8 +528,9 @@ describe('FleetDriversPage', () => {
     })
 
     // A failed view must not fail silently — an operator clicking "Lihat" on a broken link with
-    // no feedback would assume the scan is simply gone.
-    it('surfaces a failed view instead of doing nothing', async () => {
+    // no feedback would assume the scan is simply gone. It belongs in the dialog they are looking
+    // at, not in the page banner behind it.
+    it('surfaces a failed view inside the dialog', async () => {
       mockUseFleetDrivers.mockReturnValue({
         data: [driverWithScan],
         isLoading: false,
@@ -533,6 +543,32 @@ describe('FleetDriversPage', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Lihat' }))
 
       expect(await screen.findByText('Berkas tidak ditemukan.')).toBeInTheDocument()
+    })
+
+    it('fetches a second, attachment URL when asked to download', async () => {
+      mockUseFleetDrivers.mockReturnValue({
+        data: [driverWithScan],
+        isLoading: false,
+        isError: false,
+        refetch: jest.fn(),
+      })
+      mockViewSim.mockResolvedValue('https://signed/inline')
+      const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null)
+      render(<FleetDriversPage />)
+      fireEvent.click(screen.getByRole('button', { name: 'Ubah' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Lihat' }))
+      await screen.findByRole('img', { name: 'sim.png' })
+
+      mockViewSim.mockResolvedValue('https://signed/attachment')
+      await userEvent.click(screen.getByRole('button', { name: 'Unduh' }))
+
+      await waitFor(() => expect(mockViewSim).toHaveBeenLastCalledWith({ driverId: 'd1' }))
+      expect(openSpy).toHaveBeenCalledWith(
+        'https://signed/attachment',
+        '_blank',
+        'noopener,noreferrer',
+      )
+      openSpy.mockRestore()
     })
   })
 })
