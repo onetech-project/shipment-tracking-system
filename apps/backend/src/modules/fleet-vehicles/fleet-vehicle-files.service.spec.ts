@@ -80,6 +80,91 @@ describe('createIntent', () => {
   })
 })
 
+const PHOTO_SLOT = {
+  id: 'slot-foto',
+  category: 'jenis_berkas',
+  code: 'foto_depan',
+  label: 'Foto Depan',
+}
+
+// Requirement §5 holds vehicle photos to 5 MB and to actual images. The rule lives on the slot,
+// not on the DTO: slotId arrives in the path, so the DTO cannot see which slot a body is for.
+describe('photo slot rules', () => {
+  const photo = (over: { storage?: Repo } = {}) =>
+    build({ master: { findOne: jest.fn(async () => PHOTO_SLOT) }, ...over })
+
+  it('refuses a pdf on a photo slot', async () => {
+    const { service } = photo()
+    await expect(
+      service.createIntent('veh-1', 'slot-foto', {
+        filename: 'stnk.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException)
+  })
+
+  it('accepts a jpeg on a photo slot', async () => {
+    const { service } = photo()
+    const res = await service.createIntent('veh-1', 'slot-foto', {
+      filename: 'depan.jpg',
+      mimeType: 'image/jpeg',
+      sizeBytes: 1024,
+    })
+    expect(res.uploadUrl).toBe('https://signed.example/put')
+  })
+
+  it('refuses a photo above 5 MB', async () => {
+    const { service } = photo()
+    await expect(
+      service.createIntent('veh-1', 'slot-foto', {
+        filename: 'depan.jpg',
+        mimeType: 'image/jpeg',
+        sizeBytes: 6 * 1024 * 1024,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException)
+  })
+
+  // The same 6 MB is fine on a document slot: the global ceiling is 10 MB, and a per-slot rule
+  // that leaked past the slots it belongs to would silently shrink every other upload.
+  it('leaves document slots on the 10 MB ceiling', async () => {
+    const { service } = build()
+    const res = await service.createIntent('veh-1', 'slot-1', {
+      filename: 'stnk.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: 6 * 1024 * 1024,
+    })
+    expect(res.uploadUrl).toBe('https://signed.example/put')
+  })
+
+  // createIntent only ever sees numbers the client claims. confirm sees what the bucket holds,
+  // so without the rule there too a client can declare a small jpeg and PUT a large one.
+  it('refuses a confirm whose stored object breaks the photo rule', async () => {
+    const { service } = photo({
+      storage: {
+        createUploadUrl: jest.fn(async () => 'https://signed.example/put'),
+        createDownloadUrl: jest.fn(async () => 'https://signed.example/get'),
+        statObject: jest.fn(async () => ({ size: 6 * 1024 * 1024, mime: 'image/jpeg' })),
+        deleteObject: jest.fn(async () => undefined),
+      },
+    })
+    await expect(
+      service.confirm(
+        'veh-1',
+        'slot-foto',
+        {
+          storageKey: 'fleet/veh-1/foto_depan/abc.jpg',
+          originalName: 'depan.jpg',
+          mimeType: 'image/jpeg',
+          sizeBytes: 6 * 1024 * 1024,
+        },
+        'user-1',
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException)
+  })
+})
+
+
 describe('confirm', () => {
   it('writes the row once MinIO confirms the object is there', async () => {
     const { service, fileRepo } = build()

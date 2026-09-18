@@ -5,6 +5,11 @@ import { FleetVehicleFileEntity } from './entities/fleet-vehicle-file.entity'
 import { FleetVehicleEntity } from './entities/fleet-vehicle.entity'
 import { FleetMasterDataEntity } from '../fleet-master-data/entities/fleet-master-data.entity'
 import { StorageService } from '../storage/storage.service'
+import {
+  PHOTO_MAX_UPLOAD_BYTES,
+  PHOTO_MIME_TYPES,
+  isPhotoSlot,
+} from '../storage/storage.constants'
 import { buildVehicleFileKey, isSafeExternalUrl } from './fleet-files'
 import { FleetVehicleFileView } from './fleet-vehicles.types'
 
@@ -54,6 +59,8 @@ export class FleetVehicleFilesService {
     await this.assertVehicle(vehicleId)
     const slot = await this.assertSlot(slotId)
 
+    this.assertSlotRules(slot, dto.mimeType, dto.sizeBytes)
+
     const storageKey = buildVehicleFileKey(vehicleId, slot.code, dto.mimeType)
     const uploadUrl = await this.storage.createUploadUrl(storageKey, dto.mimeType, dto.sizeBytes)
     return { uploadUrl, storageKey }
@@ -85,6 +92,9 @@ export class FleetVehicleFilesService {
     if (stat.mime !== dto.mimeType) {
       throw new BadRequestException('Uploaded object type does not match the confirmation')
     }
+    // Measured against the stored object's own numbers, which the three checks above have just
+    // proven equal to the client's.
+    this.assertSlotRules(slot, stat.mime, stat.size)
 
     const existing = await this.fileRepo.findOne({ where: { vehicleId, slotId } })
     const saved = await this.fileRepo.save({
@@ -198,6 +208,21 @@ export class FleetVehicleFilesService {
     })
     if (!slot) throw new BadRequestException('slotId must reference a jenis_berkas master row')
     return slot
+  }
+
+  // Narrower than the DTO allow-list, and only for photo slots. The DTO cannot do this itself:
+  // slotId travels in the path, not the body, so it has no idea which slot a request is for.
+  // Applied at both ends of the upload — createIntent sees only what the client claims, confirm
+  // sees what the bucket actually holds.
+  private assertSlotRules(slot: FleetMasterDataEntity, mime: string, size: number): void {
+    if (!isPhotoSlot(slot.code)) return
+
+    if (!PHOTO_MIME_TYPES.includes(mime)) {
+      throw new BadRequestException(`Slot ${slot.label} hanya menerima foto (jpg, png, atau webp).`)
+    }
+    if (size > PHOTO_MAX_UPLOAD_BYTES) {
+      throw new BadRequestException(`Ukuran foto ${slot.label} maksimal 5 MB.`)
+    }
   }
 
   private toView(row: FleetVehicleFileEntity): FleetVehicleFileView {
