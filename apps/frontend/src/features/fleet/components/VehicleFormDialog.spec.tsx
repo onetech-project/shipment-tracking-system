@@ -1,4 +1,5 @@
 import { createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom'
 import { VehicleFormDialog } from './VehicleFormDialog'
 import { FleetDriver, FleetMasterRow, FleetVehicle } from '../types'
@@ -41,11 +42,14 @@ const driver: FleetDriver = {
   simNomor: '3201-1122-3344',
   simJenisId: null,
   simExpiresAt: '2027-03-14',
+  simFile: null,
   isActive: true,
 }
 
 const setup = (over: Record<string, unknown> = {}) => {
-  const onSubmit = jest.fn().mockResolvedValue(undefined)
+  // The contract is Promise<FleetVehicle> now: the dialog reads the saved unit's id to file the
+  // operator's uploads against it.
+  const onSubmit = jest.fn().mockResolvedValue({ id: 'v-saved', nopol: 'B9114KYZ' })
   const onClose = jest.fn()
   render(
     <VehicleFormDialog
@@ -344,5 +348,142 @@ describe('VehicleFormDialog', () => {
     setup({ masterData: { ...masterData, jenisDokumen: [] } })
     expect(screen.getByRole('group', { name: /dokumen kendaraan/i })).toBeInTheDocument()
     expect(screen.getByLabelText(/nomor polisi/i)).toBeInTheDocument()
+  })
+})
+
+
+const berkasSlot = (over: Partial<FleetMasterRow>): FleetMasterRow =>
+  master({ category: 'jenis_berkas', isRequired: false, ...over })
+
+const BERKAS_SLOTS: FleetMasterRow[] = [
+  berkasSlot({ id: 'jb-stnk', code: 'stnk', label: 'STNK', sortOrder: 10, isRequired: true }),
+  berkasSlot({ id: 'jb-foto', code: 'foto_depan', label: 'Foto Depan', sortOrder: 40 }),
+]
+
+const SAVED_VEHICLE = { id: 'veh-9', nopol: 'B9114KYZ' } as FleetVehicle
+
+const fileOf = (name: string, type: string): File => new File(['x'], name, { type })
+
+const setupWithBerkas = (over: Record<string, unknown> = {}) => {
+  const onSubmit = jest.fn().mockResolvedValue(SAVED_VEHICLE)
+  const onUploadBerkas = jest.fn().mockResolvedValue(undefined)
+  const onClose = jest.fn()
+  render(
+    <VehicleFormDialog
+      open
+      masterData={masterData}
+      drivers={[driver]}
+      berkasSlots={BERKAS_SLOTS}
+      existingFiles={[]}
+      onSubmit={onSubmit}
+      onUploadBerkas={onUploadBerkas}
+      onClose={onClose}
+      {...over}
+    />,
+  )
+  return { onSubmit, onUploadBerkas, onClose }
+}
+
+describe('berkas sections', () => {
+  beforeEach(() => {
+    // jsdom implements neither, and picking a photo calls both.
+    global.URL.createObjectURL = jest.fn(() => 'blob:preview')
+    global.URL.revokeObjectURL = jest.fn()
+  })
+
+  it('splits photo slots from document slots by their code', () => {
+    setupWithBerkas()
+    expect(screen.getByRole('group', { name: 'Foto Kendaraan' })).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Softcopy Berkas' })).toBeInTheDocument()
+    expect(screen.getByLabelText(/pilih berkas foto depan/i)).toBeInTheDocument()
+    expect(screen.getByLabelText(/pilih berkas stnk/i)).toBeInTheDocument()
+  })
+
+  it('saves without uploading anything when no file was picked', async () => {
+    const { onSubmit, onUploadBerkas, onClose } = setupWithBerkas()
+    fillRequired()
+    fireEvent.click(screen.getByRole('button', { name: /^simpan$/i }))
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    expect(onUploadBerkas).not.toHaveBeenCalled()
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+  })
+
+  it('uploads picked files against the id the save returned', async () => {
+    const { onSubmit, onUploadBerkas, onClose } = setupWithBerkas()
+    fillRequired()
+    await userEvent.upload(
+      screen.getByLabelText(/pilih berkas stnk/i),
+      fileOf('stnk.pdf', 'application/pdf'),
+    )
+    fireEvent.click(screen.getByRole('button', { name: /^simpan$/i }))
+
+    await waitFor(() => expect(onUploadBerkas).toHaveBeenCalled())
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    expect(onUploadBerkas).toHaveBeenCalledWith({
+      vehicleId: 'veh-9',
+      slotId: 'jb-stnk',
+      file: expect.any(File),
+    })
+    await waitFor(() => expect(onClose).toHaveBeenCalled())
+  })
+
+  // The vehicle is already saved by then; closing would send the operator hunting for the unit
+  // they just typed in order to finish one file.
+  it('keeps the dialog open and names the slot when an upload fails', async () => {
+    const onUploadBerkas = jest.fn().mockRejectedValue(new Error('koneksi terputus'))
+    const { onClose } = setupWithBerkas({ onUploadBerkas })
+    fillRequired()
+    await userEvent.upload(
+      screen.getByLabelText(/pilih berkas stnk/i),
+      fileOf('stnk.pdf', 'application/pdf'),
+    )
+    fireEvent.click(screen.getByRole('button', { name: /^simpan$/i }))
+
+    await waitFor(() => expect(screen.getByText(/armada tersimpan/i)).toBeInTheDocument())
+    expect(screen.getAllByText(/koneksi terputus/i).length).toBeGreaterThan(0)
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  // Re-sending the vehicle would PATCH data that is already correct, and on a create it would
+  // register a second unit on the same plate.
+  it('retries only the files after a partial failure, never the vehicle', async () => {
+    const onUploadBerkas = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('gagal'))
+      .mockResolvedValue(undefined)
+    const { onSubmit } = setupWithBerkas({ onUploadBerkas })
+    fillRequired()
+    await userEvent.upload(
+      screen.getByLabelText(/pilih berkas stnk/i),
+      fileOf('stnk.pdf', 'application/pdf'),
+    )
+    fireEvent.click(screen.getByRole('button', { name: /^simpan$/i }))
+
+    await waitFor(() => expect(screen.getByText(/armada tersimpan/i)).toBeInTheDocument())
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(screen.getByRole('button', { name: /unggah ulang/i }))
+    await waitFor(() => expect(onUploadBerkas).toHaveBeenCalledTimes(2))
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+  })
+
+  it('uploads nothing when the form does not validate', async () => {
+    const { onSubmit, onUploadBerkas } = setupWithBerkas()
+    await userEvent.upload(
+      screen.getByLabelText(/pilih berkas stnk/i),
+      fileOf('stnk.pdf', 'application/pdf'),
+    )
+    fireEvent.click(screen.getByRole('button', { name: /^simpan$/i }))
+
+    await waitFor(() => expect(screen.getAllByText(/wajib diisi/i).length).toBeGreaterThan(0))
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(onUploadBerkas).not.toHaveBeenCalled()
+  })
+
+  it('renders neither section when the deployment has no berkas slots', () => {
+    setupWithBerkas({ berkasSlots: [] })
+    expect(screen.queryByRole('group', { name: 'Foto Kendaraan' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Softcopy Berkas' })).not.toBeInTheDocument()
   })
 })

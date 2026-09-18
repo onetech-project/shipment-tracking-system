@@ -45,10 +45,33 @@ export interface FleetVehicleLeaseView {
   angsuranTerbayar: number
   sisaAngsuran: number
   sisaKewajiban: number
+  // null on the unit's current financing. A dated one is history, which is what the panel beneath
+  // the open contract lists.
+  closedAt: string | null
 }
 
-// berkasCount is deliberately absent until Phase 3, when object storage exists. The frontend wire
-// type marks it optional, so switching it on later adds a field rather than breaking the contract.
+// sizeBytes is a number here even though the column is bigint and pg hands it back as a string —
+// parsed once at this boundary, the same way cicilanPerBulan is.
+export interface FleetVehicleFileView {
+  id: string
+  slotId: string
+  slotCode: string
+  slotLabel: string
+  originalName: string | null
+  mimeType: string | null
+  sizeBytes: number | null
+  externalUrl: string | null
+  uploadedAt: string
+}
+
+// ada / wajib rather than a ratio string, so the frontend can colour the chip on the comparison
+// without parsing text back apart. wajib counts ACTIVE jenis_berkas rows: deactivating a slot
+// retires the requirement rather than leaving every unit permanently short.
+export interface FleetVehicleBerkasCount {
+  ada: number
+  wajib: number
+}
+
 export interface FleetVehicleView {
   id: string
   nopol: string
@@ -71,6 +94,7 @@ export interface FleetVehicleView {
   documents: FleetVehicleDocumentView[]
   worstSeverity: FleetSeverity
   minDaysLeft: number | null
+  berkasCount: FleetVehicleBerkasCount
   isActive: boolean
 }
 
@@ -79,4 +103,34 @@ export interface FleetVehicleListResult {
   total: number
   page: number
   pageSize: number
+}
+
+// One row of the "Perlu tindakan" list. Documents and licences are reported in one shape so the
+// frontend renders a single sorted list rather than merging two of its own — merging in the
+// browser is how the ordering starts disagreeing with the badges.
+export interface FleetAlertView {
+  kind: 'document' | 'sim'
+  // Null for a licence held by a driver assigned to no vehicle: the licence still expires.
+  vehicleId: string | null
+  nopol: string | null
+  merk: string | null
+  tipe: string | null
+  pool: string | null
+  // The document type id, or the driver id for a licence — what the row is about.
+  subjectId: string
+  label: string
+  expiresAt: string
+  daysLeft: number
+  severity: FleetSeverity
+  driverName: string | null
+}
+
+// The five tiles above the register. Every figure is settled here rather than summed in the
+// browser, for the reason every other figure in this module is: two operators must not disagree.
+export interface FleetSummary {
+  totalUnit: number
+  dokumenKedaluwarsa: number
+  jatuhTempo30Hari: number
+  cicilanPerBulan: number
+  sisaKewajiban: number
 }

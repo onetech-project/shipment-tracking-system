@@ -9,6 +9,7 @@ import { DataSource, EntityManager, In, IsNull, Not, Repository } from 'typeorm'
 import { FleetVehicleEntity } from './entities/fleet-vehicle.entity'
 import { FleetVehicleDocumentEntity } from './entities/fleet-vehicle-document.entity'
 import { FleetLeaseContractEntity } from './entities/fleet-lease-contract.entity'
+import { FleetVehicleFileEntity } from './entities/fleet-vehicle-file.entity'
 import { FleetMasterDataEntity } from '../fleet-master-data/entities/fleet-master-data.entity'
 import { FleetMasterCategory } from '../fleet-master-data/fleet-master-data.constants'
 import {
@@ -23,6 +24,7 @@ import { computeLease } from './fleet-lease'
 import { daysUntil, severityFor, todayISO, worstSeverity } from './fleet-severity'
 import {
   FleetMasterRef,
+  FleetVehicleBerkasCount,
   FleetVehicleDocumentView,
   FleetVehicleLeaseView,
   FleetVehicleListResult,
@@ -106,6 +108,8 @@ export class FleetVehiclesService {
     private readonly masterRepo: Repository<FleetMasterDataEntity>,
     @InjectRepository(FleetLeaseContractEntity)
     private readonly leaseRepo: Repository<FleetLeaseContractEntity>,
+    @InjectRepository(FleetVehicleFileEntity)
+    private readonly fileRepo: Repository<FleetVehicleFileEntity>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -552,6 +556,7 @@ export class FleetVehiclesService {
       tenorBulan: row.tenorBulan,
       angsuranMulai: row.angsuranMulai,
       angsuranTerbayarOverride: row.angsuranTerbayarOverride,
+      closedAt: row.closedAt,
       ...totals,
     }
   }
@@ -619,6 +624,26 @@ export class FleetVehiclesService {
     })
     const leaseByVehicle = new Map(leases.map((l) => [l.vehicleId, l]))
 
+    // One grouped query for the page rather than one per row, the same shape the documents
+    // load uses. The join is what keeps the number meaningful: photo slots are optional
+    // (is_required FALSE), and counting them here would let four photos cover for a missing
+    // STNK — the chip would read 4/3 on a unit whose mandatory document is not there.
+    const fileRows = (await this.fileRepo
+      .createQueryBuilder('f')
+      .select('f.vehicle_id', 'vehicleId')
+      .addSelect('COUNT(*)', 'count')
+      .innerJoin('fleet_master_data', 's', 's.id = f.slot_id AND s.is_required = TRUE')
+      .where('f.vehicle_id IN (:...ids)', { ids })
+      .groupBy('f.vehicle_id')
+      .getRawMany()) as { vehicleId: string; count: string }[]
+    const filesByVehicle = new Map(fileRows.map((r) => [r.vehicleId, Number(r.count)]))
+
+    // Required slots only, matching the join above. Both sides move together or the ratio stops
+    // being a ratio.
+    const wajibBerkas = await this.masterRepo.count({
+      where: { category: 'jenis_berkas', isActive: true, isRequired: true },
+    })
+
     // One `today` for the whole page so two rows on the same response can never be measured
     // against different days, which is possible if the request straddles midnight.
     const today = todayISO()
@@ -628,7 +653,12 @@ export class FleetVehiclesService {
     return ids
       .map((id) => byId.get(id))
       .filter((e): e is FleetVehicleEntity => e !== undefined)
-      .map((e) => this.toView(e, docsByVehicle.get(e.id) ?? [], today, leaseByVehicle.get(e.id) ?? null))
+      .map((e) =>
+        this.toView(e, docsByVehicle.get(e.id) ?? [], today, leaseByVehicle.get(e.id) ?? null, {
+          ada: filesByVehicle.get(e.id) ?? 0,
+          wajib: wajibBerkas,
+        }),
+      )
   }
 
   private toView(
@@ -636,6 +666,7 @@ export class FleetVehiclesService {
     docs: FleetVehicleDocumentEntity[],
     today: string,
     lease: FleetLeaseContractEntity | null,
+    berkasCount: FleetVehicleBerkasCount,
   ): FleetVehicleView {
     const documents: FleetVehicleDocumentView[] = docs.map((d) => {
       const daysLeft = daysUntil(d.expiresAt, today)
@@ -691,6 +722,7 @@ export class FleetVehiclesService {
       documents,
       worstSeverity: worstSeverity(documents.map((d) => d.severity)),
       minDaysLeft: dated.length > 0 ? Math.min(...dated.map((d) => d.daysLeft as number)) : null,
+      berkasCount,
       isActive: e.isActive,
     }
   }

@@ -14,6 +14,12 @@ import {
 import { FormField } from '@/components/shared/form-field'
 import { FleetDriver, FleetDriverPayload, FleetMasterRow } from '../types'
 import { apiErrorMessage } from '../utils/api-error'
+import { formatBytes } from '../utils/format-bytes'
+
+// Mirrors the backend allow-list (storage.constants.ts), same as BerkasUploadDialog. The input's
+// accept attribute is only a picker filter — a user can still choose "All files" or drag-drop a
+// file past it — so the handler below re-checks the type itself before it ever reaches the server.
+const ACCEPTED_SIM_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
 
 interface DriverFormDialogProps {
   open: boolean
@@ -22,6 +28,11 @@ interface DriverFormDialogProps {
   simTypesUnavailable?: boolean
   onSubmit: (payload: FleetDriverPayload) => Promise<void>
   onClose: () => void
+  // Optional, like simTypesUnavailable above: only exercised once a driver has an id (see the
+  // guard around the SIM slot below), so a caller rendering the create form has nothing to pass.
+  onUploadSim?: (driverId: string, file: File) => Promise<unknown>
+  onViewSim?: (driverId: string) => Promise<unknown>
+  onDeleteSim?: (driverId: string) => Promise<unknown>
 }
 
 export function DriverFormDialog({
@@ -31,6 +42,9 @@ export function DriverFormDialog({
   simTypesUnavailable = false,
   onSubmit,
   onClose,
+  onUploadSim,
+  onViewSim,
+  onDeleteSim,
 }: DriverFormDialogProps) {
   const [nama, setNama] = useState(initial?.nama ?? '')
   const [telepon, setTelepon] = useState(initial?.telepon ?? '')
@@ -39,6 +53,7 @@ export function DriverFormDialog({
   const [simExpiresAt, setSimExpiresAt] = useState(initial?.simExpiresAt ?? '')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [simError, setSimError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -127,6 +142,67 @@ export function DriverFormDialog({
               onChange={(e) => setSimExpiresAt(e.target.value)}
             />
           </FormField>
+
+          {/* Only for a saved driver: a new one has no id, so there is nothing to attach a file to.
+              The scan is uploaded separately from the form fields rather than as part of the save,
+              because it goes straight to storage and never through this form's payload. */}
+          {initial?.id && (
+            <div className="mt-4 border-t pt-4">
+              <div className="text-sm font-medium">Softcopy SIM</div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                {initial.simFile
+                  ? `${initial.simFile.originalName ?? 'berkas'} · ${formatBytes(initial.simFile.sizeBytes)}`
+                  : 'Belum ada softcopy.'}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {initial.simFile && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onViewSim?.(initial.id)}
+                  >
+                    Lihat
+                  </Button>
+                )}
+                <label className="inline-flex">
+                  <input
+                    type="file"
+                    accept={ACCEPTED_SIM_TYPES.join(',')}
+                    className="sr-only"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0]
+                      if (!file) return
+                      if (!ACCEPTED_SIM_TYPES.includes(file.type)) {
+                        setSimError('Format tidak didukung. Pilih jpg, png, webp, atau pdf.')
+                        return
+                      }
+                      if (file.size > 10 * 1024 * 1024) {
+                        setSimError('Ukuran berkas maksimal 10 MB.')
+                        return
+                      }
+                      setSimError(null)
+                      void onUploadSim?.(initial.id, file)
+                    }}
+                  />
+                  <span className="inline-flex h-8 cursor-pointer items-center rounded-md border px-3 text-sm">
+                    {initial.simFile ? 'Ganti SIM' : 'Unggah SIM'}
+                  </span>
+                </label>
+                {initial.simFile && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onDeleteSim?.(initial.id)}
+                  >
+                    Hapus
+                  </Button>
+                )}
+              </div>
+              {simError && <p className="mt-2 text-sm text-destructive">{simError}</p>}
+            </div>
+          )}
 
           {error && (
             <p className="flex items-center gap-1 text-sm text-destructive">
