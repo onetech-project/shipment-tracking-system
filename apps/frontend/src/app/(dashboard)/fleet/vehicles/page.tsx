@@ -110,6 +110,11 @@ export default function FleetVehiclesPage() {
   const deleteFile = useDeleteVehicleFile()
   const downloadUrl = useFileDownloadUrl()
 
+  // Only for an edit: a create has no unit whose files could be fetched, and the hook stays
+  // disabled without an id.
+  const editingVehicleId = modal?.type === 'edit' ? modal.vehicle.id : undefined
+  const { data: editingFiles } = useVehicleFiles(editingVehicleId)
+
   const rows = data?.rows ?? []
   const total = data?.total ?? 0
   const page = data?.page ?? filters.page ?? 1
@@ -117,12 +122,13 @@ export default function FleetVehiclesPage() {
   // Math.max(1, …) so an empty result still reads "halaman 1 dari 1" rather than "dari 0".
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
-  const handleSubmit = async (payload: FleetVehiclePayload) => {
+  // Returns the saved unit rather than void: VehicleFormDialog files the berkas the operator
+  // picked against this id, and on a create there is no other way to learn it.
+  const handleSubmit = async (payload: FleetVehiclePayload): Promise<FleetVehicle> => {
     if (modal?.type === 'edit') {
-      await updateVehicle.mutateAsync({ id: modal.vehicle.id, payload })
-    } else {
-      await createVehicle.mutateAsync(payload)
+      return await updateVehicle.mutateAsync({ id: modal.vehicle.id, payload })
     }
+    return await createVehicle.mutateAsync(payload)
   }
 
   const handleDocuments = async (documents: FleetVehicleDocumentPayload[]) => {
@@ -376,7 +382,12 @@ export default function FleetVehiclesPage() {
             jenisDokumen: docTypes ?? [],
           }}
           drivers={drivers ?? []}
+          berkasSlots={jenisBerkas ?? []}
+          existingFiles={editingFiles ?? []}
           onSubmit={handleSubmit}
+          onUploadBerkas={({ vehicleId, slotId, file }) =>
+            uploadFile.mutateAsync({ vehicleId, slotId, file })
+          }
           onClose={() => setModal(null)}
         />
       )}
