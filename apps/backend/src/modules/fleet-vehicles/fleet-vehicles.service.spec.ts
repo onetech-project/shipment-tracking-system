@@ -127,6 +127,7 @@ describe('FleetVehiclesService', () => {
     fileQb = {
       select: jest.fn().mockReturnThis(),
       addSelect: jest.fn().mockReturnThis(),
+      innerJoin: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
       groupBy: jest.fn().mockReturnThis(),
       getRawMany: jest.fn(async () => []),
@@ -1061,7 +1062,7 @@ describe('FleetVehiclesService', () => {
       const res = await service.findAll({})
       expect(res.rows[0].berkasCount).toEqual({ ada: 2, wajib: 3 })
       expect(masterRepo.count).toHaveBeenCalledWith({
-        where: { category: 'jenis_berkas', isActive: true },
+        where: { category: 'jenis_berkas', isActive: true, isRequired: true },
       })
     })
 
@@ -1079,13 +1080,13 @@ describe('FleetVehiclesService', () => {
     // test above uses for masterRepo.find.
     it('leaves a deactivated slot out of the required count', async () => {
       const catalogue: Record<string, unknown>[] = [
-        { id: 'jb-1', category: 'jenis_berkas', isActive: true },
-        { id: 'jb-2', category: 'jenis_berkas', isActive: true },
-        { id: 'jb-3', category: 'jenis_berkas', isActive: false },
+        { id: 'jb-1', category: 'jenis_berkas', isActive: true, isRequired: true },
+        { id: 'jb-2', category: 'jenis_berkas', isActive: true, isRequired: true },
+        { id: 'jb-3', category: 'jenis_berkas', isActive: false, isRequired: true },
         // Active rows of a different category: if the query ever dropped its category filter,
         // these would wrongly be swept into the count too.
-        { id: 'jd-1', category: 'jenis_dokumen', isActive: true },
-        { id: 'jd-2', category: 'jenis_dokumen', isActive: true },
+        { id: 'jd-1', category: 'jenis_dokumen', isActive: true, isRequired: true },
+        { id: 'jd-2', category: 'jenis_dokumen', isActive: true, isRequired: true },
       ]
       masterRepo.count.mockImplementation(async (opts: { where?: Record<string, unknown> }) =>
         catalogue.filter((row) =>
@@ -1130,6 +1131,40 @@ describe('FleetVehiclesService', () => {
       expect(res.rows.find((r) => r.id === 'v1')?.berkasCount).toEqual({ ada: 2, wajib: 3 })
       expect(res.rows.find((r) => r.id === 'v2')?.berkasCount).toEqual({ ada: 1, wajib: 3 })
       expect(fileQb.where).toHaveBeenCalledWith('f.vehicle_id IN (:...ids)', { ids: ['v1', 'v2'] })
+    })
+
+    // Photo slots are seeded is_required FALSE. Counting them as required would turn every unit
+    // that holds all three documents from "3/3 lengkap" into "3/7", and the Belum lengkap filter
+    // in the Berkas tab would surface the entire fleet.
+    it('leaves optional slots out of the required count', async () => {
+      const catalogue: Record<string, unknown>[] = [
+        { id: 'jb-1', category: 'jenis_berkas', isActive: true, isRequired: true },
+        { id: 'jb-2', category: 'jenis_berkas', isActive: true, isRequired: true },
+        { id: 'jb-3', category: 'jenis_berkas', isActive: true, isRequired: true },
+        { id: 'jb-foto-1', category: 'jenis_berkas', isActive: true, isRequired: false },
+        { id: 'jb-foto-2', category: 'jenis_berkas', isActive: true, isRequired: false },
+      ]
+      masterRepo.count.mockImplementation(async (opts: { where?: Record<string, unknown> }) =>
+        catalogue.filter((row) =>
+          Object.entries(opts?.where ?? {}).every(([key, value]) => row[key] === value),
+        ).length,
+      )
+      fileQb.getRawMany.mockResolvedValue([])
+      const res = await service.findAll({})
+      expect(res.rows[0].berkasCount.wajib).toBe(3)
+    })
+
+    // The filled side has to be narrowed with it, or a unit carrying four photos and no STNK
+    // reads 4/3 — complete, while the document it is required to hold is missing.
+    it('counts only files sitting in a required slot', async () => {
+      fileQb.getRawMany.mockResolvedValue([{ vehicleId: 'v1', count: '2' }])
+      masterRepo.count.mockResolvedValue(3)
+      await service.findAll({})
+      expect(fileQb.innerJoin).toHaveBeenCalledWith(
+        'fleet_master_data',
+        's',
+        's.id = f.slot_id AND s.is_required = TRUE',
+      )
     })
   })
 
