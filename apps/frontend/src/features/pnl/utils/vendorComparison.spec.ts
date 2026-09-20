@@ -119,6 +119,40 @@ describe('toVendorComparisonTable', () => {
     expect(model.footerRows[0].margin).toEqual([null])
     expect(model.footerRows[1].margin).toEqual([null])
   })
+
+  // Every other fixture in this file omits revenueMissingTos, so `?? 0` passes whether the
+  // mapping is right or hardcoded to 0. cellWarning.ts promises that yellow means the same thing
+  // on the Daily Report and both comparison tabs, so the count has to be pinned here too,
+  // per-cell and summed into the footer.
+  it('carries the revenue-missing count onto each cell and into the footer', () => {
+    const denpasarCell = {
+      revenue: 1000,
+      cost: 600,
+      margin: 385,
+      costSmu: 400,
+      costRa: 100,
+      costSgOut: 50,
+      costSgIn: 50,
+      incompleteTos: 0,
+      revenueMissingTos: 2,
+      issues: [],
+    }
+    const acehCell = { ...denpasarCell, revenueMissingTos: 3 }
+
+    const model = toVendorComparisonTable(
+      data({
+        rows: [
+          { origin: 'Jabo', originLabel: 'CGK', dest: 'Denpasar', cells: [denpasarCell] },
+          { origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh', cells: [acehCell] },
+        ],
+        footer: [{ ...data().footer[0], revenueMissingTos: 5 }],
+      }),
+    )
+
+    expect(model.rows[0].warnings[0].revenueMissingTos).toBe(2)
+    expect(model.rows[1].warnings[0].revenueMissingTos).toBe(3)
+    expect(model.footerRows[0].warnings?.[0].revenueMissingTos).toBe(5)
+  })
 })
 
 describe('overlappingVendors', () => {
