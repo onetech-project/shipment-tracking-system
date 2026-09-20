@@ -317,9 +317,27 @@ SUM(cost_sg_in_to)     AS cost_sg_in         SUM(COALESCE(cost_sg_in_to, 0))
                                                FILTER (WHERE cost_to IS NOT NULL)   AS cost_sg_in
 ```
 
-`totalCost` menjadi `SUM(cost_to)`, satu ekspresi, bukan lagi `MAX(...) + SUM(...)`. Dengan itu
-**Revenue − Cost = GP berlaku di setiap baris**, dan baris drilldown menjadi rekonsiliasi langsung
-dari cell yang diklik.
+`totalCost` menjadi `SUM(cost_to)`, satu ekspresi, bukan lagi `MAX(...) + SUM(...)`.
+
+**Dan GP harus berhenti memakai `SUM(gross_profit_to)`.** Ditemukan saat menyusun implementation
+plan: `gross_profit_to` bernilai NULL setiap kali `cost_to` NULL, sehingga `SUM`-nya **melewatkan**
+TO yang belum berbiaya — padahal `total_revenue` menghitungnya. Pada AWB yang hanya sebagian TO-nya
+berbiaya, Revenue − Cost karena itu tidak akan pernah sama dengan GP, betapapun rapinya kolom cost
+diprorata.
+
+`getSummary` sudah menyelesaikannya dengan cara lain: ia mendefinisikan gross profit sebagai
+`totalRevenue − totalCost`, yaitu seluruh revenue dihadapkan pada biaya yang berhasil dihitung saja.
+Drilldown memakai definisi yang sama, dihitung di TypeScript, atau barisnya tidak akan pernah
+menjumlah ke card di atasnya.
+
+Satu kolom tambahan menyertainya: `COUNT(*) FILTER (WHERE cost_to IS NOT NULL) AS costed_tos`.
+`COALESCE(SUM(...), 0)` tidak pernah NULL, jadi AWB yang sama sekali tidak bisa dibiayai akan
+menampilkan `0` yang terbaca pasti di sebelah revenue yang nyata. Hitungan itulah yang memisahkan
+"tidak berbiaya di dalam filter" dari "tidak bisa dihitung" — `totalCost` dan `grossProfit` menjadi
+NULL saat `costed_tos = 0`.
+
+Dengan ketiganya, **Revenue − Cost = GP berlaku di setiap baris yang punya biaya**, dan baris
+drilldown menjadi rekonsiliasi langsung dari cell yang diklik.
 
 **Kedua, filter pindah dari `EXISTS` ke `WHERE` biasa.** Setelah kolom cost diprorata, `EXISTS`
 justru yang salah: ia membiarkan TO di luar filter ikut terjumlah. Klausanya menjadi identik dengan
@@ -345,6 +363,8 @@ perbedaan itu dihapus, bukan dipertahankan sebagai sejarah.
 
 > Pada periode dan filter yang sama, `SUM(totalRevenue)` dan `SUM(totalCost)` seluruh halaman
 > drilldown = `totalRevenue` dan `totalCost` dari `/pnl/summary`.
+>
+> Dan pada setiap baris yang punya biaya: `totalRevenue − totalCost = grossProfit`.
 
 Invarian ini tidak mungkin berlaku pada rancangan lama, dan itulah alasan terbaik untuk memilih
 rancangan ini.
