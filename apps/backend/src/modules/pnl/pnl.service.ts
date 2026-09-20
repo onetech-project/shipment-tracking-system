@@ -1222,6 +1222,51 @@ export class PnlService {
                    FILTER (WHERE ${a}cost_to IS NOT NULL), 0)            AS cost_sg_in`
   }
 
+  /**
+   * The narrowing every scoped P&L query shares: routes, a date window, and vendors, all at TO
+   * grain. One definition because ten queries apply it — three of them (summary, daily margin,
+   * the AWB drilldown) must agree exactly or the tab stops reconciling against itself.
+   *
+   * `boundSoFar` is how many params the caller has already bound. Placeholders continue from
+   * there, so a caller in range mode ($1, $2 for the period) gets its scope at $3 onward while a
+   * caller in cycle mode ($1) gets it at $2 onward.
+   *
+   * `dateCol` arrives already alias-prefixed by buildFilter when the query needs it; nothing here
+   * adds a prefix, or a caller using 'v.' would end up with 'v.v.date_ata'.
+   *
+   * An empty array is treated as no filter, not as a filter matching nothing — the frontend is
+   * careful to send undefined, but a hand-built request should not be able to blank a report.
+   */
+  private scopeSql(
+    scope: PnlRouteFilter | undefined,
+    dateCol: string,
+    boundSoFar: number,
+  ): { sql: string; params: unknown[] } {
+    const params: unknown[] = []
+    const conds: string[] = []
+    const bind = (value: unknown): string => {
+      params.push(value)
+      return `$${boundSoFar + params.length}`
+    }
+
+    // Two parallel arrays rather than one interleaved list: UNNEST zips them, so the pairs stay
+    // pairs. A flattened list would match any origin against any destination.
+    if (scope?.routes?.length) {
+      const origins = bind(scope.routes.map((r) => r.origin))
+      const dests = bind(scope.routes.map((r) => r.dest))
+      conds.push(
+        `(origin_station, dest_station) IN (SELECT * FROM UNNEST(${origins}::text[], ${dests}::text[]))`,
+      )
+    }
+    if (scope?.dateFrom) conds.push(`${dateCol} >= ${bind(scope.dateFrom)}::DATE`)
+    if (scope?.dateTo) {
+      conds.push(`${dateCol} < (${bind(scope.dateTo)}::DATE + INTERVAL '1 day')`)
+    }
+    if (scope?.vendors?.length) conds.push(`vendor = ANY(${bind(scope.vendors)}::text[])`)
+
+    return { sql: conds.length ? `AND ${conds.join('\n        AND ')}` : '', params }
+  }
+
   // Revenue, cost and margin per calendar day for each selected comparison column, behind the
   // "Route Comparison" tab. A column is either a saved route group or a single route the user
   // picked ad hoc; both reduce to a list of origin→destination pairs, so both take the same path.

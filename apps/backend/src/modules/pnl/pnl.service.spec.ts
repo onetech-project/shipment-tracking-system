@@ -1848,4 +1848,78 @@ describe('PnlService', () => {
       expect(result[0].impact).toBe(0)
     })
   })
+
+  // scopeSql is private; these call it through the type system's back door because it is the
+  // single point every scoped query depends on, and a placeholder-numbering bug here would
+  // surface as nine separate mysterious query failures rather than one obvious one.
+  describe('scopeSql', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const call = (scope: unknown, dateCol: string, bound: number) =>
+      (service as any).scopeSql(scope, dateCol, bound) as { sql: string; params: unknown[] }
+
+    it('produces nothing at all for an absent or empty scope', () => {
+      expect(call(undefined, 'shipment_date', 1)).toEqual({ sql: '', params: [] })
+      expect(call({}, 'shipment_date', 1)).toEqual({ sql: '', params: [] })
+    })
+
+    it('zips routes into two parallel arrays so a pair stays a pair', () => {
+      const { sql, params } = call(
+        { routes: [{ origin: 'Jabo', dest: 'Denpasar' }, { origin: 'Surabaya', dest: 'Pontianak' }] },
+        'shipment_date',
+        1,
+      )
+      // One UNNEST of two arrays, never a flattened list: flattened, Surabaya would match Denpasar.
+      expect(sql.replace(/\s+/g, ' ')).toContain(
+        '(origin_station, dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
+      )
+      expect(params).toEqual([['Jabo', 'Surabaya'], ['Denpasar', 'Pontianak']])
+    })
+
+    it('continues placeholder numbering after the params the caller already bound', () => {
+      // Range mode binds $1 and $2 before any scope param, so the scope must start at $3.
+      const { sql, params } = call({ routes: [{ origin: 'Jabo', dest: 'Aceh' }] }, 'shipment_date', 2)
+      expect(sql).toContain('UNNEST($3::text[], $4::text[])')
+      expect(params).toEqual([['Jabo'], ['Aceh']])
+    })
+
+    it('ends the date range on the next day so the last day is included whole', () => {
+      const { sql, params } = call({ dateFrom: '2026-05-01', dateTo: '2026-05-03' }, 'date_ata', 1)
+      expect(sql).toContain('date_ata >= $2::DATE')
+      expect(sql).toContain("date_ata < ($3::DATE + INTERVAL '1 day')")
+      expect(params).toEqual(['2026-05-01', '2026-05-03'])
+    })
+
+    it('respects the caller alias in the date column it was handed', () => {
+      const { sql } = call({ dateFrom: '2026-05-01' }, 'v.shipment_date', 1)
+      expect(sql).toContain('v.shipment_date >= $2::DATE')
+    })
+
+    it('matches any of the given vendors with one array predicate', () => {
+      const { sql, params } = call({ vendors: ['ESP', 'PT Kargo, Tbk'] }, 'shipment_date', 1)
+      expect(sql).toContain('vendor = ANY($2::text[])')
+      expect(params).toEqual([['ESP', 'PT Kargo, Tbk']])
+    })
+
+    it('binds every field in a fixed order so callers can predict the numbering', () => {
+      const { sql, params } = call(
+        {
+          routes: [{ origin: 'Jabo', dest: 'Aceh' }],
+          dateFrom: '2026-05-01',
+          dateTo: '2026-05-02',
+          vendors: ['ESP'],
+        },
+        'shipment_date',
+        1,
+      )
+      expect(sql).toContain('UNNEST($2::text[], $3::text[])')
+      expect(sql).toContain('shipment_date >= $4::DATE')
+      expect(sql).toContain("shipment_date < ($5::DATE + INTERVAL '1 day')")
+      expect(sql).toContain('vendor = ANY($6::text[])')
+      expect(params).toEqual([['Jabo'], ['Aceh'], '2026-05-01', '2026-05-02', ['ESP']])
+    })
+
+    it('ignores empty arrays rather than emitting a filter that matches nothing', () => {
+      expect(call({ routes: [], vendors: [] }, 'shipment_date', 1)).toEqual({ sql: '', params: [] })
+    })
+  })
 })
