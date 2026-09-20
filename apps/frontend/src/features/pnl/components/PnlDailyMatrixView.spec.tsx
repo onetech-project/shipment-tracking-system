@@ -12,11 +12,29 @@ jest.mock('../hooks/usePnl', () => {
   const actual = jest.requireActual('../hooks/usePnl')
   return { ...actual, usePnlDailyMatrix: jest.fn(), usePnlRoutes: jest.fn() }
 })
+jest.mock('@/shared/hooks/use-permissions', () => ({ usePermissions: jest.fn() }))
+jest.mock('@/features/route-groups/hooks/useRouteGroups', () => ({ useRouteGroups: jest.fn() }))
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const hooks = require('../hooks/usePnl')
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const perms = require('@/shared/hooks/use-permissions')
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const groupsHook = require('@/features/route-groups/hooks/useRouteGroups')
 
 const filter: PnlFilter = { mode: 'cycle', cycle: '2026-07-1H', basis: 'ata_vendor_wh_destination' }
+
+const GROUPS = [
+  {
+    id: 'g1',
+    name: 'Jabo Timur',
+    description: null,
+    routes: [
+      { origin: 'Jabo', originLabel: 'CGK', dest: 'Tanjung Pinang' },
+      { origin: 'Jabo', originLabel: 'CGK', dest: 'Manokwari' },
+    ],
+  },
+]
 
 const matrix: PnlDailyMatrix = {
   columns: [
@@ -49,13 +67,21 @@ const routes = [
   { origin: 'Jabo', originLabel: 'CGK', dest: 'Manokwari' },
 ]
 
-function renderView(picks: PnlRoutePair[] = [], onPicksChange = jest.fn(), onCellClick = jest.fn()) {
+function renderView(
+  picks: PnlRoutePair[] = [],
+  onPicksChange = jest.fn(),
+  onCellClick = jest.fn(),
+  groupId: string | undefined = undefined,
+  onGroupChange = jest.fn(),
+) {
   return render(
     <PnlDailyMatrixView
       filter={filter}
       picks={picks}
       onPicksChange={onPicksChange}
       onCellClick={onCellClick}
+      groupId={groupId}
+      onGroupChange={onGroupChange}
     />,
   )
 }
@@ -65,6 +91,8 @@ beforeEach(() => {
     data: matrix, isLoading: false, isError: false, refetch: jest.fn(),
   })
   hooks.usePnlRoutes.mockReturnValue({ data: routes })
+  perms.usePermissions.mockReturnValue({ hasPermission: () => true })
+  groupsHook.useRouteGroups.mockReturnValue({ data: GROUPS })
 })
 
 describe('PnlDailyMatrixView', () => {
@@ -149,5 +177,71 @@ describe('PnlDailyMatrixView', () => {
     const cells = [...container.querySelectorAll('tbody button')]
     expect(cells).toHaveLength(2)
     expect(cells.map((c) => c.textContent)).toEqual(['—', '—'])
+  })
+})
+
+describe('PnlDailyMatrixView route group filter', () => {
+  it('narrows the matrix to the chosen group members', () => {
+    renderView([], jest.fn(), jest.fn(), 'g1')
+
+    // The group covers Tanjung Pinang (has data) and Manokwari (master-only), so both are columns
+    // and Pontianak is gone.
+    expect(screen.getAllByText('Tanjung Pinang').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Manokwari').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Pontianak')).not.toBeInTheDocument()
+  })
+
+  it('keeps a group member with no shipments as an em-dash column', () => {
+    renderView([], jest.fn(), jest.fn(), 'g1')
+    // A route the group names but nothing flew: an all-em-dash column reads as the real answer,
+    // while a dropped column reads as a broken filter.
+    expect(screen.getAllByText('Manokwari').length).toBeGreaterThan(0)
+  })
+
+  it('adds hand-ticked routes to the group rather than replacing them', () => {
+    renderView([{ origin: 'Surabaya', dest: 'Pontianak' }], jest.fn(), jest.fn(), 'g1')
+
+    expect(screen.getAllByText('Pontianak').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Tanjung Pinang').length).toBeGreaterThan(0)
+  })
+
+  it('stops offering a route the chosen group already covers', () => {
+    renderView([], jest.fn(), jest.fn(), 'g1')
+
+    fireEvent.click(screen.getByRole('button', { name: /All Routes|routes/i }))
+    // Both group members disappear from the list; the route outside it stays.
+    expect(screen.queryByTitle('CGK → Tanjung Pinang')).not.toBeInTheDocument()
+    expect(screen.getByTitle('SUB → Pontianak')).toBeInTheDocument()
+  })
+
+  it('offers every route again once no group is chosen', () => {
+    renderView()
+
+    fireEvent.click(screen.getByRole('button', { name: /All Routes|routes/i }))
+    expect(screen.getByTitle('CGK → Tanjung Pinang')).toBeInTheDocument()
+    expect(screen.getByTitle('SUB → Pontianak')).toBeInTheDocument()
+  })
+
+  it('reports a group choice back to the page', () => {
+    const onGroupChange = jest.fn()
+    renderView([], jest.fn(), jest.fn(), undefined, onGroupChange)
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Route Group' }), {
+      target: { value: 'g1' },
+    })
+    expect(onGroupChange).toHaveBeenCalledWith('g1')
+  })
+
+  it('says which routes the active filter covers, counting a shared one once', () => {
+    // Tanjung Pinang is both ticked and inside the group, so the total is 2, not 3.
+    renderView([{ origin: 'Jabo', dest: 'Tanjung Pinang' }], jest.fn(), jest.fn(), 'g1')
+
+    expect(screen.getByTestId('filter-summary')).toHaveTextContent('Jabo Timur')
+    expect(screen.getByTestId('filter-summary')).toHaveTextContent('2 rute')
+  })
+
+  it('says nothing when no group is chosen, because the dropdown is already honest', () => {
+    renderView([{ origin: 'Jabo', dest: 'Tanjung Pinang' }])
+    expect(screen.queryByTestId('filter-summary')).not.toBeInTheDocument()
   })
 })
