@@ -23,6 +23,9 @@ const EMPTY_DRILLDOWN = { data: [], total: 0 }
 const mockService = {
   getVendorComparison: jest.fn().mockResolvedValue(EMPTY),
   getAwbDrilldown: jest.fn().mockResolvedValue(EMPTY_DRILLDOWN),
+  getSummary: jest.fn().mockResolvedValue({}),
+  getDailyMargin: jest.fn().mockResolvedValue([]),
+  getCostTotals: jest.fn().mockResolvedValue({ smu: 0, ra: 0, sgOut: 0, sgIn: 0 }),
 }
 
 describe('PnlController query-string parsing (HTTP)', () => {
@@ -32,6 +35,9 @@ describe('PnlController query-string parsing (HTTP)', () => {
     jest.clearAllMocks()
     mockService.getVendorComparison.mockResolvedValue(EMPTY)
     mockService.getAwbDrilldown.mockResolvedValue(EMPTY_DRILLDOWN)
+    mockService.getSummary.mockResolvedValue({})
+    mockService.getDailyMargin.mockResolvedValue([])
+    mockService.getCostTotals.mockResolvedValue({ smu: 0, ra: 0, sgOut: 0, sgIn: 0 })
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [PnlController],
@@ -112,9 +118,6 @@ describe('PnlController query-string parsing (HTTP)', () => {
       undefined,
       undefined,
       {
-        routes: [],
-        dateFrom: undefined,
-        dateTo: undefined,
         vendors: ['ESP', 'Angkasa'],
       },
     )
@@ -141,9 +144,6 @@ describe('PnlController query-string parsing (HTTP)', () => {
       undefined,
       undefined,
       {
-        routes: [],
-        dateFrom: undefined,
-        dateTo: undefined,
         vendors: names,
       },
     )
@@ -168,5 +168,64 @@ describe('PnlController query-string parsing (HTTP)', () => {
       undefined,
       undefined,
     )
+  })
+
+  it('passes routes, dates and a repeated vendor through to getSummary', async () => {
+    await request(app.getHttpServer())
+      .get('/pnl/summary')
+      .query({ cycle: '2026-05-1H', routes: 'Jabo|Aceh', dateFrom: '2026-05-02' })
+      .query('vendor=ESP&vendor=PT%20Kargo%2C%20Tbk')
+      .expect(200)
+
+    expect(mockService.getSummary).toHaveBeenCalledWith(
+      '2026-05-1H',
+      undefined,
+      undefined,
+      undefined,
+      {
+        routes: [{ origin: 'Jabo', dest: 'Aceh' }],
+        dateFrom: '2026-05-02',
+        vendors: ['ESP', 'PT Kargo, Tbk'],
+      },
+    )
+  })
+
+  it('sends an empty scope object when no scope param is present', async () => {
+    await request(app.getHttpServer()).get('/pnl/summary').query({ cycle: '2026-05-1H' }).expect(200)
+
+    expect(mockService.getSummary).toHaveBeenCalledWith(
+      '2026-05-1H',
+      undefined,
+      undefined,
+      undefined,
+      {},
+    )
+  })
+
+  it('scopes the daily margin chart and the cost totals the same way', async () => {
+    await request(app.getHttpServer())
+      .get('/pnl/daily-margin')
+      .query({ cycle: '2026-05-1H', routes: 'Jabo|Aceh' })
+      .expect(200)
+    expect(mockService.getDailyMargin).toHaveBeenCalledWith(
+      '2026-05-1H', undefined, undefined, undefined,
+      { routes: [{ origin: 'Jabo', dest: 'Aceh' }] },
+    )
+
+    await request(app.getHttpServer())
+      .get('/pnl/breakdown/cost-totals')
+      .query({ cycle: '2026-05-1H', routes: 'Jabo|Aceh' })
+      .expect(200)
+    expect(mockService.getCostTotals).toHaveBeenCalledWith(
+      '2026-05-1H', undefined, undefined, undefined,
+      { routes: [{ origin: 'Jabo', dest: 'Aceh' }] },
+    )
+  })
+
+  it('rejects a malformed route pair with 400 rather than silently ignoring it', async () => {
+    await request(app.getHttpServer())
+      .get('/pnl/summary')
+      .query({ cycle: '2026-05-1H', routes: 'JaboAceh' })
+      .expect(400)
   })
 })

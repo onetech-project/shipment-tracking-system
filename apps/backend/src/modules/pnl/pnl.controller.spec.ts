@@ -59,7 +59,7 @@ describe('PnlController', () => {
   it('getSummary passes cycle + basis query params', async () => {
     mockService.getSummary.mockResolvedValueOnce({ cyclePeriod: '2026-04-2H' })
     await controller.getSummary('2026-04-2H', undefined, undefined, 'atd_origin')
-    expect(mockService.getSummary).toHaveBeenCalledWith('2026-04-2H', undefined, undefined, 'atd_origin')
+    expect(mockService.getSummary).toHaveBeenCalledWith('2026-04-2H', undefined, undefined, 'atd_origin', {})
   })
 
   it('getCycles passes basis through', async () => {
@@ -73,7 +73,7 @@ describe('PnlController', () => {
     await controller.getAwbDrilldown(1, 50, '2026-04-2H', undefined, undefined, 'ata_vendor_wh_destination')
     expect(mockService.getAwbDrilldown).toHaveBeenCalledWith(
       1, 50, '2026-04-2H', undefined, undefined, 'ata_vendor_wh_destination',
-      { routes: [], dateFrom: undefined, dateTo: undefined },
+      {},
     )
   })
 
@@ -114,7 +114,7 @@ describe('PnlController', () => {
 
     expect(mockService.getAwbDrilldown).toHaveBeenCalledWith(
       1, 50, '2026-04-2H', undefined, undefined, undefined,
-      { routes: [], dateFrom: undefined, dateTo: undefined },
+      {},
     )
   })
 
