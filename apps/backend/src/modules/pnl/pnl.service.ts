@@ -244,6 +244,11 @@ export interface PnlDailyMatrixCell {
   margin: number
   weight: number
   incompleteTos: number // TOs whose cost could not be computed; margin here is optimistic
+  // TOs whose revenue_total is NULL. A direct count, deliberately not read off v_pnl_to.issue:
+  // that column is a priority chain where 'revenue_missing' only surfaces once vendor and all
+  // three AWB costs are present, so a TO missing its rate_spx — which breaks revenue and the cost
+  // fallback together — is labelled 'no_booking' and would never be counted here.
+  revenueMissingTos: number
   issues: PnlCellIssue[] // empty = clean; never null, so the frontend has one shape to read
 }
 
@@ -261,6 +266,11 @@ export interface PnlDailyMatrixFooter {
   marginPct: number | null // null when totalRevenue is 0
   spacePerKg: number | null // null when totalWeight is 0
   incompleteTos: number
+  // TOs whose revenue_total is NULL. A direct count, deliberately not read off v_pnl_to.issue:
+  // that column is a priority chain where 'revenue_missing' only surfaces once vendor and all
+  // three AWB costs are present, so a TO missing its rate_spx — which breaks revenue and the cost
+  // fallback together — is labelled 'no_booking' and would never be counted here.
+  revenueMissingTos: number
   // Distinct AWBs for the whole period, from its own grouping set — NOT the sum of the day cells,
   // which would count an AWB once per day it shipped.
   issues: PnlCellIssue[]
@@ -305,6 +315,11 @@ export interface PnlRouteComparisonCell {
   costSgOut: number
   costSgIn: number
   incompleteTos: number // TOs with no computable cost; `cost` here is understated
+  // TOs whose revenue_total is NULL. A direct count, deliberately not read off v_pnl_to.issue:
+  // that column is a priority chain where 'revenue_missing' only surfaces once vendor and all
+  // three AWB costs are present, so a TO missing its rate_spx — which breaks revenue and the cost
+  // fallback together — is labelled 'no_booking' and would never be counted here.
+  revenueMissingTos: number
   issues: PnlCellIssue[] // empty = clean; never null, so the frontend has one shape to read
 }
 
@@ -325,6 +340,11 @@ export interface PnlRouteComparisonFooter {
   avgCostPerDay: number
   avgMarginPerDay: number
   incompleteTos: number
+  // TOs whose revenue_total is NULL. A direct count, deliberately not read off v_pnl_to.issue:
+  // that column is a priority chain where 'revenue_missing' only surfaces once vendor and all
+  // three AWB costs are present, so a TO missing its rate_spx — which breaks revenue and the cost
+  // fallback together — is labelled 'no_booking' and would never be counted here.
+  revenueMissingTos: number
   // Distinct AWBs for the period, from its own grouping set — NOT the sum of the day cells.
   issues: PnlCellIssue[]
 }
@@ -364,6 +384,11 @@ export interface PnlVendorComparisonCell {
   costSgOut: number
   costSgIn: number
   incompleteTos: number // TOs with no computable cost; `cost` here is understated
+  // TOs whose revenue_total is NULL. A direct count, deliberately not read off v_pnl_to.issue:
+  // that column is a priority chain where 'revenue_missing' only surfaces once vendor and all
+  // three AWB costs are present, so a TO missing its rate_spx — which breaks revenue and the cost
+  // fallback together — is labelled 'no_booking' and would never be counted here.
+  revenueMissingTos: number
   issues: PnlCellIssue[] // empty = clean; never null, so the frontend has one shape to read
 }
 
@@ -390,6 +415,11 @@ export interface PnlVendorComparisonFooter {
   avgCostPerRoute: number | null
   avgMarginPerRoute: number | null
   incompleteTos: number
+  // TOs whose revenue_total is NULL. A direct count, deliberately not read off v_pnl_to.issue:
+  // that column is a priority chain where 'revenue_missing' only surfaces once vendor and all
+  // three AWB costs are present, so a TO missing its rate_spx — which breaks revenue and the cost
+  // fallback together — is labelled 'no_booking' and would never be counted here.
+  revenueMissingTos: number
   // Distinct AWBs for the whole period, from its own grouping set — NOT the sum of the row cells.
   issues: PnlCellIssue[]
 }
@@ -1069,7 +1099,8 @@ export class PnlService {
           COALESCE(SUM(revenue_total), 0) - COALESCE(SUM(revenue_discount), 0)
             - COALESCE(SUM(cost_to), 0)                                          AS margin,
           COALESCE(SUM(gross_weight), 0)                                         AS weight,
-          COUNT(*) FILTER (WHERE cost_to IS NULL)::int                           AS incomplete_tos
+          COUNT(*) FILTER (WHERE cost_to IS NULL)::int                           AS incomplete_tos,
+          COUNT(*) FILTER (WHERE revenue_total IS NULL)::int                     AS revenue_missing_tos
         FROM v_pnl_to
         WHERE ${where}
           AND ${dateCol} IS NOT NULL
@@ -1121,6 +1152,7 @@ export class PnlService {
         margin: Number(fact.margin),
         weight: Number(fact.weight),
         incompleteTos: Number(fact.incomplete_tos),
+        revenueMissingTos: Number(fact.revenue_missing_tos ?? 0),
         issues: cellIssues.get(`${fact.d}|${fact.origin_station}|${fact.dest_station}`) ?? [],
       }
     }
@@ -1130,6 +1162,7 @@ export class PnlService {
       let totalMargin = 0
       let totalWeight = 0
       let incompleteTos = 0
+      let revenueMissingTos = 0
       for (const row of rows) {
         const cell = row.cells[ci]
         if (!cell) continue
@@ -1137,6 +1170,7 @@ export class PnlService {
         totalMargin += cell.margin
         totalWeight += cell.weight
         incompleteTos += cell.incompleteTos
+        revenueMissingTos += cell.revenueMissingTos
       }
       return {
         totalRevenue,
@@ -1147,6 +1181,7 @@ export class PnlService {
         marginPct: totalRevenue > 0 ? (totalMargin / totalRevenue) * 100 : null,
         spacePerKg: totalWeight > 0 ? totalMargin / totalWeight : null,
         incompleteTos,
+        revenueMissingTos,
         issues: columnIssues.get(`${columns[ci].origin}|${columns[ci].dest}`) ?? [],
       }
     })
@@ -1341,7 +1376,8 @@ export class PnlService {
             - COALESCE(SUM(v.revenue_discount), 0)
             - COALESCE(SUM(v.cost_to), 0)                              AS margin,
           ${this.costSplitSql('v')},
-          COUNT(*) FILTER (WHERE v.cost_to IS NULL)::int               AS incomplete_tos
+          COUNT(*) FILTER (WHERE v.cost_to IS NULL)::int               AS incomplete_tos,
+          COUNT(*) FILTER (WHERE v.revenue_total IS NULL)::int         AS revenue_missing_tos
         FROM v_pnl_to v
         JOIN col_routes cr
           ON cr.origin_station = v.origin_station
@@ -1402,6 +1438,7 @@ export class PnlService {
         costSgOut: Number(factRow.cost_sg_out),
         costSgIn: Number(factRow.cost_sg_in),
         incompleteTos: Number(factRow.incomplete_tos),
+        revenueMissingTos: Number(factRow.revenue_missing_tos ?? 0),
         issues: cellIssues.get(`${factRow.d}|${ci}`) ?? [],
       }
     }
@@ -1415,6 +1452,7 @@ export class PnlService {
       let totalCostSgOut = 0
       let totalCostSgIn = 0
       let incompleteTos = 0
+      let revenueMissingTos = 0
       for (const row of rows) {
         const cell = row.cells[ci]
         if (!cell) continue
@@ -1426,6 +1464,7 @@ export class PnlService {
         totalCostSgOut += cell.costSgOut
         totalCostSgIn += cell.costSgIn
         incompleteTos += cell.incompleteTos
+        revenueMissingTos += cell.revenueMissingTos
       }
       return {
         totalRevenue,
@@ -1440,6 +1479,7 @@ export class PnlService {
         avgCostPerDay: totalCost / periodDays,
         avgMarginPerDay: totalMargin / periodDays,
         incompleteTos,
+        revenueMissingTos,
         issues: columnIssues.get(String(ci)) ?? [],
       }
     })
@@ -1582,7 +1622,8 @@ export class PnlService {
             - COALESCE(SUM(v.revenue_discount), 0)
             - COALESCE(SUM(v.cost_to), 0)                              AS margin,
           ${this.costSplitSql('v')},
-          COUNT(*) FILTER (WHERE v.cost_to IS NULL)::int               AS incomplete_tos
+          COUNT(*) FILTER (WHERE v.cost_to IS NULL)::int               AS incomplete_tos,
+          COUNT(*) FILTER (WHERE v.revenue_total IS NULL)::int         AS revenue_missing_tos
         FROM v_pnl_to v
         JOIN col_vendors cv ON cv.vendor = v.vendor
         WHERE ${where}
@@ -1661,6 +1702,7 @@ export class PnlService {
         costSgOut: Number(factRow.cost_sg_out),
         costSgIn: Number(factRow.cost_sg_in),
         incompleteTos: Number(factRow.incomplete_tos),
+        revenueMissingTos: Number(factRow.revenue_missing_tos ?? 0),
         issues: cellIssues.get(`${factRow.origin_station}|${factRow.dest_station}|${ci}`) ?? [],
       }
     }
@@ -1674,6 +1716,7 @@ export class PnlService {
       let totalCostSgOut = 0
       let totalCostSgIn = 0
       let incompleteTos = 0
+      let revenueMissingTos = 0
       // Non-null, not non-zero: a route that flew and made exactly nothing is still a route this
       // column covered, and dividing it away would inflate the average.
       let routesWithData = 0
@@ -1689,6 +1732,7 @@ export class PnlService {
         totalCostSgOut += cell.costSgOut
         totalCostSgIn += cell.costSgIn
         incompleteTos += cell.incompleteTos
+        revenueMissingTos += cell.revenueMissingTos
       }
       // null, not 0 and not NaN: "no routes to average over" is a different statement from "the
       // average is zero", and the client renders the first as an em dash.
@@ -1706,6 +1750,7 @@ export class PnlService {
         avgCostPerRoute: perRoute(totalCost),
         avgMarginPerRoute: perRoute(totalMargin),
         incompleteTos,
+        revenueMissingTos,
         issues: columnIssues.get(String(ci)) ?? [],
       }
     })
