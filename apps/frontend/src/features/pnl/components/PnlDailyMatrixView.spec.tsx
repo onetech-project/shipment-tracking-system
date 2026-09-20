@@ -17,9 +17,9 @@ jest.mock('@/features/route-groups/hooks/useRouteGroups', () => ({ useRouteGroup
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const hooks = require('../hooks/usePnl')
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
 const perms = require('@/shared/hooks/use-permissions')
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
 const groupsHook = require('@/features/route-groups/hooks/useRouteGroups')
 
 const filter: PnlFilter = { mode: 'cycle', cycle: '2026-07-1H', basis: 'ata_vendor_wh_destination' }

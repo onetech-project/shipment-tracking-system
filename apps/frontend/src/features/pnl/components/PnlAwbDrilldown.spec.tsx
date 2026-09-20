@@ -6,7 +6,7 @@ import React from 'react'
 import { fireEvent, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { PnlAwbDrilldown } from './PnlAwbDrilldown'
-import { PnlAwbRow, PnlFilter, PnlRouteFilter } from '../hooks/usePnl'
+import { PnlAwbRow, PnlFilter } from '../hooks/usePnl'
 
 jest.mock('../hooks/usePnl', () => {
   const actual = jest.requireActual('../hooks/usePnl')
