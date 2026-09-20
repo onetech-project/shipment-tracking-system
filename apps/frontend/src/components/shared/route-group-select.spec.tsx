@@ -11,10 +11,10 @@ import { RouteGroupSelect } from './route-group-select';
 jest.mock('@/shared/hooks/use-permissions', () => ({ usePermissions: jest.fn() }));
 jest.mock('@/features/route-groups/hooks/useRouteGroups', () => ({ useRouteGroups: jest.fn() }));
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+/* eslint-disable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires */
 const perms = require('@/shared/hooks/use-permissions');
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const groupsHook = require('@/features/route-groups/hooks/useRouteGroups');
+/* eslint-enable @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires */
 
 const GROUPS = [
   { id: 'g1', name: 'Jabo Timur', description: null, routes: [{ origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' }] },

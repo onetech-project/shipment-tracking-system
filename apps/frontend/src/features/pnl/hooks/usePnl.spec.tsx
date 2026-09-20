@@ -223,6 +223,9 @@ describe('scoped query keys', () => {
 // without paramsSerializer: { indexes: null }, axios serialises the repeated `vendor` param as
 // `vendor[]=ESP`, qs parses that under a key literally named 'vendor[]' that no backend handler
 // reads, and the vendor filter vanishes from the response with no error or warning anywhere.
+/* eslint-disable react-hooks/rules-of-hooks --
+   Each `run` is invoked inside renderHook, so these ARE called from a hook context. The rule
+   cannot see through the table indirection. */
 describe.each([
   {
     name: 'usePnlDailyMargin',
@@ -299,6 +302,7 @@ describe.each([
     )
   })
 })
+/* eslint-enable react-hooks/rules-of-hooks */
 
 describe('routeToParams as the scope serialiser', () => {
   it('drops every empty field, so an untouched filter sends the old request shape', () => {
