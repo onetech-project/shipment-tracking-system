@@ -2330,5 +2330,80 @@ describe('PnlService', () => {
         'COUNT(*) FILTER (WHERE v.revenue_total IS NULL)::int',
       )
     })
+
+    // The Daily Report test above is the only one that pushed a non-zero revenue_missing_tos
+    // through the mapping and the footer accumulator. The two comparison tabs' `toEqual` fixtures
+    // elsewhere in this file are true by construction: their fact rows never set the column, so
+    // `?? 0` reads as 0 whether the mapping is right or hardcoded to 0. Without these, a hardcoded
+    // cell value or a dropped `+= cell.revenueMissingTos` line would have shipped silently on both
+    // tabs. cellWarning.ts on the frontend promises that a yellow cell means the same thing on the
+    // Daily Report, Route Comparison and Vendor Comparison — this is what backs that promise for
+    // the latter two.
+    it('carries the count onto each route-comparison cell and sums it into the footer', async () => {
+      // Route-only pick: no group id, so no group query runs and the fact query is calls[0].
+      dataSource.query
+        .mockResolvedValueOnce([
+          {
+            d: '2026-05-01', col_idx: '0',
+            revenue: '100', cost: '0', margin: '100',
+            cost_smu: '0', cost_ra: '0', cost_sg_out: '0', cost_sg_in: '0',
+            incomplete_tos: '0', revenue_missing_tos: '2',
+          },
+          {
+            d: '2026-05-02', col_idx: '0',
+            revenue: '100', cost: '0', margin: '100',
+            cost_smu: '0', cost_ra: '0', cost_sg_out: '0', cost_sg_in: '0',
+            incomplete_tos: '0', revenue_missing_tos: '3',
+          },
+        ])
+        .mockResolvedValueOnce([])
+
+      const result = await service.getRouteComparison(
+        [{ kind: 'route', origin: 'Jabo', dest: 'Aceh' }],
+        '2026-05-1H',
+      )
+
+      const firstCell = result.rows.find((r) => r.date === '2026-05-01')!.cells[0]!
+      const secondCell = result.rows.find((r) => r.date === '2026-05-02')!.cells[0]!
+      expect(firstCell.revenueMissingTos).toBe(2)
+      expect(secondCell.revenueMissingTos).toBe(3)
+      expect(result.footer[0].revenueMissingTos).toBe(5)
+    })
+
+    it('carries the count onto each vendor-comparison cell and sums it into the footer', async () => {
+      // Vendor-only pick, so no group query runs. getVendorComparison awaits getStations()
+      // standalone first (call 0), then Promise.all([factRows, issueRows, coverageRows]) — four
+      // calls total, fact at index 1. Two station pairs carry the count so the footer sum (5) is
+      // distinguishable from either cell alone and from zero.
+      dataSource.query
+        .mockResolvedValueOnce([
+          { origin_station: 'Jabo', dest_station: 'Denpasar' },
+          { origin_station: 'Jabo', dest_station: 'Aceh' },
+        ])
+        .mockResolvedValueOnce([
+          {
+            origin_station: 'Jabo', dest_station: 'Denpasar', col_idx: '0',
+            revenue: '100', cost: '0', margin: '100',
+            cost_smu: '0', cost_ra: '0', cost_sg_out: '0', cost_sg_in: '0',
+            incomplete_tos: '0', revenue_missing_tos: '2',
+          },
+          {
+            origin_station: 'Jabo', dest_station: 'Aceh', col_idx: '0',
+            revenue: '100', cost: '0', margin: '100',
+            cost_smu: '0', cost_ra: '0', cost_sg_out: '0', cost_sg_in: '0',
+            incomplete_tos: '0', revenue_missing_tos: '3',
+          },
+        ])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ revenue_period: '0', revenue_in_columns: '0' }])
+
+      const result = await service.getVendorComparison([{ kind: 'vendor', name: 'ESP' }], '2026-05-1H')
+
+      const denpasarCell = result.rows.find((r) => r.dest === 'Denpasar')!.cells[0]!
+      const acehCell = result.rows.find((r) => r.dest === 'Aceh')!.cells[0]!
+      expect(denpasarCell.revenueMissingTos).toBe(2)
+      expect(acehCell.revenueMissingTos).toBe(3)
+      expect(result.footer[0].revenueMissingTos).toBe(5)
+    })
   })
 })
