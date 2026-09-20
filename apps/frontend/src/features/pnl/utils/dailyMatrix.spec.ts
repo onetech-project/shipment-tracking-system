@@ -2,10 +2,12 @@ import { PnlDailyMatrix } from '../hooks/usePnl'
 import {
   formatDayLabel,
   groupOrigins,
+  offerableRoutes,
   routeFromCell,
   selectMatrixColumns,
   toMarginTable,
   toRevenueTable,
+  unionRoutes,
 } from './dailyMatrix'
 import { hasWarning } from './cellWarning'
 
@@ -347,5 +349,64 @@ describe('selectMatrixColumns', () => {
     const before = JSON.stringify(matrix)
     selectMatrixColumns(matrix, [subPontianak])
     expect(JSON.stringify(matrix)).toBe(before)
+  })
+})
+
+describe('unionRoutes', () => {
+  const jaboAceh = { origin: 'Jabo', dest: 'Aceh' }
+  const jaboBatam = { origin: 'Jabo', dest: 'Batam' }
+  const subPtk = { origin: 'Surabaya', dest: 'Pontianak' }
+
+  it('returns the picked routes when no group is chosen', () => {
+    expect(unionRoutes([jaboAceh], [])).toEqual([jaboAceh])
+  })
+
+  it('returns the group members when nothing was picked by hand', () => {
+    expect(unionRoutes([], [jaboAceh, jaboBatam])).toEqual([jaboAceh, jaboBatam])
+  })
+
+  it('puts the hand-picked routes first, then the group members', () => {
+    expect(unionRoutes([subPtk], [jaboAceh])).toEqual([subPtk, jaboAceh])
+  })
+
+  it('counts a route on both sides exactly once', () => {
+    // Ticking a route and then picking a group that contains it must not double it: the pick is
+    // deliberately kept in scope so that changing group later restores it ticked.
+    expect(unionRoutes([jaboAceh], [jaboAceh, jaboBatam])).toEqual([jaboAceh, jaboBatam])
+  })
+
+  it('is empty only when both sides are', () => {
+    expect(unionRoutes([], [])).toEqual([])
+  })
+})
+
+describe('offerableRoutes', () => {
+  const all = [
+    { origin: 'Jabo', dest: 'Aceh' },
+    { origin: 'Jabo', dest: 'Batam' },
+    { origin: 'Surabaya', dest: 'Pontianak' },
+  ]
+
+  it('offers everything when no group is chosen', () => {
+    expect(offerableRoutes(all, [])).toEqual(all)
+  })
+
+  it('withholds the routes the chosen group already covers', () => {
+    // A checkbox that changes nothing is worse than one that is absent: unticking a route the
+    // group still supplies would leave it filtered anyway.
+    expect(offerableRoutes(all, [{ origin: 'Jabo', dest: 'Aceh' }])).toEqual([
+      { origin: 'Jabo', dest: 'Batam' },
+      { origin: 'Surabaya', dest: 'Pontianak' },
+    ])
+  })
+
+  it('ignores a group member the list does not carry', () => {
+    // The Estimated tab lists only pairs that have flown, while a group is built from the master,
+    // so a group can legitimately name a route this dropdown never offered.
+    expect(offerableRoutes(all, [{ origin: 'Jabo', dest: 'Manokwari' }])).toEqual(all)
+  })
+
+  it('can withhold everything', () => {
+    expect(offerableRoutes(all, all)).toEqual([])
   })
 })

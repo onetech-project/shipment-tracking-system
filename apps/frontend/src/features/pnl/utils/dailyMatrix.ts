@@ -161,6 +161,35 @@ function routeKey(pair: { origin: string; dest: string }): string {
 }
 
 /**
+ * The routes a filter is actually narrowing to: what the user ticked, plus everything the chosen
+ * route group carries.
+ *
+ * Hand-picked routes come first so the order the user built stays visible, and a route present on
+ * both sides appears once. Both matter because a route ticked BEFORE its group was chosen stays in
+ * the scope — it is deliberately not removed, so that choosing a different group later brings it
+ * back already ticked.
+ */
+export function unionRoutes(picked: PnlRoutePair[], group: PnlRoutePair[]): PnlRoutePair[] {
+  const seen = new Set(picked.map(routeKey))
+  return [...picked, ...group.filter((r) => !seen.has(routeKey(r)))]
+}
+
+/**
+ * The routes the dropdown may still offer: everything, minus what the chosen group already covers.
+ *
+ * Withheld rather than shown ticked-and-disabled. MultiRouteFilter has no disabled state, and
+ * adding one would touch the SLA page, Analytics and Route Comparison for the sake of one caller —
+ * while filtering the list handed to it touches nothing. More importantly, a ticked checkbox that
+ * does nothing when unticked is worse than an absent one: the group would keep supplying the route
+ * either way.
+ */
+export function offerableRoutes(all: PnlRoutePair[], group: PnlRoutePair[]): PnlRoutePair[] {
+  if (group.length === 0) return all
+  const covered = new Set(group.map(routeKey))
+  return all.filter((r) => !covered.has(routeKey(r)))
+}
+
+/**
  * The matrix narrowed to the routes the user picked, ready to hand to toRevenueTable/toMarginTable.
  *
  * Filtering happens here rather than in the request because it is pure projection: daily-matrix
