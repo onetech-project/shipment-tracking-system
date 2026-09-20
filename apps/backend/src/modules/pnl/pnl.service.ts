@@ -551,52 +551,16 @@ export class PnlService {
     route?: PnlRouteFilter,
   ): Promise<{ data: PnlAwbRow[]; total: number }> {
     const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate, 'v.')
-    // Same clause against the subquery alias. It reuses $1/$2, so no params are bound twice.
-    const inner = buildFilter(basis, cyclePeriod, startDate, endDate, 'm.')
 
-    // The route filter decides which AWBs are listed, not which TOs are summed: cost columns are
-    // MAX(cost_*_awb) over the whole AWB, so dropping TOs here would understate revenue against a
-    // full-AWB cost and invent losses. An AWB qualifies when any one of its TOs matches.
-    const routeParams: unknown[] = []
-    const routeConds: string[] = []
-    const bind = (value: unknown): string => {
-      routeParams.push(value)
-      return `$${params.length + routeParams.length}`
-    }
-    // Two parallel arrays rather than one interleaved list: UNNEST zips them, so the pairs stay
-    // pairs. A flattened list would match any origin against any destination.
-    if (route?.routes?.length) {
-      const origins = bind(route.routes.map((r) => r.origin))
-      const dests = bind(route.routes.map((r) => r.dest))
-      routeConds.push(
-        `(m.origin_station, m.dest_station) IN (SELECT * FROM UNNEST(${origins}::text[], ${dests}::text[]))`,
-      )
-    }
-    if (route?.dateFrom) routeConds.push(`${inner.dateCol} >= ${bind(route.dateFrom)}::DATE`)
-    if (route?.dateTo) {
-      routeConds.push(`${inner.dateCol} < (${bind(route.dateTo)}::DATE + INTERVAL '1 day')`)
-    }
-    const routeWhere = routeConds.length
-      ? `AND EXISTS (
-           SELECT 1 FROM v_pnl_to m
-           WHERE m.awb = v.awb
-             AND ${inner.where}
-             AND ${routeConds.join(' AND ')}
-         )`
-      : ''
-
-    // Vendor is the one filter that belongs in the OUTER predicate. The route and date conditions
-    // above sit inside an EXISTS on purpose: they decide which AWBs are listed while the aggregate
-    // still sums the whole AWB, because the cost columns are MAX(cost_*_awb) over it. Vendor is
-    // different — v_pnl_to.vendor comes from the AWB's booking, so it is constant across an AWB's
-    // TOs, and the outer predicate is what has the same scope as the vendor column whose cell was
-    // clicked. Putting it inside the EXISTS would produce a third number nobody asked for.
-    const vendorWhere = route?.vendors?.length
-      ? `AND v.vendor = ANY(${bind(route.vendors)}::text[])`
-      : ''
+    // TO grain, like every other P&L surface. This used to be an EXISTS semi-join that picked
+    // which AWBs were LISTED while the aggregate still summed the whole AWB, because the cost
+    // columns were MAX(cost_*_awb). Now the costs below are prorated by weight_share, so summing
+    // only the rows in scope is the arithmetically correct thing to do — and the EXISTS would be
+    // the bug, letting out-of-scope TOs back into the totals.
+    const scope = this.scopeSql(route, dateCol, params.length)
 
     const offset = (page - 1) * limit
-    const filterParams = [...params, ...routeParams]
+    const filterParams = [...params, ...scope.params]
     const dataParams = [...filterParams, limit, offset]
     const countParams = [...filterParams]
     const p = filterParams.length
@@ -619,13 +583,10 @@ export class PnlService {
           MAX(chwt_awb)                           AS chwt,
           COALESCE(SUM(revenue_total), 0)         AS total_revenue,
           COALESCE(SUM(revenue_discount), 0)      AS total_discount,
-          MAX(cost_smu_awb)                       AS cost_smu,
-          MAX(cost_ra_awb)                        AS cost_ra,
-          MAX(cost_sg_out_awb)                    AS cost_sg_out,
-          SUM(cost_sg_in_to)                      AS cost_sg_in,
-          MAX(cost_total_awb) + COALESCE(SUM(cost_sg_in_to), 0) AS total_cost,
-          COALESCE(SUM(gross_profit_to), 0)       AS gross_profit,
-          (MAX(cost_total_awb) IS NULL OR MAX(cost_sg_in_to) IS NULL) AS has_null_cost,
+          ${this.costSplitSql('v')},
+          COALESCE(SUM(v.cost_to), 0)             AS total_cost,
+          COUNT(*) FILTER (WHERE v.cost_to IS NOT NULL)::int AS costed_tos,
+          BOOL_OR(v.cost_to IS NULL)              AS has_null_cost,
           BOOL_OR(is_cost_estimated)              AS is_cost_estimated,
           MIN(CASE issue
                 WHEN 'no_booking' THEN 1 WHEN 'smu_rate_missing' THEN 2
@@ -635,8 +596,7 @@ export class PnlService {
               END)                                  AS issue_rank
         FROM v_pnl_to v
         WHERE ${where}
-        ${routeWhere}
-        ${vendorWhere}
+        ${scope.sql}
         GROUP BY awb, vendor, airline
         -- Ordered on the net figure, matching the Revenue column the table renders.
         ORDER BY (COALESCE(SUM(revenue_total), 0)
@@ -646,7 +606,7 @@ export class PnlService {
         dataParams,
       ),
       this.dataSource.query(
-        `SELECT COUNT(DISTINCT awb)::int AS total FROM v_pnl_to v WHERE ${where} ${routeWhere} ${vendorWhere}`,
+        `SELECT COUNT(DISTINCT awb)::int AS total FROM v_pnl_to v WHERE ${where} ${scope.sql}`,
         countParams,
       ),
     ])
@@ -654,8 +614,13 @@ export class PnlService {
     const total = Number(countRows[0].total)
     const data: PnlAwbRow[] = rows.map((r: Record<string, unknown>) => {
       const rev = Number(r.total_revenue) - Number(r.total_discount)
-      const gp = Number(r.gross_profit)
-      const totalCost = r.total_cost != null ? Number(r.total_cost) : null
+      // COALESCE makes total_cost 0 rather than NULL, so the count of costed rows is what
+      // separates "this costs nothing in scope" from "we could not cost it".
+      const totalCost = Number(r.costed_tos) > 0 ? Number(r.total_cost) : null
+      // Revenue minus cost, exactly as getSummary defines it — NOT SUM(gross_profit_to), which is
+      // NULL for every uncosted TO and so silently omits revenue that total_revenue includes.
+      // With the old definition a partially-costed AWB could never satisfy Revenue - Cost = GP.
+      const gp = totalCost != null ? rev - totalCost : null
       return {
         awb: r.awb as string,
         vendor: r.vendor as string | null,
@@ -677,7 +642,7 @@ export class PnlService {
         costSgIn: r.cost_sg_in != null ? Number(r.cost_sg_in) : null,
         totalCost,
         grossProfit: gp,
-        grossMarginPct: rev > 0 ? (gp / rev) * 100 : null,
+        grossMarginPct: rev > 0 && gp != null ? (gp / rev) * 100 : null,
         hasNullCost: r.has_null_cost === true || r.has_null_cost === 't',
         isCostEstimated: r.is_cost_estimated === true || r.is_cost_estimated === 't',
         issue: r.issue_rank != null ? (ISSUE_BY_RANK[Number(r.issue_rank)] ?? null) : null,
