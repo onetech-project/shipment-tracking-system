@@ -884,7 +884,7 @@ export class PnlService {
     scope?: PnlRouteFilter,
   ): Promise<PnlNamedCostItem[]> {
     const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate, 'v.')
-    const s = this.scopeSql(scope, dateCol, params.length)
+    const s = this.scopeSql(scope, dateCol, params.length, 'v.')
     const rows = await this.dataSource.query(
       `
       SELECT
@@ -925,7 +925,7 @@ export class PnlService {
     scope?: PnlRouteFilter,
   ): Promise<PnlNamedCostItem[]> {
     const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate, 'v.')
-    const s = this.scopeSql(scope, dateCol, params.length)
+    const s = this.scopeSql(scope, dateCol, params.length, 'v.')
     // sg_out (the name) lives on air_shipments_smu, looked up by booking key.
     const rows = await this.dataSource.query(
       `
@@ -1185,6 +1185,12 @@ export class PnlService {
    * `dateCol` arrives already alias-prefixed by buildFilter when the query needs it; nothing here
    * adds a prefix, or a caller using 'v.' would end up with 'v.v.date_ata'.
    *
+   * `alias` qualifies the columns this method itself emits (origin_station, dest_station, vendor).
+   * A caller selecting from v_pnl_to alone leaves it as the default empty string, so its SQL stays
+   * byte-identical. A caller that joins a second table carrying a column of the same name — e.g.
+   * getCostBySgOut joins air_shipments_smu, which has its own `vendor` — must pass its alias
+   * ('v.') or Postgres rejects the predicate as ambiguous.
+   *
    * An empty array is treated as no filter, not as a filter matching nothing — the frontend is
    * careful to send undefined, but a hand-built request should not be able to blank a report.
    */
@@ -1192,6 +1198,7 @@ export class PnlService {
     scope: PnlRouteFilter | undefined,
     dateCol: string,
     boundSoFar: number,
+    alias = '',
   ): { sql: string; params: unknown[] } {
     const params: unknown[] = []
     const conds: string[] = []
@@ -1206,14 +1213,14 @@ export class PnlService {
       const origins = bind(scope.routes.map((r) => r.origin))
       const dests = bind(scope.routes.map((r) => r.dest))
       conds.push(
-        `(origin_station, dest_station) IN (SELECT * FROM UNNEST(${origins}::text[], ${dests}::text[]))`,
+        `(${alias}origin_station, ${alias}dest_station) IN (SELECT * FROM UNNEST(${origins}::text[], ${dests}::text[]))`,
       )
     }
     if (scope?.dateFrom) conds.push(`${dateCol} >= ${bind(scope.dateFrom)}::DATE`)
     if (scope?.dateTo) {
       conds.push(`${dateCol} < (${bind(scope.dateTo)}::DATE + INTERVAL '1 day')`)
     }
-    if (scope?.vendors?.length) conds.push(`vendor = ANY(${bind(scope.vendors)}::text[])`)
+    if (scope?.vendors?.length) conds.push(`${alias}vendor = ANY(${bind(scope.vendors)}::text[])`)
 
     return { sql: conds.length ? `AND ${conds.join('\n        AND ')}` : '', params }
   }
