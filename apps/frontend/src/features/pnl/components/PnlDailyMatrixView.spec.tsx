@@ -237,7 +237,11 @@ describe('PnlDailyMatrixView route group filter', () => {
     renderView([{ origin: 'Jabo', dest: 'Tanjung Pinang' }], jest.fn(), jest.fn(), 'g1')
 
     expect(screen.getByTestId('filter-summary')).toHaveTextContent('Jabo Timur')
-    expect(screen.getByTestId('filter-summary')).toHaveTextContent('2 rute')
+    // Anchored on the arrow so this pins the FINAL total specifically — the group's own count
+    // also legitimately says "2 rute" earlier in the string ("(2 rute)"), which would let a
+    // naive substring match pass even if the total after the arrow were miscounted as 3.
+    expect(screen.getByTestId('filter-summary')).toHaveTextContent(/→\s*2 rute/)
+    expect(screen.getByTestId('filter-summary')).not.toHaveTextContent(/→\s*3 rute/)
   })
 
   it('says nothing when no group is chosen, because the dropdown is already honest', () => {
