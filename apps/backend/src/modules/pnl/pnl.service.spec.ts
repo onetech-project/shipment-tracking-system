@@ -890,9 +890,13 @@ describe('PnlService', () => {
       const result = await service.getDailyMatrix('2026-07-1H')
 
       expect(result.rows[0].cells[0]).toBeNull()
-      expect(result.rows[0].cells[1]).toEqual({ revenue: 200, margin: 20, weight: 2, incompleteTos: 1, issues: [] })
+      expect(result.rows[0].cells[1]).toEqual({
+        revenue: 200, margin: 20, weight: 2, incompleteTos: 1, revenueMissingTos: 0, issues: [],
+      })
       expect(result.rows[0].cells[2]).toBeNull()
-      expect(result.rows[1].cells[2]).toEqual({ revenue: 300, margin: 30, weight: 3, incompleteTos: 0, issues: [] })
+      expect(result.rows[1].cells[2]).toEqual({
+        revenue: 300, margin: 30, weight: 3, incompleteTos: 0, revenueMissingTos: 0, issues: [],
+      })
     })
 
     it('distinguishes a zero-valued cell from an absent one', async () => {
@@ -901,7 +905,9 @@ describe('PnlService', () => {
           revenue: '0', margin: '0', weight: '0', incomplete_tos: '0' },
       ])
       const result = await service.getDailyMatrix('2026-07-1H')
-      expect(result.rows[0].cells[0]).toEqual({ revenue: 0, margin: 0, weight: 0, incompleteTos: 0, issues: [] })
+      expect(result.rows[0].cells[0]).toEqual({
+        revenue: 0, margin: 0, weight: 0, incompleteTos: 0, revenueMissingTos: 0, issues: [],
+      })
       expect(result.rows[0].cells[1]).toBeNull()
     })
 
@@ -923,6 +929,7 @@ describe('PnlService', () => {
         marginPct: 10,      // 100 / 1000 × 100
         spacePerKg: 5,      // 100 / 20
         incompleteTos: 3,
+        revenueMissingTos: 0,
         issues: [],
       })
     })
@@ -945,7 +952,7 @@ describe('PnlService', () => {
       expect(result.footer[2]).toEqual({
         totalRevenue: 0, totalMargin: 0, totalWeight: 0,
         avgRevenuePerDay: 0, avgMarginPerDay: 0,
-        marginPct: null, spacePerKg: null, incompleteTos: 0, issues: [],
+        marginPct: null, spacePerKg: null, incompleteTos: 0, revenueMissingTos: 0, issues: [],
       })
     })
 
@@ -1253,6 +1260,7 @@ describe('PnlService', () => {
         costSgOut: 1100000,
         costSgIn: 620000,
         incompleteTos: 0,
+        revenueMissingTos: 0,
         issues: [],
       })
     })
@@ -1317,6 +1325,7 @@ describe('PnlService', () => {
         avgMarginPerDay: 0,
         avgCostPerDay: 120,
         incompleteTos: 5,
+        revenueMissingTos: 0,
         issues: [],
       })
     })
@@ -1565,6 +1574,7 @@ describe('PnlService', () => {
         costSgOut: 0,
         costSgIn: 0,
         incompleteTos: 2,
+        revenueMissingTos: 0,
         issues: [],
       })
       // 'Jabo|Aceh' had no fact row: null, which is distinct from a real zero.
@@ -2254,6 +2264,71 @@ describe('PnlService', () => {
       dataSource.query.mockResolvedValueOnce([])
       await service.getCostByRa('2026-05-1H', undefined, undefined, undefined, { vendors: ['ESP'] })
       expect(dataSource.query.mock.calls[1][0] as string).toContain('v.vendor = ANY(')
+    })
+  })
+
+  describe('revenue_missing_tos', () => {
+    it('counts TOs with no revenue directly, bypassing the issue priority chain', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ origin_station: 'Jabo', dest_station: 'Aceh' }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      await service.getDailyMatrix('2026-05-1H')
+
+      // The fact query is the second call (getStations is first).
+      const factSql = (dataSource.query.mock.calls[1][0] as string).replace(/\s+/g, ' ')
+      // A direct predicate, like incomplete_tos already is for cost. Going through v_pnl_to.issue
+      // would lose every TO whose AWB is also uncosted, because that chain ranks cost first.
+      expect(factSql).toContain('COUNT(*) FILTER (WHERE revenue_total IS NULL)::int')
+      expect(factSql).toContain('AS revenue_missing_tos')
+    })
+
+    it('carries the count onto each cell and sums it into the column footer', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ origin_station: 'Jabo', dest_station: 'Aceh' }])
+        .mockResolvedValueOnce([
+          {
+            d: '2026-05-01', origin_station: 'Jabo', dest_station: 'Aceh',
+            revenue: '100', margin: '10', weight: '5',
+            incomplete_tos: '0', revenue_missing_tos: '2',
+          },
+          {
+            d: '2026-05-02', origin_station: 'Jabo', dest_station: 'Aceh',
+            revenue: '100', margin: '10', weight: '5',
+            incomplete_tos: '0', revenue_missing_tos: '3',
+          },
+        ])
+        .mockResolvedValueOnce([])
+
+      const matrix = await service.getDailyMatrix('2026-05-1H')
+
+      const firstCell = matrix.rows.find((r) => r.date === '2026-05-01')!.cells[0]!
+      expect(firstCell.revenueMissingTos).toBe(2)
+      expect(matrix.footer[0].revenueMissingTos).toBe(5)
+    })
+
+    it('adds the same aggregate to both comparison tabs, so yellow means one thing', async () => {
+      // Route comparison: picks are routes only, so no group query runs.
+      dataSource.query.mockResolvedValueOnce([]).mockResolvedValueOnce([])
+      await service.getRouteComparison([{ kind: 'route', origin: 'Jabo', dest: 'Aceh' }], '2026-05-1H')
+      expect((dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')).toContain(
+        'COUNT(*) FILTER (WHERE v.revenue_total IS NULL)::int',
+      )
+
+      jest.clearAllMocks()
+      // getVendorComparison awaits getStations() on its own before the Promise.all, so the fact
+      // query is the SECOND call here, not the first — unlike getRouteComparison above, which has
+      // no such standalone call. Four mocks: getStations, factRows, issueRows, coverageRows.
+      dataSource.query
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{}])
+      await service.getVendorComparison([{ kind: 'vendor', name: 'ESP' }], '2026-05-1H')
+      expect((dataSource.query.mock.calls[1][0] as string).replace(/\s+/g, ' ')).toContain(
+        'COUNT(*) FILTER (WHERE v.revenue_total IS NULL)::int',
+      )
     })
   })
 })
