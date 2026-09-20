@@ -467,8 +467,10 @@ export class PnlService {
     startDate?: string,
     endDate?: string,
     basis?: string,
+    scope?: PnlRouteFilter,
   ): Promise<PnlSummary> {
-    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const s = this.scopeSql(scope, dateCol, params.length)
     const rows = await this.dataSource.query(
       `
       SELECT
@@ -479,8 +481,9 @@ export class PnlService {
         COALESCE(SUM(cost_to), 0)               AS total_cost
       FROM v_pnl_to
       WHERE ${where}
+      ${s.sql}
       `,
-      params,
+      [...params, ...s.params],
     )
     const row = rows[0]
     const totalRevenueGross = Number(row.total_revenue)
@@ -509,8 +512,10 @@ export class PnlService {
     startDate?: string,
     endDate?: string,
     basis?: string,
+    scope?: PnlRouteFilter,
   ): Promise<PnlDailyMarginItem[]> {
     const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const s = this.scopeSql(scope, dateCol, params.length)
     const rows = await this.dataSource.query(
       `
       SELECT
@@ -522,10 +527,11 @@ export class PnlService {
       FROM v_pnl_to
       WHERE ${where}
         AND ${dateCol} IS NOT NULL
+      ${s.sql}
       GROUP BY 1
       ORDER BY 1
       `,
-      params,
+      [...params, ...s.params],
     )
     return rows.map((r: Record<string, unknown>) => {
       const revenue = Number(r.revenue) - Number(r.discount)
