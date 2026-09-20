@@ -78,6 +78,26 @@ describe('PnlService', () => {
       expect(sql).not.toContain('vendor = ANY')
       expect(params).toEqual(['2026-05-1H'])
     })
+
+    it('binds scope params after the range-mode period params', async () => {
+      dataSource.query.mockResolvedValueOnce([{
+        total_tos: '1', total_awbs: '1',
+        total_revenue: '1', total_discount: '0', total_cost: '1',
+      }])
+
+      await service.getSummary(undefined, '2026-05-01', '2026-05-31', undefined, {
+        routes: [{ origin: 'Jabo', dest: 'Aceh' }],
+      })
+
+      const [sql, params] = dataSource.query.mock.calls[0]
+      // Range mode binds $1 and $2 for the period before any scope param, so the scope lands at
+      // $3/$4. Every other scoped test here runs in cycle mode, where a boundSoFar hardcoded to 1
+      // would be indistinguishable from the correct params.length.
+      expect(sql.replace(/\s+/g, ' ')).toContain(
+        '(origin_station, dest_station) IN (SELECT * FROM UNNEST($3::text[], $4::text[]))',
+      )
+      expect(params).toEqual(['2026-05-01', '2026-05-31', ['Jabo'], ['Aceh']])
+    })
   })
 
   describe('getDailyMargin', () => {
@@ -105,6 +125,18 @@ describe('PnlService', () => {
       // must stay excluded regardless of what the scope says.
       expect(sql).toContain('shipment_date IS NOT NULL')
       expect(sql).toContain('shipment_date >= $2::DATE')
+    })
+
+    it('binds scope params after the range-mode period params', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.getDailyMargin(undefined, '2026-05-01', '2026-05-31', undefined, {
+        vendors: ['ESP'],
+      })
+
+      const [sql, params] = dataSource.query.mock.calls[0]
+      expect(sql).toContain('vendor = ANY($3::text[])')
+      expect(params).toEqual(['2026-05-01', '2026-05-31', ['ESP']])
     })
   })
 
