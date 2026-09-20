@@ -764,8 +764,10 @@ export class PnlService {
     startDate?: string,
     endDate?: string,
     basis?: string,
+    scope?: PnlRouteFilter,
   ): Promise<PnlRevenueByRouteItem[]> {
-    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const s = this.scopeSql(scope, dateCol, params.length)
     const rows = await this.dataSource.query(
       `
       SELECT
@@ -776,12 +778,13 @@ export class PnlService {
         COALESCE(SUM(revenue_discount), 0)        AS total_discount
       FROM v_pnl_to
       WHERE ${where}
+      ${s.sql}
       GROUP BY 1
       -- Ordered on the net figure, so the breakdown ranks by what it displays.
       ORDER BY (COALESCE(SUM(revenue_total), 0)
                 - COALESCE(SUM(revenue_discount), 0)) DESC NULLS LAST
       `,
-      params,
+      [...params, ...s.params],
     )
     return rows.map((r: Record<string, unknown>) => ({
       route: r.route as string,
@@ -795,41 +798,28 @@ export class PnlService {
     startDate?: string,
     endDate?: string,
     basis?: string,
+    scope?: PnlRouteFilter,
   ): Promise<PnlCostTotals> {
-    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate)
-    // SMU/RA/SG Out are AWB-level → take MAX per AWB then sum.
-    // SG In is per-TO → straight sum.
+    const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const s = this.scopeSql(scope, dateCol, params.length)
+    // TO grain, matching SUM(cost_to) in getSummary. The old shape took MAX(cost_*_awb) per AWB,
+    // which counted a component even on AWBs whose cost_to was NULL because a sibling component
+    // was missing — so this total could exceed the Est. Cost card it sits under even unfiltered.
     const rows = await this.dataSource.query(
       `
-      WITH per_awb AS (
-        SELECT awb,
-               MAX(cost_smu_awb)    AS smu,
-               MAX(cost_ra_awb)     AS ra,
-               MAX(cost_sg_out_awb) AS sg_out
-        FROM v_pnl_to
-        WHERE ${where}
-        GROUP BY awb
-      ),
-      sg_in AS (
-        SELECT COALESCE(SUM(cost_sg_in_to), 0) AS sg_in
-        FROM v_pnl_to
-        WHERE ${where}
-      )
-      SELECT
-        COALESCE(SUM(per_awb.smu), 0)    AS smu,
-        COALESCE(SUM(per_awb.ra), 0)     AS ra,
-        COALESCE(SUM(per_awb.sg_out), 0) AS sg_out,
-        (SELECT sg_in FROM sg_in)        AS sg_in
-      FROM per_awb
+      SELECT ${this.costSplitSql()}
+      FROM v_pnl_to
+      WHERE ${where}
+      ${s.sql}
       `,
-      params,
+      [...params, ...s.params],
     )
     const r = rows[0] ?? {}
     return {
-      smu: Number(r.smu ?? 0),
-      ra: Number(r.ra ?? 0),
-      sgOut: Number(r.sg_out ?? 0),
-      sgIn: Number(r.sg_in ?? 0),
+      smu: Number(r.cost_smu ?? 0),
+      ra: Number(r.cost_ra ?? 0),
+      sgOut: Number(r.cost_sg_out ?? 0),
+      sgIn: Number(r.cost_sg_in ?? 0),
     }
   }
 
@@ -838,33 +828,27 @@ export class PnlService {
     startDate?: string,
     endDate?: string,
     basis?: string,
+    scope?: PnlRouteFilter,
   ): Promise<PnlVendorCostItem[]> {
-    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate)
-    // SMU is AWB-level: take per-AWB cost (MAX since identical across rows of same AWB)
-    // and per-AWB sum_gw, then aggregate by vendor / airline.
+    const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const s = this.scopeSql(scope, dateCol, params.length)
+    // Prorated and grouped in one pass: the per_awb CTE existed only to de-duplicate the
+    // AWB-grain MAX, which is gone.
     const rows = await this.dataSource.query(
       `
-      WITH per_awb AS (
-        SELECT
-          awb,
-          COALESCE(NULLIF(vendor, ''), '—')  AS vendor,
-          COALESCE(NULLIF(airline, ''), '—') AS airline,
-          MAX(cost_smu_awb)                  AS cost_smu,
-          MAX(sum_gw_per_awb)                AS sum_gw
-        FROM v_pnl_to
-        WHERE ${where}
-        GROUP BY awb, vendor, airline
-      )
       SELECT
-        vendor,
-        airline,
-        COALESCE(SUM(sum_gw), 0)   AS total_weight,
-        COALESCE(SUM(cost_smu), 0) AS total_cost
-      FROM per_awb
-      GROUP BY vendor, airline
+        COALESCE(NULLIF(vendor, ''), '—')  AS vendor,
+        COALESCE(NULLIF(airline, ''), '—') AS airline,
+        COALESCE(SUM(gross_weight), 0)     AS total_weight,
+        COALESCE(SUM(cost_smu_awb * weight_share)
+                 FILTER (WHERE cost_to IS NOT NULL), 0) AS total_cost
+      FROM v_pnl_to
+      WHERE ${where}
+      ${s.sql}
+      GROUP BY 1, 2
       ORDER BY vendor ASC, total_cost DESC
       `,
-      params,
+      [...params, ...s.params],
     )
 
     const byVendor = new Map<string, PnlVendorCostItem>()
@@ -897,39 +881,34 @@ export class PnlService {
     startDate?: string,
     endDate?: string,
     basis?: string,
+    scope?: PnlRouteFilter,
   ): Promise<PnlNamedCostItem[]> {
-    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate, 'v.')
+    const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate, 'v.')
+    const s = this.scopeSql(scope, dateCol, params.length)
     const rows = await this.dataSource.query(
       `
-      WITH per_awb AS (
-        SELECT
-          v.awb,
-          COALESCE(NULLIF(srx.ra_name, ''), '—') AS name,
-          MAX(v.cost_ra_awb)   AS cost_ra,
-          MAX(v.sum_gw_per_awb) AS sum_gw
-        FROM v_pnl_to v
-        LEFT JOIN (
-          -- one clean booking per awb (mirrors v_pnl_to's booking CTE) to avoid fan-out
-          SELECT DISTINCT ON (awb) awb, ra_name
-          FROM air_shipments_smu_rate_cgk_spx
-          ORDER BY awb,
-            (NULLIF(BTRIM(account), '') IS NOT NULL
-             AND NULLIF(BTRIM(via),  '') IS NOT NULL
-             AND NULLIF(BTRIM(dest), '') IS NOT NULL) DESC,
-            updated_at DESC NULLS LAST
-        ) srx ON srx.awb = v.awb
-        WHERE ${where}
-        GROUP BY v.awb, srx.ra_name
-      )
       SELECT
-        name,
-        COALESCE(SUM(sum_gw), 0)  AS total_weight,
-        COALESCE(SUM(cost_ra), 0) AS total_cost
-      FROM per_awb
-      GROUP BY name
+        COALESCE(NULLIF(srx.ra_name, ''), '—') AS name,
+        COALESCE(SUM(v.gross_weight), 0)       AS total_weight,
+        COALESCE(SUM(v.cost_ra_awb * v.weight_share)
+                 FILTER (WHERE v.cost_to IS NOT NULL), 0) AS total_cost
+      FROM v_pnl_to v
+      LEFT JOIN (
+        -- one clean booking per awb (mirrors v_pnl_to's booking CTE) to avoid fan-out
+        SELECT DISTINCT ON (awb) awb, ra_name
+        FROM air_shipments_smu_rate_cgk_spx
+        ORDER BY awb,
+          (NULLIF(BTRIM(account), '') IS NOT NULL
+           AND NULLIF(BTRIM(via),  '') IS NOT NULL
+           AND NULLIF(BTRIM(dest), '') IS NOT NULL) DESC,
+          updated_at DESC NULLS LAST
+      ) srx ON srx.awb = v.awb
+      WHERE ${where}
+      ${s.sql}
+      GROUP BY 1
       ORDER BY total_cost DESC NULLS LAST
       `,
-      params,
+      [...params, ...s.params],
     )
     return rows.map((r: Record<string, unknown>) => ({
       name: r.name as string,
@@ -943,45 +922,40 @@ export class PnlService {
     startDate?: string,
     endDate?: string,
     basis?: string,
+    scope?: PnlRouteFilter,
   ): Promise<PnlNamedCostItem[]> {
-    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate, 'v.')
+    const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate, 'v.')
+    const s = this.scopeSql(scope, dateCol, params.length)
     // sg_out (the name) lives on air_shipments_smu, looked up by booking key.
     const rows = await this.dataSource.query(
       `
-      WITH per_awb AS (
-        SELECT
-          v.awb,
-          COALESCE(NULLIF(s.sg_out, ''), '—') AS name,
-          MAX(v.cost_sg_out_awb) AS cost_sg_out,
-          MAX(v.sum_gw_per_awb)  AS sum_gw
-        FROM v_pnl_to v
-        LEFT JOIN (
-          -- one clean booking per awb (mirrors v_pnl_to's booking CTE) to avoid fan-out
-          SELECT DISTINCT ON (awb) awb, account, airlines, via, dest
-          FROM air_shipments_smu_rate_cgk_spx
-          ORDER BY awb,
-            (NULLIF(BTRIM(account), '') IS NOT NULL
-             AND NULLIF(BTRIM(via),  '') IS NOT NULL
-             AND NULLIF(BTRIM(dest), '') IS NOT NULL) DESC,
-            updated_at DESC NULLS LAST
-        ) srx ON srx.awb = v.awb
-        LEFT JOIN air_shipments_smu s
-          ON  s.vendor      = srx.account
-          AND s.airlines    = srx.airlines
-          AND s.origin      = srx.via
-          AND s.destination = srx.dest
-        WHERE ${where}
-        GROUP BY v.awb, s.sg_out
-      )
       SELECT
-        name,
-        COALESCE(SUM(sum_gw), 0)      AS total_weight,
-        COALESCE(SUM(cost_sg_out), 0) AS total_cost
-      FROM per_awb
-      GROUP BY name
+        COALESCE(NULLIF(s.sg_out, ''), '—') AS name,
+        COALESCE(SUM(v.gross_weight), 0)    AS total_weight,
+        COALESCE(SUM(v.cost_sg_out_awb * v.weight_share)
+                 FILTER (WHERE v.cost_to IS NOT NULL), 0) AS total_cost
+      FROM v_pnl_to v
+      LEFT JOIN (
+        -- one clean booking per awb (mirrors v_pnl_to's booking CTE) to avoid fan-out
+        SELECT DISTINCT ON (awb) awb, account, airlines, via, dest
+        FROM air_shipments_smu_rate_cgk_spx
+        ORDER BY awb,
+          (NULLIF(BTRIM(account), '') IS NOT NULL
+           AND NULLIF(BTRIM(via),  '') IS NOT NULL
+           AND NULLIF(BTRIM(dest), '') IS NOT NULL) DESC,
+          updated_at DESC NULLS LAST
+      ) srx ON srx.awb = v.awb
+      LEFT JOIN air_shipments_smu s
+        ON  s.vendor      = srx.account
+        AND s.airlines    = srx.airlines
+        AND s.origin      = srx.via
+        AND s.destination = srx.dest
+      WHERE ${where}
+      ${s.sql}
+      GROUP BY 1
       ORDER BY total_cost DESC NULLS LAST
       `,
-      params,
+      [...params, ...s.params],
     )
     return rows.map((r: Record<string, unknown>) => ({
       name: r.name as string,
@@ -995,8 +969,10 @@ export class PnlService {
     startDate?: string,
     endDate?: string,
     basis?: string,
+    scope?: PnlRouteFilter,
   ): Promise<PnlSgInRouteCostItem[]> {
-    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const s = this.scopeSql(scope, dateCol, params.length)
     const rows = await this.dataSource.query(
       `
       SELECT
@@ -1006,10 +982,11 @@ export class PnlService {
         COALESCE(SUM(cost_sg_in_to), 0)           AS total_cost
       FROM v_pnl_to
       WHERE ${where}
+      ${s.sql}
       GROUP BY 1
       ORDER BY total_cost DESC NULLS LAST
       `,
-      params,
+      [...params, ...s.params],
     )
     return rows.map((r: Record<string, unknown>) => ({
       route: r.route as string,
@@ -1023,8 +1000,10 @@ export class PnlService {
     startDate?: string,
     endDate?: string,
     basis?: string,
+    scope?: PnlRouteFilter,
   ): Promise<PnlProfitByRouteItem[]> {
-    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const s = this.scopeSql(scope, dateCol, params.length)
     const days = calendarDaysForFilter(cyclePeriod, startDate, endDate)
     const rows = await this.dataSource.query(
       `
@@ -1037,13 +1016,14 @@ export class PnlService {
         COALESCE(SUM(cost_to), 0)                 AS total_cost
       FROM v_pnl_to
       WHERE ${where}
+      ${s.sql}
       GROUP BY 1
       -- Margin uses the KPI convention (revenue − discount − cost) so route totals reconcile
       -- with the headline Est. Gross Profit; uncosted TOs count revenue but not cost.
       ORDER BY (COALESCE(SUM(revenue_total), 0) - COALESCE(SUM(revenue_discount), 0)
                 - COALESCE(SUM(cost_to), 0)) DESC NULLS LAST
       `,
-      params,
+      [...params, ...s.params],
     )
     return rows.map((r: Record<string, unknown>) => {
       const totalRevenue = Number(r.total_revenue) - Number(r.total_discount)

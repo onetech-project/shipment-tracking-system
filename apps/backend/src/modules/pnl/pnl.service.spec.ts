@@ -2106,4 +2106,97 @@ describe('PnlService', () => {
       expect(call({ routes: [], vendors: [] }, 'shipment_date', 1)).toEqual({ sql: '', params: [] })
     })
   })
+
+  describe('breakdown queries under a scope', () => {
+    // The four cost queries used MAX(cost_*_awb) per AWB — the whole AWB's cost. Under a TO-grain
+    // filter that charges a full AWB's cost against whichever subset of its TOs survived, so the
+    // breakdown would overshoot the Est. Cost card it sits under.
+    it('prorates cost-totals by weight_share instead of taking each whole AWB', async () => {
+      dataSource.query.mockResolvedValueOnce([{ smu: '0', ra: '0', sg_out: '0', sg_in: '0' }])
+
+      await service.getCostTotals('2026-05-1H')
+
+      const sql = (dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')
+      expect(sql).toContain('SUM(cost_smu_awb * weight_share)')
+      expect(sql).not.toContain('MAX(cost_smu_awb)')
+    })
+
+    it('scopes cost-totals', async () => {
+      dataSource.query.mockResolvedValueOnce([{ smu: '0', ra: '0', sg_out: '0', sg_in: '0' }])
+
+      await service.getCostTotals('2026-05-1H', undefined, undefined, undefined, {
+        routes: [{ origin: 'Jabo', dest: 'Aceh' }],
+      })
+
+      const [, params] = dataSource.query.mock.calls[0]
+      expect(params).toEqual(['2026-05-1H', ['Jabo'], ['Aceh']])
+    })
+
+    it('weighs cost-by-vendor on the rows in scope, not on each whole AWB', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.getCostByVendor('2026-05-1H')
+
+      const sql = (dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')
+      expect(sql).toContain('SUM(cost_smu_awb * weight_share)')
+      expect(sql).toContain('SUM(gross_weight)')
+      expect(sql).not.toContain('MAX(sum_gw_per_awb)')
+    })
+
+    it('prorates cost-by-ra and cost-by-sg-out too', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getCostByRa('2026-05-1H')
+      expect((dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')).toContain(
+        'SUM(v.cost_ra_awb * v.weight_share)',
+      )
+
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getCostBySgOut('2026-05-1H')
+      expect((dataSource.query.mock.calls[1][0] as string).replace(/\s+/g, ' ')).toContain(
+        'SUM(v.cost_sg_out_awb * v.weight_share)',
+      )
+    })
+
+    it('scopes the three route-shaped breakdowns', async () => {
+      const scope = { routes: [{ origin: 'Jabo', dest: 'Aceh' }] }
+
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getRevenueByRoute('2026-05-1H', undefined, undefined, undefined, scope)
+      expect(dataSource.query.mock.calls[0][1]).toEqual(['2026-05-1H', ['Jabo'], ['Aceh']])
+
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getProfitByRoute('2026-05-1H', undefined, undefined, undefined, scope)
+      expect(dataSource.query.mock.calls[1][1]).toEqual(['2026-05-1H', ['Jabo'], ['Aceh']])
+
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getCostBySgIn('2026-05-1H', undefined, undefined, undefined, scope)
+      expect(dataSource.query.mock.calls[2][1]).toEqual(['2026-05-1H', ['Jabo'], ['Aceh']])
+    })
+
+    it('leaves cost-by-sg-in summing the per-TO column it already used', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getCostBySgIn('2026-05-1H')
+      const sql = (dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')
+      // SG In is the one component the view already prorated; multiplying by weight_share here
+      // would square the share.
+      expect(sql).toContain('SUM(cost_sg_in_to)')
+      expect(sql).not.toContain('cost_sg_in_to * weight_share')
+    })
+
+    it('binds scope params after the range-mode period params', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.getRevenueByRoute(undefined, '2026-05-01', '2026-05-31', undefined, {
+        routes: [{ origin: 'Jabo', dest: 'Aceh' }],
+      })
+
+      const [sql, params] = dataSource.query.mock.calls[0]
+      // Range mode binds $1 and $2 for the period before any scope param. Every other scoped test
+      // here runs in cycle mode, where a boundSoFar hardcoded to 1 would be indistinguishable.
+      expect(sql.replace(/\s+/g, ' ')).toContain(
+        '(origin_station, dest_station) IN (SELECT * FROM UNNEST($3::text[], $4::text[]))',
+      )
+      expect(params).toEqual(['2026-05-01', '2026-05-31', ['Jabo'], ['Aceh']])
+    })
+  })
 })
