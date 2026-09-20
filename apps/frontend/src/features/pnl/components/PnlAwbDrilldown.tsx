@@ -1,21 +1,17 @@
 'use client'
 
 import { Fragment, useState, useEffect } from 'react'
-import { ChevronDown, ChevronRight, X } from 'lucide-react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import {
   usePnlAwbDrilldown,
   usePnlAwbTos,
-  usePnlStations,
   BASIS_LABELS,
   PnlFilter,
   PnlRouteFilter,
   PnlToRow,
 } from '../hooks/usePnl'
-import { periodBounds } from '../utils/periodBounds'
 import { fmt, num, pct } from '../utils/format'
 import { issueLabel } from '../utils/issueLabels'
-import { MultiRouteFilter } from '@/components/shared/multi-route-filter'
-import { buildRouteLabelIndex, labelsForRoutes, routesForLabels } from '../utils/routeLabels'
 
 interface ToSubTableProps {
   awb: string
@@ -109,14 +105,15 @@ function VariesMark({ when }: { when: boolean }) {
 
 interface PnlAwbDrilldownProps {
   filter: PnlFilter
+  // Set by PnlEstimateFilterBar, which owns the controls. This component only reads it: the same
+  // scope drives the KPI cards and the chart above, so a second place to edit it would be a
+  // second source of truth.
   route: PnlRouteFilter
-  onRouteChange: (next: PnlRouteFilter) => void
 }
 
-export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldownProps) {
+export function PnlAwbDrilldown({ filter, route }: PnlAwbDrilldownProps) {
   const [page, setPage] = useState(1)
   const [expandedAwb, setExpandedAwb] = useState<string | null>(null)
-  const { data: stations } = usePnlStations()
 
   useEffect(() => {
     setPage(1)
@@ -125,36 +122,6 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
   const { data, isLoading, isError, refetch } = usePnlAwbDrilldown(filter, page, route)
   const totalPages = data ? Math.ceil(data.total / 50) : 0
   const title = filter.mode === 'cycle' ? filter.cycle : `${filter.start} → ${filter.end}`
-
-  const routeIndex = buildRouteLabelIndex(stations ?? [])
-  const bounds = periodBounds(filter)
-  // `vendors` is in here, not just routes and dates. A drilldown opened from a Vendor Comparison
-  // cell carries only a vendor and a period; leaving it out would hide Reset from exactly the user
-  // who most needs it, and — because setRoutes and setDate both spread ...route — the invisible
-  // vendor narrowing would then survive every edit they made.
-  const vendors = route.vendors ?? []
-  const hasRoute = Boolean(route.routes?.length || route.dateFrom || route.dateTo || vendors.length)
-  const overhangCount = (data?.data ?? []).filter(
-    (row) => row.originVaries || row.destVaries || row.dateVaries,
-  ).length
-
-  // Empty means "no filter": routeToParams drops empty fields before building the request, and an
-  // empty array would otherwise be serialised as a filter that matches nothing.
-  function setRoutes(labels: string[]) {
-    const routes = routesForLabels(labels, routeIndex)
-    onRouteChange({ ...route, routes: routes.length ? routes : undefined })
-  }
-
-  function setDate(field: 'dateFrom' | 'dateTo', value: string) {
-    onRouteChange({ ...route, [field]: value || undefined })
-  }
-
-  // Same "empty means no filter" rule as setRoutes: an empty array would be serialised as a filter
-  // matching nothing rather than as no filter at all.
-  function removeVendor(name: string) {
-    const next = vendors.filter((v) => v !== name)
-    onRouteChange({ ...route, vendors: next.length ? next : undefined })
-  }
 
   function toggleAwb(awb: string) {
     setExpandedAwb((prev) => (prev === awb ? null : awb))
@@ -174,92 +141,6 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
       <div className="border-b px-4 py-3">
         <p className="text-sm font-medium">AWB Drilldown — {title}</p>
         {data && <p className="text-xs text-muted-foreground">{data.total} AWBs</p>}
-        {hasRoute && overhangCount > 0 && (
-          <p className="mt-1 text-xs text-amber-600">
-            {overhangCount} AWB di halaman ini punya TO di luar filter — umumnya tanggal ATA yang
-            berbeda. Angka barisnya mencakup seluruh TO milik AWB itu, jadi totalnya bisa lebih
-            besar dari cell yang diklik.
-          </p>
-        )}
-        {vendors.length > 0 && (
-          <p data-testid="vendor-scope-note" className="mt-1 text-xs text-amber-600">
-            Angka di sini menjumlahkan seluruh TO milik AWB yang cocok dan memakai biaya per-AWB,
-            sedangkan sel Vendor Comparison memakai prorata weight_share yang dibatasi satu rute.
-            Kedua angka memang tidak akan sama.
-          </p>
-        )}
-      </div>
-      <div className="flex flex-wrap items-end gap-3 border-b px-4 py-3">
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          Rute
-          <MultiRouteFilter
-            className="w-[260px]"
-            routes={routeIndex.labels}
-            selected={labelsForRoutes(route.routes ?? [])}
-            onChange={setRoutes}
-          />
-        </label>
-
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          Dari
-          <input
-            type="date"
-            aria-label="Dari"
-            className="rounded-md border bg-background px-2 py-1.5 text-sm text-foreground"
-            min={bounds.min}
-            max={route.dateTo || bounds.max}
-            value={route.dateFrom ?? ''}
-            onChange={(e) => setDate('dateFrom', e.target.value)}
-          />
-        </label>
-
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          Sampai
-          <input
-            type="date"
-            aria-label="Sampai"
-            className="rounded-md border bg-background px-2 py-1.5 text-sm text-foreground"
-            min={route.dateFrom || bounds.min}
-            max={bounds.max}
-            value={route.dateTo ?? ''}
-            onChange={(e) => setDate('dateTo', e.target.value)}
-          />
-        </label>
-
-        {vendors.length > 0 && (
-          <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-            Vendor
-            <div className="flex flex-wrap items-center gap-1 pb-0.5">
-              {vendors.map((vendor) => (
-                <span
-                  key={vendor}
-                  data-testid={`vendor-chip-${vendor}`}
-                  className="flex items-center gap-1 rounded-full border bg-muted px-2 py-1 text-xs text-foreground"
-                >
-                  {vendor}
-                  <button
-                    type="button"
-                    aria-label={`Hapus filter vendor ${vendor}`}
-                    className="text-muted-foreground hover:text-foreground"
-                    onClick={() => removeVendor(vendor)}
-                  >
-                    <X size={12} />
-                  </button>
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {hasRoute && (
-          <button
-            type="button"
-            className="pb-1.5 text-xs text-muted-foreground underline hover:text-foreground"
-            onClick={() => onRouteChange({})}
-          >
-            Reset
-          </button>
-        )}
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
