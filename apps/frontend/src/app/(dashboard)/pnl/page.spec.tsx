@@ -21,6 +21,9 @@ jest.mock('@/features/auth/auth.context', () => ({
 jest.mock('@/shared/hooks/use-permissions', () => ({
   usePermissions: jest.fn(),
 }))
+jest.mock('@/features/route-groups/hooks/useRouteGroups', () => ({
+  useRouteGroups: jest.fn(),
+}))
 jest.mock('next/navigation', () => ({
   useRouter: jest.fn(),
 }))
@@ -174,8 +177,15 @@ jest.mock('@/features/pnl-analytics/components/PnlAnalyticsView', () => ({
 import PnlPage from './page'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
+import { useRouteGroups } from '@/features/route-groups/hooks/useRouteGroups'
 import { useRouter } from 'next/navigation'
 import { usePnlCycles, usePnlSummary } from '@/features/pnl/hooks/usePnl'
+
+// Every other describe block below is indifferent to route groups, so this default (undefined
+// data) covers them; the group's own describe block below overrides it with a fixture. Set once
+// at import time rather than per-beforeEach: jest.clearAllMocks() resets call history but not a
+// mock's return value, so this survives every describe's own clearAllMocks() call.
+;(useRouteGroups as jest.Mock).mockReturnValue({ data: undefined })
 
 // Backs usePermissions' hasPermission so a test can change what's granted *between* renders
 // (renderPage(...) then setPermissions(...) + rerender(...)) rather than only at initial mount —
@@ -523,6 +533,18 @@ describe('PnlPage estimated scope', () => {
       isError: false,
       refetch: jest.fn(),
     })
+    // Matches the 'g1' id the mocked filter bar's "Pick group" button reports below — the fixture
+    // that lets the group-folding test prove estimateGroupId actually resolves to a real route.
+    ;(useRouteGroups as jest.Mock).mockReturnValue({
+      data: [
+        {
+          id: 'g1',
+          name: 'Test Group',
+          description: null,
+          routes: [{ origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' }],
+        },
+      ],
+    })
   })
 
   it('renders the filter bar above the drilldown', () => {
@@ -612,5 +634,20 @@ describe('PnlPage estimated scope', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Estimated' }))
     expect(screen.getByTestId('filter-bar-group')).toHaveTextContent('g1')
+  })
+
+  // The test above only proves the filter bar mock echoes back the groupId prop it was handed —
+  // that passes even if estimateGroupId is write-only and never reaches a real query, which is
+  // exactly how the Critical shipped: the page kept the group id but never folded it into the
+  // scope usePnlSummary (and every other panel) actually consumes. This asserts against a real
+  // call argument instead of a mock's echo.
+  it('folds the chosen group into the scope the KPI cards query', () => {
+    renderPage()
+    fireEvent.click(screen.getByText('Pick group'))
+
+    expect(usePnlSummary).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ routes: [{ origin: 'Jabo', dest: 'Aceh' }] }),
+    )
   })
 })

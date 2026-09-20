@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
+import { useRouteGroups } from '@/features/route-groups/hooks/useRouteGroups'
 import {
   usePnlCycles,
   usePnlSummary,
@@ -24,7 +25,7 @@ import {
 } from '@/features/pnl/constants'
 import { PnlAnalyticsView } from '@/features/pnl-analytics/components/PnlAnalyticsView'
 import { AnalyticsScope } from '@/features/pnl-analytics/types'
-import { routeFromCell } from '@/features/pnl/utils/dailyMatrix'
+import { routeFromCell, unionRoutes } from '@/features/pnl/utils/dailyMatrix'
 import { PnlKpiCards, PnlKpiKey } from '@/features/pnl/components/PnlKpiCards'
 import { PnlEstimateFilterBar } from '@/features/pnl/components/PnlEstimateFilterBar'
 import { PnlDailyMarginChart } from '@/features/pnl/components/PnlDailyMarginChart'
@@ -108,22 +109,22 @@ function PnlPageContent() {
 
   // Lifted out of PnlRouteComparisonView so switching tabs does not discard the selection: the
   // tab is rendered by a ternary below, so leaving it unmounts the component outright. Deliberately
-  // NOT cleared by the period effect below — a pick carries no date, unlike drilldownRoute.
+  // NOT cleared by the period effect below — a pick carries no date, unlike estimateScope.
   const [routePicks, setRoutePicks] = useState<PnlColumnPick[]>([])
 
   // Lifted out of PnlDailyMatrixView for the same reason routePicks is: the tab is rendered by a
   // ternary below, so leaving it unmounts the component outright. Deliberately NOT cleared by the
-  // period effect — a route carries no date, unlike drilldownRoute.
+  // period effect — a route carries no date, unlike estimateScope.
   const [dailyRoutes, setDailyRoutes] = useState<PnlRoutePair[]>([])
 
   // Lifted out of PnlVendorComparisonView for the same reason routePicks is: the tab is rendered
   // by a ternary below, so leaving it unmounts the component outright. Deliberately NOT cleared by
-  // the period effect — a pick carries no date, unlike drilldownRoute.
+  // the period effect — a pick carries no date, unlike estimateScope.
   const [vendorPicks, setVendorPicks] = useState<PnlVendorPick[]>([])
 
   // Lifted out of PnlAnalyticsView for the same reason vendorPicks is: the tab is rendered by a
   // ternary below, so leaving it unmounts the component outright. Deliberately NOT cleared by the
-  // period effect — a scope carries no date, unlike drilldownRoute.
+  // period effect — a scope carries no date, unlike estimateScope.
   const [analyticsScope, setAnalyticsScope] = useState<AnalyticsScope>({ kind: 'all' })
 
   useEffect(() => {
@@ -190,7 +191,18 @@ function PnlPageContent() {
       ? cycle ? { mode: 'cycle', cycle, basis: dateBasis } : undefined
       : startDate && endDate ? { mode: 'range', start: startDate, end: endDate, basis: dateBasis } : undefined
 
-  const { data: summary, isLoading: isSummaryLoading, isError: isSummaryError, refetch: refetchSummary } = usePnlSummary(filter, estimateScope)
+  const { data: groups } = useRouteGroups({ enabled: hasPermission('read.route_group') })
+  const estimateGroupRoutes = (groups?.find((g) => g.id === estimateGroupId)?.routes ?? []).map(
+    (r) => ({ origin: r.origin, dest: r.dest }),
+  )
+  // The scope every panel actually queries. The bar keeps editing `estimateScope` — the
+  // hand-picked routes alone — so unticking a route never deletes a group member, and changing
+  // group later brings a pre-ticked route back still ticked (spec §2c).
+  const effectiveScope: PnlRouteFilter = estimateGroupRoutes.length
+    ? { ...estimateScope, routes: unionRoutes(estimateScope.routes ?? [], estimateGroupRoutes) }
+    : estimateScope
+
+  const { data: summary, isLoading: isSummaryLoading, isError: isSummaryError, refetch: refetchSummary } = usePnlSummary(filter, effectiveScope)
   const isPageLoading = !cycles || (!!filter && isSummaryLoading && !summary)
   const isPageError = isCyclesError || isSummaryError
 
@@ -409,11 +421,11 @@ function PnlPageContent() {
           {summary && (
             <PnlKpiCards summary={summary} activeKpi={activeKpi} onSelect={handleKpiSelect} />
           )}
-          {filter && <PnlDailyMarginChart filter={filter} scope={estimateScope} />}
+          {filter && <PnlDailyMarginChart filter={filter} scope={effectiveScope} />}
           {filter && (
-            <PnlBreakdownPanel filter={filter} activeKpi={activeKpi} scope={estimateScope} />
+            <PnlBreakdownPanel filter={filter} activeKpi={activeKpi} scope={effectiveScope} />
           )}
-          {filter && <PnlAwbDrilldown filter={filter} route={estimateScope} />}
+          {filter && <PnlAwbDrilldown filter={filter} route={effectiveScope} />}
           {showDq ? (
             <PnlDataQuality />
           ) : (

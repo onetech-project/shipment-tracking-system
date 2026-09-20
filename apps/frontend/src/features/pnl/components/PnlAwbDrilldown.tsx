@@ -95,7 +95,7 @@ function VariesMark({ when }: { when: boolean }) {
   return (
     <span
       data-testid="varies-mark"
-      title="TO dalam AWB ini punya nilai berbeda — yang tampil adalah nilai terbanyak, dan angka di baris ini menjumlahkan seluruh TO AWB ini, termasuk yang berada di luar filter rute/tanggal"
+      title="TO dalam AWB ini punya nilai berbeda — yang tampil adalah nilai terbanyak"
       className="ml-1 text-amber-600"
     >
       +
