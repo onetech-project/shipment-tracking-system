@@ -13,8 +13,18 @@
 ## Global Constraints
 
 - **Language.** Code comments in English, matching the surrounding P&L modules. User-facing UI copy in Indonesian, matching the existing filter row (`Rute`, `Dari`, `Sampai`, `Reset`).
-- **Backend test command.** `cd apps/backend && pnpm test -- --runInBand <pattern>` for focused runs. For the FULL backend suite you MUST use `cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm test -- --runInBand` — the default worker fan-out and default heap both OOM on this box.
-- **Frontend test command.** `cd apps/frontend && pnpm test <pattern>`. No flags needed, ever.
+- **Standing rules.** Read `/home/faris/.../esp-dashboard/.superpowers/sdd/FLEET-RULES.md` by absolute path before your first command. It binds every agent on this box and **overrides this plan wherever the two differ**. Its memory and exit-code rules are restated here because they are the two most often violated.
+- **Every jest command MUST cap workers. Never raise `--maxWorkers` above 1.** The box has 16 cores but ~4 GB free; jest sizes its pool from the core count, so an uncapped `pnpm test` spawns ~15 ts-jest processes and the OOM killer takes them out. The tell is "N suites failed" with **0 individual tests failing** — the suites never ran.
+- **Judge every jest run by its EXIT CODE, never by stdout.** The `rtk` wrapper collapses and reorders jest output; a green run routinely writes an EMPTY log. Verified on this box at plan time: two passing runs produced zero readable output. Redirect to your own `/tmp` file and make `echo "EXIT=$?"` the **very next** command — a pipe or a second command overwrites it.
+  ```bash
+  cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+    pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB <pattern> \
+    >/tmp/pnl-mine.log 2>&1; echo "EXIT=$?"
+  ```
+  `~/.local/share/rtk/tee/` is shared — never trust "the newest log", always write your own.
+- **No full suite mid-plan.** Run only the focused pattern your step names. The full suites run once, at Final verification, and the controller runs them — not you.
+- **Jest patterns are regexes, not paths.** `src/app/(dashboard)/pnl/page.spec.tsx` makes `(dashboard)` a capture group matching the bare string `dashboard`, which no path contains — it matches **zero files** and can exit 0 on the strength of other suites. That is a false green. Use a paren-free substring (`pnl/page.spec`) or `--runTestsByPath` with the quoted full path, and confirm the `Test Suites: N passed` count matches the number of files you named.
+- **`cd` does not persist between Bash calls.** Every command cds itself, with absolute paths.
 - **TDD.** Every task writes the failing test first, runs it to see it fail, then implements. No exceptions.
 - **Empty means no filter.** A `PnlRouteFilter` field that is an empty array or empty string must be `undefined`, never sent. `routeToParams` drops undefined fields; an empty array would serialise as a filter matching nothing.
 - **Repeated params need `paramsSerializer: { indexes: null }`.** Without it axios writes `vendor[]=ESP`, which `qs` parses under a key named `'vendor[]'` that no handler reads — the filter vanishes with no error anywhere.
@@ -160,8 +170,17 @@ Append to `apps/backend/src/modules/pnl/pnl.service.spec.ts`, inside the top-lev
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl.service.spec -t scopeSql`
-Expected: FAIL — `(service as any).scopeSql is not a function`
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB pnl.service.spec -t scopeSql \
+  >/tmp/pnl-be-1.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=1`.
+Then `grep -aE 'Tests:|✕' /tmp/pnl-be-1.log` to confirm WHICH test failed — an EXIT=1 from an
+unrelated broken suite is not the red you are looking for.
 
 - [ ] **Step 3: Implement `scopeSql`**
 
@@ -216,8 +235,17 @@ In `apps/backend/src/modules/pnl/pnl.service.ts`, immediately after the `costSpl
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl.service.spec -t scopeSql`
-Expected: PASS — 8 passing
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB pnl.service.spec -t scopeSql \
+  >/tmp/pnl-be-2.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=0`.
+Judge by the exit code only. rtk collapses jest's stdout, so an empty log with EXIT=0
+is a normal pass; `tail -40 /tmp/pnl-be-2.log` only matters when EXIT is non-zero.
 
 - [ ] **Step 5: Commit**
 
@@ -254,14 +282,37 @@ This is the task that fixes a defect already on `main`: a drilldown row sums `re
 Add this to `apps/backend/src/modules/pnl/pnl.service.spec.ts`, as the FIRST test inside `describe('getAwbDrilldown', …)` (right after the opening line at 184):
 
 ```ts
-    // The reason this whole task exists. Before it, cost columns were MAX(cost_*_awb) — the whole
-    // AWB's cost — while revenue and GP were SUM over the rows in scope. On a multi-TO AWB the
-    // three numbers in one row therefore did not agree with each other.
-    it('keeps Revenue - Cost = GP within a single row', async () => {
+    // Concrete expected values, not `revenue - cost === gp`: after Step 5 the mapper DERIVES gp as
+    // rev - totalCost, so asserting that relation here would be true by construction and would
+    // pass even if both numbers were wrong. Task 15 checks the relation against real rows, where
+    // it is not a tautology.
+    it('nets the discount off revenue and reports cost and profit against it', async () => {
       dataSource.query
         .mockResolvedValueOnce([
           {
             awb: '888-9', vendor: 'ESP', airline: 'Citilink CGK',
+            to_count: '2', costed_tos: '2', sum_gw: '60', chwt: '60',
+            total_revenue: '1000', total_discount: '40',
+            cost_smu: '300', cost_ra: '100', cost_sg_out: '50', cost_sg_in: '25',
+            total_cost: '475',
+            has_null_cost: false, issue_rank: null,
+          },
+        ])
+        .mockResolvedValueOnce([{ total: '1' }])
+
+      const { data } = await service.getAwbDrilldown(1, 50, '2026-05-1H')
+      const row = data[0]
+      expect(row.totalRevenue).toBe(960) // 1000 gross - 40 discount
+      expect(row.totalCost).toBe(475)
+      expect(row.grossProfit).toBe(485) // 960 - 475, not 1000 - 475
+      expect(row.grossMarginPct).toBeCloseTo((485 / 960) * 100, 6)
+    })
+
+    it('passes the four cost components through as the row reports them', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([
+          {
+            awb: '888-6', vendor: 'ESP', airline: 'Citilink CGK',
             to_count: '2', costed_tos: '2', sum_gw: '60', chwt: '60',
             total_revenue: '1000', total_discount: '0',
             cost_smu: '300', cost_ra: '100', cost_sg_out: '50', cost_sg_in: '25',
@@ -273,12 +324,7 @@ Add this to `apps/backend/src/modules/pnl/pnl.service.spec.ts`, as the FIRST tes
 
       const { data } = await service.getAwbDrilldown(1, 50, '2026-05-1H')
       const row = data[0]
-      expect(row.totalRevenue - row.totalCost!).toBeCloseTo(row.grossProfit!, 6)
-      // And the four components must add up to the total they are shown beside.
-      expect(row.costSmu! + row.costRa! + row.costSgOut! + row.costSgIn!).toBeCloseTo(
-        row.totalCost!,
-        6,
-      )
+      expect([row.costSmu, row.costRa, row.costSgOut, row.costSgIn]).toEqual([300, 100, 50, 25])
     })
 
     it('prorates every AWB-grain cost by weight_share instead of taking the whole AWB', async () => {
@@ -307,13 +353,19 @@ Add this to `apps/backend/src/modules/pnl/pnl.service.spec.ts`, as the FIRST tes
     })
 ```
 
-- [ ] **Step 2: Run to verify the first test fails**
+- [ ] **Step 2: Run to verify the new tests fail**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl.service.spec -t "keeps Revenue"`
-Expected: FAIL — the mock row is deliberately consistent, so this one may pass on the mock; the two SQL-shape tests below it MUST fail with `Expected substring: "SUM(v.cost_smu_awb * v.weight_share)"`. Run the whole block to see them:
+The two SQL-shape tests are the ones that must fail now; the two value-mapping tests fail only
+once `costed_tos` exists in the mapper.
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl.service.spec -t getAwbDrilldown`
-Expected: FAIL — at least `prorates every AWB-grain cost…` and `derives hasNullCost…`
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB pnl.service.spec \
+  -t getAwbDrilldown >/tmp/t2-red.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=1`. Then `grep -E 'Tests:|✕' /tmp/t2-red.log` and confirm the failures include
+`prorates every AWB-grain cost…` and `derives hasNullCost…`.
 
 - [ ] **Step 3: Replace the scope-building block**
 
@@ -595,13 +647,31 @@ Also update the stale comment above `mockEmptyPage` (`// The route filter picks 
 
 - [ ] **Step 7: Run the whole drilldown block**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl.service.spec -t getAwbDrilldown`
-Expected: PASS — every test in the block green.
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB pnl.service.spec -t getAwbDrilldown \
+  >/tmp/pnl-be-3.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=0`.
+Judge by the exit code only. rtk collapses jest's stdout, so an empty log with EXIT=0
+is a normal pass; `tail -40 /tmp/pnl-be-3.log` only matters when EXIT is non-zero.
 
 - [ ] **Step 8: Run the full backend PnL suite to catch collateral damage**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl`
-Expected: PASS. If `pnl-awb-exclusion.integration.spec.ts` fails against the live database, read its failure — it exercises real rows and is a genuine signal, not noise.
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB pnl \
+  >/tmp/pnl-be-4.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=0`.
+Judge by the exit code only. rtk collapses jest's stdout, so an empty log with EXIT=0
+is a normal pass; `tail -40 /tmp/pnl-be-4.log` only matters when EXIT is non-zero.
 
 - [ ] **Step 9: Commit**
 
@@ -704,8 +774,17 @@ And a new block after it:
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl.service.spec -t "narrows to the scoped"`
-Expected: FAIL — `params` comes back as `['2026-05-1H']`, the extra arg is ignored.
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB pnl.service.spec -t "narrows to the scoped" \
+  >/tmp/pnl-be-5.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=1`.
+Then `grep -aE 'Tests:|✕' /tmp/pnl-be-5.log` to confirm WHICH test failed — an EXIT=1 from an
+unrelated broken suite is not the red you are looking for.
 
 - [ ] **Step 3: Implement in `getSummary`**
 
@@ -774,8 +853,17 @@ The `rows.map` below is unchanged.
 
 - [ ] **Step 5: Run to verify they pass**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl.service.spec -t "getSummary|getDailyMargin"`
-Expected: PASS
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB pnl.service.spec -t "getSummary|getDailyMargin" \
+  >/tmp/pnl-be-6.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=0`.
+Judge by the exit code only. rtk collapses jest's stdout, so an empty log with EXIT=0
+is a normal pass; `tail -40 /tmp/pnl-be-6.log` only matters when EXIT is non-zero.
 
 - [ ] **Step 6: Commit**
 
@@ -891,8 +979,17 @@ Add a new describe block to `pnl.service.spec.ts`:
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl.service.spec -t "breakdown queries under a scope"`
-Expected: FAIL — `Expected substring: "SUM(cost_smu_awb * weight_share)"`
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB pnl.service.spec -t "breakdown queries under a scope" \
+  >/tmp/pnl-be-7.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=1`.
+Then `grep -aE 'Tests:|✕' /tmp/pnl-be-7.log` to confirm WHICH test failed — an EXIT=1 from an
+unrelated broken suite is not the red you are looking for.
 
 - [ ] **Step 3: Rewrite `getCostTotals`**
 
@@ -1038,8 +1135,17 @@ then `${s.sql}` on the line after `WHERE ${where}`, and `[...params, ...s.params
 
 - [ ] **Step 7: Run to verify they pass**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl.service.spec`
-Expected: PASS — the whole file, including the pre-existing `getProfitByRoute` block at line 134.
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB pnl.service.spec \
+  >/tmp/pnl-be-8.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=0`.
+Judge by the exit code only. rtk collapses jest's stdout, so an empty log with EXIT=0
+is a normal pass; `tail -40 /tmp/pnl-be-8.log` only matters when EXIT is non-zero.
 
 - [ ] **Step 8: Commit**
 
@@ -1134,8 +1240,17 @@ describe('parseScope', () => {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl-scope.util`
-Expected: FAIL — `Cannot find module './pnl-scope.util'`
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB pnl-scope.util \
+  >/tmp/pnl-be-9.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=1`.
+Then `grep -aE 'Tests:|✕' /tmp/pnl-be-9.log` to confirm WHICH test failed — an EXIT=1 from an
+unrelated broken suite is not the red you are looking for.
 
 - [ ] **Step 3: Write the parser**
 
@@ -1179,8 +1294,17 @@ export function parseScope(q: PnlScopeQuery): PnlRouteFilter {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl-scope.util`
-Expected: PASS — 6 passing
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB pnl-scope.util \
+  >/tmp/pnl-be-10.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=0`.
+Judge by the exit code only. rtk collapses jest's stdout, so an empty log with EXIT=0
+is a normal pass; `tail -40 /tmp/pnl-be-10.log` only matters when EXIT is non-zero.
 
 - [ ] **Step 5: Write the failing HTTP tests**
 
@@ -1276,8 +1400,17 @@ Move these four tests inside the existing `describe('PnlController query-string 
 
 - [ ] **Step 6: Run to verify they fail**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl.controller.http`
-Expected: FAIL — `getSummary` called with 4 args, not 5.
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB pnl.controller.http \
+  >/tmp/pnl-be-11.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=1`.
+Then `grep -aE 'Tests:|✕' /tmp/pnl-be-11.log` to confirm WHICH test failed — an EXIT=1 from an
+unrelated broken suite is not the red you are looking for.
 
 - [ ] **Step 7: Wire the controller**
 
@@ -1328,13 +1461,30 @@ and delete the now-unused `parseVendorNames`/`parseRoutePairs` imports **only if
 
 - [ ] **Step 9: Run to verify everything passes**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl.controller`
-Expected: PASS — both `pnl.controller.spec` and `pnl.controller.http.spec`.
+Run:
 
-- [ ] **Step 10: Run the full backend suite**
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB pnl.controller \
+  >/tmp/pnl-be-12.log 2>&1; echo "EXIT=$?"
+```
 
-Run: `cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm test -- --runInBand`
-Expected: PASS. This is the first full-suite checkpoint; it must be green before the frontend work starts.
+Expected: `EXIT=0`.
+Judge by the exit code only. rtk collapses jest's stdout, so an empty log with EXIT=0
+is a normal pass; `tail -40 /tmp/pnl-be-12.log` only matters when EXIT is non-zero.
+
+- [ ] **Step 10: Run every backend PnL suite**
+
+The whole module, not the whole repo — the controller change touches nine handlers, so the
+module's own specs are the blast radius worth checking here.
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB pnl \
+  >/tmp/pnl-be-task5.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=0`. The full repo suite runs once at Final verification, not here.
 
 - [ ] **Step 11: Commit**
 
@@ -1431,8 +1581,17 @@ Add to `pnl.service.spec.ts`:
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl.service.spec -t revenue_missing_tos`
-Expected: FAIL — `Expected substring: "COUNT(*) FILTER (WHERE revenue_total IS NULL)::int"`
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB pnl.service.spec -t revenue_missing_tos \
+  >/tmp/pnl-be-13.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=1`.
+Then `grep -aE 'Tests:|✕' /tmp/pnl-be-13.log` to confirm WHICH test failed — an EXIT=1 from an
+unrelated broken suite is not the red you are looking for.
 
 - [ ] **Step 3: Extend the six interfaces**
 
@@ -1481,13 +1640,31 @@ Identical to Step 5 — same SQL line, same cell field, same footer accumulator.
 
 - [ ] **Step 7: Run to verify they pass**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl.service.spec -t revenue_missing_tos`
-Expected: PASS — 3 passing
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB pnl.service.spec -t revenue_missing_tos \
+  >/tmp/pnl-be-14.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=0`.
+Judge by the exit code only. rtk collapses jest's stdout, so an empty log with EXIT=0
+is a normal pass; `tail -40 /tmp/pnl-be-14.log` only matters when EXIT is non-zero.
 
 - [ ] **Step 8: Run the whole PnL backend suite**
 
-Run: `cd apps/backend && pnpm test -- --runInBand pnl`
-Expected: PASS. The integration specs assert on returned shapes; a missing field there is a real failure to fix, not a test to loosen.
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB pnl \
+  >/tmp/pnl-be-15.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=0`.
+Judge by the exit code only. rtk collapses jest's stdout, so an empty log with EXIT=0
+is a normal pass; `tail -40 /tmp/pnl-be-15.log` only matters when EXIT is non-zero.
 
 - [ ] **Step 9: Commit**
 
@@ -1581,8 +1758,17 @@ describe('revenueMissingTos', () => {
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cd apps/frontend && pnpm test cellWarning`
-Expected: FAIL — TypeScript errors on the missing property, then assertion failures.
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB cellWarning \
+  >/tmp/pnl-fe-16.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=1`.
+Then `grep -aE 'Tests:|✕' /tmp/pnl-fe-16.log` to confirm WHICH test failed — an EXIT=1 from an
+unrelated broken suite is not the red you are looking for.
 
 - [ ] **Step 3: Extend `cellWarning.ts`**
 
@@ -1731,8 +1917,17 @@ Add whatever local `matrixWith` helper the file already uses — if it has none,
 
 - [ ] **Step 8: Run the frontend PnL tests**
 
-Run: `cd apps/frontend && pnpm test pnl`
-Expected: PASS
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB pnl \
+  >/tmp/pnl-fe-17.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=0`.
+Judge by the exit code only. rtk collapses jest's stdout, so an empty log with EXIT=0
+is a normal pass; `tail -40 /tmp/pnl-fe-17.log` only matters when EXIT is non-zero.
 
 - [ ] **Step 9: Commit**
 
@@ -1835,8 +2030,17 @@ Add `unionRoutes, offerableRoutes` to the file's import from `./dailyMatrix`.
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cd apps/frontend && pnpm test dailyMatrix`
-Expected: FAIL — `unionRoutes is not a function`
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB dailyMatrix \
+  >/tmp/pnl-fe-18.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=1`.
+Then `grep -aE 'Tests:|✕' /tmp/pnl-fe-18.log` to confirm WHICH test failed — an EXIT=1 from an
+unrelated broken suite is not the red you are looking for.
 
 - [ ] **Step 3: Implement both**
 
@@ -1877,8 +2081,17 @@ export function offerableRoutes(all: PnlRoutePair[], group: PnlRoutePair[]): Pnl
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `cd apps/frontend && pnpm test dailyMatrix`
-Expected: PASS — 10 new tests
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB dailyMatrix \
+  >/tmp/pnl-fe-19.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=0`.
+Judge by the exit code only. rtk collapses jest's stdout, so an empty log with EXIT=0
+is a normal pass; `tail -40 /tmp/pnl-fe-19.log` only matters when EXIT is non-zero.
 
 - [ ] **Step 5: Commit**
 
@@ -2003,8 +2216,17 @@ describe('RouteGroupSelect', () => {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cd apps/frontend && pnpm test route-group-select`
-Expected: FAIL — `Cannot find module './route-group-select'`
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB route-group-select \
+  >/tmp/pnl-fe-20.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=1`.
+Then `grep -aE 'Tests:|✕' /tmp/pnl-fe-20.log` to confirm WHICH test failed — an EXIT=1 from an
+unrelated broken suite is not the red you are looking for.
 
 - [ ] **Step 3: Write the component**
 
@@ -2067,8 +2289,17 @@ export function RouteGroupSelect({ value, onChange, className }: RouteGroupSelec
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cd apps/frontend && pnpm test route-group-select`
-Expected: PASS — 5 passing
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB route-group-select \
+  >/tmp/pnl-fe-21.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=0`.
+Judge by the exit code only. rtk collapses jest's stdout, so an empty log with EXIT=0
+is a normal pass; `tail -40 /tmp/pnl-fe-21.log` only matters when EXIT is non-zero.
 
 - [ ] **Step 5: Commit**
 
@@ -2227,8 +2458,17 @@ Add `Manokwari` to the `routes` fixture if it is not already there — it is (th
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `cd apps/frontend && pnpm test PnlDailyMatrixView`
-Expected: FAIL — no `combobox`, no `filter-summary`.
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB PnlDailyMatrixView \
+  >/tmp/pnl-fe-22.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=1`.
+Then `grep -aE 'Tests:|✕' /tmp/pnl-fe-22.log` to confirm WHICH test failed — an EXIT=1 from an
+unrelated broken suite is not the red you are looking for.
 
 - [ ] **Step 3: Rewrite the view**
 
@@ -2385,8 +2625,17 @@ export function PnlDailyMatrixView({
 
 - [ ] **Step 4: Run to verify they pass**
 
-Run: `cd apps/frontend && pnpm test PnlDailyMatrixView`
-Expected: PASS — both the existing 8 tests and the 8 new ones. The existing tests pass `groupId: undefined`, so `offerableRoutes` returns everything and nothing about them changes.
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB PnlDailyMatrixView \
+  >/tmp/pnl-fe-23.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=0`.
+Judge by the exit code only. rtk collapses jest's stdout, so an empty log with EXIT=0
+is a normal pass; `tail -40 /tmp/pnl-fe-23.log` only matters when EXIT is non-zero.
 
 - [ ] **Step 5: Commit**
 
@@ -2419,13 +2668,32 @@ EOF
 Add to `apps/frontend/src/features/pnl/hooks/usePnl.spec.ts` (follow the file's existing harness — it already tests `routeToParams` directly):
 
 ```ts
+// Renders the real hook against a real QueryClient and reads the cache it populated. Comparing two
+// key arrays the test itself built would assert only that two different literals differ — it would
+// pass with the scope never reaching the hook at all.
 describe('scoped query keys', () => {
+  function keysAfter(scope?: PnlRouteFilter): unknown[][] {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+    })
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    )
+    renderHook(() => usePnlSummary(FILTER, scope), { wrapper })
+    return client.getQueryCache().getAll().map((q) => q.queryKey as unknown[])
+  }
+
   it('puts the scope in the key, so changing the filter refetches', () => {
     // Without this, react-query serves the previous filter's cached answer and the page silently
     // shows numbers for a filter the user has already changed.
-    const a = ['pnl', 'summary', FILTER, { routes: [{ origin: 'Jabo', dest: 'Aceh' }] }]
-    const b = ['pnl', 'summary', FILTER, undefined]
-    expect(JSON.stringify(a)).not.toBe(JSON.stringify(b))
+    const scoped = keysAfter({ routes: [{ origin: 'Jabo', dest: 'Aceh' }] })
+    const unscoped = keysAfter(undefined)
+
+    expect(scoped).toHaveLength(1)
+    expect(unscoped).toHaveLength(1)
+    expect(scoped[0]).not.toEqual(unscoped[0])
+    // And the scope is what differs, not merely something.
+    expect(JSON.stringify(scoped[0])).toContain('Jabo')
   })
 })
 
@@ -2453,11 +2721,35 @@ describe('routeToParams as the scope serialiser', () => {
 })
 ```
 
-Define `FILTER` at the top of that describe as `{ mode: 'cycle', cycle: '2026-05-1H', basis: 'date' } as const`, and import `routeToParams` if the file does not already.
+The `scoped query keys` block renders a real hook, so the file needs:
+
+```ts
+import React from 'react'
+import { renderHook } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { PnlFilter, PnlRouteFilter, routeToParams, usePnlSummary } from './usePnl'
+
+// Never resolves: the test reads the query KEY the hook registered, and a resolving mock would
+// only add act() noise.
+jest.mock('@/shared/api/client', () => ({
+  apiClient: { get: jest.fn(() => new Promise(() => {})) },
+}))
+
+const FILTER: PnlFilter = { mode: 'cycle', cycle: '2026-05-1H', basis: 'date' }
+```
+
+If `usePnl.spec.ts` has no JSX today it must be renamed `usePnl.spec.tsx` for the `wrapper` above
+to compile. Check first: `head -5 apps/frontend/src/features/pnl/hooks/usePnl.spec.ts`. If renaming,
+use `git mv` so the file's history follows it.
 
 - [ ] **Step 2: Run to verify**
 
-Run: `cd apps/frontend && pnpm test usePnl`
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB usePnl \
+  >/tmp/pnl-fe-usepnl.log 2>&1; echo "EXIT=$?"
+```
+
 Expected: the `routeToParams` tests may already pass (the function exists); the key test is a guard. This task is mostly mechanical — its real proof is Task 12's component tests and Task 15's integration run.
 
 - [ ] **Step 3: Add the scope to the two simple hooks**
@@ -2521,8 +2813,17 @@ export function usePnlCostByVendor(
 
 - [ ] **Step 6: Type-check and run**
 
-Run: `cd apps/frontend && pnpm type-check && pnpm test pnl`
-Expected: PASS
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && pnpm type-check >/tmp/pnl-fe-tsc.log 2>&1; echo "TSC_EXIT=$?"
+```
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB pnl \
+  >/tmp/pnl-fe-hooks.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `TSC_EXIT=0` and `EXIT=0`.
 
 - [ ] **Step 7: Commit**
 
@@ -2784,8 +3085,17 @@ describe('PnlEstimateFilterBar route group', () => {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cd apps/frontend && pnpm test PnlEstimateFilterBar`
-Expected: FAIL — `Cannot find module './PnlEstimateFilterBar'`
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB PnlEstimateFilterBar \
+  >/tmp/pnl-fe-24.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=1`.
+Then `grep -aE 'Tests:|✕' /tmp/pnl-fe-24.log` to confirm WHICH test failed — an EXIT=1 from an
+unrelated broken suite is not the red you are looking for.
 
 - [ ] **Step 3: Write the component**
 
@@ -2975,8 +3285,17 @@ export function PnlEstimateFilterBar({
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cd apps/frontend && pnpm test PnlEstimateFilterBar`
-Expected: PASS — 18 passing
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB PnlEstimateFilterBar \
+  >/tmp/pnl-fe-25.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=0`.
+Judge by the exit code only. rtk collapses jest's stdout, so an empty log with EXIT=0
+is a normal pass; `tail -40 /tmp/pnl-fe-25.log` only matters when EXIT is non-zero.
 
 - [ ] **Step 5: Commit**
 
@@ -3079,8 +3398,17 @@ Every remaining `render(<PnlAwbDrilldown … onRouteChange={jest.fn()} />)` in t
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cd apps/frontend && pnpm test PnlAwbDrilldown`
-Expected: FAIL — the "renders no filter controls" test finds `Dari`.
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB PnlAwbDrilldown \
+  >/tmp/pnl-fe-26.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=1`.
+Then `grep -aE 'Tests:|✕' /tmp/pnl-fe-26.log` to confirm WHICH test failed — an EXIT=1 from an
+unrelated broken suite is not the red you are looking for.
 
 - [ ] **Step 3: Strip the component**
 
@@ -3110,8 +3438,17 @@ export function PnlAwbDrilldown({ filter, route }: PnlAwbDrilldownProps) {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `cd apps/frontend && pnpm test PnlAwbDrilldown`
-Expected: PASS
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB PnlAwbDrilldown \
+  >/tmp/pnl-fe-27.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=0`.
+Judge by the exit code only. rtk collapses jest's stdout, so an empty log with EXIT=0
+is a normal pass; `tail -40 /tmp/pnl-fe-27.log` only matters when EXIT is non-zero.
 
 - [ ] **Step 5: Commit**
 
@@ -3278,8 +3615,17 @@ Reuse whatever the file's existing permission helper is called — line 156 has 
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `cd apps/frontend && pnpm test "pnl/page"`
-Expected: FAIL — no `filter-bar-scope`.
+Run:
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB "pnl/page" \
+  >/tmp/pnl-fe-28.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=1`.
+Then `grep -aE 'Tests:|✕' /tmp/pnl-fe-28.log` to confirm WHICH test failed — an EXIT=1 from an
+unrelated broken suite is not the red you are looking for.
 
 - [ ] **Step 3: Rename the state and add the two group ids**
 
@@ -3415,13 +3761,31 @@ And add the prop to `PnlDailyMarginChart` — open `apps/frontend/src/features/p
 
 - [ ] **Step 9: Run the page tests**
 
-Run: `cd apps/frontend && pnpm test "pnl/page"`
-Expected: PASS — the new block plus every existing test in the file.
+Run:
 
-- [ ] **Step 10: Run the full frontend suite**
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB "pnl/page" \
+  >/tmp/pnl-fe-29.log 2>&1; echo "EXIT=$?"
+```
 
-Run: `cd apps/frontend && pnpm type-check && pnpm test`
-Expected: PASS — all suites.
+Expected: `EXIT=0`.
+Judge by the exit code only. rtk collapses jest's stdout, so an empty log with EXIT=0
+is a normal pass; `tail -40 /tmp/pnl-fe-29.log` only matters when EXIT is non-zero.
+
+- [ ] **Step 10: Type-check, and run every frontend PnL suite**
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && pnpm type-check >/tmp/pnl-fe-tsc-t14.log 2>&1; echo "TSC_EXIT=$?"
+```
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB pnl \
+  >/tmp/pnl-fe-task14.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `TSC_EXIT=0` and `EXIT=0`. The full repo suite runs once at Final verification.
 
 - [ ] **Step 11: Commit**
 
@@ -3594,8 +3958,23 @@ Add the imports the file needs: `import 'reflect-metadata'`, `execSync`, `DataSo
 
 - [ ] **Step 2: Run it**
 
-Run: `cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm exec jest pnl-scope.integration --runInBand`
-Expected: PASS. If `cost-by-ra` or `cost-by-sg-out` raises `column reference "vendor" is ambiguous`, that is Task 4 Step 5's flagged risk — give `scopeSql` an optional `alias` parameter and pass `'v.'` from those two callers.
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB pnl-scope.integration \
+  >/tmp/pnl-t15.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=0`. Then confirm it did not SKIP — this spec is the only proof the SQL is valid,
+and a skipped file exits 0:
+
+```bash
+grep -aE 'SKIPPED|Test Suites:|Tests:' /tmp/pnl-t15.log
+```
+
+If it skipped, the database is unreachable from this shell; report that rather than accepting the
+green. If `cost-by-ra` or `cost-by-sg-out` raises `column reference "vendor" is ambiguous`, that is
+Task 4 Step 5's flagged risk — give `scopeSql` an optional `alias` parameter and pass `'v.'` from
+those two callers.
 
 - [ ] **Step 3: Commit**
 
@@ -3617,20 +3996,48 @@ EOF
 
 ## Final verification
 
+**The controller runs this section, not a subagent** — these are the only full-suite runs in the
+plan, and only one jest process may be alive at a time on this box.
+
 - [ ] **Backend, full suite**
 
-Run: `cd apps/backend && NODE_OPTIONS="--max-old-space-size=5120" pnpm test -- --runInBand`
-Expected: PASS, no skipped integration files (the database is reachable on this box).
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB \
+  >/tmp/pnl-final-be.log 2>&1; echo "EXIT=$?"
+```
 
-- [ ] **Frontend, full suite and types**
+Expected: `EXIT=0`. Then confirm the integration specs actually RAN rather than skipping — a
+skipped file reads as a pass:
 
-Run: `cd apps/frontend && pnpm type-check && pnpm test`
-Expected: PASS
+```bash
+grep -aE 'SKIPPED|Test Suites:' /tmp/pnl-final-be.log
+```
+
+`pnl-scope.integration` and `pnl-group-comparison.integration` must not appear under SKIPPED; the
+database is reachable on this box, so a skip means the spec's own guard misfired.
+
+- [ ] **Frontend, types and full suite**
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && pnpm type-check >/tmp/pnl-final-tsc.log 2>&1; echo "TSC_EXIT=$?"
+```
+
+```bash
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB \
+  >/tmp/pnl-final-fe.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `TSC_EXIT=0` and `EXIT=0`.
 
 - [ ] **Lint both**
 
-Run: `pnpm lint`
-Expected: clean, or only pre-existing warnings.
+```bash
+cd /home/faris/code/esp/esp-dashboard && pnpm lint >/tmp/pnl-final-lint.log 2>&1; echo "EXIT=$?"
+```
+
+Expected: `EXIT=0`, or only warnings that `git stash && pnpm lint` shows were already there.
 
 - [ ] **Manual check in the running app**
 
