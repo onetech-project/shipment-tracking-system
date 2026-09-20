@@ -182,12 +182,121 @@ describe('PnlService', () => {
   })
 
   describe('getAwbDrilldown', () => {
+    // Concrete expected values, not `revenue - cost === gp`: after Step 5 the mapper DERIVES gp as
+    // rev - totalCost, so asserting that relation here would be true by construction and would
+    // pass even if both numbers were wrong. Task 15 checks the relation against real rows, where
+    // it is not a tautology.
+    it('nets the discount off revenue and reports cost and profit against it', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([
+          {
+            awb: '888-9', vendor: 'ESP', airline: 'Citilink CGK',
+            to_count: '2', costed_tos: '2', sum_gw: '60', chwt: '60',
+            total_revenue: '1000', total_discount: '40',
+            cost_smu: '300', cost_ra: '100', cost_sg_out: '50', cost_sg_in: '25',
+            total_cost: '475',
+            has_null_cost: false, issue_rank: null,
+          },
+        ])
+        .mockResolvedValueOnce([{ total: '1' }])
+
+      const { data } = await service.getAwbDrilldown(1, 50, '2026-05-1H')
+      const row = data[0]
+      expect(row.totalRevenue).toBe(960) // 1000 gross - 40 discount
+      expect(row.totalCost).toBe(475)
+      expect(row.grossProfit).toBe(485) // 960 - 475, not 1000 - 475
+      expect(row.grossMarginPct).toBeCloseTo((485 / 960) * 100, 6)
+    })
+
+    it('passes the four cost components through as the row reports them', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([
+          {
+            awb: '888-6', vendor: 'ESP', airline: 'Citilink CGK',
+            to_count: '2', costed_tos: '2', sum_gw: '60', chwt: '60',
+            total_revenue: '1000', total_discount: '0',
+            cost_smu: '300', cost_ra: '100', cost_sg_out: '50', cost_sg_in: '25',
+            total_cost: '475',
+            has_null_cost: false, issue_rank: null,
+          },
+        ])
+        .mockResolvedValueOnce([{ total: '1' }])
+
+      const { data } = await service.getAwbDrilldown(1, 50, '2026-05-1H')
+      const row = data[0]
+      expect([row.costSmu, row.costRa, row.costSgOut, row.costSgIn]).toEqual([300, 100, 50, 25])
+    })
+
+    it('prorates every AWB-grain cost by weight_share instead of taking the whole AWB', async () => {
+      dataSource.query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: '0' }])
+      await service.getAwbDrilldown(1, 50, '2026-05-1H')
+
+      const sql = (dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')
+      // costSplitSql's shape. MAX(cost_*_awb) charged the whole AWB's cost against whichever
+      // subset of its TOs the filter left standing.
+      expect(sql).toContain('SUM(v.cost_smu_awb * v.weight_share)')
+      expect(sql).toContain('SUM(v.cost_ra_awb * v.weight_share)')
+      expect(sql).toContain('SUM(v.cost_sg_out_awb * v.weight_share)')
+      expect(sql).not.toContain('MAX(cost_smu_awb)')
+      expect(sql).not.toContain('MAX(cost_total_awb)')
+      // SG In already carries the share inside the view; multiplying again would square it.
+      expect(sql).toContain('SUM(COALESCE(v.cost_sg_in_to, 0))')
+    })
+
+    it('derives hasNullCost from the rows in scope, not from the whole AWB', async () => {
+      dataSource.query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: '0' }])
+      await service.getAwbDrilldown(1, 50, '2026-05-1H')
+
+      const sql = (dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')
+      expect(sql).toContain('BOOL_OR(v.cost_to IS NULL)')
+      expect(sql).not.toContain('MAX(cost_total_awb) IS NULL')
+    })
+
+    it('counts uncosted TOs revenue against the cost that could be computed', async () => {
+      // 2 of 3 TOs costed. SUM(gross_profit_to) would have skipped the third TO's revenue too,
+      // so the row would read Revenue 1000, Cost 300, GP 600 — three numbers that do not agree.
+      dataSource.query
+        .mockResolvedValueOnce([
+          {
+            awb: '888-8', vendor: 'ESP', airline: 'Citilink CGK',
+            to_count: '3', costed_tos: '2', sum_gw: '90', chwt: '90',
+            total_revenue: '1000', total_discount: '0',
+            cost_smu: '200', cost_ra: '60', cost_sg_out: '30', cost_sg_in: '10',
+            total_cost: '300', has_null_cost: true, issue_rank: '2',
+          },
+        ])
+        .mockResolvedValueOnce([{ total: '1' }])
+
+      const { data } = await service.getAwbDrilldown(1, 50, '2026-05-1H')
+      expect(data[0].grossProfit).toBe(700)
+      expect(data[0].totalRevenue - data[0].totalCost!).toBe(data[0].grossProfit)
+    })
+
+    it('reports no cost at all as NULL, never as a confident zero', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([
+          {
+            awb: '888-7', vendor: null, airline: null,
+            to_count: '2', costed_tos: '0', sum_gw: '20', chwt: null,
+            total_revenue: '500', total_discount: '0',
+            cost_smu: '0', cost_ra: '0', cost_sg_out: '0', cost_sg_in: '0',
+            total_cost: '0', has_null_cost: true, issue_rank: '1',
+          },
+        ])
+        .mockResolvedValueOnce([{ total: '1' }])
+
+      const { data } = await service.getAwbDrilldown(1, 50, '2026-05-1H')
+      expect(data[0].totalCost).toBeNull()
+      expect(data[0].grossProfit).toBeNull()
+      expect(data[0].grossMarginPct).toBeNull()
+    })
+
     it('maps the aggregated issue_rank back to the most-severe reason', async () => {
       dataSource.query
         .mockResolvedValueOnce([
           {
             awb: '888-1', vendor: 'ESP', airline: 'Citilink CGK',
-            to_count: '3', sum_gw: '100', total_revenue: '1000', total_discount: '15',
+            to_count: '3', costed_tos: '0', sum_gw: '100', total_revenue: '1000', total_discount: '15',
             cost_smu: null, cost_ra: '200', cost_sg_out: '300', cost_sg_in: '50',
             total_cost: null, gross_profit: '0', has_null_cost: true, issue_rank: '2',
           },
@@ -206,7 +315,7 @@ describe('PnlService', () => {
         .mockResolvedValueOnce([
           {
             awb: '888-2', vendor: 'ESP', airline: 'Citilink CGK',
-            to_count: '1', sum_gw: '10', chwt: '12.5', total_revenue: '100', total_discount: '1.5',
+            to_count: '1', costed_tos: '1', sum_gw: '10', chwt: '12.5', total_revenue: '100', total_discount: '1.5',
             cost_smu: '10', cost_ra: '5', cost_sg_out: '5', cost_sg_in: '1',
             total_cost: '21', gross_profit: '77.5', has_null_cost: false, issue_rank: null,
           },
@@ -223,7 +332,7 @@ describe('PnlService', () => {
         .mockResolvedValueOnce([
           {
             awb: '888-3', vendor: 'ESP', airline: 'Citilink CGK',
-            to_count: '1', sum_gw: '10', chwt: null, total_revenue: '100', total_discount: '1.5',
+            to_count: '1', costed_tos: '1', sum_gw: '10', chwt: null, total_revenue: '100', total_discount: '1.5',
             cost_smu: '10', cost_ra: '5', cost_sg_out: '5', cost_sg_in: '1',
             total_cost: '21', gross_profit: '77.5', has_null_cost: false, issue_rank: null,
           },
@@ -234,41 +343,39 @@ describe('PnlService', () => {
       expect(data[0].chwt).toBeNull()
     })
 
-    // The route filter picks which AWBs appear; it must never shrink the set of TOs aggregated for
-    // a chosen AWB, because cost columns are MAX(cost_*_awb) over the whole AWB.
+    // The scope filter narrows at TO grain: the cost columns are prorated by weight_share, so
+    // summing only the rows in scope is correct. It used to be an AWB-level EXISTS, which was
+    // required back when those columns were MAX(cost_*_awb).
     function mockEmptyPage() {
       dataSource.query
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([{ total: '0' }])
     }
 
-    it('assembles no EXISTS clause when no route field is given', async () => {
+    it('adds no scope clause at all when no route field is given', async () => {
       mockEmptyPage()
       await service.getAwbDrilldown(1, 50, '2026-04-2H')
       const [sql, params] = dataSource.query.mock.calls[0]
       expect(sql).not.toContain('EXISTS')
+      expect(sql).not.toContain('UNNEST')
       expect(params).toEqual(['2026-04-2H', 50, 0])
       const [countSql, countParams] = dataSource.query.mock.calls[1]
-      expect(countSql).not.toContain('EXISTS')
+      expect(countSql).not.toContain('UNNEST')
       expect(countParams).toEqual(['2026-04-2H'])
     })
 
-    it('filters by a route pair through an EXISTS semi-join on the same AWB', async () => {
+    it('filters by a route pair directly in WHERE, at TO grain', async () => {
       mockEmptyPage()
       await service.getAwbDrilldown(1, 50, '2026-04-2H', undefined, undefined, undefined, {
         routes: [{ origin: 'Jabo', dest: 'Aceh' }],
       })
       const [sql, params] = dataSource.query.mock.calls[0]
-      // Pin the full head, not just a substring, so a mutation to `NOT EXISTS` is caught.
-      expect(sql).toContain('AND EXISTS (')
-      expect(sql).not.toContain('NOT EXISTS')
-      expect(sql).toContain('m.awb = v.awb')
-      expect(sql).toContain(
-        '(m.origin_station, m.dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
+      // No semi-join any more: the cost columns are prorated, so out-of-scope TOs must not be
+      // summed at all — which is precisely what an EXISTS would have let happen.
+      expect(sql).not.toContain('EXISTS')
+      expect(sql.replace(/\s+/g, ' ')).toContain(
+        '(origin_station, dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
       )
-      // The period filter is re-applied inside the subquery, reusing $1 rather than rebinding it.
-      expect(sql).toContain('m.cycle_date = $1')
-      // The outer filter runs against the aliased view, not the bare v_pnl_to columns.
       expect(sql).toContain('v.cycle_date = $1')
       expect(params).toEqual(['2026-04-2H', ['Jabo'], ['Aceh'], 50, 0])
     })
@@ -281,11 +388,11 @@ describe('PnlService', () => {
         dateTo: '2026-05-01',
       })
       const [sql, params] = dataSource.query.mock.calls[0]
-      expect(sql).toContain(
-        '(m.origin_station, m.dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
+      expect(sql.replace(/\s+/g, ' ')).toContain(
+        '(origin_station, dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
       )
-      expect(sql).toContain('m.shipment_date >= $4::DATE')
-      expect(sql).toContain("m.shipment_date < ($5::DATE + INTERVAL '1 day')")
+      expect(sql).toContain('v.shipment_date >= $4::DATE')
+      expect(sql).toContain("v.shipment_date < ($5::DATE + INTERVAL '1 day')")
       expect(params).toEqual([
         '2026-04-2H',
         ['Jabo'],
@@ -305,8 +412,8 @@ describe('PnlService', () => {
       const [sql, params] = dataSource.query.mock.calls[0]
       // Range mode binds two params ($1, $2) for the outer filter before any route params, so the
       // route conditions must land at $3/$4, not $2/$3 (which the cycle-mode-only offset would give).
-      expect(sql).toContain(
-        '(m.origin_station, m.dest_station) IN (SELECT * FROM UNNEST($3::text[], $4::text[]))',
+      expect(sql.replace(/\s+/g, ' ')).toContain(
+        '(origin_station, dest_station) IN (SELECT * FROM UNNEST($3::text[], $4::text[]))',
       )
       expect(sql).toContain('LIMIT $5 OFFSET $6')
       expect(params).toEqual(['2026-05-01', '2026-05-31', ['Jabo'], ['Aceh'], 50, 0])
@@ -325,7 +432,7 @@ describe('PnlService', () => {
       const [sql, params] = dataSource.query.mock.calls[0]
       const normalized = (sql as string).replace(/\s+/g, ' ')
       expect(normalized).toContain(
-        '(m.origin_station, m.dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
+        '(origin_station, dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
       )
       // Two parallel arrays, not an interleaved list: a flattened list would silently pair
       // Denpasar with Surabaya.
@@ -338,18 +445,7 @@ describe('PnlService', () => {
       ])
     })
 
-    it('still narrows AWBs by EXISTS so cost stays whole-AWB', async () => {
-      dataSource.query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: '0' }])
-
-      await service.getAwbDrilldown(1, 50, '2026-04-2H', undefined, undefined, undefined, {
-        routes: [{ origin: 'Jabo', dest: 'Aceh' }],
-      })
-
-      const normalized = (dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')
-      expect(normalized).toContain('AND EXISTS ( SELECT 1 FROM v_pnl_to m WHERE m.awb = v.awb')
-    })
-
-    it('filters by vendor in the outer predicate, not inside the route EXISTS', async () => {
+    it('filters by vendor in the same WHERE as everything else', async () => {
       dataSource.query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: '0' }])
 
       await service.getAwbDrilldown(1, 50, '2026-05-1H', undefined, undefined, undefined, {
@@ -358,14 +454,11 @@ describe('PnlService', () => {
       })
 
       const dataSql = (dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')
-      // The outer alias is `v`. Inside the EXISTS the alias is `m`, and a vendor predicate there
-      // would only decide WHICH AWBs are listed while the outer aggregate still summed every
-      // vendor's TOs — a third question nobody asked.
-      expect(dataSql).toContain('AND v.vendor = ANY(')
+      // Vendor used to sit in the outer predicate while route sat inside an EXISTS, purely
+      // because the two had different grain. They no longer do.
+      expect(dataSql).toContain('vendor = ANY(')
       expect(dataSql).not.toContain('m.vendor')
-
-      const dataParams = dataSource.query.mock.calls[0][1] as unknown[]
-      expect(dataParams).toContain(dataParams.find((p) => Array.isArray(p) && p[0] === 'ESP'))
+      expect(dataSql).not.toContain('EXISTS')
     })
 
     it('applies the same vendor predicate to the count query, so paging stays consistent', async () => {
@@ -376,7 +469,7 @@ describe('PnlService', () => {
       })
 
       const countSql = (dataSource.query.mock.calls[1][0] as string).replace(/\s+/g, ' ')
-      expect(countSql).toContain('AND v.vendor = ANY(')
+      expect(countSql).toContain('vendor = ANY(')
     })
 
     it('leaves the query untouched when no vendor is given', async () => {
@@ -387,7 +480,7 @@ describe('PnlService', () => {
       })
 
       const dataSql = dataSource.query.mock.calls[0][0] as string
-      expect(dataSql).not.toContain('v.vendor = ANY')
+      expect(dataSql).not.toContain('vendor = ANY')
     })
 
     it('emits no route condition at all when no routes are selected', async () => {
@@ -397,11 +490,11 @@ describe('PnlService', () => {
         routes: [],
       })
 
-      expect(dataSource.query.mock.calls[0][0]).not.toContain('EXISTS')
+      expect(dataSource.query.mock.calls[0][0]).not.toContain('UNNEST')
       expect(dataSource.query.mock.calls[0][1]).toEqual(['2026-04-2H', 50, 0])
     })
 
-    it('combines routes with the date window in one EXISTS', async () => {
+    it('combines routes with the date window in one WHERE', async () => {
       dataSource.query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: '0' }])
 
       await service.getAwbDrilldown(1, 50, '2026-04-2H', undefined, undefined, undefined, {
@@ -422,13 +515,13 @@ describe('PnlService', () => {
       ])
     })
 
-    it('uses the date column of the selected basis inside the subquery', async () => {
+    it('uses the date column of the selected basis', async () => {
       mockEmptyPage()
       await service.getAwbDrilldown(1, 50, '2026-04-2H', undefined, undefined, 'atd_origin', {
         dateFrom: '2026-05-01',
       })
       const [sql] = dataSource.query.mock.calls[0]
-      expect(sql).toContain('m.date_atd >= $2::DATE')
+      expect(sql).toContain('v.date_atd >= $2::DATE')
     })
 
     it('applies the identical WHERE clause to the count query so paging matches', async () => {
@@ -438,8 +531,8 @@ describe('PnlService', () => {
       })
       const [countSql, countParams] = dataSource.query.mock.calls[1]
       expect(countSql).toContain('COUNT(DISTINCT awb)')
-      expect(countSql).toContain(
-        '(m.origin_station, m.dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
+      expect(countSql.replace(/\s+/g, ' ')).toContain(
+        '(origin_station, dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
       )
       // No LIMIT/OFFSET params on the count query.
       expect(countParams).toEqual(['2026-04-2H', ['Jabo'], ['Aceh']])
@@ -450,7 +543,7 @@ describe('PnlService', () => {
         .mockResolvedValueOnce([
           {
             awb: '888-4', vendor: 'ESP', airline: 'Citilink CGK',
-            to_count: '2', sum_gw: '20', chwt: '25', total_revenue: '200', total_discount: '3',
+            to_count: '2', costed_tos: '2', sum_gw: '20', chwt: '25', total_revenue: '200', total_discount: '3',
             cost_smu: '10', cost_ra: '5', cost_sg_out: '5', cost_sg_in: '1',
             total_cost: '21', gross_profit: '176', has_null_cost: false, issue_rank: null,
             origin: 'Jabo', dest: 'Tanjung Pinang', route_date: '2026-05-01',
@@ -474,7 +567,7 @@ describe('PnlService', () => {
         .mockResolvedValueOnce([
           {
             awb: '888-5', vendor: 'ESP', airline: 'Citilink CGK',
-            to_count: '2', sum_gw: '20', chwt: null, total_revenue: '200', total_discount: '3',
+            to_count: '2', costed_tos: '2', sum_gw: '20', chwt: null, total_revenue: '200', total_discount: '3',
             cost_smu: '10', cost_ra: '5', cost_sg_out: '5', cost_sg_in: '1',
             total_cost: '21', gross_profit: '176', has_null_cost: false, issue_rank: null,
             origin: 'Jabo', dest: 'Aceh', route_date: '2026-05-01',
@@ -495,7 +588,7 @@ describe('PnlService', () => {
         .mockResolvedValueOnce([
           {
             awb: '888-6', vendor: null, airline: null,
-            to_count: '1', sum_gw: '10', chwt: null, total_revenue: '100', total_discount: '1.5',
+            to_count: '1', costed_tos: '0', sum_gw: '10', chwt: null, total_revenue: '100', total_discount: '1.5',
             cost_smu: null, cost_ra: null, cost_sg_out: null, cost_sg_in: null,
             total_cost: null, gross_profit: '0', has_null_cost: true, issue_rank: '1',
             origin: null, dest: null, route_date: null,
@@ -541,7 +634,7 @@ describe('PnlService', () => {
         .mockResolvedValueOnce([
           {
             awb: '888-7', vendor: 'ESP', airline: 'Citilink CGK',
-            to_count: '1', sum_gw: '10', chwt: null, total_revenue: '100', total_discount: '1.5',
+            to_count: '1', costed_tos: '0', sum_gw: '10', chwt: null, total_revenue: '100', total_discount: '1.5',
             cost_smu: '10', cost_ra: '5', cost_sg_out: '5', cost_sg_in: null,
             total_cost: null, gross_profit: '0', has_null_cost: true, issue_rank: '6',
             origin: null, dest: null, route_date: '2026-06-01',
@@ -549,7 +642,7 @@ describe('PnlService', () => {
           },
           {
             awb: '888-8', vendor: 'ESP', airline: 'Citilink CGK',
-            to_count: '1', sum_gw: '10', chwt: null, total_revenue: '100', total_discount: '1.5',
+            to_count: '1', costed_tos: '0', sum_gw: '10', chwt: null, total_revenue: '100', total_discount: '1.5',
             cost_smu: '10', cost_ra: '5', cost_sg_out: '5', cost_sg_in: null,
             total_cost: null, gross_profit: '0', has_null_cost: true, issue_rank: '7',
             origin: 'Jabo', dest: 'Aceh', route_date: '2026-06-01',
