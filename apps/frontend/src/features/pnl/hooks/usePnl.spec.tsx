@@ -7,11 +7,14 @@
  * client would see, without needing a live QueryClient — PnlAwbDrilldown.spec.tsx mocks the hook
  * wholesale, so this is the only place that contract is exercised at all.
  */
+import React from 'react'
+import { renderHook } from '@testing-library/react'
 import { useQuery } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/client'
 import {
   routeToParams,
   usePnlAwbDrilldown,
+  usePnlSummary,
   PnlFilter,
   PnlRouteFilter,
   columnsToParam,
@@ -24,6 +27,7 @@ jest.mock('@/shared/api/client', () => ({
 }))
 
 const filter: PnlFilter = { mode: 'cycle', cycle: '2026-05-1H', basis: 'ata_vendor_wh_destination' }
+const FILTER: PnlFilter = { mode: 'cycle', cycle: '2026-05-1H', basis: 'date' }
 
 describe('routeToParams', () => {
   it('sends nothing at all for an untouched filter', () => {
@@ -146,5 +150,73 @@ describe('routeToParams', () => {
       routes: 'Jabo|Aceh',
     })
     expect(routeToParams({ vendors: [] })).toEqual({})
+  })
+})
+
+// Renders the real hook against a real QueryClient and reads the cache it populated. Comparing two
+// key arrays the test itself built would assert only that two different literals differ — it would
+// pass with the scope never reaching the hook at all.
+describe('scoped query keys', () => {
+  // This file mocks '@tanstack/react-query' wholesale (see top of file) so the AWB-drilldown
+  // tests above can call hooks as plain functions and inspect the config passed to a stub
+  // useQuery. That mock has no QueryClient/QueryClientProvider export at all, so this block
+  // reaches for jest.requireActual to get the real ones, and points the mocked `useQuery`
+  // binding at the real implementation for the duration of one render — via
+  // mockImplementation, not jest.isolateModules, because isolateModules would re-require
+  // 'react' into a second copy separate from the one @testing-library/react already loaded,
+  // and React refuses to run hooks across two React instances (null dispatcher).
+  // mockReset() below returns useQuery to the bare stub the other describes depend on.
+  const real = jest.requireActual('@tanstack/react-query')
+
+  afterEach(() => {
+    ;(useQuery as jest.Mock).mockReset()
+  })
+
+  function keysAfter(scope?: PnlRouteFilter): unknown[][] {
+    ;(useQuery as jest.Mock).mockImplementation(real.useQuery)
+    const client = new real.QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+    })
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <real.QueryClientProvider client={client}>{children}</real.QueryClientProvider>
+    )
+    renderHook(() => usePnlSummary(FILTER, scope), { wrapper })
+    return client.getQueryCache().getAll().map((q: { queryKey: unknown[] }) => q.queryKey)
+  }
+
+  it('puts the scope in the key, so changing the filter refetches', () => {
+    // Without this, react-query serves the previous filter's cached answer and the page silently
+    // shows numbers for a filter the user has already changed.
+    const scoped = keysAfter({ routes: [{ origin: 'Jabo', dest: 'Aceh' }] })
+    const unscoped = keysAfter(undefined)
+
+    expect(scoped).toHaveLength(1)
+    expect(unscoped).toHaveLength(1)
+    expect(scoped[0]).not.toEqual(unscoped[0])
+    // And the scope is what differs, not merely something.
+    expect(JSON.stringify(scoped[0])).toContain('Jabo')
+  })
+})
+
+describe('routeToParams as the scope serialiser', () => {
+  it('drops every empty field, so an untouched filter sends the old request shape', () => {
+    expect(routeToParams({})).toEqual({})
+    expect(routeToParams({ routes: [], vendors: [] })).toEqual({})
+    expect(routeToParams(undefined)).toEqual({})
+  })
+
+  it('joins route pairs on the pipe and the comma', () => {
+    expect(
+      routeToParams({
+        routes: [
+          { origin: 'Jabo', dest: 'Aceh' },
+          { origin: 'Surabaya', dest: 'Batam' },
+        ],
+      }),
+    ).toEqual({ routes: 'Jabo|Aceh,Surabaya|Batam' })
+  })
+
+  it('sends vendors under the singular key, as an array the serialiser repeats', () => {
+    expect(routeToParams({ vendors: ['ESP'] })).toEqual({ vendor: ['ESP'] })
   })
 })

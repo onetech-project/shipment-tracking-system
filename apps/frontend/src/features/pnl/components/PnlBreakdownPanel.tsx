@@ -4,6 +4,7 @@ import { Fragment, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import {
   PnlFilter,
+  PnlRouteFilter,
   usePnlCostByRa,
   usePnlCostBySgIn,
   usePnlCostBySgOut,
@@ -18,23 +19,24 @@ import { fmt, num } from '../utils/format'
 interface PnlBreakdownPanelProps {
   filter: PnlFilter
   activeKpi: PnlKpiKey | null
+  scope?: PnlRouteFilter
 }
 
-export function PnlBreakdownPanel({ filter, activeKpi }: PnlBreakdownPanelProps) {
+export function PnlBreakdownPanel({ filter, activeKpi, scope }: PnlBreakdownPanelProps) {
   if (activeKpi == null) return null
   return (
     <div className="rounded-lg border bg-card">
-      {activeKpi === 'revenue' && <RevenueByRouteSection filter={filter} />}
-      {activeKpi === 'cost' && <CostBreakdownSection filter={filter} />}
-      {activeKpi === 'gp' && <ProfitByRouteSection filter={filter} />}
+      {activeKpi === 'revenue' && <RevenueByRouteSection filter={filter} scope={scope} />}
+      {activeKpi === 'cost' && <CostBreakdownSection filter={filter} scope={scope} />}
+      {activeKpi === 'gp' && <ProfitByRouteSection filter={filter} scope={scope} />}
     </div>
   )
 }
 
 // ------------------------- Revenue --------------------------------------
 
-function RevenueByRouteSection({ filter }: { filter: PnlFilter }) {
-  const { data, isLoading } = usePnlRevenueByRoute(filter)
+function RevenueByRouteSection({ filter, scope }: { filter: PnlFilter; scope?: PnlRouteFilter }) {
+  const { data, isLoading } = usePnlRevenueByRoute(filter, scope)
   return (
     <div>
       <div className="border-b px-4 py-3">
@@ -83,8 +85,8 @@ function RevenueByRouteSection({ filter }: { filter: PnlFilter }) {
 
 type CostKey = 'smu' | 'ra' | 'sgOut' | 'sgIn'
 
-function CostBreakdownSection({ filter }: { filter: PnlFilter }) {
-  const { data: totals, isLoading } = usePnlCostTotals(filter)
+function CostBreakdownSection({ filter, scope }: { filter: PnlFilter; scope?: PnlRouteFilter }) {
+  const { data: totals, isLoading } = usePnlCostTotals(filter, true, scope)
   const [active, setActive] = useState<CostKey | null>(null)
 
   const cards: { key: CostKey; label: string; value: number }[] = totals
@@ -125,16 +127,16 @@ function CostBreakdownSection({ filter }: { filter: PnlFilter }) {
           </div>
         )}
       </div>
-      {active === 'smu' && <SmuVendorTable filter={filter} />}
-      {active === 'ra' && <NamedCostTable filter={filter} kind="ra" />}
-      {active === 'sgOut' && <NamedCostTable filter={filter} kind="sgOut" />}
-      {active === 'sgIn' && <SgInRouteTable filter={filter} />}
+      {active === 'smu' && <SmuVendorTable filter={filter} scope={scope} />}
+      {active === 'ra' && <NamedCostTable filter={filter} kind="ra" scope={scope} />}
+      {active === 'sgOut' && <NamedCostTable filter={filter} kind="sgOut" scope={scope} />}
+      {active === 'sgIn' && <SgInRouteTable filter={filter} scope={scope} />}
     </div>
   )
 }
 
-function SmuVendorTable({ filter }: { filter: PnlFilter }) {
-  const { data, isLoading } = usePnlCostByVendor(filter)
+function SmuVendorTable({ filter, scope }: { filter: PnlFilter; scope?: PnlRouteFilter }) {
+  const { data, isLoading } = usePnlCostByVendor(filter, true, scope)
   const [expanded, setExpanded] = useState<string | null>(null)
 
   return (
@@ -223,9 +225,17 @@ function SmuVendorTable({ filter }: { filter: PnlFilter }) {
   )
 }
 
-function NamedCostTable({ filter, kind }: { filter: PnlFilter; kind: 'ra' | 'sgOut' }) {
-  const ra = usePnlCostByRa(filter, kind === 'ra')
-  const sgOut = usePnlCostBySgOut(filter, kind === 'sgOut')
+function NamedCostTable({
+  filter,
+  kind,
+  scope,
+}: {
+  filter: PnlFilter
+  kind: 'ra' | 'sgOut'
+  scope?: PnlRouteFilter
+}) {
+  const ra = usePnlCostByRa(filter, kind === 'ra', scope)
+  const sgOut = usePnlCostBySgOut(filter, kind === 'sgOut', scope)
   const { data, isLoading } = kind === 'ra' ? ra : sgOut
   const heading = kind === 'ra' ? 'RA — by Name' : 'SG Out — by Name'
 
@@ -272,8 +282,8 @@ function NamedCostTable({ filter, kind }: { filter: PnlFilter; kind: 'ra' | 'sgO
   )
 }
 
-function SgInRouteTable({ filter }: { filter: PnlFilter }) {
-  const { data, isLoading } = usePnlCostBySgIn(filter)
+function SgInRouteTable({ filter, scope }: { filter: PnlFilter; scope?: PnlRouteFilter }) {
+  const { data, isLoading } = usePnlCostBySgIn(filter, true, scope)
   return (
     <div className="border-t">
       <div className="px-4 py-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -319,8 +329,8 @@ function SgInRouteTable({ filter }: { filter: PnlFilter }) {
 
 // ------------------------- Gross Profit ----------------------------------
 
-function ProfitByRouteSection({ filter }: { filter: PnlFilter }) {
-  const { data, isLoading } = usePnlProfitByRoute(filter)
+function ProfitByRouteSection({ filter, scope }: { filter: PnlFilter; scope?: PnlRouteFilter }) {
+  const { data, isLoading } = usePnlProfitByRoute(filter, scope)
   return (
     <div>
       <div className="border-b px-4 py-3">
