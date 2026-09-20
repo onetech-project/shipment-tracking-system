@@ -3,6 +3,9 @@
 **Tanggal:** 2026-09-20
 **Area:** `apps/backend/src/modules/pnl`, `apps/frontend/src/features/pnl`
 **Branch usulan:** `feature/pnl-estimated-filter-bar` dari `development`
+**Revisi 1 (2026-09-20):** keenam pertanyaan terbuka sudah dijawab. Tiga di antaranya mengubah
+desain secara substansial — lihat §3b (drilldown ikut per-TO), §2c (rute anggota group tidak bisa
+dipilih dua kali), dan §3h (breakdown ikut filter). Jejak jawabannya ada di §Keputusan.
 
 ---
 
@@ -112,12 +115,17 @@ Alasannya sama dengan yang tertulis di `routeLabels.ts`: tab Estimated tidak pun
 berkode bandara untuk disepakati, tetapi kolom `Origin`/`Destination` di tabel drilldown di bawahnya
 menampilkan nilai stasiun mentah. Dropdown harus berbicara bahasa tabel yang ia saring.
 
-### 1d. Catatan overhang ikut pindah
+### 1d. Dua catatan kuning di drilldown dihapus, tidak dipindah
 
-Catatan kuning *"N AWB di halaman ini punya TO di luar filter…"* hari ini dirender di header
-drilldown karena filternya ada di sana. Catatan itu **tetap di drilldown** — ia menghitung baris di
-halaman yang sedang tampil, jadi tempatnya memang di situ. Yang bertambah adalah catatan baru di
-filter bar tentang perbedaan cakupan KPI vs drilldown (§3d).
+Header drilldown hari ini membawa dua catatan yang keduanya menjelaskan selisih akibat semantik
+AWB-level. §3b menghapus sebabnya, sehingga keduanya ikut hilang — bukan pindah ke filter bar:
+
+| Catatan | Sebab hilangnya |
+|---|---|
+| *"N AWB di halaman ini punya TO di luar filter…"* | tidak ada lagi TO di luar filter yang ikut terjumlah |
+| `vendor-scope-note` (*"…sedangkan sel Vendor Comparison memakai prorata weight_share…"*) | drilldown kini memakai prorata yang sama |
+
+`overhangCount` dan seluruh perhitungannya ikut dihapus. `VariesMark` **tetap** — lihat tabel di §3b.
 
 ---
 
@@ -166,31 +174,39 @@ const { data: groups } = useRouteGroups({ enabled: canReadGroups })
 disembunyikan — sehingga tidak ada 403 yang pernah sampai ke user. Saat `canReadGroups` false,
 `<select>` tidak dirender dan seluruh fitur ini tidak ada bagi user itu.
 
-### 2c. Group digabung (union) dengan rute eksplisit, bukan saling meniadakan
-
-Ini keputusan desain yang paling mudah salah, jadi ditulis eksplisit.
+### 2c. Group dan rute dipilih berbarengan; rute anggota group tidak bisa dipilih dua kali
 
 `AnalyticsScope` memakai union bertanda: `{ kind: 'all' | 'group' | 'routes' }` — ketiganya saling
-meniadakan. Untuk **picker scope** itu benar. Untuk **baris filter** itu mengejutkan: user mencentang
+meniadakan. Untuk **picker scope** itu benar. Untuk **baris filter** itu mengejutkan: user memilih
 satu group lalu centang rutenya hilang tanpa penjelasan.
 
-Karena itu di sini keduanya **digabung**:
+Karena itu keduanya aktif berbarengan:
 
 ```
-rute efektif = union(scope.routes ?? [], routes milik group terpilih)
+rute efektif = rute eksplisit ∪ rute anggota group terpilih
 ```
 
-Konsekuensi yang harus dijinakkan: dropdown `Rute` hanya mencentang rute **eksplisit**, sehingga
-rute yang tersaring bisa lebih banyak daripada yang tercentang — sebuah kontrol yang berbohong.
-Obatnya bukan state gymnastics (mencentang otomatis lalu bingung saat user melepas satu centang),
-melainkan **satu kalimat** di bawah baris filter:
+**Dan dropdown `Rute` tidak menawarkan rute yang sudah masuk group terpilih.** Ini yang mencegah
+kontrolnya berbohong. Tanpa aturan itu, sebuah rute bisa "tercentang" sekaligus "anggota group",
+dan melepas centangnya tidak mengubah apa pun — rutenya tetap tersaring lewat group. Kontrol yang
+tidak bereaksi jauh lebih buruk daripada pilihan yang hilang.
+
+Bentuknya: rute anggota group **dihapus dari daftar** `MultiRouteFilter`, bukan ditampilkan
+tercentang-dan-disabled. `MultiRouteFilter` tidak punya konsep item disabled, dan menambahkannya
+demi satu pemakai akan menyentuh SLA page, Analytics, dan Route Comparison sekaligus. Menyaring
+`routes` yang dioper ke sana tidak menyentuh komponennya sama sekali.
+
+Yang hilang dari daftar tetap terlihat, lewat satu baris ringkasan di bawah filter:
 
 > Filter aktif: **Group Jabo Timur** (6 rute) + **2 rute dipilih** → **8 rute**
 
-Kalimat itu hanya muncul saat group terpilih. Saat hanya rute eksplisit yang dipakai, dropdown sudah
-jujur dengan sendirinya dan kalimat itu tidak dirender.
+Baris itu hanya dirender saat group terpilih; tanpa group, dropdown sudah jujur dengan sendirinya.
 
-Rute yang muncul di kedua sisi union hanya dihitung sekali (dedup pada `origin|dest`).
+**Aturan tepi — rute yang sudah tercentang lalu group-nya dipilih.** Rute itu hilang dari daftar
+tetapi **tetap tersimpan** di `scope.routes`. Ia tidak dihapus, karena mengganti group berikutnya
+harus mengembalikannya ke daftar dalam keadaan tercentang — membuangnya berarti pilihan user lenyap
+diam-diam. Konsekuensinya `unionRoutes` harus melakukan dedup (§4), dan hitungan di baris ringkasan
+menghitung rute unik, bukan menjumlahkan kedua sisi.
 
 ### 2d. Resolusi di client, bukan param backend baru
 
@@ -239,9 +255,14 @@ Pilihan user harus bertahan; yang boleh kosong hanyalah daftar rute hasil resolu
 | `GET /pnl/breakdown/cost-by-ra` | periode saja | + idem |
 | `GET /pnl/breakdown/cost-by-sg-out` | periode saja | + idem |
 | `GET /pnl/breakdown/cost-by-sg-in` | periode saja | + idem |
+| `GET /pnl/awb-drilldown` | **sudah** menerima keempatnya | semantiknya berubah (§3b), paramnya tidak |
+
+Delapan endpoint pertama bertambah param; yang kesembilan sudah punya dan hanya berubah arti. Itu
+sebabnya `scopeSql` melayani sembilan query, bukan delapan.
 
 Parsing memakai `parseRoutePairs` dan `parseVendorNames` yang sudah ada — tidak ada parser baru.
-Seluruh param opsional; tanpa satupun, bentuk query persis seperti sekarang.
+Seluruh param opsional; tanpa satupun, bentuk query persis seperti sekarang (kecuali drilldown,
+yang kolom cost-nya berubah dengan atau tanpa filter — §3b-bis).
 
 Karena sembilan handler mengulang blok param yang sama, ekstraksi kecil di controller:
 
@@ -252,44 +273,101 @@ export interface PnlScopeQuery { routes?: string; dateFrom?: string; dateTo?: st
 export function parseScope(q: PnlScopeQuery): PnlRouteFilter
 ```
 
-### 3b. Semantik: TO-level, bukan AWB-level
+### 3b. Semantik TO-level di mana-mana — termasuk AWB Drilldown
 
-**Ini perbedaan terpenting dalam spec ini.**
+**Ini perubahan terpenting dalam revisi ini.**
 
-Drilldown menyaring pada **AWB**: filter menentukan AWB mana yang *terdaftar*, lalu agregatnya
-menjumlahkan **seluruh TO milik AWB itu**, termasuk yang di luar filter. Itu disengaja dan wajib —
-kolom cost-nya `MAX(cost_*_awb)`, yaitu biaya seluruh AWB; membuang sebagian TO akan menagihkan
-biaya penuh AWB ke sebagian revenue-nya dan **menciptakan rugi yang tidak ada**.
+Rancangan awal mempertahankan drilldown pada semantik AWB (filter memilih AWB, agregat menjumlahkan
+seluruh TO-nya) dan menjelaskan selisihnya lewat catatan. Itu ditolak, dengan alasan yang benar:
+drilldown pun dihitung dari TO. Pemeriksaan ulang membenarkannya, dan menemukan sesuatu yang lebih
+buruk daripada sekadar selisih antar-panel.
 
-KPI, chart, dan breakdown **tidak** boleh memakai semantik itu. Alasannya justru kebalikannya:
+**Baris drilldown hari ini bercampur grain.** Dalam satu baris `SELECT` yang sama:
 
-- `getSummary` menjumlahkan `SUM(cost_to)`, dan `cost_to` **sudah** ber-grain TO
-  (`cost_total_awb * weight_share + cost_sg_in_to`).
-- `getDailyMargin` idem.
+| Kolom | SQL | Grain |
+|---|---|---|
+| `totalRevenue` | `SUM(revenue_total) - SUM(revenue_discount)` | **TO** (baris tersaring) |
+| `sumGw` | `SUM(gross_weight)` | **TO** |
+| `grossProfit` | `SUM(gross_profit_to)` | **TO** |
+| `costSmu` | `MAX(cost_smu_awb)` | **AWB penuh** |
+| `costRa` | `MAX(cost_ra_awb)` | **AWB penuh** |
+| `costSgOut` | `MAX(cost_sg_out_awb)` | **AWB penuh** |
+| `totalCost` | `MAX(cost_total_awb) + SUM(cost_sg_in_to)` | **campuran** |
 
-Karena biayanya sudah diprorata per TO, membuang baris TO justru **benar** secara aritmetika: sisa
-baris membawa `weight_share`-nya masing-masing. Inilah semantik yang sama persis dengan Daily Report
-matrix dan Route Comparison, sehingga angka-angka antar tab tetap bisa direkonsiliasi.
+Akibatnya, pada AWB multi-TO **Revenue − Total Cost ≠ GP di baris yang sama**, karena GP memakai
+biaya yang sudah diprorata sedangkan kolom Cost menampilkan biaya AWB penuh. Ini berlaku hari ini,
+tanpa filter apa pun — bukan sesuatu yang diperkenalkan fitur ini. Komentar `EXISTS`-nya menyebut
+risiko "rugi palsu", dan memang benar: menyaring TO **tanpa** memprorata kolom cost akan menagihkan
+biaya penuh AWB ke sebagian revenue-nya.
 
-Implementasinya: tiga klausa `AND` langsung pada `WHERE`, bukan `EXISTS`.
+Obatnya bukan berhenti menyaring, melainkan memprorata kolom cost-nya — persis seperti yang sudah
+dilakukan `getAwbTos` untuk sub-tabel TO (`cost_smu_awb * weight_share`), `getDailyMatrix`,
+`getRouteComparison`, dan `getVendorComparison` lewat `costSplitSql`.
+
+`getAwbDrilldown` karena itu berubah pada dua sisi:
+
+**Pertama, kolom cost memakai `costSplitSql('v')`:**
 
 ```sql
-AND (origin_station, dest_station) IN (SELECT * FROM UNNEST($n::text[], $m::text[]))
-AND <dateCol> >= $k::DATE
-AND <dateCol> <  ($l::DATE + INTERVAL '1 day')
-AND vendor = ANY($v::text[])
+-- sebelum                                   -- sesudah
+MAX(cost_smu_awb)      AS cost_smu           SUM(cost_smu_awb * weight_share)
+                                               FILTER (WHERE cost_to IS NOT NULL)   AS cost_smu
+MAX(cost_ra_awb)       AS cost_ra            -- idem untuk ra dan sg_out
+SUM(cost_sg_in_to)     AS cost_sg_in         SUM(COALESCE(cost_sg_in_to, 0))
+                                               FILTER (WHERE cost_to IS NOT NULL)   AS cost_sg_in
 ```
 
-Dua array paralel di-`UNNEST` — pasangan harus tetap pasangan; satu daftar datar akan mencocokkan
-origin mana pun dengan destination mana pun. Pola ini sudah dipakai di `getAwbDrilldown` dan
-`getRouteComparison`.
+`totalCost` menjadi `SUM(cost_to)`, satu ekspresi, bukan lagi `MAX(...) + SUM(...)`. Dengan itu
+**Revenue − Cost = GP berlaku di setiap baris**, dan baris drilldown menjadi rekonsiliasi langsung
+dari cell yang diklik.
 
-### 3c. Tiga endpoint cost harus ditulis ulang ke `costSplitSql`
+**Kedua, filter pindah dari `EXISTS` ke `WHERE` biasa.** Setelah kolom cost diprorata, `EXISTS`
+justru yang salah: ia membiarkan TO di luar filter ikut terjumlah. Klausanya menjadi identik dengan
+delapan endpoint lain (§3a), sehingga `scopeSql` melayani **sembilan** query dengan satu bentuk.
+
+Satu nuansa yang ikut hilang: `vendorWhere` hari ini sengaja berada di predikat luar sementara
+route/date di dalam `EXISTS`. Perbedaan itu hanya ada karena kedua grain-nya berbeda; begitu
+semuanya TO-level, ketiganya masuk ke `WHERE` yang sama dan komentar panjang yang menjelaskan
+perbedaan itu dihapus, bukan dipertahankan sebagai sejarah.
+
+**Yang hilang bersamanya:**
+
+| Hal | Nasib |
+|---|---|
+| `hasNullCost` (latar kuning baris) | `BOOL_OR(cost_to IS NULL)` — sebelumnya `MAX(cost_total_awb) IS NULL OR MAX(cost_sg_in_to) IS NULL`, yang memeriksa AWB, bukan baris yang tampil |
+| `VariesMark` (`+` pada Origin/Dest/Date) | **tetap ada.** Filter rute boleh menyisakan beberapa origin (user memilih dua rute), jadi tanda "TO di baris ini tidak seragam" masih berarti |
+| Catatan overhang (`N AWB … punya TO di luar filter`) | **dihapus.** Tidak ada lagi TO di luar filter yang ikut terjumlah — catatan itu menjadi salah |
+| `vendor-scope-note` (Vendor Comparison vs drilldown) | **dihapus.** Selisih yang dijelaskannya justru yang diperbaiki di sini |
+| Catatan §3d rancangan awal (KPI vs drilldown) | **tidak jadi dibuat.** Tidak ada selisih untuk dijelaskan |
+| `ToSubTable` / `getAwbTos` | **tidak berubah.** Ia sudah prorata, dan sengaja menampilkan **seluruh** TO milik AWB yang diklik — membukanya adalah permintaan eksplisit untuk melihat isi AWB itu, bukan irisannya |
+
+**Invarian baru yang bisa diuji**, menggantikan catatan yang tidak jadi ditulis:
+
+> Pada periode dan filter yang sama, `SUM(totalRevenue)` dan `SUM(totalCost)` seluruh halaman
+> drilldown = `totalRevenue` dan `totalCost` dari `/pnl/summary`.
+
+Invarian ini tidak mungkin berlaku pada rancangan lama, dan itulah alasan terbaik untuk memilih
+rancangan ini.
+
+### 3b-bis. Efek pada layar tanpa filter
+
+Perubahan kolom cost berlaku **juga tanpa filter**, karena ia memperbaiki grain, bukan menanggapi
+filter. Pada AWB single-TO (`weight_share = 1`) tidak ada yang bergerak. Pada AWB multi-TO:
+
+- kolom Cost SMU/RA/SG Out **turun** menjadi porsi milik baris yang tampil;
+- kolom Total Cost turun seiring;
+- kolom GP dan Margin **tidak bergerak** — keduanya memang sudah prorata;
+- baris yang tadinya membaca "Revenue − Cost ≠ GP" menjadi konsisten.
+
+Ini perbaikan yang berdiri sendiri. Kalau lingkup rilis harus dipotong, §3b bisa dikirim lebih dulu
+tanpa satu pun bagian lain dari spec ini.
+
+### 3c. Empat query cost harus ditulis ulang ke grain TO
 
 `getCostTotals`, `getCostByVendor`, `getCostByRa`, `getCostBySgOut` memakai pola
-`MAX(cost_*_awb)` per AWB lalu dijumlahkan. Pola itu **runtuh di bawah filter TO-level**: AWB yang
-hanya sebagian TO-nya cocok tetap menyumbang biaya penuh, sehingga card `Est. Cost` dan
-breakdown-nya akan berselisih.
+`MAX(cost_*_awb)` per AWB lalu dijumlahkan — persis pola yang §3b cabut dari drilldown. Pola itu
+**runtuh di bawah filter TO-level**: AWB yang hanya sebagian TO-nya cocok tetap menyumbang biaya
+penuh, sehingga card `Est. Cost` dan breakdown-nya akan berselisih.
 
 Perbaikannya memakai aturan yang sudah ada dan sudah ditunjuk sebagai sumber kebenaran —
 `costSplitSql()`: tiga komponen AWB diprorata `weight_share`, SG In diambil apa adanya (sudah
@@ -320,24 +398,20 @@ Ketiganya juga memakai `MAX(sum_gw_per_awb)` sebagai berat; di bawah filter itu 
 **seluruh** AWB. Diganti `SUM(gross_weight)` atas baris yang tersaring — kolom Total Weight di
 breakdown karena itu ikut turun pada periode ber-AWB-terpotong, sama seperti kolom biayanya.
 
-### 3d. Yang hilang, dan catatannya
+### 3d. Satu scope, satu grain, satu angka
 
-Sebelum perubahan ini, KPI/chart/breakdown adalah **superset** yang stabil, dan drilldown terbaca
-sebagai irisan di dalamnya. Setelah perubahan ini keduanya bergerak bersama — tetapi dengan
-**semantik yang berbeda** (§3b), sehingga:
+Setelah §3b dan §3c, seluruh tab Estimated berbicara dalam grain yang sama. Tidak ada catatan
+penjelas selisih yang perlu ditulis, karena tidak ada selisih:
 
-> Total Revenue di drilldown ≥ Est. Revenue di card, bila ada AWB yang sebagian TO-nya di luar filter.
+| Panel | Revenue | Cost |
+|---|---|---|
+| `PnlKpiCards` | `SUM(revenue_total − revenue_discount)` | `SUM(cost_to)` |
+| `PnlDailyMarginChart` | idem, per hari | idem, per hari |
+| `PnlBreakdownPanel` | idem, per rute | `costSplitSql`, menjumlah ke `SUM(cost_to)` |
+| `PnlAwbDrilldown` | idem, per AWB | `costSplitSql`, menjumlah ke `SUM(cost_to)` |
 
-Ini bukan bug dan tidak bisa dihilangkan tanpa merusak salah satu sisi. Karena itu filter bar
-merender catatan berikut — **hanya** saat filter rute atau tanggal aktif:
-
-> Kartu dan chart menghitung per-TO di dalam filter. Tabel AWB di bawah menjumlahkan **seluruh TO**
-> milik AWB yang cocok, karena biaya SMU/RA/SG Out melekat pada AWB, bukan pada TO. Kedua angka
-> memang tidak akan sama bila ada AWB yang sebagian TO-nya di luar filter.
-
-Catatan overhang yang sudah ada di drilldown (`N AWB di halaman ini punya TO di luar filter…`) tetap
-di tempatnya — ia menghitung baris di halaman yang sedang tampil, dan sekarang menjadi bukti konkret
-dari kalimat di atas.
+Semuanya atas himpunan baris `v_pnl_to` yang sama. Yang dulu butuh tiga catatan kuning sekarang
+menjadi satu invarian yang diuji (§Pengujian).
 
 ### 3e. Klik cell dari tab lain kini menyetel seluruh scope
 
@@ -359,6 +433,11 @@ function applyDrilldownRoute(route: PnlRouteFilter) {
 
 Target scroll pindah dari drilldown ke **filter bar**, karena yang harus dilihat user setelah klik
 adalah "scope-nya berubah menjadi ini", bukan hanya tabel di paling bawah.
+
+`routeFromCell` dan `routeFromComparisonCell` tidak berubah: keduanya sudah menghasilkan
+`PnlRouteFilter`, dan sekarang nilai itu menyetel sembilan panel alih-alih satu. Klik satu cell
+Daily Report karena itu menghasilkan KPI cards yang angkanya **sama persis** dengan cell yang
+diklik — hal yang tidak mungkin sebelum §3b.
 
 ### 3f. Reset saat periode berubah — menyempit, bukan menghapus semua
 
@@ -385,7 +464,7 @@ useEffect(() => {
 
 ### 3g. Cache key
 
-`usePnlSummary`, `usePnlDailyMargin`, dan kelima hook breakdown menerima parameter `scope` baru yang
+`usePnlSummary`, `usePnlDailyMargin`, dan keenam hook breakdown menerima parameter `scope` baru yang
 **masuk ke `queryKey`**, persis seperti `route` sudah masuk ke key `usePnlAwbDrilldown`. Tanpa itu
 mengubah filter tidak memicu refetch.
 
@@ -394,10 +473,17 @@ mengubah filter tidak memicu refetch.
 menjadi key bernama `'vendor[]'` yang tidak dibaca handler mana pun, dan filter menghilang tanpa
 error di mana pun.
 
-### 3h. Yang tidak ikut filter
+### 3h. Satu-satunya yang tidak ikut filter
 
-`PnlDataQuality` tetap global. Ia tidak terikat periode pun hari ini, dan panel itu adalah worklist
-perbaikan sumber data — bukan laporan periode.
+`PnlDataQuality` tetap global, dan itu satu-satunya pengecualian.
+
+Ia tidak terikat periode pun hari ini: panel itu adalah **worklist perbaikan sumber data**, bukan
+laporan periode. Menyempitkannya ke filter akan menyembunyikan justru baris yang paling perlu
+diperbaiki — sebuah TO yang `station_mapping_missing` tidak punya rute, sehingga filter rute apa pun
+akan membuangnya, dan panel itu ada persis untuk menemukannya.
+
+Endpoint `/pnl/data-quality` dan `/pnl/data-quality/summary` karena itu **tidak** menerima param
+scope.
 
 ---
 
@@ -419,14 +505,32 @@ daripada yang pernah terbang — jadi group berisi 6 rute akan selalu menghasilk
 kolom kosong terbaca sebagai jawaban ("tidak ada yang terbang lewat sini"), bukan sebagai filter yang
 gagal.
 
-`unionRoutes` adalah fungsi murni kecil di `dailyMatrix.ts` (dedup pada `origin|dest`, urutan:
-rute eksplisit dulu, lalu anggota group yang belum ada). Dipakai kedua tab.
+Dua fungsi murni kecil di `dailyMatrix.ts`, dipakai kedua tab:
+
+```ts
+// Rute efektif: eksplisit dulu, lalu anggota group yang belum ada. Dedup pada `origin|dest` —
+// sebuah rute yang sudah tercentang sebelum group-nya dipilih ada di kedua sisi (§2c).
+export function unionRoutes(picked: PnlRoutePair[], group: PnlRoutePair[]): PnlRoutePair[]
+
+// Daftar yang ditawarkan dropdown: seluruh rute dikurangi anggota group terpilih (§2c).
+export function offerableRoutes(all: PnlRoutePair[], group: PnlRoutePair[]): PnlRoutePair[]
+```
+
+`offerableRoutes` bekerja pada pasangan, bukan label, supaya kedua tab bisa memakainya walau
+label dropdown-nya berbeda (§1c). Penyaringan label dilakukan pemanggil lewat `labelsForRoutes`.
 
 State `groupId` diangkat ke `PnlPageContent` sejajar `dailyRoutes` — tab dirender lewat ternary,
 jadi meninggalkan tab akan meng-unmount view dan membuang pilihannya. Tab Estimated dan tab Daily
 Report memegang `groupId`-nya **masing-masing**; keduanya scope yang berbeda dan tidak saling ikut.
 
-Kalimat "Filter aktif: …" dari §2c dirender di sini juga, dengan bentuk yang sama.
+Kalimat "Filter aktif: …" dari §2c dirender di sini juga, dengan bentuk yang sama, dan aturan
+"rute anggota group tidak ditawarkan lagi" berlaku sama persis.
+
+Satu hal yang **tidak** berlaku di sini: daftar rute Daily Report berasal dari master
+(`usePnlRoutes`) sedangkan keanggotaan group juga dari master, jadi setiap anggota group dijamin
+ada di daftar yang disaring. Di tab Estimated daftarnya dari `v_pnl_to` (§1c), sehingga anggota
+group yang belum pernah terbang memang tidak ada di daftar — `offerableRoutes` cukup tidak
+menemukannya, dan itu bukan kondisi kesalahan.
 
 ---
 
@@ -530,12 +634,14 @@ perbandingan.
 
 | Berkas | Perubahan |
 |---|---|
-| `pnl.controller.ts` | 9 handler menerima `routes`/`dateFrom`/`dateTo`/`vendor` lewat `parseScope` |
+| `pnl.controller.ts` | 9 handler menerima `routes`/`dateFrom`/`dateTo`/`vendor` lewat `parseScope`; `getAwbDrilldown` memakainya juga, menggantikan blok param manualnya |
 | `pnl-scope.util.ts` | **baru** — satu tempat merakit `PnlRouteFilter` dari query |
-| `pnl.service.ts` | `getSummary`, `getDailyMargin`, 7 `getCost*`/`get*ByRoute` menerima `scope`; `getDailyMatrix`/`getRouteComparison`/`getVendorComparison` menambah `revenue_missing_tos`; 4 query cost ditulis ulang ke `costSplitSql` |
+| `pnl.service.ts` | `getSummary`, `getDailyMargin`, 6 `getCost*`/`get*ByRoute` menerima `scope`; `getAwbDrilldown` pindah dari `EXISTS` ke `WHERE` dan kolom cost-nya ke `costSplitSql` (§3b); 4 query cost ditulis ulang ke grain TO (§3c); `getDailyMatrix`/`getRouteComparison`/`getVendorComparison` menambah `revenue_missing_tos` |
 
 Semua narrowing lewat satu helper privat `scopeSql(scope, dateCol, startParamIndex)` yang
-mengembalikan `{ sql, params }` — sembilan query tidak boleh masing-masing menyusun `UNNEST` sendiri.
+mengembalikan `{ sql, params }` — **sembilan** query tidak boleh masing-masing menyusun `UNNEST`
+sendiri. Drilldown adalah yang kesembilan: setelah §3b ia memakai klausa yang sama persis, dan
+`routeWhere`/`vendorWhere` buatannya sendiri dihapus.
 
 ### Frontend
 
@@ -543,12 +649,12 @@ mengembalikan `{ sql, params }` — sembilan query tidak boleh masing-masing men
 |---|---|
 | `components/shared/route-group-select.tsx` | **baru** |
 | `features/pnl/components/PnlEstimateFilterBar.tsx` | **baru** |
-| `features/pnl/components/PnlAwbDrilldown.tsx` | baris filter dihapus; prop `onRouteChange` hilang |
-| `features/pnl/components/PnlAwbDrilldown.spec.tsx` | blok `filter section`, `route filter`, `vendor filter` pindah ke spec filter bar |
-| `features/pnl/components/PnlDailyMatrixView.tsx` | `<RouteGroupSelect>` + `unionRoutes` |
-| `features/pnl/hooks/usePnl.ts` | 7 hook menerima `scope`, masuk `queryKey`, pakai `routeToParams` |
+| `features/pnl/components/PnlAwbDrilldown.tsx` | baris filter, `onRouteChange`, catatan overhang, `vendor-scope-note`, dan `overhangCount` dihapus (§1d) |
+| `features/pnl/components/PnlAwbDrilldown.spec.tsx` | blok `filter section`, `route filter`, `vendor filter` pindah ke spec filter bar; blok `overhang note` dihapus |
+| `features/pnl/components/PnlDailyMatrixView.tsx` | `<RouteGroupSelect>`, `unionRoutes`, `offerableRoutes` |
+| `features/pnl/hooks/usePnl.ts` | 8 hook menerima `scope`, masuk `queryKey`, pakai `routeToParams` |
 | `features/pnl/utils/cellWarning.ts` | field `revenueMissingTos` |
-| `features/pnl/utils/dailyMatrix.ts` | `unionRoutes`; `CLEAN`/`EMPTY_FOOTER` |
+| `features/pnl/utils/dailyMatrix.ts` | `unionRoutes`, `offerableRoutes`; `CLEAN`/`EMPTY_FOOTER` |
 | `features/pnl/utils/routeComparison.ts` | meneruskan `revenueMissingTos` |
 | `features/pnl/utils/vendorComparison.ts` | idem |
 | `app/(dashboard)/pnl/page.tsx` | rename state, dua `groupId`, effect reset dipersempit, urutan render |
@@ -557,50 +663,64 @@ mengembalikan `{ sql, params }` — sembilan query tidak boleh masing-masing men
 
 ## Pengujian
 
+### Invarian rekonsiliasi — inti dari revisi ini
+
+Tiga pengujian yang menggantikan tiga catatan kuning yang dihapus. Semuanya dijalankan **dengan dan
+tanpa** filter, pada dataset yang memuat minimal satu AWB multi-TO yang sebagian TO-nya di luar
+filter — tanpa baris seperti itu, ketiganya lulus secara trivial dan tidak membuktikan apa pun.
+
+| Invarian | Yang dibandingkan |
+|---|---|
+| Drilldown ↔ Summary | `SUM` seluruh halaman drilldown (`totalRevenue`, `totalCost`) = `/pnl/summary` |
+| Breakdown ↔ Summary | `cost-totals` (smu+ra+sgOut+sgIn) = `summary.totalCost` |
+| Dalam satu baris | untuk setiap baris drilldown: `totalRevenue − totalCost = grossProfit` |
+
+Yang ketiga **gagal pada kode hari ini** (§3b), jadi ia ditulis lebih dulu dan menjadi bukti bahwa
+perbaikannya nyata, bukan sekadar refactor.
+
+### Unit
+
 | Unit | Yang dipastikan |
 |---|---|
-| `scopeSql` | dua array paralel di-`UNNEST` sebagai pasangan; scope kosong menghasilkan SQL kosong; indeks param tidak bertabrakan dengan param periode |
+| `scopeSql` | dua array paralel di-`UNNEST` sebagai pasangan, bukan cross-product; scope kosong menghasilkan SQL kosong; indeks param tidak bertabrakan dengan param periode |
 | `parseScope` | field kosong tidak dikirim; `vendor` tunggal, array, dan objek ber-index (arrayLimit qs) sama-sama terbaca |
-| `PnlService.getSummary` | filter rute menyempitkan per-TO; `totalCost` = `SUM(cost_to)` atas baris tersaring; tanpa scope, SQL identik dengan hari ini |
-| `PnlService.getCostTotals` | hasil = `SUM(cost_to)` dari `getSummary` pada periode yang sama, dengan dan tanpa filter (invarian §3c) |
-| `PnlService.getDailyMatrix` | `revenue_missing_tos` terhitung per cell dan terjumlah di footer; TO revenue-NULL yang ber-issue `no_booking` tetap terhitung |
+| `PnlService.getSummary` | filter rute menyempitkan per-TO; tanpa scope SQL identik dengan hari ini |
+| `PnlService.getAwbDrilldown` | kolom cost prorata `weight_share`; filter di `WHERE`, bukan `EXISTS`; `hasNullCost` dari `BOOL_OR(cost_to IS NULL)`; AWB single-TO tidak berubah angkanya |
+| `PnlService.getCostTotals` | hasil = `summary.totalCost` pada periode yang sama, dengan dan tanpa filter |
+| `PnlService.getCostByVendor` | Total Weight dari `SUM(gross_weight)` baris tersaring, bukan `MAX(sum_gw_per_awb)` |
+| `PnlService.getDailyMatrix` | `revenue_missing_tos` terhitung per cell dan terjumlah di footer; TO revenue-NULL yang ber-issue `no_booking` **tetap** terhitung — kasus yang mendorong §5 |
 | `revenueWarning` | `revenueMissingTos` lolos; `incompleteTos` tetap nol; cell yang hanya bermasalah cost tetap bersih |
 | `hasWarning` / `warningTooltip` | `revenueMissingTos` saja sudah memicu warning; tooltip menyebut TO tanpa revenue dan tidak menyebut cost di tabel Revenue |
-| `unionRoutes` | dedup; group kosong = rute eksplisit; rute eksplisit kosong = anggota group; urutan stabil |
+| `unionRoutes` | dedup rute yang ada di kedua sisi; group kosong = rute eksplisit; rute eksplisit kosong = anggota group; urutan stabil |
+| `offerableRoutes` | anggota group hilang dari daftar; tanpa group daftar utuh; anggota group yang tidak ada di daftar bukan error |
 | `RouteGroupSelect` | tanpa `read.route_group` tidak merender apa pun **dan** tidak mengirim request |
-| `PnlEstimateFilterBar` | mengubah rute/tanggal/group memanggil `onScopeChange`/`onGroupChange`; Reset mengosongkan keempatnya; tanggal terbatas pada `periodBounds`; catatan §3d muncul hanya saat filter aktif |
-| `PnlDailyMatrixView` | memilih group menyaring kolom; rute anggota group tanpa data menjadi kolom em-dash; union dengan centang manual |
-| `page.tsx` | klik cell dari tiga tab menyetel scope **dan** mengosongkan `groupId`; ganti periode menghapus tanggal saja; rute/group bertahan; filter bar berada di atas KPI cards |
+| `PnlEstimateFilterBar` | mengubah rute/tanggal/group memanggil callback-nya; Reset mengosongkan keempatnya; tanggal terbatas pada `periodBounds`; baris "Filter aktif" hanya saat group terpilih dan menghitung rute unik; rute yang tercentang sebelum group dipilih **tidak** terhapus dari scope |
+| `PnlDailyMatrixView` | memilih group menyaring kolom; rute anggota group tanpa data menjadi kolom em-dash; union dengan centang manual; anggota group tidak lagi ditawarkan dropdown |
+| `page.tsx` | klik cell dari tiga tab menyetel scope **dan** mengosongkan `groupId`; ganti periode menghapus tanggal saja; rute/group bertahan; filter bar berada di atas KPI cards; `groupId` Estimated dan Daily Report tidak saling ikut |
+
+Spec `PnlAwbDrilldown` yang ada harus **diperbarui, bukan dipindah utuh**: blok `overhang note`
+menguji perilaku yang dihapus, dan assertion angka cost di blok `route columns` menguji nilai
+AWB-penuh yang sekarang prorata.
 
 E2E tidak ditambah. Satu-satunya perilaku yang tidak tertutup unit test adalah scroll-into-view,
 yang sudah tidak diuji hari ini.
 
 ---
 
-## Pertanyaan Terbuka
+## Keputusan
 
-Enam keputusan yang saya ambil sendiri agar spec ini utuh. Semuanya bisa dibalik.
+Keenam pertanyaan terbuka revisi awal, beserta jawabannya dan akibatnya pada spec.
 
-1. **§3c — menulis ulang 4 query cost ke `costSplitSql`.** Ini memperbaiki selisih yang sudah ada
-   hari ini antara card `Est. Cost` dan rincian breakdown-nya. Rincian breakdown akan **turun** pada
-   periode yang punya AWB setengah-berbiaya. Apakah perubahan angka pada layar tanpa filter itu
-   diterima, atau breakdown sebaiknya tidak ikut filter sama sekali (dan diberi label "seluruh
-   periode")?
+| # | Pertanyaan | Jawaban | Akibat |
+|---|---|---|---|
+| 1 | Breakdown ikut filter, atau dilabeli "seluruh periode"? | **Ikut filter.** Semua data ikut filter kecuali Data Quality | §3a (9 endpoint), §3c (4 query ditulis ulang), §3h (satu pengecualian, dengan alasannya) |
+| 2 | Catatan cukup, atau drilldown ikut per-TO? | **Ikut per-TO** — drilldown memang dihitung dari TO | §3b ditulis ulang total; §3b-bis baru; dua catatan kuning dihapus (§1d); invarian rekonsiliasi menggantikannya |
+| 3 | Group + rute: union atau saling meniadakan? | **Berbarengan**, dan rute anggota group tidak bisa dipilih lagi | §2c ditulis ulang; `offerableRoutes` baru |
+| 4 | Group single-select atau multi? | **Single**, sesuai usulan | tidak berubah |
+| 5 | Ganti periode: buang tanggal saja? | **Ya**, sesuai usulan | tidak berubah |
+| 6 | `revenue_missing_tos` ikut ke kedua tab perbandingan? | **Ya**, sesuai usulan | tidak berubah |
 
-2. **§3b/§3d — KPI per-TO vs drilldown per-AWB.** Saya memilih mempertahankan perbedaannya dan
-   menjelaskannya lewat catatan, karena menyamakannya berarti merusak salah satu sisi. Apakah
-   catatan itu cukup, atau Anda ingin drilldown juga per-TO (dengan risiko rugi palsu yang
-   disebut §3b)?
-
-3. **§2c — union vs saling meniadakan.** Group + rute eksplisit digabung, dijelaskan satu kalimat.
-   Alternatifnya mengikuti `AnalyticsScopePicker`: memilih group mengosongkan centang rute.
-
-4. **§2a — single-select vs multi-select group.** Saya pilih single, mengikuti Analytics.
-   Route Comparison memakai checkbox multi.
-
-5. **§3f — reset saat ganti periode.** Saya persempit menjadi "hanya tanggal yang dibuang".
-   Hari ini semuanya dibuang.
-
-6. **§5d — apakah `revenue_missing_tos` ikut ke Route Comparison & Vendor Comparison.** Saya
-   memilih ikut, demi satu arti kuning. Ini bagian yang paling mudah dipotong bila ingin rilis
-   lebih kecil.
+Jawaban #2 ternyata menemukan cacat yang sudah ada di `main`: baris drilldown mencampur revenue
+per-TO dengan cost per-AWB, sehingga **Revenue − Cost ≠ GP** pada setiap AWB multi-TO, tanpa filter
+apa pun. §3b memperbaikinya, dan §3b-bis mencatat bahwa perbaikan itu berdiri sendiri — ia bisa
+dikirim lebih dulu, terpisah dari seluruh sisa spec ini.
