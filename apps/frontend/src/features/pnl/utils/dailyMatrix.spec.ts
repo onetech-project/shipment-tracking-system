@@ -7,6 +7,7 @@ import {
   toMarginTable,
   toRevenueTable,
 } from './dailyMatrix'
+import { hasWarning } from './cellWarning'
 
 const matrix: PnlDailyMatrix = {
   columns: [
@@ -18,10 +19,13 @@ const matrix: PnlDailyMatrix = {
     {
       date: '2026-07-01',
       cells: [
-        { revenue: 1000, margin: 100, weight: 10, incompleteTos: 0, issues: [{ issue: 'revenue_missing', awbs: 1 }] },
+        {
+          revenue: 1000, margin: 100, weight: 10, incompleteTos: 0, revenueMissingTos: 0,
+          issues: [{ issue: 'revenue_missing', awbs: 1 }],
+        },
         null,
         {
-          revenue: 0, margin: -50, weight: 5, incompleteTos: 2,
+          revenue: 0, margin: -50, weight: 5, incompleteTos: 2, revenueMissingTos: 0,
           issues: [{ issue: 'no_booking', awbs: 2 }, { issue: 'revenue_missing', awbs: 1 }],
         },
       ],
@@ -32,18 +36,18 @@ const matrix: PnlDailyMatrix = {
     {
       totalRevenue: 1000, totalMargin: 100, totalWeight: 10,
       avgRevenuePerDay: 500, avgMarginPerDay: 50,
-      marginPct: 10, spacePerKg: 10, incompleteTos: 0,
+      marginPct: 10, spacePerKg: 10, incompleteTos: 0, revenueMissingTos: 0,
       issues: [{ issue: 'revenue_missing', awbs: 1 }],
     },
     {
       totalRevenue: 0, totalMargin: 0, totalWeight: 0,
       avgRevenuePerDay: 0, avgMarginPerDay: 0,
-      marginPct: null, spacePerKg: null, incompleteTos: 0, issues: [],
+      marginPct: null, spacePerKg: null, incompleteTos: 0, revenueMissingTos: 0, issues: [],
     },
     {
       totalRevenue: 0, totalMargin: -50, totalWeight: 5,
       avgRevenuePerDay: 0, avgMarginPerDay: -25,
-      marginPct: null, spacePerKg: -10, incompleteTos: 2,
+      marginPct: null, spacePerKg: -10, incompleteTos: 2, revenueMissingTos: 0,
       issues: [{ issue: 'no_booking', awbs: 3 }, { issue: 'revenue_missing', awbs: 1 }],
     },
   ],
@@ -98,12 +102,14 @@ describe('toRevenueTable', () => {
     expect(model.warnings[0][2]).toEqual({
       issues: [{ issue: 'revenue_missing', awbs: 1 }],
       incompleteTos: 0,
+      revenueMissingTos: 0,
     })
     expect(model.warnings[0][0]).toEqual({
       issues: [{ issue: 'revenue_missing', awbs: 1 }],
       incompleteTos: 0,
+      revenueMissingTos: 0,
     })
-    expect(model.warnings[0][1]).toEqual({ issues: [], incompleteTos: 0 })
+    expect(model.warnings[0][1]).toEqual({ issues: [], incompleteTos: 0, revenueMissingTos: 0 })
     expect(model.highlightNegative).toBe(false)
   })
 
@@ -114,30 +120,71 @@ describe('toRevenueTable', () => {
         {
           date: '2026-07-01',
           cells: [
-            { revenue: 500, margin: 10, weight: 1, incompleteTos: 3, issues: [{ issue: 'smu_rate_missing', awbs: 2 }] },
+            {
+              revenue: 500, margin: 10, weight: 1, incompleteTos: 3, revenueMissingTos: 0,
+              issues: [{ issue: 'smu_rate_missing', awbs: 2 }],
+            },
             null,
             null,
           ],
         },
       ],
     }
-    expect(toRevenueTable(costOnly).warnings[0][0]).toEqual({ issues: [], incompleteTos: 0 })
+    expect(toRevenueTable(costOnly).warnings[0][0]).toEqual({
+      issues: [],
+      incompleteTos: 0,
+      revenueMissingTos: 0,
+    })
   })
 
   it('gives an absent cell a clean warning rather than undefined', () => {
     // Row 2 has no shipments at all. A missing entry here would make every consumer null-check.
     expect(toRevenueTable(matrix).warnings[1]).toEqual([
-      { issues: [], incompleteTos: 0 },
-      { issues: [], incompleteTos: 0 },
-      { issues: [], incompleteTos: 0 },
+      { issues: [], incompleteTos: 0, revenueMissingTos: 0 },
+      { issues: [], incompleteTos: 0, revenueMissingTos: 0 },
+      { issues: [], incompleteTos: 0, revenueMissingTos: 0 },
     ])
   })
 
   it('scopes both footer rows to revenue too, since Avg / Day divides the same total', () => {
     const [total, avg] = toRevenueTable(matrix).footerRows
-    const expectedWarning = { issues: [{ issue: 'revenue_missing', awbs: 1 }], incompleteTos: 0 }
+    const expectedWarning = {
+      issues: [{ issue: 'revenue_missing', awbs: 1 }],
+      incompleteTos: 0,
+      revenueMissingTos: 0,
+    }
     expect(total.warnings?.[2]).toEqual(expectedWarning)
     expect(avg.warnings?.[2]).toEqual(expectedWarning)
+  })
+
+  it('warns a revenue cell whose TOs have no revenue, even when the issue names a cost cause', () => {
+    // The exact case that made Revenue cells stop going yellow: a TO with no rate_spx has no
+    // revenue AND no cost fallback, and v_pnl_to.issue ranks the cost cause first.
+    const revenueMissing: PnlDailyMatrix = {
+      ...matrix,
+      rows: [
+        {
+          date: '2026-07-01',
+          cells: [
+            {
+              revenue: 0, margin: 0, weight: 0, incompleteTos: 1, revenueMissingTos: 2,
+              issues: [{ issue: 'no_booking', awbs: 1 }],
+            },
+            null,
+            null,
+          ],
+        },
+      ],
+    }
+
+    const model = toRevenueTable(revenueMissing)
+    const warning = model.warnings[0][0]
+
+    expect(hasWarning(warning)).toBe(true)
+    expect(warning.revenueMissingTos).toBe(2)
+    // Still no cost noise on this table.
+    expect(warning.issues).toEqual([])
+    expect(warning.incompleteTos).toBe(0)
   })
 })
 
@@ -181,10 +228,12 @@ describe('toMarginTable', () => {
     expect(model.warnings[0][2]).toEqual({
       issues: [{ issue: 'no_booking', awbs: 2 }, { issue: 'revenue_missing', awbs: 1 }],
       incompleteTos: 2,
+      revenueMissingTos: 0,
     })
     expect(model.footerRows[0].warnings?.[2]).toEqual({
       issues: [{ issue: 'no_booking', awbs: 3 }, { issue: 'revenue_missing', awbs: 1 }],
       incompleteTos: 2,
+      revenueMissingTos: 0,
     })
     expect(model.highlightNegative).toBe(true)
   })
@@ -194,6 +243,7 @@ describe('toMarginTable', () => {
     const expectedWarning = {
       issues: [{ issue: 'no_booking', awbs: 3 }, { issue: 'revenue_missing', awbs: 1 }],
       incompleteTos: 2,
+      revenueMissingTos: 0,
     }
     // Avg / Day, % Margin and Space per Kg all divide totalMargin, so they inherit its warning.
     expect(total.warnings?.[2]).toEqual(expectedWarning)
@@ -260,7 +310,7 @@ describe('selectMatrixColumns', () => {
       {
         totalRevenue: 0, totalMargin: 0, totalWeight: 0,
         avgRevenuePerDay: 0, avgMarginPerDay: 0,
-        marginPct: null, spacePerKg: null, incompleteTos: 0, issues: [],
+        marginPct: null, spacePerKg: null, incompleteTos: 0, revenueMissingTos: 0, issues: [],
       },
     ])
   })

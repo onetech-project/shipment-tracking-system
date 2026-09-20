@@ -40,7 +40,13 @@ export function toVendorComparisonTable(
       // missing margin renders as an em dash, never NaN.
       margin: row.cells.map((c) => (c ? (c.margin ?? null) : null)),
       warnings: row.cells.map((c) =>
-        c ? { issues: c.issues ?? [], incompleteTos: c.incompleteTos } : CLEAN,
+        c
+          ? {
+              issues: c.issues ?? [],
+              incompleteTos: c.incompleteTos,
+              revenueMissingTos: c.revenueMissingTos ?? 0,
+            }
+          : CLEAN,
       ),
       components,
     }
@@ -62,6 +68,7 @@ export function toVendorComparisonTable(
       warnings: data.footer.map((f) => ({
         issues: f.issues ?? [],
         incompleteTos: f.incompleteTos,
+        revenueMissingTos: f.revenueMissingTos ?? 0,
       })),
     },
     {

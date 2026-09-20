@@ -30,7 +30,13 @@ export function toRouteComparisonTable(
       // lack the field. A missing margin renders as an em dash, never NaN.
       margin: row.cells.map((c) => (c ? (c.margin ?? null) : null)),
       warnings: row.cells.map((c) =>
-        c ? { issues: c.issues ?? [], incompleteTos: c.incompleteTos } : CLEAN,
+        c
+          ? {
+              issues: c.issues ?? [],
+              incompleteTos: c.incompleteTos,
+              revenueMissingTos: c.revenueMissingTos ?? 0,
+            }
+          : CLEAN,
       ),
       components,
     }
@@ -49,7 +55,11 @@ export function toRouteComparisonTable(
       cost: data.footer.map((f) => f.totalCost),
       margin: data.footer.map((f) => f.totalMargin ?? null),
       components: totalComponents,
-      warnings: data.footer.map((f) => ({ issues: f.issues ?? [], incompleteTos: f.incompleteTos })),
+      warnings: data.footer.map((f) => ({
+        issues: f.issues ?? [],
+        incompleteTos: f.incompleteTos,
+        revenueMissingTos: f.revenueMissingTos ?? 0,
+      })),
     },
     {
       // No component breakdown: the average of a component is not itself a cost anyone books.

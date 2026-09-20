@@ -48,14 +48,21 @@ export function groupOrigins(columns: PnlDailyMatrixColumn[]): OriginGroup[] {
 
 // An absent cell still gets a clean warning rather than being left undefined, so the renderer and
 // the tests have exactly one shape to read.
-const CLEAN: CellWarning = { issues: [], incompleteTos: 0 }
+const CLEAN: CellWarning = { issues: [], incompleteTos: 0, revenueMissingTos: 0 }
 
 function cellWarnings(matrix: PnlDailyMatrix): CellWarning[][] {
   return matrix.rows.map((row) =>
     row.cells.map((cell) =>
-      // `issues` is non-optional in the type, but the deploy pipeline brings backend and frontend up
-      // in parallel, so a new frontend can briefly hit an old backend whose cells lack the field.
-      cell ? { issues: cell.issues ?? [], incompleteTos: cell.incompleteTos } : CLEAN,
+      // `issues` and `revenueMissingTos` are non-optional in the type, but the deploy pipeline
+      // brings backend and frontend up in parallel, so a new frontend can briefly hit an old
+      // backend whose cells lack the field.
+      cell
+        ? {
+            issues: cell.issues ?? [],
+            incompleteTos: cell.incompleteTos,
+            revenueMissingTos: cell.revenueMissingTos ?? 0,
+          }
+        : CLEAN,
     ),
   )
 }
@@ -66,8 +73,12 @@ export function toRevenueTable(matrix: PnlDailyMatrix): MatrixTableModel {
   // missing cost cannot move — only a NULL revenue_total can, by dropping out of the sum. `issues`
   // is non-optional in the type, but the deploy pipeline brings backend and frontend up in
   // parallel, so a new frontend can briefly hit an old backend whose footer lacks it — hence `?? []`.
-  const footerWarnings = matrix.footer.map(
-    (f) => revenueWarning({ issues: f.issues ?? [], incompleteTos: f.incompleteTos }),
+  const footerWarnings = matrix.footer.map((f) =>
+    revenueWarning({
+      issues: f.issues ?? [],
+      incompleteTos: f.incompleteTos,
+      revenueMissingTos: f.revenueMissingTos ?? 0,
+    }),
   )
   return {
     columns: matrix.columns,
@@ -94,7 +105,11 @@ export function toMarginTable(matrix: PnlDailyMatrix): MatrixTableModel {
   // warnings. Total Tonase is gross weight — it never touches cost — so it stays clean. `issues` is
   // non-optional in the type, but the deploy pipeline brings backend and frontend up in parallel, so
   // a new frontend can briefly hit an old backend whose footer lacks the field — hence `?? []`.
-  const footerWarnings = matrix.footer.map((f) => ({ issues: f.issues ?? [], incompleteTos: f.incompleteTos }))
+  const footerWarnings = matrix.footer.map((f) => ({
+    issues: f.issues ?? [],
+    incompleteTos: f.incompleteTos,
+    revenueMissingTos: f.revenueMissingTos ?? 0,
+  }))
   return {
     columns: matrix.columns,
     dates: matrix.rows.map((r) => r.date),
@@ -137,6 +152,7 @@ const EMPTY_FOOTER = {
   marginPct: null,
   spacePerKg: null,
   incompleteTos: 0,
+  revenueMissingTos: 0,
   issues: [],
 }
 

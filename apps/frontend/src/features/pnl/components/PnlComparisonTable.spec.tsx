@@ -60,8 +60,8 @@ function baseModel(
         cost: [800, null],
         margin: [200, null],
         warnings: [
-          { issues: [], incompleteTos: 0 },
-          { issues: [], incompleteTos: 0 },
+          { issues: [], incompleteTos: 0, revenueMissingTos: 0 },
+          { issues: [], incompleteTos: 0, revenueMissingTos: 0 },
         ],
         components: {
           costSmu: [500, 260],
@@ -77,8 +77,8 @@ function baseModel(
         cost: [0, 1500],
         margin: [0, 500],
         warnings: [
-          { issues: [], incompleteTos: 3 },
-          { issues: [], incompleteTos: 0 },
+          { issues: [], incompleteTos: 3, revenueMissingTos: 0 },
+          { issues: [], incompleteTos: 0, revenueMissingTos: 0 },
         ],
         components: {
           costSmu: [0, 900],
@@ -101,8 +101,8 @@ function baseModel(
           costSgIn: [50, 100],
         },
         warnings: [
-          { issues: [], incompleteTos: 3 },
-          { issues: [], incompleteTos: 0 },
+          { issues: [], incompleteTos: 3, revenueMissingTos: 0 },
+          { issues: [], incompleteTos: 0, revenueMissingTos: 0 },
         ],
       },
       {

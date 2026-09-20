@@ -52,4 +52,4 @@ export function emptyComponents(): Record<CostComponentKey, (number | null)[]> {
 
 // An absent cell still gets a clean warning rather than being left undefined, so the renderer and
 // the tests have exactly one shape to read. Matches dailyMatrix.ts's CLEAN.
-export const CLEAN: CellWarning = { issues: [], incompleteTos: 0 }
+export const CLEAN: CellWarning = { issues: [], incompleteTos: 0, revenueMissingTos: 0 }
