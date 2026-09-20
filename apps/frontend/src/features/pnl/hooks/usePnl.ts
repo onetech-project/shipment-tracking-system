@@ -353,22 +353,33 @@ export function usePnlCycles(basis: DateBasis = DEFAULT_DATE_BASIS) {
   })
 }
 
-export function usePnlSummary(filter: PnlFilter | undefined) {
+export function usePnlSummary(filter: PnlFilter | undefined, scope?: PnlRouteFilter) {
   return useQuery<PnlSummary>({
-    queryKey: ['pnl', 'summary', filter],
+    queryKey: ['pnl', 'summary', filter, scope],
     queryFn: () =>
-      apiClient.get('/pnl/summary', { params: filterToParams(filter!) }).then((r) => r.data),
+      apiClient
+        .get('/pnl/summary', {
+          params: { ...filterToParams(filter!), ...routeToParams(scope) },
+          // `vendor` repeats. axios's default array serializer writes `vendor[]=ESP`, which qs
+          // parses into a key named 'vendor[]' that no handler reads — the filter would vanish
+          // with no error anywhere. Scalar params are unaffected by this setting.
+          paramsSerializer: { indexes: null },
+        })
+        .then((r) => r.data),
     enabled: !!filter,
     staleTime: 60 * 1000,
   })
 }
 
-export function usePnlDailyMargin(filter: PnlFilter | undefined) {
+export function usePnlDailyMargin(filter: PnlFilter | undefined, scope?: PnlRouteFilter) {
   return useQuery<PnlDailyMarginItem[]>({
-    queryKey: ['pnl', 'daily-margin', filter],
+    queryKey: ['pnl', 'daily-margin', filter, scope],
     queryFn: () =>
       apiClient
-        .get('/pnl/daily-margin', { params: filterToParams(filter!) })
+        .get('/pnl/daily-margin', {
+          params: { ...filterToParams(filter!), ...routeToParams(scope) },
+          paramsSerializer: { indexes: null },
+        })
         .then((r) => r.data),
     enabled: !!filter,
     staleTime: 60 * 1000,
@@ -452,84 +463,125 @@ export function usePnlDataQualitySummary() {
   })
 }
 
-export function usePnlRevenueByRoute(filter: PnlFilter | undefined) {
+export function usePnlRevenueByRoute(filter: PnlFilter | undefined, scope?: PnlRouteFilter) {
   return useQuery<PnlRevenueByRouteItem[]>({
-    queryKey: ['pnl', 'revenue-by-route', filter],
+    queryKey: ['pnl', 'revenue-by-route', filter, scope],
     queryFn: () =>
       apiClient
-        .get('/pnl/breakdown/revenue-by-route', { params: filterToParams(filter!) })
+        .get('/pnl/breakdown/revenue-by-route', {
+          params: { ...filterToParams(filter!), ...routeToParams(scope) },
+          paramsSerializer: { indexes: null },
+        })
         .then((r) => r.data),
     enabled: !!filter,
     staleTime: 60 * 1000,
   })
 }
 
-export function usePnlCostTotals(filter: PnlFilter | undefined) {
+export function usePnlCostTotals(
+  filter: PnlFilter | undefined,
+  enabled = true,
+  scope?: PnlRouteFilter,
+) {
   return useQuery<PnlCostTotals>({
-    queryKey: ['pnl', 'cost-totals', filter],
+    queryKey: ['pnl', 'cost-totals', filter, scope],
     queryFn: () =>
       apiClient
-        .get('/pnl/breakdown/cost-totals', { params: filterToParams(filter!) })
+        .get('/pnl/breakdown/cost-totals', {
+          params: { ...filterToParams(filter!), ...routeToParams(scope) },
+          paramsSerializer: { indexes: null },
+        })
         .then((r) => r.data),
-    enabled: !!filter,
+    enabled: !!filter && enabled,
     staleTime: 60 * 1000,
   })
 }
 
-export function usePnlCostByVendor(filter: PnlFilter | undefined, enabled = true) {
+export function usePnlCostByVendor(
+  filter: PnlFilter | undefined,
+  enabled = true,
+  scope?: PnlRouteFilter,
+) {
   return useQuery<PnlVendorCostItem[]>({
-    queryKey: ['pnl', 'cost-by-vendor', filter],
+    queryKey: ['pnl', 'cost-by-vendor', filter, scope],
     queryFn: () =>
       apiClient
-        .get('/pnl/breakdown/cost-by-vendor', { params: filterToParams(filter!) })
+        .get('/pnl/breakdown/cost-by-vendor', {
+          params: { ...filterToParams(filter!), ...routeToParams(scope) },
+          paramsSerializer: { indexes: null },
+        })
         .then((r) => r.data),
     enabled: !!filter && enabled,
     staleTime: 60 * 1000,
   })
 }
 
-export function usePnlCostByRa(filter: PnlFilter | undefined, enabled = true) {
+export function usePnlCostByRa(
+  filter: PnlFilter | undefined,
+  enabled = true,
+  scope?: PnlRouteFilter,
+) {
   return useQuery<PnlNamedCostItem[]>({
-    queryKey: ['pnl', 'cost-by-ra', filter],
+    queryKey: ['pnl', 'cost-by-ra', filter, scope],
     queryFn: () =>
       apiClient
-        .get('/pnl/breakdown/cost-by-ra', { params: filterToParams(filter!) })
+        .get('/pnl/breakdown/cost-by-ra', {
+          params: { ...filterToParams(filter!), ...routeToParams(scope) },
+          paramsSerializer: { indexes: null },
+        })
         .then((r) => r.data),
     enabled: !!filter && enabled,
     staleTime: 60 * 1000,
   })
 }
 
-export function usePnlCostBySgOut(filter: PnlFilter | undefined, enabled = true) {
+export function usePnlCostBySgOut(
+  filter: PnlFilter | undefined,
+  enabled = true,
+  scope?: PnlRouteFilter,
+) {
   return useQuery<PnlNamedCostItem[]>({
-    queryKey: ['pnl', 'cost-by-sg-out', filter],
+    queryKey: ['pnl', 'cost-by-sg-out', filter, scope],
     queryFn: () =>
       apiClient
-        .get('/pnl/breakdown/cost-by-sg-out', { params: filterToParams(filter!) })
+        .get('/pnl/breakdown/cost-by-sg-out', {
+          params: { ...filterToParams(filter!), ...routeToParams(scope) },
+          paramsSerializer: { indexes: null },
+        })
         .then((r) => r.data),
     enabled: !!filter && enabled,
     staleTime: 60 * 1000,
   })
 }
 
-export function usePnlCostBySgIn(filter: PnlFilter | undefined, enabled = true) {
+export function usePnlCostBySgIn(
+  filter: PnlFilter | undefined,
+  enabled = true,
+  scope?: PnlRouteFilter,
+) {
   return useQuery<PnlSgInRouteCostItem[]>({
-    queryKey: ['pnl', 'cost-by-sg-in', filter],
+    queryKey: ['pnl', 'cost-by-sg-in', filter, scope],
     queryFn: () =>
       apiClient
-        .get('/pnl/breakdown/cost-by-sg-in', { params: filterToParams(filter!) })
+        .get('/pnl/breakdown/cost-by-sg-in', {
+          params: { ...filterToParams(filter!), ...routeToParams(scope) },
+          paramsSerializer: { indexes: null },
+        })
         .then((r) => r.data),
     enabled: !!filter && enabled,
     staleTime: 60 * 1000,
   })
 }
 
-export function usePnlProfitByRoute(filter: PnlFilter | undefined) {
+export function usePnlProfitByRoute(filter: PnlFilter | undefined, scope?: PnlRouteFilter) {
   return useQuery<PnlProfitByRouteItem[]>({
-    queryKey: ['pnl', 'profit-by-route', filter],
+    queryKey: ['pnl', 'profit-by-route', filter, scope],
     queryFn: () =>
       apiClient
-        .get('/pnl/breakdown/profit-by-route', { params: filterToParams(filter!) })
+        .get('/pnl/breakdown/profit-by-route', {
+          params: { ...filterToParams(filter!), ...routeToParams(scope) },
+          paramsSerializer: { indexes: null },
+        })
         .then((r) => r.data),
     enabled: !!filter,
     staleTime: 60 * 1000,
