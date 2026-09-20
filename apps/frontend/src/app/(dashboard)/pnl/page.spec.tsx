@@ -42,13 +42,48 @@ const CELL_COLUMN: PnlDailyMatrixColumn = { origin: 'Jabo', originLabel: 'CGK', 
 const CELL_DATE = '2026-05-01'
 
 // A minimal stand-in for the real matrix table: one button that fires the same
-// onCellClick(column, date) callback a real body-cell click would.
+// onCellClick(column, date) callback a real body-cell click would, plus its OWN group prop echoed
+// back so a test can prove the Daily Report's group is not the Estimated tab's.
 jest.mock('@/features/pnl/components/PnlDailyMatrixView', () => ({
   PnlDailyMatrixView: ({
     onCellClick,
+    groupId,
+    onGroupChange,
   }: {
     onCellClick?: (column: PnlDailyMatrixColumn, date: string) => void
-  }) => <button onClick={() => onCellClick?.(CELL_COLUMN, CELL_DATE)}>Fake cell</button>,
+    groupId: string | undefined
+    onGroupChange: (id: string | undefined) => void
+  }) => (
+    <div>
+      <button onClick={() => onCellClick?.(CELL_COLUMN, CELL_DATE)}>Fake cell</button>
+      <div data-testid="daily-group">{String(groupId)}</div>
+      <button onClick={() => onGroupChange('gDaily')}>Pick daily group</button>
+    </div>
+  ),
+}))
+
+// Renders the scope and group it received as text, plus buttons that drive the same callbacks the
+// real filter bar's controls would — the page owns this state, so the mock has to echo it back or
+// the lifted state would be unobservable from this spec.
+jest.mock('@/features/pnl/components/PnlEstimateFilterBar', () => ({
+  PnlEstimateFilterBar: ({
+    scope,
+    groupId,
+    onScopeChange,
+    onGroupChange,
+  }: {
+    scope: Record<string, unknown>
+    groupId: string | undefined
+    onScopeChange: (next: Record<string, unknown>) => void
+    onGroupChange: (id: string | undefined) => void
+  }) => (
+    <div>
+      <div data-testid="filter-bar-scope">{JSON.stringify(scope)}</div>
+      <div data-testid="filter-bar-group">{String(groupId)}</div>
+      <button onClick={() => onScopeChange({ vendors: ['ESP'] })}>Set vendor scope</button>
+      <button onClick={() => onGroupChange('g1')}>Pick group</button>
+    </div>
+  ),
 }))
 
 // Renders the route it received as text so the test can assert on it without reaching into props.
@@ -463,5 +498,103 @@ describe('PnlPage Vendor Comparison tab', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Analytics' }))
 
     expect(screen.getByTestId('analytics-scope')).toHaveTextContent('scope:routes')
+  })
+})
+
+describe('PnlPage estimated scope', () => {
+  beforeAll(() => {
+    // jsdom implements neither; the click handler calls scrollIntoView inside a rAF callback.
+    window.requestAnimationFrame = jest.fn()
+    Element.prototype.scrollIntoView = jest.fn()
+  })
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    ;(useRouter as jest.Mock).mockReturnValue({ replace: jest.fn() })
+    ;(usePnlCycles as jest.Mock).mockReturnValue({
+      data: ['2026-05-1H'],
+      isLoading: false,
+      isError: false,
+      refetch: jest.fn(),
+    })
+    ;(usePnlSummary as jest.Mock).mockReturnValue({
+      data: { label: '2026-05-1H' },
+      isLoading: false,
+      isError: false,
+      refetch: jest.fn(),
+    })
+  })
+
+  it('renders the filter bar above the drilldown', () => {
+    renderPage()
+    const bar = screen.getByTestId('filter-bar-scope')
+    const drilldown = screen.getByTestId('drilldown-route')
+    // Node.compareDocumentPosition: 4 means "follows". The filter narrows the cards and the chart
+    // now, so it has to be met before them, not after.
+    expect(bar.compareDocumentPosition(drilldown) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('hands the same scope to the filter bar and the drilldown', () => {
+    renderPage()
+    fireEvent.click(screen.getByText('Set vendor scope'))
+
+    expect(screen.getByTestId('filter-bar-scope')).toHaveTextContent('ESP')
+    expect(screen.getByTestId('drilldown-route')).toHaveTextContent('ESP')
+  })
+
+  it('clears the group when a cell click replaces the scope', () => {
+    renderPage()
+    fireEvent.click(screen.getByText('Pick group'))
+    expect(screen.getByTestId('filter-bar-group')).toHaveTextContent('g1')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Daily Report' }))
+    fireEvent.click(screen.getByText('Fake cell'))
+
+    // A cell click REPLACES the scope; leaving the old group on would silently widen it.
+    expect(screen.getByTestId('filter-bar-group')).toHaveTextContent('undefined')
+    expect(screen.getByTestId('drilldown-route')).toHaveTextContent('Tanjung Pinang')
+  })
+
+  it('keeps routes but drops dates when the period changes', () => {
+    renderPage()
+    fireEvent.click(screen.getByText('Set vendor scope'))
+    expect(screen.getByTestId('filter-bar-scope')).toHaveTextContent('ESP')
+
+    // Switching the DATE BASIS is a period change that (unlike Custom Range with no dates typed
+    // in) leaves `filter` defined, so the Estimated tab — and the filter bar mock inside it —
+    // stays mounted to observe.
+    fireEvent.change(screen.getByTitle('Date field used to assign the billing cycle / filter the range'), {
+      target: { value: 'atd_origin' },
+    })
+
+    // Only a date carries the old period; a vendor, a route and a group do not — the same reason
+    // routePicks and vendorPicks survive a period change.
+    expect(screen.getByTestId('filter-bar-scope')).toHaveTextContent('ESP')
+  })
+
+  it('drops a date that belonged to the old period', () => {
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Daily Report' }))
+    fireEvent.click(screen.getByText('Fake cell'))
+    expect(screen.getByTestId('drilldown-route')).toHaveTextContent('2026-05-01')
+
+    fireEvent.change(screen.getByTitle('Date field used to assign the billing cycle / filter the range'), {
+      target: { value: 'atd_origin' },
+    })
+    expect(screen.getByTestId('drilldown-route')).not.toHaveTextContent('2026-05-01')
+  })
+
+  it('gives the two tabs their own group, so one cannot move the other', () => {
+    renderPage()
+    fireEvent.click(screen.getByText('Pick group'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Daily Report' }))
+    expect(screen.getByTestId('daily-group')).toHaveTextContent('undefined')
+
+    fireEvent.click(screen.getByText('Pick daily group'))
+    expect(screen.getByTestId('daily-group')).toHaveTextContent('gDaily')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Estimated' }))
+    expect(screen.getByTestId('filter-bar-group')).toHaveTextContent('g1')
   })
 })

@@ -10,11 +10,12 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
-import { PnlFilter, usePnlDailyMargin } from '../hooks/usePnl'
+import { PnlFilter, PnlRouteFilter, usePnlDailyMargin } from '../hooks/usePnl'
 import { fmt } from '../utils/format'
 
 interface PnlDailyMarginChartProps {
   filter: PnlFilter
+  scope?: PnlRouteFilter
 }
 
 const formatDateLabel = (iso: string) => {
@@ -57,8 +58,8 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Toolti
   )
 }
 
-export function PnlDailyMarginChart({ filter }: PnlDailyMarginChartProps) {
-  const { data, isLoading, isError, refetch } = usePnlDailyMargin(filter)
+export function PnlDailyMarginChart({ filter, scope }: PnlDailyMarginChartProps) {
+  const { data, isLoading, isError, refetch } = usePnlDailyMargin(filter, scope)
   const hasAnyIncomplete = data?.some((d) => d.hasIncompleteCost) ?? false
 
   if (isError) {
