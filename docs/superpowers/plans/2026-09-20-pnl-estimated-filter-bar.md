@@ -3191,15 +3191,19 @@ export function PnlEstimateFilterBar({
   return (
     <div className="rounded-lg border bg-card">
       <div className="flex flex-wrap items-end gap-3 px-4 py-3">
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          Rute
+        {/* A div, not a label. MultiRouteFilter's trigger is a <button> with no aria-label, so
+            wrapping it in a <label> makes implicit label-association rename it to "Rute",
+            clobbering its own "All Routes" / "N routes" accessible name. The date inputs below
+            can stay <label>s because each carries an explicit aria-label, which wins. */}
+        <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+          <span>Rute</span>
           <MultiRouteFilter
             className="w-[260px]"
             routes={routeIndex.labels}
             selected={labelsForRoutes(picked, routeIndex)}
             onChange={setRoutes}
           />
-        </label>
+        </div>
 
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           Route Group
