@@ -34,7 +34,7 @@ function comparison(over: Partial<PnlVendorComparison> = {}): PnlVendorCompariso
           {
             revenue: 1000, cost: 600, margin: 385,
             costSmu: 400, costRa: 100, costSgOut: 50, costSgIn: 50,
-            incompleteTos: 0, issues: [],
+            incompleteTos: 0, revenueMissingTos: 0, issues: [],
           },
         ],
       },
@@ -46,7 +46,7 @@ function comparison(over: Partial<PnlVendorComparison> = {}): PnlVendorCompariso
         totalCostSmu: 400, totalCostRa: 100, totalCostSgOut: 50, totalCostSgIn: 50,
         routesWithData: 1,
         avgRevenuePerRoute: 1000, avgCostPerRoute: 600, avgMarginPerRoute: 385,
-        incompleteTos: 0, issues: [],
+        incompleteTos: 0, revenueMissingTos: 0, issues: [],
       },
     ],
     coverage: { revenueInColumns: 3020, revenuePeriod: 10000 },

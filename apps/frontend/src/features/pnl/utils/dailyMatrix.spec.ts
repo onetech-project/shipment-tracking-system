@@ -2,11 +2,14 @@ import { PnlDailyMatrix } from '../hooks/usePnl'
 import {
   formatDayLabel,
   groupOrigins,
+  offerableRoutes,
   routeFromCell,
   selectMatrixColumns,
   toMarginTable,
   toRevenueTable,
+  unionRoutes,
 } from './dailyMatrix'
+import { hasWarning } from './cellWarning'
 
 const matrix: PnlDailyMatrix = {
   columns: [
@@ -18,10 +21,13 @@ const matrix: PnlDailyMatrix = {
     {
       date: '2026-07-01',
       cells: [
-        { revenue: 1000, margin: 100, weight: 10, incompleteTos: 0, issues: [{ issue: 'revenue_missing', awbs: 1 }] },
+        {
+          revenue: 1000, margin: 100, weight: 10, incompleteTos: 0, revenueMissingTos: 0,
+          issues: [{ issue: 'revenue_missing', awbs: 1 }],
+        },
         null,
         {
-          revenue: 0, margin: -50, weight: 5, incompleteTos: 2,
+          revenue: 0, margin: -50, weight: 5, incompleteTos: 2, revenueMissingTos: 0,
           issues: [{ issue: 'no_booking', awbs: 2 }, { issue: 'revenue_missing', awbs: 1 }],
         },
       ],
@@ -32,22 +38,43 @@ const matrix: PnlDailyMatrix = {
     {
       totalRevenue: 1000, totalMargin: 100, totalWeight: 10,
       avgRevenuePerDay: 500, avgMarginPerDay: 50,
-      marginPct: 10, spacePerKg: 10, incompleteTos: 0,
+      marginPct: 10, spacePerKg: 10, incompleteTos: 0, revenueMissingTos: 0,
       issues: [{ issue: 'revenue_missing', awbs: 1 }],
     },
     {
       totalRevenue: 0, totalMargin: 0, totalWeight: 0,
       avgRevenuePerDay: 0, avgMarginPerDay: 0,
-      marginPct: null, spacePerKg: null, incompleteTos: 0, issues: [],
+      marginPct: null, spacePerKg: null, incompleteTos: 0, revenueMissingTos: 0, issues: [],
     },
     {
       totalRevenue: 0, totalMargin: -50, totalWeight: 5,
       avgRevenuePerDay: 0, avgMarginPerDay: -25,
-      marginPct: null, spacePerKg: -10, incompleteTos: 2,
+      marginPct: null, spacePerKg: -10, incompleteTos: 2, revenueMissingTos: 0,
       issues: [{ issue: 'no_booking', awbs: 3 }, { issue: 'revenue_missing', awbs: 1 }],
     },
   ],
   periodDays: 2,
+}
+
+// Every footer fixture above leaves revenueMissingTos at 0, so `f.revenueMissingTos ?? 0` in both
+// toRevenueTable (dailyMatrix.ts:80) and toMarginTable (dailyMatrix.ts:111) would return 0 whether
+// the mapping is correct or hardcoded to 0 — the field only ever varies on a CELL in this file. This
+// fixture sets it non-zero on a footer row and pairs it with incompleteTos and a cost issue, so the
+// two tables' different treatment of the same footer row is visible: revenueWarning() keeps the
+// count but drops the cost issue and zeroes incompleteTos, while toMarginTable keeps all three
+// unfiltered because margin is spoiled by a missing revenue AND a missing cost alike.
+const missingRevenueFooter: PnlDailyMatrix = {
+  ...matrix,
+  footer: [
+    {
+      ...matrix.footer[0],
+      incompleteTos: 7,
+      revenueMissingTos: 4,
+      issues: [{ issue: 'no_booking', awbs: 5 }],
+    },
+    matrix.footer[1],
+    matrix.footer[2],
+  ],
 }
 
 describe('groupOrigins', () => {
@@ -98,12 +125,14 @@ describe('toRevenueTable', () => {
     expect(model.warnings[0][2]).toEqual({
       issues: [{ issue: 'revenue_missing', awbs: 1 }],
       incompleteTos: 0,
+      revenueMissingTos: 0,
     })
     expect(model.warnings[0][0]).toEqual({
       issues: [{ issue: 'revenue_missing', awbs: 1 }],
       incompleteTos: 0,
+      revenueMissingTos: 0,
     })
-    expect(model.warnings[0][1]).toEqual({ issues: [], incompleteTos: 0 })
+    expect(model.warnings[0][1]).toEqual({ issues: [], incompleteTos: 0, revenueMissingTos: 0 })
     expect(model.highlightNegative).toBe(false)
   })
 
@@ -114,30 +143,81 @@ describe('toRevenueTable', () => {
         {
           date: '2026-07-01',
           cells: [
-            { revenue: 500, margin: 10, weight: 1, incompleteTos: 3, issues: [{ issue: 'smu_rate_missing', awbs: 2 }] },
+            {
+              revenue: 500, margin: 10, weight: 1, incompleteTos: 3, revenueMissingTos: 0,
+              issues: [{ issue: 'smu_rate_missing', awbs: 2 }],
+            },
             null,
             null,
           ],
         },
       ],
     }
-    expect(toRevenueTable(costOnly).warnings[0][0]).toEqual({ issues: [], incompleteTos: 0 })
+    expect(toRevenueTable(costOnly).warnings[0][0]).toEqual({
+      issues: [],
+      incompleteTos: 0,
+      revenueMissingTos: 0,
+    })
   })
 
   it('gives an absent cell a clean warning rather than undefined', () => {
     // Row 2 has no shipments at all. A missing entry here would make every consumer null-check.
     expect(toRevenueTable(matrix).warnings[1]).toEqual([
-      { issues: [], incompleteTos: 0 },
-      { issues: [], incompleteTos: 0 },
-      { issues: [], incompleteTos: 0 },
+      { issues: [], incompleteTos: 0, revenueMissingTos: 0 },
+      { issues: [], incompleteTos: 0, revenueMissingTos: 0 },
+      { issues: [], incompleteTos: 0, revenueMissingTos: 0 },
     ])
   })
 
   it('scopes both footer rows to revenue too, since Avg / Day divides the same total', () => {
     const [total, avg] = toRevenueTable(matrix).footerRows
-    const expectedWarning = { issues: [{ issue: 'revenue_missing', awbs: 1 }], incompleteTos: 0 }
+    const expectedWarning = {
+      issues: [{ issue: 'revenue_missing', awbs: 1 }],
+      incompleteTos: 0,
+      revenueMissingTos: 0,
+    }
     expect(total.warnings?.[2]).toEqual(expectedWarning)
     expect(avg.warnings?.[2]).toEqual(expectedWarning)
+  })
+
+  it('warns a revenue cell whose TOs have no revenue, even when the issue names a cost cause', () => {
+    // The exact case that made Revenue cells stop going yellow: a TO with no rate_spx has no
+    // revenue AND no cost fallback, and v_pnl_to.issue ranks the cost cause first.
+    const revenueMissing: PnlDailyMatrix = {
+      ...matrix,
+      rows: [
+        {
+          date: '2026-07-01',
+          cells: [
+            {
+              revenue: 0, margin: 0, weight: 0, incompleteTos: 1, revenueMissingTos: 2,
+              issues: [{ issue: 'no_booking', awbs: 1 }],
+            },
+            null,
+            null,
+          ],
+        },
+      ],
+    }
+
+    const model = toRevenueTable(revenueMissing)
+    const warning = model.warnings[0][0]
+
+    expect(hasWarning(warning)).toBe(true)
+    expect(warning.revenueMissingTos).toBe(2)
+    // Still no cost noise on this table.
+    expect(warning.issues).toEqual([])
+    expect(warning.incompleteTos).toBe(0)
+  })
+
+  it('pins the footer revenue-missing count through to the table, not hardcoded to 0', () => {
+    // Kills a mutation of dailyMatrix.ts:80 (`f.revenueMissingTos ?? 0` -> `0`): the count keeps
+    // flowing through revenueWarning(), while the cost issue and incompleteTos it arrived with are
+    // scrubbed, exactly like a cell warning would be.
+    const model = toRevenueTable(missingRevenueFooter)
+    const expectedWarning = { issues: [], incompleteTos: 0, revenueMissingTos: 4 }
+    expect(model.footerRows[0].warnings?.[0]).toEqual(expectedWarning)
+    expect(model.footerRows[1].warnings?.[0]).toEqual(expectedWarning)
   })
 })
 
@@ -181,10 +261,12 @@ describe('toMarginTable', () => {
     expect(model.warnings[0][2]).toEqual({
       issues: [{ issue: 'no_booking', awbs: 2 }, { issue: 'revenue_missing', awbs: 1 }],
       incompleteTos: 2,
+      revenueMissingTos: 0,
     })
     expect(model.footerRows[0].warnings?.[2]).toEqual({
       issues: [{ issue: 'no_booking', awbs: 3 }, { issue: 'revenue_missing', awbs: 1 }],
       incompleteTos: 2,
+      revenueMissingTos: 0,
     })
     expect(model.highlightNegative).toBe(true)
   })
@@ -194,6 +276,7 @@ describe('toMarginTable', () => {
     const expectedWarning = {
       issues: [{ issue: 'no_booking', awbs: 3 }, { issue: 'revenue_missing', awbs: 1 }],
       incompleteTos: 2,
+      revenueMissingTos: 0,
     }
     // Avg / Day, % Margin and Space per Kg all divide totalMargin, so they inherit its warning.
     expect(total.warnings?.[2]).toEqual(expectedWarning)
@@ -202,6 +285,23 @@ describe('toMarginTable', () => {
     expect(space.warnings?.[2]).toEqual(expectedWarning)
     // Total Tonase is gross weight: it never touches cost, so it deliberately stays clean.
     expect(tonase.warnings).toBeUndefined()
+  })
+
+  it('pins the footer revenue-missing count through unfiltered, unlike the revenue table', () => {
+    // Kills a mutation of dailyMatrix.ts:111 (`f.revenueMissingTos ?? 0` -> `0`). Same fixture as
+    // toRevenueTable's equivalent test, but here the whole warning survives unfiltered — margin is
+    // spoiled by a missing revenue and a missing cost alike — which must differ from that table's
+    // filtered result.
+    const model = toMarginTable(missingRevenueFooter)
+    const expectedWarning = {
+      issues: [{ issue: 'no_booking', awbs: 5 }],
+      incompleteTos: 7,
+      revenueMissingTos: 4,
+    }
+    expect(model.footerRows[0].warnings?.[0]).toEqual(expectedWarning)
+    expect(model.footerRows[1].warnings?.[0]).toEqual(expectedWarning)
+    expect(model.footerRows[2].warnings?.[0]).toEqual(expectedWarning)
+    expect(model.footerRows[4].warnings?.[0]).toEqual(expectedWarning)
   })
 })
 
@@ -260,7 +360,7 @@ describe('selectMatrixColumns', () => {
       {
         totalRevenue: 0, totalMargin: 0, totalWeight: 0,
         avgRevenuePerDay: 0, avgMarginPerDay: 0,
-        marginPct: null, spacePerKg: null, incompleteTos: 0, issues: [],
+        marginPct: null, spacePerKg: null, incompleteTos: 0, revenueMissingTos: 0, issues: [],
       },
     ])
   })
@@ -297,5 +397,64 @@ describe('selectMatrixColumns', () => {
     const before = JSON.stringify(matrix)
     selectMatrixColumns(matrix, [subPontianak])
     expect(JSON.stringify(matrix)).toBe(before)
+  })
+})
+
+describe('unionRoutes', () => {
+  const jaboAceh = { origin: 'Jabo', dest: 'Aceh' }
+  const jaboBatam = { origin: 'Jabo', dest: 'Batam' }
+  const subPtk = { origin: 'Surabaya', dest: 'Pontianak' }
+
+  it('returns the picked routes when no group is chosen', () => {
+    expect(unionRoutes([jaboAceh], [])).toEqual([jaboAceh])
+  })
+
+  it('returns the group members when nothing was picked by hand', () => {
+    expect(unionRoutes([], [jaboAceh, jaboBatam])).toEqual([jaboAceh, jaboBatam])
+  })
+
+  it('puts the hand-picked routes first, then the group members', () => {
+    expect(unionRoutes([subPtk], [jaboAceh])).toEqual([subPtk, jaboAceh])
+  })
+
+  it('counts a route on both sides exactly once', () => {
+    // Ticking a route and then picking a group that contains it must not double it: the pick is
+    // deliberately kept in scope so that changing group later restores it ticked.
+    expect(unionRoutes([jaboAceh], [jaboAceh, jaboBatam])).toEqual([jaboAceh, jaboBatam])
+  })
+
+  it('is empty only when both sides are', () => {
+    expect(unionRoutes([], [])).toEqual([])
+  })
+})
+
+describe('offerableRoutes', () => {
+  const all = [
+    { origin: 'Jabo', dest: 'Aceh' },
+    { origin: 'Jabo', dest: 'Batam' },
+    { origin: 'Surabaya', dest: 'Pontianak' },
+  ]
+
+  it('offers everything when no group is chosen', () => {
+    expect(offerableRoutes(all, [])).toEqual(all)
+  })
+
+  it('withholds the routes the chosen group already covers', () => {
+    // A checkbox that changes nothing is worse than one that is absent: unticking a route the
+    // group still supplies would leave it filtered anyway.
+    expect(offerableRoutes(all, [{ origin: 'Jabo', dest: 'Aceh' }])).toEqual([
+      { origin: 'Jabo', dest: 'Batam' },
+      { origin: 'Surabaya', dest: 'Pontianak' },
+    ])
+  })
+
+  it('ignores a group member the list does not carry', () => {
+    // The Estimated tab lists only pairs that have flown, while a group is built from the master,
+    // so a group can legitimately name a route this dropdown never offered.
+    expect(offerableRoutes(all, [{ origin: 'Jabo', dest: 'Manokwari' }])).toEqual(all)
+  })
+
+  it('can withhold everything', () => {
+    expect(offerableRoutes(all, all)).toEqual([])
   })
 })

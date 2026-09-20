@@ -47,6 +47,97 @@ describe('PnlService', () => {
         grossMarginPct: (925000 / 4925000) * 100,
       })
     })
+
+    it('narrows to the scoped routes at TO grain', async () => {
+      dataSource.query.mockResolvedValueOnce([{
+        total_tos: '4', total_awbs: '1',
+        total_revenue: '1000', total_discount: '0', total_cost: '400',
+      }])
+
+      await service.getSummary('2026-05-1H', undefined, undefined, undefined, {
+        routes: [{ origin: 'Jabo', dest: 'Denpasar' }],
+      })
+
+      const [sql, params] = dataSource.query.mock.calls[0]
+      expect(sql.replace(/\s+/g, ' ')).toContain(
+        '(origin_station, dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
+      )
+      expect(params).toEqual(['2026-05-1H', ['Jabo'], ['Denpasar']])
+    })
+
+    it('sends exactly the query it sent before scopes existed when none is given', async () => {
+      dataSource.query.mockResolvedValueOnce([{
+        total_tos: '1', total_awbs: '1',
+        total_revenue: '1', total_discount: '0', total_cost: '1',
+      }])
+
+      await service.getSummary('2026-05-1H')
+
+      const [sql, params] = dataSource.query.mock.calls[0]
+      expect(sql).not.toContain('UNNEST')
+      expect(sql).not.toContain('vendor = ANY')
+      expect(params).toEqual(['2026-05-1H'])
+    })
+
+    it('binds scope params after the range-mode period params', async () => {
+      dataSource.query.mockResolvedValueOnce([{
+        total_tos: '1', total_awbs: '1',
+        total_revenue: '1', total_discount: '0', total_cost: '1',
+      }])
+
+      await service.getSummary(undefined, '2026-05-01', '2026-05-31', undefined, {
+        routes: [{ origin: 'Jabo', dest: 'Aceh' }],
+      })
+
+      const [sql, params] = dataSource.query.mock.calls[0]
+      // Range mode binds $1 and $2 for the period before any scope param, so the scope lands at
+      // $3/$4. Every other scoped test here runs in cycle mode, where a boundSoFar hardcoded to 1
+      // would be indistinguishable from the correct params.length.
+      expect(sql.replace(/\s+/g, ' ')).toContain(
+        '(origin_station, dest_station) IN (SELECT * FROM UNNEST($3::text[], $4::text[]))',
+      )
+      expect(params).toEqual(['2026-05-01', '2026-05-31', ['Jabo'], ['Aceh']])
+    })
+  })
+
+  describe('getDailyMargin', () => {
+    it('narrows to the scoped vendors', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.getDailyMargin('2026-05-1H', undefined, undefined, undefined, {
+        vendors: ['ESP'],
+      })
+
+      const [sql, params] = dataSource.query.mock.calls[0]
+      expect(sql).toContain('vendor = ANY($2::text[])')
+      expect(params).toEqual(['2026-05-1H', ['ESP']])
+    })
+
+    it('keeps its own "date is not null" guard alongside the scope', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.getDailyMargin('2026-05-1H', undefined, undefined, undefined, {
+        dateFrom: '2026-05-02',
+      })
+
+      const sql = dataSource.query.mock.calls[0][0] as string
+      // The chart groups by day, so a row with no date on the active basis has nowhere to go and
+      // must stay excluded regardless of what the scope says.
+      expect(sql).toContain('shipment_date IS NOT NULL')
+      expect(sql).toContain('shipment_date >= $2::DATE')
+    })
+
+    it('binds scope params after the range-mode period params', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.getDailyMargin(undefined, '2026-05-01', '2026-05-31', undefined, {
+        vendors: ['ESP'],
+      })
+
+      const [sql, params] = dataSource.query.mock.calls[0]
+      expect(sql).toContain('vendor = ANY($3::text[])')
+      expect(params).toEqual(['2026-05-01', '2026-05-31', ['ESP']])
+    })
   })
 
   describe('getCycles', () => {
@@ -182,12 +273,121 @@ describe('PnlService', () => {
   })
 
   describe('getAwbDrilldown', () => {
+    // Concrete expected values, not `revenue - cost === gp`: after Step 5 the mapper DERIVES gp as
+    // rev - totalCost, so asserting that relation here would be true by construction and would
+    // pass even if both numbers were wrong. Task 15 checks the relation against real rows, where
+    // it is not a tautology.
+    it('nets the discount off revenue and reports cost and profit against it', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([
+          {
+            awb: '888-9', vendor: 'ESP', airline: 'Citilink CGK',
+            to_count: '2', costed_tos: '2', sum_gw: '60', chwt: '60',
+            total_revenue: '1000', total_discount: '40',
+            cost_smu: '300', cost_ra: '100', cost_sg_out: '50', cost_sg_in: '25',
+            total_cost: '475',
+            has_null_cost: false, issue_rank: null,
+          },
+        ])
+        .mockResolvedValueOnce([{ total: '1' }])
+
+      const { data } = await service.getAwbDrilldown(1, 50, '2026-05-1H')
+      const row = data[0]
+      expect(row.totalRevenue).toBe(960) // 1000 gross - 40 discount
+      expect(row.totalCost).toBe(475)
+      expect(row.grossProfit).toBe(485) // 960 - 475, not 1000 - 475
+      expect(row.grossMarginPct).toBeCloseTo((485 / 960) * 100, 6)
+    })
+
+    it('passes the four cost components through as the row reports them', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([
+          {
+            awb: '888-6', vendor: 'ESP', airline: 'Citilink CGK',
+            to_count: '2', costed_tos: '2', sum_gw: '60', chwt: '60',
+            total_revenue: '1000', total_discount: '0',
+            cost_smu: '300', cost_ra: '100', cost_sg_out: '50', cost_sg_in: '25',
+            total_cost: '475',
+            has_null_cost: false, issue_rank: null,
+          },
+        ])
+        .mockResolvedValueOnce([{ total: '1' }])
+
+      const { data } = await service.getAwbDrilldown(1, 50, '2026-05-1H')
+      const row = data[0]
+      expect([row.costSmu, row.costRa, row.costSgOut, row.costSgIn]).toEqual([300, 100, 50, 25])
+    })
+
+    it('prorates every AWB-grain cost by weight_share instead of taking the whole AWB', async () => {
+      dataSource.query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: '0' }])
+      await service.getAwbDrilldown(1, 50, '2026-05-1H')
+
+      const sql = (dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')
+      // costSplitSql's shape. MAX(cost_*_awb) charged the whole AWB's cost against whichever
+      // subset of its TOs the filter left standing.
+      expect(sql).toContain('SUM(v.cost_smu_awb * v.weight_share)')
+      expect(sql).toContain('SUM(v.cost_ra_awb * v.weight_share)')
+      expect(sql).toContain('SUM(v.cost_sg_out_awb * v.weight_share)')
+      expect(sql).not.toContain('MAX(cost_smu_awb)')
+      expect(sql).not.toContain('MAX(cost_total_awb)')
+      // SG In already carries the share inside the view; multiplying again would square it.
+      expect(sql).toContain('SUM(COALESCE(v.cost_sg_in_to, 0))')
+    })
+
+    it('derives hasNullCost from the rows in scope, not from the whole AWB', async () => {
+      dataSource.query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: '0' }])
+      await service.getAwbDrilldown(1, 50, '2026-05-1H')
+
+      const sql = (dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')
+      expect(sql).toContain('BOOL_OR(v.cost_to IS NULL)')
+      expect(sql).not.toContain('MAX(cost_total_awb) IS NULL')
+    })
+
+    it('counts uncosted TOs revenue against the cost that could be computed', async () => {
+      // 2 of 3 TOs costed. SUM(gross_profit_to) would have skipped the third TO's revenue too,
+      // so the row would read Revenue 1000, Cost 300, GP 600 — three numbers that do not agree.
+      dataSource.query
+        .mockResolvedValueOnce([
+          {
+            awb: '888-8', vendor: 'ESP', airline: 'Citilink CGK',
+            to_count: '3', costed_tos: '2', sum_gw: '90', chwt: '90',
+            total_revenue: '1000', total_discount: '0',
+            cost_smu: '200', cost_ra: '60', cost_sg_out: '30', cost_sg_in: '10',
+            total_cost: '300', has_null_cost: true, issue_rank: '2',
+          },
+        ])
+        .mockResolvedValueOnce([{ total: '1' }])
+
+      const { data } = await service.getAwbDrilldown(1, 50, '2026-05-1H')
+      expect(data[0].grossProfit).toBe(700)
+      expect(data[0].totalRevenue - data[0].totalCost!).toBe(data[0].grossProfit)
+    })
+
+    it('reports no cost at all as NULL, never as a confident zero', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([
+          {
+            awb: '888-7', vendor: null, airline: null,
+            to_count: '2', costed_tos: '0', sum_gw: '20', chwt: null,
+            total_revenue: '500', total_discount: '0',
+            cost_smu: '0', cost_ra: '0', cost_sg_out: '0', cost_sg_in: '0',
+            total_cost: '0', has_null_cost: true, issue_rank: '1',
+          },
+        ])
+        .mockResolvedValueOnce([{ total: '1' }])
+
+      const { data } = await service.getAwbDrilldown(1, 50, '2026-05-1H')
+      expect(data[0].totalCost).toBeNull()
+      expect(data[0].grossProfit).toBeNull()
+      expect(data[0].grossMarginPct).toBeNull()
+    })
+
     it('maps the aggregated issue_rank back to the most-severe reason', async () => {
       dataSource.query
         .mockResolvedValueOnce([
           {
             awb: '888-1', vendor: 'ESP', airline: 'Citilink CGK',
-            to_count: '3', sum_gw: '100', total_revenue: '1000', total_discount: '15',
+            to_count: '3', costed_tos: '0', sum_gw: '100', total_revenue: '1000', total_discount: '15',
             cost_smu: null, cost_ra: '200', cost_sg_out: '300', cost_sg_in: '50',
             total_cost: null, gross_profit: '0', has_null_cost: true, issue_rank: '2',
           },
@@ -206,7 +406,7 @@ describe('PnlService', () => {
         .mockResolvedValueOnce([
           {
             awb: '888-2', vendor: 'ESP', airline: 'Citilink CGK',
-            to_count: '1', sum_gw: '10', chwt: '12.5', total_revenue: '100', total_discount: '1.5',
+            to_count: '1', costed_tos: '1', sum_gw: '10', chwt: '12.5', total_revenue: '100', total_discount: '1.5',
             cost_smu: '10', cost_ra: '5', cost_sg_out: '5', cost_sg_in: '1',
             total_cost: '21', gross_profit: '77.5', has_null_cost: false, issue_rank: null,
           },
@@ -223,7 +423,7 @@ describe('PnlService', () => {
         .mockResolvedValueOnce([
           {
             awb: '888-3', vendor: 'ESP', airline: 'Citilink CGK',
-            to_count: '1', sum_gw: '10', chwt: null, total_revenue: '100', total_discount: '1.5',
+            to_count: '1', costed_tos: '1', sum_gw: '10', chwt: null, total_revenue: '100', total_discount: '1.5',
             cost_smu: '10', cost_ra: '5', cost_sg_out: '5', cost_sg_in: '1',
             total_cost: '21', gross_profit: '77.5', has_null_cost: false, issue_rank: null,
           },
@@ -234,41 +434,39 @@ describe('PnlService', () => {
       expect(data[0].chwt).toBeNull()
     })
 
-    // The route filter picks which AWBs appear; it must never shrink the set of TOs aggregated for
-    // a chosen AWB, because cost columns are MAX(cost_*_awb) over the whole AWB.
+    // The scope filter narrows at TO grain: the cost columns are prorated by weight_share, so
+    // summing only the rows in scope is correct. It used to be an AWB-level EXISTS, which was
+    // required back when those columns were MAX(cost_*_awb).
     function mockEmptyPage() {
       dataSource.query
         .mockResolvedValueOnce([])
         .mockResolvedValueOnce([{ total: '0' }])
     }
 
-    it('assembles no EXISTS clause when no route field is given', async () => {
+    it('adds no scope clause at all when no route field is given', async () => {
       mockEmptyPage()
       await service.getAwbDrilldown(1, 50, '2026-04-2H')
       const [sql, params] = dataSource.query.mock.calls[0]
       expect(sql).not.toContain('EXISTS')
+      expect(sql).not.toContain('UNNEST')
       expect(params).toEqual(['2026-04-2H', 50, 0])
       const [countSql, countParams] = dataSource.query.mock.calls[1]
-      expect(countSql).not.toContain('EXISTS')
+      expect(countSql).not.toContain('UNNEST')
       expect(countParams).toEqual(['2026-04-2H'])
     })
 
-    it('filters by a route pair through an EXISTS semi-join on the same AWB', async () => {
+    it('filters by a route pair directly in WHERE, at TO grain', async () => {
       mockEmptyPage()
       await service.getAwbDrilldown(1, 50, '2026-04-2H', undefined, undefined, undefined, {
         routes: [{ origin: 'Jabo', dest: 'Aceh' }],
       })
       const [sql, params] = dataSource.query.mock.calls[0]
-      // Pin the full head, not just a substring, so a mutation to `NOT EXISTS` is caught.
-      expect(sql).toContain('AND EXISTS (')
-      expect(sql).not.toContain('NOT EXISTS')
-      expect(sql).toContain('m.awb = v.awb')
-      expect(sql).toContain(
-        '(m.origin_station, m.dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
+      // No semi-join any more: the cost columns are prorated, so out-of-scope TOs must not be
+      // summed at all — which is precisely what an EXISTS would have let happen.
+      expect(sql).not.toContain('EXISTS')
+      expect(sql.replace(/\s+/g, ' ')).toContain(
+        '(origin_station, dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
       )
-      // The period filter is re-applied inside the subquery, reusing $1 rather than rebinding it.
-      expect(sql).toContain('m.cycle_date = $1')
-      // The outer filter runs against the aliased view, not the bare v_pnl_to columns.
       expect(sql).toContain('v.cycle_date = $1')
       expect(params).toEqual(['2026-04-2H', ['Jabo'], ['Aceh'], 50, 0])
     })
@@ -281,11 +479,11 @@ describe('PnlService', () => {
         dateTo: '2026-05-01',
       })
       const [sql, params] = dataSource.query.mock.calls[0]
-      expect(sql).toContain(
-        '(m.origin_station, m.dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
+      expect(sql.replace(/\s+/g, ' ')).toContain(
+        '(origin_station, dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
       )
-      expect(sql).toContain('m.shipment_date >= $4::DATE')
-      expect(sql).toContain("m.shipment_date < ($5::DATE + INTERVAL '1 day')")
+      expect(sql).toContain('v.shipment_date >= $4::DATE')
+      expect(sql).toContain("v.shipment_date < ($5::DATE + INTERVAL '1 day')")
       expect(params).toEqual([
         '2026-04-2H',
         ['Jabo'],
@@ -305,8 +503,8 @@ describe('PnlService', () => {
       const [sql, params] = dataSource.query.mock.calls[0]
       // Range mode binds two params ($1, $2) for the outer filter before any route params, so the
       // route conditions must land at $3/$4, not $2/$3 (which the cycle-mode-only offset would give).
-      expect(sql).toContain(
-        '(m.origin_station, m.dest_station) IN (SELECT * FROM UNNEST($3::text[], $4::text[]))',
+      expect(sql.replace(/\s+/g, ' ')).toContain(
+        '(origin_station, dest_station) IN (SELECT * FROM UNNEST($3::text[], $4::text[]))',
       )
       expect(sql).toContain('LIMIT $5 OFFSET $6')
       expect(params).toEqual(['2026-05-01', '2026-05-31', ['Jabo'], ['Aceh'], 50, 0])
@@ -325,7 +523,7 @@ describe('PnlService', () => {
       const [sql, params] = dataSource.query.mock.calls[0]
       const normalized = (sql as string).replace(/\s+/g, ' ')
       expect(normalized).toContain(
-        '(m.origin_station, m.dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
+        '(origin_station, dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
       )
       // Two parallel arrays, not an interleaved list: a flattened list would silently pair
       // Denpasar with Surabaya.
@@ -338,18 +536,7 @@ describe('PnlService', () => {
       ])
     })
 
-    it('still narrows AWBs by EXISTS so cost stays whole-AWB', async () => {
-      dataSource.query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: '0' }])
-
-      await service.getAwbDrilldown(1, 50, '2026-04-2H', undefined, undefined, undefined, {
-        routes: [{ origin: 'Jabo', dest: 'Aceh' }],
-      })
-
-      const normalized = (dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')
-      expect(normalized).toContain('AND EXISTS ( SELECT 1 FROM v_pnl_to m WHERE m.awb = v.awb')
-    })
-
-    it('filters by vendor in the outer predicate, not inside the route EXISTS', async () => {
+    it('filters by vendor in the same WHERE as everything else', async () => {
       dataSource.query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: '0' }])
 
       await service.getAwbDrilldown(1, 50, '2026-05-1H', undefined, undefined, undefined, {
@@ -358,14 +545,11 @@ describe('PnlService', () => {
       })
 
       const dataSql = (dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')
-      // The outer alias is `v`. Inside the EXISTS the alias is `m`, and a vendor predicate there
-      // would only decide WHICH AWBs are listed while the outer aggregate still summed every
-      // vendor's TOs — a third question nobody asked.
-      expect(dataSql).toContain('AND v.vendor = ANY(')
+      // Vendor used to sit in the outer predicate while route sat inside an EXISTS, purely
+      // because the two had different grain. They no longer do.
+      expect(dataSql).toContain('vendor = ANY(')
       expect(dataSql).not.toContain('m.vendor')
-
-      const dataParams = dataSource.query.mock.calls[0][1] as unknown[]
-      expect(dataParams).toContain(dataParams.find((p) => Array.isArray(p) && p[0] === 'ESP'))
+      expect(dataSql).not.toContain('EXISTS')
     })
 
     it('applies the same vendor predicate to the count query, so paging stays consistent', async () => {
@@ -376,7 +560,7 @@ describe('PnlService', () => {
       })
 
       const countSql = (dataSource.query.mock.calls[1][0] as string).replace(/\s+/g, ' ')
-      expect(countSql).toContain('AND v.vendor = ANY(')
+      expect(countSql).toContain('vendor = ANY(')
     })
 
     it('leaves the query untouched when no vendor is given', async () => {
@@ -387,7 +571,7 @@ describe('PnlService', () => {
       })
 
       const dataSql = dataSource.query.mock.calls[0][0] as string
-      expect(dataSql).not.toContain('v.vendor = ANY')
+      expect(dataSql).not.toContain('vendor = ANY')
     })
 
     it('emits no route condition at all when no routes are selected', async () => {
@@ -397,11 +581,11 @@ describe('PnlService', () => {
         routes: [],
       })
 
-      expect(dataSource.query.mock.calls[0][0]).not.toContain('EXISTS')
+      expect(dataSource.query.mock.calls[0][0]).not.toContain('UNNEST')
       expect(dataSource.query.mock.calls[0][1]).toEqual(['2026-04-2H', 50, 0])
     })
 
-    it('combines routes with the date window in one EXISTS', async () => {
+    it('combines routes with the date window in one WHERE', async () => {
       dataSource.query.mockResolvedValueOnce([]).mockResolvedValueOnce([{ total: '0' }])
 
       await service.getAwbDrilldown(1, 50, '2026-04-2H', undefined, undefined, undefined, {
@@ -422,13 +606,13 @@ describe('PnlService', () => {
       ])
     })
 
-    it('uses the date column of the selected basis inside the subquery', async () => {
+    it('uses the date column of the selected basis', async () => {
       mockEmptyPage()
       await service.getAwbDrilldown(1, 50, '2026-04-2H', undefined, undefined, 'atd_origin', {
         dateFrom: '2026-05-01',
       })
       const [sql] = dataSource.query.mock.calls[0]
-      expect(sql).toContain('m.date_atd >= $2::DATE')
+      expect(sql).toContain('v.date_atd >= $2::DATE')
     })
 
     it('applies the identical WHERE clause to the count query so paging matches', async () => {
@@ -438,8 +622,8 @@ describe('PnlService', () => {
       })
       const [countSql, countParams] = dataSource.query.mock.calls[1]
       expect(countSql).toContain('COUNT(DISTINCT awb)')
-      expect(countSql).toContain(
-        '(m.origin_station, m.dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
+      expect(countSql.replace(/\s+/g, ' ')).toContain(
+        '(origin_station, dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
       )
       // No LIMIT/OFFSET params on the count query.
       expect(countParams).toEqual(['2026-04-2H', ['Jabo'], ['Aceh']])
@@ -450,7 +634,7 @@ describe('PnlService', () => {
         .mockResolvedValueOnce([
           {
             awb: '888-4', vendor: 'ESP', airline: 'Citilink CGK',
-            to_count: '2', sum_gw: '20', chwt: '25', total_revenue: '200', total_discount: '3',
+            to_count: '2', costed_tos: '2', sum_gw: '20', chwt: '25', total_revenue: '200', total_discount: '3',
             cost_smu: '10', cost_ra: '5', cost_sg_out: '5', cost_sg_in: '1',
             total_cost: '21', gross_profit: '176', has_null_cost: false, issue_rank: null,
             origin: 'Jabo', dest: 'Tanjung Pinang', route_date: '2026-05-01',
@@ -474,7 +658,7 @@ describe('PnlService', () => {
         .mockResolvedValueOnce([
           {
             awb: '888-5', vendor: 'ESP', airline: 'Citilink CGK',
-            to_count: '2', sum_gw: '20', chwt: null, total_revenue: '200', total_discount: '3',
+            to_count: '2', costed_tos: '2', sum_gw: '20', chwt: null, total_revenue: '200', total_discount: '3',
             cost_smu: '10', cost_ra: '5', cost_sg_out: '5', cost_sg_in: '1',
             total_cost: '21', gross_profit: '176', has_null_cost: false, issue_rank: null,
             origin: 'Jabo', dest: 'Aceh', route_date: '2026-05-01',
@@ -495,7 +679,7 @@ describe('PnlService', () => {
         .mockResolvedValueOnce([
           {
             awb: '888-6', vendor: null, airline: null,
-            to_count: '1', sum_gw: '10', chwt: null, total_revenue: '100', total_discount: '1.5',
+            to_count: '1', costed_tos: '0', sum_gw: '10', chwt: null, total_revenue: '100', total_discount: '1.5',
             cost_smu: null, cost_ra: null, cost_sg_out: null, cost_sg_in: null,
             total_cost: null, gross_profit: '0', has_null_cost: true, issue_rank: '1',
             origin: null, dest: null, route_date: null,
@@ -541,7 +725,7 @@ describe('PnlService', () => {
         .mockResolvedValueOnce([
           {
             awb: '888-7', vendor: 'ESP', airline: 'Citilink CGK',
-            to_count: '1', sum_gw: '10', chwt: null, total_revenue: '100', total_discount: '1.5',
+            to_count: '1', costed_tos: '0', sum_gw: '10', chwt: null, total_revenue: '100', total_discount: '1.5',
             cost_smu: '10', cost_ra: '5', cost_sg_out: '5', cost_sg_in: null,
             total_cost: null, gross_profit: '0', has_null_cost: true, issue_rank: '6',
             origin: null, dest: null, route_date: '2026-06-01',
@@ -549,7 +733,7 @@ describe('PnlService', () => {
           },
           {
             awb: '888-8', vendor: 'ESP', airline: 'Citilink CGK',
-            to_count: '1', sum_gw: '10', chwt: null, total_revenue: '100', total_discount: '1.5',
+            to_count: '1', costed_tos: '0', sum_gw: '10', chwt: null, total_revenue: '100', total_discount: '1.5',
             cost_smu: '10', cost_ra: '5', cost_sg_out: '5', cost_sg_in: null,
             total_cost: null, gross_profit: '0', has_null_cost: true, issue_rank: '7',
             origin: 'Jabo', dest: 'Aceh', route_date: '2026-06-01',
@@ -706,9 +890,13 @@ describe('PnlService', () => {
       const result = await service.getDailyMatrix('2026-07-1H')
 
       expect(result.rows[0].cells[0]).toBeNull()
-      expect(result.rows[0].cells[1]).toEqual({ revenue: 200, margin: 20, weight: 2, incompleteTos: 1, issues: [] })
+      expect(result.rows[0].cells[1]).toEqual({
+        revenue: 200, margin: 20, weight: 2, incompleteTos: 1, revenueMissingTos: 0, issues: [],
+      })
       expect(result.rows[0].cells[2]).toBeNull()
-      expect(result.rows[1].cells[2]).toEqual({ revenue: 300, margin: 30, weight: 3, incompleteTos: 0, issues: [] })
+      expect(result.rows[1].cells[2]).toEqual({
+        revenue: 300, margin: 30, weight: 3, incompleteTos: 0, revenueMissingTos: 0, issues: [],
+      })
     })
 
     it('distinguishes a zero-valued cell from an absent one', async () => {
@@ -717,7 +905,9 @@ describe('PnlService', () => {
           revenue: '0', margin: '0', weight: '0', incomplete_tos: '0' },
       ])
       const result = await service.getDailyMatrix('2026-07-1H')
-      expect(result.rows[0].cells[0]).toEqual({ revenue: 0, margin: 0, weight: 0, incompleteTos: 0, issues: [] })
+      expect(result.rows[0].cells[0]).toEqual({
+        revenue: 0, margin: 0, weight: 0, incompleteTos: 0, revenueMissingTos: 0, issues: [],
+      })
       expect(result.rows[0].cells[1]).toBeNull()
     })
 
@@ -739,6 +929,7 @@ describe('PnlService', () => {
         marginPct: 10,      // 100 / 1000 × 100
         spacePerKg: 5,      // 100 / 20
         incompleteTos: 3,
+        revenueMissingTos: 0,
         issues: [],
       })
     })
@@ -761,7 +952,7 @@ describe('PnlService', () => {
       expect(result.footer[2]).toEqual({
         totalRevenue: 0, totalMargin: 0, totalWeight: 0,
         avgRevenuePerDay: 0, avgMarginPerDay: 0,
-        marginPct: null, spacePerKg: null, incompleteTos: 0, issues: [],
+        marginPct: null, spacePerKg: null, incompleteTos: 0, revenueMissingTos: 0, issues: [],
       })
     })
 
@@ -1069,6 +1260,7 @@ describe('PnlService', () => {
         costSgOut: 1100000,
         costSgIn: 620000,
         incompleteTos: 0,
+        revenueMissingTos: 0,
         issues: [],
       })
     })
@@ -1133,6 +1325,7 @@ describe('PnlService', () => {
         avgMarginPerDay: 0,
         avgCostPerDay: 120,
         incompleteTos: 5,
+        revenueMissingTos: 0,
         issues: [],
       })
     })
@@ -1381,6 +1574,7 @@ describe('PnlService', () => {
         costSgOut: 0,
         costSgIn: 0,
         incompleteTos: 2,
+        revenueMissingTos: 0,
         issues: [],
       })
       // 'Jabo|Aceh' had no fact row: null, which is distinct from a real zero.
@@ -1846,6 +2040,370 @@ describe('PnlService', () => {
 
       expect(result[0].revenuePerKg).toBe(0)
       expect(result[0].impact).toBe(0)
+    })
+  })
+
+  // scopeSql is private; these call it through the type system's back door because it is the
+  // single point every scoped query depends on, and a placeholder-numbering bug here would
+  // surface as nine separate mysterious query failures rather than one obvious one.
+  describe('scopeSql', () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const call = (scope: unknown, dateCol: string, bound: number, alias?: string) =>
+      (service as any).scopeSql(scope, dateCol, bound, alias) as { sql: string; params: unknown[] }
+
+    it('produces nothing at all for an absent or empty scope', () => {
+      expect(call(undefined, 'shipment_date', 1)).toEqual({ sql: '', params: [] })
+      expect(call({}, 'shipment_date', 1)).toEqual({ sql: '', params: [] })
+    })
+
+    it('zips routes into two parallel arrays so a pair stays a pair', () => {
+      const { sql, params } = call(
+        { routes: [{ origin: 'Jabo', dest: 'Denpasar' }, { origin: 'Surabaya', dest: 'Pontianak' }] },
+        'shipment_date',
+        1,
+      )
+      // One UNNEST of two arrays, never a flattened list: flattened, Surabaya would match Denpasar.
+      expect(sql.replace(/\s+/g, ' ')).toContain(
+        '(origin_station, dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
+      )
+      expect(params).toEqual([['Jabo', 'Surabaya'], ['Denpasar', 'Pontianak']])
+    })
+
+    it('continues placeholder numbering after the params the caller already bound', () => {
+      // Range mode binds $1 and $2 before any scope param, so the scope must start at $3.
+      const { sql, params } = call({ routes: [{ origin: 'Jabo', dest: 'Aceh' }] }, 'shipment_date', 2)
+      expect(sql).toContain('UNNEST($3::text[], $4::text[])')
+      expect(params).toEqual([['Jabo'], ['Aceh']])
+    })
+
+    it('ends the date range on the next day so the last day is included whole', () => {
+      const { sql, params } = call({ dateFrom: '2026-05-01', dateTo: '2026-05-03' }, 'date_ata', 1)
+      expect(sql).toContain('date_ata >= $2::DATE')
+      expect(sql).toContain("date_ata < ($3::DATE + INTERVAL '1 day')")
+      expect(params).toEqual(['2026-05-01', '2026-05-03'])
+    })
+
+    it('respects the caller alias in the date column it was handed', () => {
+      const { sql } = call({ dateFrom: '2026-05-01' }, 'v.shipment_date', 1)
+      expect(sql).toContain('v.shipment_date >= $2::DATE')
+    })
+
+    it('matches any of the given vendors with one array predicate', () => {
+      const { sql, params } = call({ vendors: ['ESP', 'PT Kargo, Tbk'] }, 'shipment_date', 1)
+      expect(sql).toContain('vendor = ANY($2::text[])')
+      expect(params).toEqual([['ESP', 'PT Kargo, Tbk']])
+    })
+
+    it('binds every field in a fixed order so callers can predict the numbering', () => {
+      const { sql, params } = call(
+        {
+          routes: [{ origin: 'Jabo', dest: 'Aceh' }],
+          dateFrom: '2026-05-01',
+          dateTo: '2026-05-02',
+          vendors: ['ESP'],
+        },
+        'shipment_date',
+        1,
+      )
+      expect(sql).toContain('UNNEST($2::text[], $3::text[])')
+      expect(sql).toContain('shipment_date >= $4::DATE')
+      expect(sql).toContain("shipment_date < ($5::DATE + INTERVAL '1 day')")
+      expect(sql).toContain('vendor = ANY($6::text[])')
+      expect(params).toEqual([['Jabo'], ['Aceh'], '2026-05-01', '2026-05-02', ['ESP']])
+    })
+
+    it('ignores empty arrays rather than emitting a filter that matches nothing', () => {
+      expect(call({ routes: [], vendors: [] }, 'shipment_date', 1)).toEqual({ sql: '', params: [] })
+    })
+
+    it('qualifies the columns it emits when given an alias', () => {
+      // A caller that joins a second table carrying its own `vendor` column — getCostBySgOut joins
+      // air_shipments_smu, which has one — gets "column reference is ambiguous" from Postgres
+      // without this. Proven against the live database, not hypothetical.
+      const { sql } = call(
+        { routes: [{ origin: 'Jabo', dest: 'Aceh' }], vendors: ['ESP'] },
+        'v.shipment_date',
+        1,
+        'v.',
+      )
+      expect(sql.replace(/\s+/g, ' ')).toContain('(v.origin_station, v.dest_station) IN')
+      expect(sql).toContain('v.vendor = ANY(')
+    })
+
+    it('leaves the date column alone, which the caller has already qualified', () => {
+      // buildFilter returns dateCol already alias-prefixed when the query needs it. Prefixing it
+      // here too would emit v.v.date_ata.
+      const { sql } = call({ dateFrom: '2026-05-01' }, 'v.date_ata', 1, 'v.')
+      expect(sql).toContain('v.date_ata >= $2::DATE')
+      expect(sql).not.toContain('v.v.')
+    })
+
+    it('emits bare column names when no alias is given', () => {
+      const { sql } = call({ vendors: ['ESP'] }, 'shipment_date', 1)
+      expect(sql).toContain(' vendor = ANY(')
+      expect(sql).not.toContain('v.vendor')
+    })
+  })
+
+  describe('breakdown queries under a scope', () => {
+    // The four cost queries used MAX(cost_*_awb) per AWB — the whole AWB's cost. Under a TO-grain
+    // filter that charges a full AWB's cost against whichever subset of its TOs survived, so the
+    // breakdown would overshoot the Est. Cost card it sits under.
+    it('prorates cost-totals by weight_share instead of taking each whole AWB', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { cost_smu: '0', cost_ra: '0', cost_sg_out: '0', cost_sg_in: '0' },
+      ])
+
+      await service.getCostTotals('2026-05-1H')
+
+      const sql = (dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')
+      expect(sql).toContain('SUM(cost_smu_awb * weight_share)')
+      expect(sql).not.toContain('MAX(cost_smu_awb)')
+    })
+
+    it('scopes cost-totals', async () => {
+      dataSource.query.mockResolvedValueOnce([
+        { cost_smu: '0', cost_ra: '0', cost_sg_out: '0', cost_sg_in: '0' },
+      ])
+
+      await service.getCostTotals('2026-05-1H', undefined, undefined, undefined, {
+        routes: [{ origin: 'Jabo', dest: 'Aceh' }],
+      })
+
+      const [, params] = dataSource.query.mock.calls[0]
+      expect(params).toEqual(['2026-05-1H', ['Jabo'], ['Aceh']])
+    })
+
+    it('maps each costSplitSql column onto its own field', async () => {
+      // Four distinct values, deliberately not interchangeable: costSplitSql emits cost_smu /
+      // cost_ra / cost_sg_out / cost_sg_in, and every read is `?? 0`, so a swapped or stale name
+      // yields a silent zero rather than an error. The SQL-text assertions nearby cannot see that.
+      dataSource.query.mockResolvedValueOnce([
+        { cost_smu: '1000', cost_ra: '200', cost_sg_out: '30', cost_sg_in: '4' },
+      ])
+
+      const totals = await service.getCostTotals('2026-05-1H')
+
+      expect(totals).toEqual({ smu: 1000, ra: 200, sgOut: 30, sgIn: 4 })
+    })
+
+    it('weighs cost-by-vendor on the rows in scope, not on each whole AWB', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.getCostByVendor('2026-05-1H')
+
+      const sql = (dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')
+      expect(sql).toContain('SUM(cost_smu_awb * weight_share)')
+      expect(sql).toContain('SUM(gross_weight)')
+      expect(sql).not.toContain('MAX(sum_gw_per_awb)')
+    })
+
+    it('prorates cost-by-ra and cost-by-sg-out too', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getCostByRa('2026-05-1H')
+      expect((dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')).toContain(
+        'SUM(v.cost_ra_awb * v.weight_share)',
+      )
+
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getCostBySgOut('2026-05-1H')
+      expect((dataSource.query.mock.calls[1][0] as string).replace(/\s+/g, ' ')).toContain(
+        'SUM(v.cost_sg_out_awb * v.weight_share)',
+      )
+    })
+
+    it('scopes the three route-shaped breakdowns', async () => {
+      const scope = { routes: [{ origin: 'Jabo', dest: 'Aceh' }] }
+
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getRevenueByRoute('2026-05-1H', undefined, undefined, undefined, scope)
+      expect(dataSource.query.mock.calls[0][1]).toEqual(['2026-05-1H', ['Jabo'], ['Aceh']])
+
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getProfitByRoute('2026-05-1H', undefined, undefined, undefined, scope)
+      expect(dataSource.query.mock.calls[1][1]).toEqual(['2026-05-1H', ['Jabo'], ['Aceh']])
+
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getCostBySgIn('2026-05-1H', undefined, undefined, undefined, scope)
+      expect(dataSource.query.mock.calls[2][1]).toEqual(['2026-05-1H', ['Jabo'], ['Aceh']])
+    })
+
+    it('leaves cost-by-sg-in summing the per-TO column it already used', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getCostBySgIn('2026-05-1H')
+      const sql = (dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')
+      // SG In is the one component the view already prorated; multiplying by weight_share here
+      // would square the share.
+      expect(sql).toContain('SUM(cost_sg_in_to)')
+      expect(sql).not.toContain('cost_sg_in_to * weight_share')
+    })
+
+    it('binds scope params after the range-mode period params', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.getRevenueByRoute(undefined, '2026-05-01', '2026-05-31', undefined, {
+        routes: [{ origin: 'Jabo', dest: 'Aceh' }],
+      })
+
+      const [sql, params] = dataSource.query.mock.calls[0]
+      // Range mode binds $1 and $2 for the period before any scope param. Every other scoped test
+      // here runs in cycle mode, where a boundSoFar hardcoded to 1 would be indistinguishable.
+      expect(sql.replace(/\s+/g, ' ')).toContain(
+        '(origin_station, dest_station) IN (SELECT * FROM UNNEST($3::text[], $4::text[]))',
+      )
+      expect(params).toEqual(['2026-05-01', '2026-05-31', ['Jabo'], ['Aceh']])
+    })
+
+    it('qualifies the scope columns in the two queries that join a second table', async () => {
+      // air_shipments_smu carries its own `vendor` column, so an unqualified predicate is
+      // ambiguous to Postgres — a 500 the moment a vendor filter is applied.
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getCostBySgOut('2026-05-1H', undefined, undefined, undefined, { vendors: ['ESP'] })
+      expect(dataSource.query.mock.calls[0][0] as string).toContain('v.vendor = ANY(')
+
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getCostByRa('2026-05-1H', undefined, undefined, undefined, { vendors: ['ESP'] })
+      expect(dataSource.query.mock.calls[1][0] as string).toContain('v.vendor = ANY(')
+    })
+  })
+
+  describe('revenue_missing_tos', () => {
+    it('counts TOs with no revenue directly, bypassing the issue priority chain', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ origin_station: 'Jabo', dest_station: 'Aceh' }])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+
+      await service.getDailyMatrix('2026-05-1H')
+
+      // The fact query is the second call (getStations is first).
+      const factSql = (dataSource.query.mock.calls[1][0] as string).replace(/\s+/g, ' ')
+      // A direct predicate, like incomplete_tos already is for cost. Going through v_pnl_to.issue
+      // would lose every TO whose AWB is also uncosted, because that chain ranks cost first.
+      expect(factSql).toContain('COUNT(*) FILTER (WHERE revenue_total IS NULL)::int')
+      expect(factSql).toContain('AS revenue_missing_tos')
+    })
+
+    it('carries the count onto each cell and sums it into the column footer', async () => {
+      dataSource.query
+        .mockResolvedValueOnce([{ origin_station: 'Jabo', dest_station: 'Aceh' }])
+        .mockResolvedValueOnce([
+          {
+            d: '2026-05-01', origin_station: 'Jabo', dest_station: 'Aceh',
+            revenue: '100', margin: '10', weight: '5',
+            incomplete_tos: '0', revenue_missing_tos: '2',
+          },
+          {
+            d: '2026-05-02', origin_station: 'Jabo', dest_station: 'Aceh',
+            revenue: '100', margin: '10', weight: '5',
+            incomplete_tos: '0', revenue_missing_tos: '3',
+          },
+        ])
+        .mockResolvedValueOnce([])
+
+      const matrix = await service.getDailyMatrix('2026-05-1H')
+
+      const firstCell = matrix.rows.find((r) => r.date === '2026-05-01')!.cells[0]!
+      expect(firstCell.revenueMissingTos).toBe(2)
+      expect(matrix.footer[0].revenueMissingTos).toBe(5)
+    })
+
+    it('adds the same aggregate to both comparison tabs, so yellow means one thing', async () => {
+      // Route comparison: picks are routes only, so no group query runs.
+      dataSource.query.mockResolvedValueOnce([]).mockResolvedValueOnce([])
+      await service.getRouteComparison([{ kind: 'route', origin: 'Jabo', dest: 'Aceh' }], '2026-05-1H')
+      expect((dataSource.query.mock.calls[0][0] as string).replace(/\s+/g, ' ')).toContain(
+        'COUNT(*) FILTER (WHERE v.revenue_total IS NULL)::int',
+      )
+
+      jest.clearAllMocks()
+      // getVendorComparison awaits getStations() on its own before the Promise.all, so the fact
+      // query is the SECOND call here, not the first — unlike getRouteComparison above, which has
+      // no such standalone call. Four mocks: getStations, factRows, issueRows, coverageRows.
+      dataSource.query
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{}])
+      await service.getVendorComparison([{ kind: 'vendor', name: 'ESP' }], '2026-05-1H')
+      expect((dataSource.query.mock.calls[1][0] as string).replace(/\s+/g, ' ')).toContain(
+        'COUNT(*) FILTER (WHERE v.revenue_total IS NULL)::int',
+      )
+    })
+
+    // The Daily Report test above is the only one that pushed a non-zero revenue_missing_tos
+    // through the mapping and the footer accumulator. The two comparison tabs' `toEqual` fixtures
+    // elsewhere in this file are true by construction: their fact rows never set the column, so
+    // `?? 0` reads as 0 whether the mapping is right or hardcoded to 0. Without these, a hardcoded
+    // cell value or a dropped `+= cell.revenueMissingTos` line would have shipped silently on both
+    // tabs. cellWarning.ts on the frontend promises that a yellow cell means the same thing on the
+    // Daily Report, Route Comparison and Vendor Comparison — this is what backs that promise for
+    // the latter two.
+    it('carries the count onto each route-comparison cell and sums it into the footer', async () => {
+      // Route-only pick: no group id, so no group query runs and the fact query is calls[0].
+      dataSource.query
+        .mockResolvedValueOnce([
+          {
+            d: '2026-05-01', col_idx: '0',
+            revenue: '100', cost: '0', margin: '100',
+            cost_smu: '0', cost_ra: '0', cost_sg_out: '0', cost_sg_in: '0',
+            incomplete_tos: '0', revenue_missing_tos: '2',
+          },
+          {
+            d: '2026-05-02', col_idx: '0',
+            revenue: '100', cost: '0', margin: '100',
+            cost_smu: '0', cost_ra: '0', cost_sg_out: '0', cost_sg_in: '0',
+            incomplete_tos: '0', revenue_missing_tos: '3',
+          },
+        ])
+        .mockResolvedValueOnce([])
+
+      const result = await service.getRouteComparison(
+        [{ kind: 'route', origin: 'Jabo', dest: 'Aceh' }],
+        '2026-05-1H',
+      )
+
+      const firstCell = result.rows.find((r) => r.date === '2026-05-01')!.cells[0]!
+      const secondCell = result.rows.find((r) => r.date === '2026-05-02')!.cells[0]!
+      expect(firstCell.revenueMissingTos).toBe(2)
+      expect(secondCell.revenueMissingTos).toBe(3)
+      expect(result.footer[0].revenueMissingTos).toBe(5)
+    })
+
+    it('carries the count onto each vendor-comparison cell and sums it into the footer', async () => {
+      // Vendor-only pick, so no group query runs. getVendorComparison awaits getStations()
+      // standalone first (call 0), then Promise.all([factRows, issueRows, coverageRows]) — four
+      // calls total, fact at index 1. Two station pairs carry the count so the footer sum (5) is
+      // distinguishable from either cell alone and from zero.
+      dataSource.query
+        .mockResolvedValueOnce([
+          { origin_station: 'Jabo', dest_station: 'Denpasar' },
+          { origin_station: 'Jabo', dest_station: 'Aceh' },
+        ])
+        .mockResolvedValueOnce([
+          {
+            origin_station: 'Jabo', dest_station: 'Denpasar', col_idx: '0',
+            revenue: '100', cost: '0', margin: '100',
+            cost_smu: '0', cost_ra: '0', cost_sg_out: '0', cost_sg_in: '0',
+            incomplete_tos: '0', revenue_missing_tos: '2',
+          },
+          {
+            origin_station: 'Jabo', dest_station: 'Aceh', col_idx: '0',
+            revenue: '100', cost: '0', margin: '100',
+            cost_smu: '0', cost_ra: '0', cost_sg_out: '0', cost_sg_in: '0',
+            incomplete_tos: '0', revenue_missing_tos: '3',
+          },
+        ])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([{ revenue_period: '0', revenue_in_columns: '0' }])
+
+      const result = await service.getVendorComparison([{ kind: 'vendor', name: 'ESP' }], '2026-05-1H')
+
+      const denpasarCell = result.rows.find((r) => r.dest === 'Denpasar')!.cells[0]!
+      const acehCell = result.rows.find((r) => r.dest === 'Aceh')!.cells[0]!
+      expect(denpasarCell.revenueMissingTos).toBe(2)
+      expect(acehCell.revenueMissingTos).toBe(3)
+      expect(result.footer[0].revenueMissingTos).toBe(5)
     })
   })
 })

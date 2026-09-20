@@ -244,6 +244,11 @@ export interface PnlDailyMatrixCell {
   margin: number
   weight: number
   incompleteTos: number // TOs whose cost could not be computed; margin here is optimistic
+  // TOs whose revenue_total is NULL. A direct count, deliberately not read off v_pnl_to.issue:
+  // that column is a priority chain where 'revenue_missing' only surfaces once vendor and all
+  // three AWB costs are present, so a TO missing its rate_spx — which breaks revenue and the cost
+  // fallback together — is labelled 'no_booking' and would never be counted here.
+  revenueMissingTos: number
   issues: PnlCellIssue[] // empty = clean; never null, so the frontend has one shape to read
 }
 
@@ -261,6 +266,11 @@ export interface PnlDailyMatrixFooter {
   marginPct: number | null // null when totalRevenue is 0
   spacePerKg: number | null // null when totalWeight is 0
   incompleteTos: number
+  // TOs whose revenue_total is NULL. A direct count, deliberately not read off v_pnl_to.issue:
+  // that column is a priority chain where 'revenue_missing' only surfaces once vendor and all
+  // three AWB costs are present, so a TO missing its rate_spx — which breaks revenue and the cost
+  // fallback together — is labelled 'no_booking' and would never be counted here.
+  revenueMissingTos: number
   // Distinct AWBs for the whole period, from its own grouping set — NOT the sum of the day cells,
   // which would count an AWB once per day it shipped.
   issues: PnlCellIssue[]
@@ -305,6 +315,11 @@ export interface PnlRouteComparisonCell {
   costSgOut: number
   costSgIn: number
   incompleteTos: number // TOs with no computable cost; `cost` here is understated
+  // TOs whose revenue_total is NULL. A direct count, deliberately not read off v_pnl_to.issue:
+  // that column is a priority chain where 'revenue_missing' only surfaces once vendor and all
+  // three AWB costs are present, so a TO missing its rate_spx — which breaks revenue and the cost
+  // fallback together — is labelled 'no_booking' and would never be counted here.
+  revenueMissingTos: number
   issues: PnlCellIssue[] // empty = clean; never null, so the frontend has one shape to read
 }
 
@@ -325,6 +340,11 @@ export interface PnlRouteComparisonFooter {
   avgCostPerDay: number
   avgMarginPerDay: number
   incompleteTos: number
+  // TOs whose revenue_total is NULL. A direct count, deliberately not read off v_pnl_to.issue:
+  // that column is a priority chain where 'revenue_missing' only surfaces once vendor and all
+  // three AWB costs are present, so a TO missing its rate_spx — which breaks revenue and the cost
+  // fallback together — is labelled 'no_booking' and would never be counted here.
+  revenueMissingTos: number
   // Distinct AWBs for the period, from its own grouping set — NOT the sum of the day cells.
   issues: PnlCellIssue[]
 }
@@ -364,6 +384,11 @@ export interface PnlVendorComparisonCell {
   costSgOut: number
   costSgIn: number
   incompleteTos: number // TOs with no computable cost; `cost` here is understated
+  // TOs whose revenue_total is NULL. A direct count, deliberately not read off v_pnl_to.issue:
+  // that column is a priority chain where 'revenue_missing' only surfaces once vendor and all
+  // three AWB costs are present, so a TO missing its rate_spx — which breaks revenue and the cost
+  // fallback together — is labelled 'no_booking' and would never be counted here.
+  revenueMissingTos: number
   issues: PnlCellIssue[] // empty = clean; never null, so the frontend has one shape to read
 }
 
@@ -390,6 +415,11 @@ export interface PnlVendorComparisonFooter {
   avgCostPerRoute: number | null
   avgMarginPerRoute: number | null
   incompleteTos: number
+  // TOs whose revenue_total is NULL. A direct count, deliberately not read off v_pnl_to.issue:
+  // that column is a priority chain where 'revenue_missing' only surfaces once vendor and all
+  // three AWB costs are present, so a TO missing its rate_spx — which breaks revenue and the cost
+  // fallback together — is labelled 'no_booking' and would never be counted here.
+  revenueMissingTos: number
   // Distinct AWBs for the whole period, from its own grouping set — NOT the sum of the row cells.
   issues: PnlCellIssue[]
 }
@@ -467,8 +497,10 @@ export class PnlService {
     startDate?: string,
     endDate?: string,
     basis?: string,
+    scope?: PnlRouteFilter,
   ): Promise<PnlSummary> {
-    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const s = this.scopeSql(scope, dateCol, params.length)
     const rows = await this.dataSource.query(
       `
       SELECT
@@ -479,8 +511,9 @@ export class PnlService {
         COALESCE(SUM(cost_to), 0)               AS total_cost
       FROM v_pnl_to
       WHERE ${where}
+      ${s.sql}
       `,
-      params,
+      [...params, ...s.params],
     )
     const row = rows[0]
     const totalRevenueGross = Number(row.total_revenue)
@@ -509,8 +542,10 @@ export class PnlService {
     startDate?: string,
     endDate?: string,
     basis?: string,
+    scope?: PnlRouteFilter,
   ): Promise<PnlDailyMarginItem[]> {
     const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const s = this.scopeSql(scope, dateCol, params.length)
     const rows = await this.dataSource.query(
       `
       SELECT
@@ -522,10 +557,11 @@ export class PnlService {
       FROM v_pnl_to
       WHERE ${where}
         AND ${dateCol} IS NOT NULL
+      ${s.sql}
       GROUP BY 1
       ORDER BY 1
       `,
-      params,
+      [...params, ...s.params],
     )
     return rows.map((r: Record<string, unknown>) => {
       const revenue = Number(r.revenue) - Number(r.discount)
@@ -551,52 +587,16 @@ export class PnlService {
     route?: PnlRouteFilter,
   ): Promise<{ data: PnlAwbRow[]; total: number }> {
     const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate, 'v.')
-    // Same clause against the subquery alias. It reuses $1/$2, so no params are bound twice.
-    const inner = buildFilter(basis, cyclePeriod, startDate, endDate, 'm.')
 
-    // The route filter decides which AWBs are listed, not which TOs are summed: cost columns are
-    // MAX(cost_*_awb) over the whole AWB, so dropping TOs here would understate revenue against a
-    // full-AWB cost and invent losses. An AWB qualifies when any one of its TOs matches.
-    const routeParams: unknown[] = []
-    const routeConds: string[] = []
-    const bind = (value: unknown): string => {
-      routeParams.push(value)
-      return `$${params.length + routeParams.length}`
-    }
-    // Two parallel arrays rather than one interleaved list: UNNEST zips them, so the pairs stay
-    // pairs. A flattened list would match any origin against any destination.
-    if (route?.routes?.length) {
-      const origins = bind(route.routes.map((r) => r.origin))
-      const dests = bind(route.routes.map((r) => r.dest))
-      routeConds.push(
-        `(m.origin_station, m.dest_station) IN (SELECT * FROM UNNEST(${origins}::text[], ${dests}::text[]))`,
-      )
-    }
-    if (route?.dateFrom) routeConds.push(`${inner.dateCol} >= ${bind(route.dateFrom)}::DATE`)
-    if (route?.dateTo) {
-      routeConds.push(`${inner.dateCol} < (${bind(route.dateTo)}::DATE + INTERVAL '1 day')`)
-    }
-    const routeWhere = routeConds.length
-      ? `AND EXISTS (
-           SELECT 1 FROM v_pnl_to m
-           WHERE m.awb = v.awb
-             AND ${inner.where}
-             AND ${routeConds.join(' AND ')}
-         )`
-      : ''
-
-    // Vendor is the one filter that belongs in the OUTER predicate. The route and date conditions
-    // above sit inside an EXISTS on purpose: they decide which AWBs are listed while the aggregate
-    // still sums the whole AWB, because the cost columns are MAX(cost_*_awb) over it. Vendor is
-    // different — v_pnl_to.vendor comes from the AWB's booking, so it is constant across an AWB's
-    // TOs, and the outer predicate is what has the same scope as the vendor column whose cell was
-    // clicked. Putting it inside the EXISTS would produce a third number nobody asked for.
-    const vendorWhere = route?.vendors?.length
-      ? `AND v.vendor = ANY(${bind(route.vendors)}::text[])`
-      : ''
+    // TO grain, like every other P&L surface. This used to be an EXISTS semi-join that picked
+    // which AWBs were LISTED while the aggregate still summed the whole AWB, because the cost
+    // columns were MAX(cost_*_awb). Now the costs below are prorated by weight_share, so summing
+    // only the rows in scope is the arithmetically correct thing to do — and the EXISTS would be
+    // the bug, letting out-of-scope TOs back into the totals.
+    const scope = this.scopeSql(route, dateCol, params.length)
 
     const offset = (page - 1) * limit
-    const filterParams = [...params, ...routeParams]
+    const filterParams = [...params, ...scope.params]
     const dataParams = [...filterParams, limit, offset]
     const countParams = [...filterParams]
     const p = filterParams.length
@@ -619,13 +619,10 @@ export class PnlService {
           MAX(chwt_awb)                           AS chwt,
           COALESCE(SUM(revenue_total), 0)         AS total_revenue,
           COALESCE(SUM(revenue_discount), 0)      AS total_discount,
-          MAX(cost_smu_awb)                       AS cost_smu,
-          MAX(cost_ra_awb)                        AS cost_ra,
-          MAX(cost_sg_out_awb)                    AS cost_sg_out,
-          SUM(cost_sg_in_to)                      AS cost_sg_in,
-          MAX(cost_total_awb) + COALESCE(SUM(cost_sg_in_to), 0) AS total_cost,
-          COALESCE(SUM(gross_profit_to), 0)       AS gross_profit,
-          (MAX(cost_total_awb) IS NULL OR MAX(cost_sg_in_to) IS NULL) AS has_null_cost,
+          ${this.costSplitSql('v')},
+          COALESCE(SUM(v.cost_to), 0)             AS total_cost,
+          COUNT(*) FILTER (WHERE v.cost_to IS NOT NULL)::int AS costed_tos,
+          BOOL_OR(v.cost_to IS NULL)              AS has_null_cost,
           BOOL_OR(is_cost_estimated)              AS is_cost_estimated,
           MIN(CASE issue
                 WHEN 'no_booking' THEN 1 WHEN 'smu_rate_missing' THEN 2
@@ -635,8 +632,7 @@ export class PnlService {
               END)                                  AS issue_rank
         FROM v_pnl_to v
         WHERE ${where}
-        ${routeWhere}
-        ${vendorWhere}
+        ${scope.sql}
         GROUP BY awb, vendor, airline
         -- Ordered on the net figure, matching the Revenue column the table renders.
         ORDER BY (COALESCE(SUM(revenue_total), 0)
@@ -646,7 +642,7 @@ export class PnlService {
         dataParams,
       ),
       this.dataSource.query(
-        `SELECT COUNT(DISTINCT awb)::int AS total FROM v_pnl_to v WHERE ${where} ${routeWhere} ${vendorWhere}`,
+        `SELECT COUNT(DISTINCT awb)::int AS total FROM v_pnl_to v WHERE ${where} ${scope.sql}`,
         countParams,
       ),
     ])
@@ -654,8 +650,13 @@ export class PnlService {
     const total = Number(countRows[0].total)
     const data: PnlAwbRow[] = rows.map((r: Record<string, unknown>) => {
       const rev = Number(r.total_revenue) - Number(r.total_discount)
-      const gp = Number(r.gross_profit)
-      const totalCost = r.total_cost != null ? Number(r.total_cost) : null
+      // COALESCE makes total_cost 0 rather than NULL, so the count of costed rows is what
+      // separates "this costs nothing in scope" from "we could not cost it".
+      const totalCost = Number(r.costed_tos) > 0 ? Number(r.total_cost) : null
+      // Revenue minus cost, exactly as getSummary defines it — NOT SUM(gross_profit_to), which is
+      // NULL for every uncosted TO and so silently omits revenue that total_revenue includes.
+      // With the old definition a partially-costed AWB could never satisfy Revenue - Cost = GP.
+      const gp = totalCost != null ? rev - totalCost : null
       return {
         awb: r.awb as string,
         vendor: r.vendor as string | null,
@@ -677,7 +678,7 @@ export class PnlService {
         costSgIn: r.cost_sg_in != null ? Number(r.cost_sg_in) : null,
         totalCost,
         grossProfit: gp,
-        grossMarginPct: rev > 0 ? (gp / rev) * 100 : null,
+        grossMarginPct: rev > 0 && gp != null ? (gp / rev) * 100 : null,
         hasNullCost: r.has_null_cost === true || r.has_null_cost === 't',
         isCostEstimated: r.is_cost_estimated === true || r.is_cost_estimated === 't',
         issue: r.issue_rank != null ? (ISSUE_BY_RANK[Number(r.issue_rank)] ?? null) : null,
@@ -793,8 +794,10 @@ export class PnlService {
     startDate?: string,
     endDate?: string,
     basis?: string,
+    scope?: PnlRouteFilter,
   ): Promise<PnlRevenueByRouteItem[]> {
-    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const s = this.scopeSql(scope, dateCol, params.length)
     const rows = await this.dataSource.query(
       `
       SELECT
@@ -805,12 +808,13 @@ export class PnlService {
         COALESCE(SUM(revenue_discount), 0)        AS total_discount
       FROM v_pnl_to
       WHERE ${where}
+      ${s.sql}
       GROUP BY 1
       -- Ordered on the net figure, so the breakdown ranks by what it displays.
       ORDER BY (COALESCE(SUM(revenue_total), 0)
                 - COALESCE(SUM(revenue_discount), 0)) DESC NULLS LAST
       `,
-      params,
+      [...params, ...s.params],
     )
     return rows.map((r: Record<string, unknown>) => ({
       route: r.route as string,
@@ -824,41 +828,28 @@ export class PnlService {
     startDate?: string,
     endDate?: string,
     basis?: string,
+    scope?: PnlRouteFilter,
   ): Promise<PnlCostTotals> {
-    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate)
-    // SMU/RA/SG Out are AWB-level → take MAX per AWB then sum.
-    // SG In is per-TO → straight sum.
+    const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const s = this.scopeSql(scope, dateCol, params.length)
+    // TO grain, matching SUM(cost_to) in getSummary. The old shape took MAX(cost_*_awb) per AWB,
+    // which counted a component even on AWBs whose cost_to was NULL because a sibling component
+    // was missing — so this total could exceed the Est. Cost card it sits under even unfiltered.
     const rows = await this.dataSource.query(
       `
-      WITH per_awb AS (
-        SELECT awb,
-               MAX(cost_smu_awb)    AS smu,
-               MAX(cost_ra_awb)     AS ra,
-               MAX(cost_sg_out_awb) AS sg_out
-        FROM v_pnl_to
-        WHERE ${where}
-        GROUP BY awb
-      ),
-      sg_in AS (
-        SELECT COALESCE(SUM(cost_sg_in_to), 0) AS sg_in
-        FROM v_pnl_to
-        WHERE ${where}
-      )
-      SELECT
-        COALESCE(SUM(per_awb.smu), 0)    AS smu,
-        COALESCE(SUM(per_awb.ra), 0)     AS ra,
-        COALESCE(SUM(per_awb.sg_out), 0) AS sg_out,
-        (SELECT sg_in FROM sg_in)        AS sg_in
-      FROM per_awb
+      SELECT ${this.costSplitSql()}
+      FROM v_pnl_to
+      WHERE ${where}
+      ${s.sql}
       `,
-      params,
+      [...params, ...s.params],
     )
     const r = rows[0] ?? {}
     return {
-      smu: Number(r.smu ?? 0),
-      ra: Number(r.ra ?? 0),
-      sgOut: Number(r.sg_out ?? 0),
-      sgIn: Number(r.sg_in ?? 0),
+      smu: Number(r.cost_smu ?? 0),
+      ra: Number(r.cost_ra ?? 0),
+      sgOut: Number(r.cost_sg_out ?? 0),
+      sgIn: Number(r.cost_sg_in ?? 0),
     }
   }
 
@@ -867,33 +858,27 @@ export class PnlService {
     startDate?: string,
     endDate?: string,
     basis?: string,
+    scope?: PnlRouteFilter,
   ): Promise<PnlVendorCostItem[]> {
-    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate)
-    // SMU is AWB-level: take per-AWB cost (MAX since identical across rows of same AWB)
-    // and per-AWB sum_gw, then aggregate by vendor / airline.
+    const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const s = this.scopeSql(scope, dateCol, params.length)
+    // Prorated and grouped in one pass: the per_awb CTE existed only to de-duplicate the
+    // AWB-grain MAX, which is gone.
     const rows = await this.dataSource.query(
       `
-      WITH per_awb AS (
-        SELECT
-          awb,
-          COALESCE(NULLIF(vendor, ''), '—')  AS vendor,
-          COALESCE(NULLIF(airline, ''), '—') AS airline,
-          MAX(cost_smu_awb)                  AS cost_smu,
-          MAX(sum_gw_per_awb)                AS sum_gw
-        FROM v_pnl_to
-        WHERE ${where}
-        GROUP BY awb, vendor, airline
-      )
       SELECT
-        vendor,
-        airline,
-        COALESCE(SUM(sum_gw), 0)   AS total_weight,
-        COALESCE(SUM(cost_smu), 0) AS total_cost
-      FROM per_awb
-      GROUP BY vendor, airline
+        COALESCE(NULLIF(vendor, ''), '—')  AS vendor,
+        COALESCE(NULLIF(airline, ''), '—') AS airline,
+        COALESCE(SUM(gross_weight), 0)     AS total_weight,
+        COALESCE(SUM(cost_smu_awb * weight_share)
+                 FILTER (WHERE cost_to IS NOT NULL), 0) AS total_cost
+      FROM v_pnl_to
+      WHERE ${where}
+      ${s.sql}
+      GROUP BY 1, 2
       ORDER BY vendor ASC, total_cost DESC
       `,
-      params,
+      [...params, ...s.params],
     )
 
     const byVendor = new Map<string, PnlVendorCostItem>()
@@ -926,39 +911,34 @@ export class PnlService {
     startDate?: string,
     endDate?: string,
     basis?: string,
+    scope?: PnlRouteFilter,
   ): Promise<PnlNamedCostItem[]> {
-    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate, 'v.')
+    const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate, 'v.')
+    const s = this.scopeSql(scope, dateCol, params.length, 'v.')
     const rows = await this.dataSource.query(
       `
-      WITH per_awb AS (
-        SELECT
-          v.awb,
-          COALESCE(NULLIF(srx.ra_name, ''), '—') AS name,
-          MAX(v.cost_ra_awb)   AS cost_ra,
-          MAX(v.sum_gw_per_awb) AS sum_gw
-        FROM v_pnl_to v
-        LEFT JOIN (
-          -- one clean booking per awb (mirrors v_pnl_to's booking CTE) to avoid fan-out
-          SELECT DISTINCT ON (awb) awb, ra_name
-          FROM air_shipments_smu_rate_cgk_spx
-          ORDER BY awb,
-            (NULLIF(BTRIM(account), '') IS NOT NULL
-             AND NULLIF(BTRIM(via),  '') IS NOT NULL
-             AND NULLIF(BTRIM(dest), '') IS NOT NULL) DESC,
-            updated_at DESC NULLS LAST
-        ) srx ON srx.awb = v.awb
-        WHERE ${where}
-        GROUP BY v.awb, srx.ra_name
-      )
       SELECT
-        name,
-        COALESCE(SUM(sum_gw), 0)  AS total_weight,
-        COALESCE(SUM(cost_ra), 0) AS total_cost
-      FROM per_awb
-      GROUP BY name
+        COALESCE(NULLIF(srx.ra_name, ''), '—') AS name,
+        COALESCE(SUM(v.gross_weight), 0)       AS total_weight,
+        COALESCE(SUM(v.cost_ra_awb * v.weight_share)
+                 FILTER (WHERE v.cost_to IS NOT NULL), 0) AS total_cost
+      FROM v_pnl_to v
+      LEFT JOIN (
+        -- one clean booking per awb (mirrors v_pnl_to's booking CTE) to avoid fan-out
+        SELECT DISTINCT ON (awb) awb, ra_name
+        FROM air_shipments_smu_rate_cgk_spx
+        ORDER BY awb,
+          (NULLIF(BTRIM(account), '') IS NOT NULL
+           AND NULLIF(BTRIM(via),  '') IS NOT NULL
+           AND NULLIF(BTRIM(dest), '') IS NOT NULL) DESC,
+          updated_at DESC NULLS LAST
+      ) srx ON srx.awb = v.awb
+      WHERE ${where}
+      ${s.sql}
+      GROUP BY 1
       ORDER BY total_cost DESC NULLS LAST
       `,
-      params,
+      [...params, ...s.params],
     )
     return rows.map((r: Record<string, unknown>) => ({
       name: r.name as string,
@@ -972,45 +952,40 @@ export class PnlService {
     startDate?: string,
     endDate?: string,
     basis?: string,
+    scope?: PnlRouteFilter,
   ): Promise<PnlNamedCostItem[]> {
-    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate, 'v.')
+    const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate, 'v.')
+    const s = this.scopeSql(scope, dateCol, params.length, 'v.')
     // sg_out (the name) lives on air_shipments_smu, looked up by booking key.
     const rows = await this.dataSource.query(
       `
-      WITH per_awb AS (
-        SELECT
-          v.awb,
-          COALESCE(NULLIF(s.sg_out, ''), '—') AS name,
-          MAX(v.cost_sg_out_awb) AS cost_sg_out,
-          MAX(v.sum_gw_per_awb)  AS sum_gw
-        FROM v_pnl_to v
-        LEFT JOIN (
-          -- one clean booking per awb (mirrors v_pnl_to's booking CTE) to avoid fan-out
-          SELECT DISTINCT ON (awb) awb, account, airlines, via, dest
-          FROM air_shipments_smu_rate_cgk_spx
-          ORDER BY awb,
-            (NULLIF(BTRIM(account), '') IS NOT NULL
-             AND NULLIF(BTRIM(via),  '') IS NOT NULL
-             AND NULLIF(BTRIM(dest), '') IS NOT NULL) DESC,
-            updated_at DESC NULLS LAST
-        ) srx ON srx.awb = v.awb
-        LEFT JOIN air_shipments_smu s
-          ON  s.vendor      = srx.account
-          AND s.airlines    = srx.airlines
-          AND s.origin      = srx.via
-          AND s.destination = srx.dest
-        WHERE ${where}
-        GROUP BY v.awb, s.sg_out
-      )
       SELECT
-        name,
-        COALESCE(SUM(sum_gw), 0)      AS total_weight,
-        COALESCE(SUM(cost_sg_out), 0) AS total_cost
-      FROM per_awb
-      GROUP BY name
+        COALESCE(NULLIF(s.sg_out, ''), '—') AS name,
+        COALESCE(SUM(v.gross_weight), 0)    AS total_weight,
+        COALESCE(SUM(v.cost_sg_out_awb * v.weight_share)
+                 FILTER (WHERE v.cost_to IS NOT NULL), 0) AS total_cost
+      FROM v_pnl_to v
+      LEFT JOIN (
+        -- one clean booking per awb (mirrors v_pnl_to's booking CTE) to avoid fan-out
+        SELECT DISTINCT ON (awb) awb, account, airlines, via, dest
+        FROM air_shipments_smu_rate_cgk_spx
+        ORDER BY awb,
+          (NULLIF(BTRIM(account), '') IS NOT NULL
+           AND NULLIF(BTRIM(via),  '') IS NOT NULL
+           AND NULLIF(BTRIM(dest), '') IS NOT NULL) DESC,
+          updated_at DESC NULLS LAST
+      ) srx ON srx.awb = v.awb
+      LEFT JOIN air_shipments_smu s
+        ON  s.vendor      = srx.account
+        AND s.airlines    = srx.airlines
+        AND s.origin      = srx.via
+        AND s.destination = srx.dest
+      WHERE ${where}
+      ${s.sql}
+      GROUP BY 1
       ORDER BY total_cost DESC NULLS LAST
       `,
-      params,
+      [...params, ...s.params],
     )
     return rows.map((r: Record<string, unknown>) => ({
       name: r.name as string,
@@ -1024,8 +999,10 @@ export class PnlService {
     startDate?: string,
     endDate?: string,
     basis?: string,
+    scope?: PnlRouteFilter,
   ): Promise<PnlSgInRouteCostItem[]> {
-    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const s = this.scopeSql(scope, dateCol, params.length)
     const rows = await this.dataSource.query(
       `
       SELECT
@@ -1035,10 +1012,11 @@ export class PnlService {
         COALESCE(SUM(cost_sg_in_to), 0)           AS total_cost
       FROM v_pnl_to
       WHERE ${where}
+      ${s.sql}
       GROUP BY 1
       ORDER BY total_cost DESC NULLS LAST
       `,
-      params,
+      [...params, ...s.params],
     )
     return rows.map((r: Record<string, unknown>) => ({
       route: r.route as string,
@@ -1052,8 +1030,10 @@ export class PnlService {
     startDate?: string,
     endDate?: string,
     basis?: string,
+    scope?: PnlRouteFilter,
   ): Promise<PnlProfitByRouteItem[]> {
-    const { where, params } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const { where, params, dateCol } = buildFilter(basis, cyclePeriod, startDate, endDate)
+    const s = this.scopeSql(scope, dateCol, params.length)
     const days = calendarDaysForFilter(cyclePeriod, startDate, endDate)
     const rows = await this.dataSource.query(
       `
@@ -1066,13 +1046,14 @@ export class PnlService {
         COALESCE(SUM(cost_to), 0)                 AS total_cost
       FROM v_pnl_to
       WHERE ${where}
+      ${s.sql}
       GROUP BY 1
       -- Margin uses the KPI convention (revenue − discount − cost) so route totals reconcile
       -- with the headline Est. Gross Profit; uncosted TOs count revenue but not cost.
       ORDER BY (COALESCE(SUM(revenue_total), 0) - COALESCE(SUM(revenue_discount), 0)
                 - COALESCE(SUM(cost_to), 0)) DESC NULLS LAST
       `,
-      params,
+      [...params, ...s.params],
     )
     return rows.map((r: Record<string, unknown>) => {
       const totalRevenue = Number(r.total_revenue) - Number(r.total_discount)
@@ -1118,7 +1099,8 @@ export class PnlService {
           COALESCE(SUM(revenue_total), 0) - COALESCE(SUM(revenue_discount), 0)
             - COALESCE(SUM(cost_to), 0)                                          AS margin,
           COALESCE(SUM(gross_weight), 0)                                         AS weight,
-          COUNT(*) FILTER (WHERE cost_to IS NULL)::int                           AS incomplete_tos
+          COUNT(*) FILTER (WHERE cost_to IS NULL)::int                           AS incomplete_tos,
+          COUNT(*) FILTER (WHERE revenue_total IS NULL)::int                     AS revenue_missing_tos
         FROM v_pnl_to
         WHERE ${where}
           AND ${dateCol} IS NOT NULL
@@ -1170,6 +1152,7 @@ export class PnlService {
         margin: Number(fact.margin),
         weight: Number(fact.weight),
         incompleteTos: Number(fact.incomplete_tos),
+        revenueMissingTos: Number(fact.revenue_missing_tos ?? 0),
         issues: cellIssues.get(`${fact.d}|${fact.origin_station}|${fact.dest_station}`) ?? [],
       }
     }
@@ -1179,6 +1162,7 @@ export class PnlService {
       let totalMargin = 0
       let totalWeight = 0
       let incompleteTos = 0
+      let revenueMissingTos = 0
       for (const row of rows) {
         const cell = row.cells[ci]
         if (!cell) continue
@@ -1186,6 +1170,7 @@ export class PnlService {
         totalMargin += cell.margin
         totalWeight += cell.weight
         incompleteTos += cell.incompleteTos
+        revenueMissingTos += cell.revenueMissingTos
       }
       return {
         totalRevenue,
@@ -1196,6 +1181,7 @@ export class PnlService {
         marginPct: totalRevenue > 0 ? (totalMargin / totalRevenue) * 100 : null,
         spacePerKg: totalWeight > 0 ? totalMargin / totalWeight : null,
         incompleteTos,
+        revenueMissingTos,
         issues: columnIssues.get(`${columns[ci].origin}|${columns[ci].dest}`) ?? [],
       }
     })
@@ -1220,6 +1206,58 @@ export class PnlService {
                    FILTER (WHERE ${a}cost_to IS NOT NULL), 0)            AS cost_sg_out,
           COALESCE(SUM(COALESCE(${a}cost_sg_in_to, 0))
                    FILTER (WHERE ${a}cost_to IS NOT NULL), 0)            AS cost_sg_in`
+  }
+
+  /**
+   * The narrowing every scoped P&L query shares: routes, a date window, and vendors, all at TO
+   * grain. One definition because ten queries apply it — three of them (summary, daily margin,
+   * the AWB drilldown) must agree exactly or the tab stops reconciling against itself.
+   *
+   * `boundSoFar` is how many params the caller has already bound. Placeholders continue from
+   * there, so a caller in range mode ($1, $2 for the period) gets its scope at $3 onward while a
+   * caller in cycle mode ($1) gets it at $2 onward.
+   *
+   * `dateCol` arrives already alias-prefixed by buildFilter when the query needs it; nothing here
+   * adds a prefix, or a caller using 'v.' would end up with 'v.v.date_ata'.
+   *
+   * `alias` qualifies the columns this method itself emits (origin_station, dest_station, vendor).
+   * A caller selecting from v_pnl_to alone leaves it as the default empty string, so its SQL stays
+   * byte-identical. A caller that joins a second table carrying a column of the same name — e.g.
+   * getCostBySgOut joins air_shipments_smu, which has its own `vendor` — must pass its alias
+   * ('v.') or Postgres rejects the predicate as ambiguous.
+   *
+   * An empty array is treated as no filter, not as a filter matching nothing — the frontend is
+   * careful to send undefined, but a hand-built request should not be able to blank a report.
+   */
+  private scopeSql(
+    scope: PnlRouteFilter | undefined,
+    dateCol: string,
+    boundSoFar: number,
+    alias = '',
+  ): { sql: string; params: unknown[] } {
+    const params: unknown[] = []
+    const conds: string[] = []
+    const bind = (value: unknown): string => {
+      params.push(value)
+      return `$${boundSoFar + params.length}`
+    }
+
+    // Two parallel arrays rather than one interleaved list: UNNEST zips them, so the pairs stay
+    // pairs. A flattened list would match any origin against any destination.
+    if (scope?.routes?.length) {
+      const origins = bind(scope.routes.map((r) => r.origin))
+      const dests = bind(scope.routes.map((r) => r.dest))
+      conds.push(
+        `(${alias}origin_station, ${alias}dest_station) IN (SELECT * FROM UNNEST(${origins}::text[], ${dests}::text[]))`,
+      )
+    }
+    if (scope?.dateFrom) conds.push(`${dateCol} >= ${bind(scope.dateFrom)}::DATE`)
+    if (scope?.dateTo) {
+      conds.push(`${dateCol} < (${bind(scope.dateTo)}::DATE + INTERVAL '1 day')`)
+    }
+    if (scope?.vendors?.length) conds.push(`${alias}vendor = ANY(${bind(scope.vendors)}::text[])`)
+
+    return { sql: conds.length ? `AND ${conds.join('\n        AND ')}` : '', params }
   }
 
   // Revenue, cost and margin per calendar day for each selected comparison column, behind the
@@ -1338,7 +1376,8 @@ export class PnlService {
             - COALESCE(SUM(v.revenue_discount), 0)
             - COALESCE(SUM(v.cost_to), 0)                              AS margin,
           ${this.costSplitSql('v')},
-          COUNT(*) FILTER (WHERE v.cost_to IS NULL)::int               AS incomplete_tos
+          COUNT(*) FILTER (WHERE v.cost_to IS NULL)::int               AS incomplete_tos,
+          COUNT(*) FILTER (WHERE v.revenue_total IS NULL)::int         AS revenue_missing_tos
         FROM v_pnl_to v
         JOIN col_routes cr
           ON cr.origin_station = v.origin_station
@@ -1399,6 +1438,7 @@ export class PnlService {
         costSgOut: Number(factRow.cost_sg_out),
         costSgIn: Number(factRow.cost_sg_in),
         incompleteTos: Number(factRow.incomplete_tos),
+        revenueMissingTos: Number(factRow.revenue_missing_tos ?? 0),
         issues: cellIssues.get(`${factRow.d}|${ci}`) ?? [],
       }
     }
@@ -1412,6 +1452,7 @@ export class PnlService {
       let totalCostSgOut = 0
       let totalCostSgIn = 0
       let incompleteTos = 0
+      let revenueMissingTos = 0
       for (const row of rows) {
         const cell = row.cells[ci]
         if (!cell) continue
@@ -1423,6 +1464,7 @@ export class PnlService {
         totalCostSgOut += cell.costSgOut
         totalCostSgIn += cell.costSgIn
         incompleteTos += cell.incompleteTos
+        revenueMissingTos += cell.revenueMissingTos
       }
       return {
         totalRevenue,
@@ -1437,6 +1479,7 @@ export class PnlService {
         avgCostPerDay: totalCost / periodDays,
         avgMarginPerDay: totalMargin / periodDays,
         incompleteTos,
+        revenueMissingTos,
         issues: columnIssues.get(String(ci)) ?? [],
       }
     })
@@ -1579,7 +1622,8 @@ export class PnlService {
             - COALESCE(SUM(v.revenue_discount), 0)
             - COALESCE(SUM(v.cost_to), 0)                              AS margin,
           ${this.costSplitSql('v')},
-          COUNT(*) FILTER (WHERE v.cost_to IS NULL)::int               AS incomplete_tos
+          COUNT(*) FILTER (WHERE v.cost_to IS NULL)::int               AS incomplete_tos,
+          COUNT(*) FILTER (WHERE v.revenue_total IS NULL)::int         AS revenue_missing_tos
         FROM v_pnl_to v
         JOIN col_vendors cv ON cv.vendor = v.vendor
         WHERE ${where}
@@ -1658,6 +1702,7 @@ export class PnlService {
         costSgOut: Number(factRow.cost_sg_out),
         costSgIn: Number(factRow.cost_sg_in),
         incompleteTos: Number(factRow.incomplete_tos),
+        revenueMissingTos: Number(factRow.revenue_missing_tos ?? 0),
         issues: cellIssues.get(`${factRow.origin_station}|${factRow.dest_station}|${ci}`) ?? [],
       }
     }
@@ -1671,6 +1716,7 @@ export class PnlService {
       let totalCostSgOut = 0
       let totalCostSgIn = 0
       let incompleteTos = 0
+      let revenueMissingTos = 0
       // Non-null, not non-zero: a route that flew and made exactly nothing is still a route this
       // column covered, and dividing it away would inflate the average.
       let routesWithData = 0
@@ -1686,6 +1732,7 @@ export class PnlService {
         totalCostSgOut += cell.costSgOut
         totalCostSgIn += cell.costSgIn
         incompleteTos += cell.incompleteTos
+        revenueMissingTos += cell.revenueMissingTos
       }
       // null, not 0 and not NaN: "no routes to average over" is a different statement from "the
       // average is zero", and the client renders the first as an em dash.
@@ -1703,6 +1750,7 @@ export class PnlService {
         avgCostPerRoute: perRoute(totalCost),
         avgMarginPerRoute: perRoute(totalMargin),
         incompleteTos,
+        revenueMissingTos,
         issues: columnIssues.get(String(ci)) ?? [],
       }
     })

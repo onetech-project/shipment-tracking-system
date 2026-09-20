@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
+import { useRouteGroups } from '@/features/route-groups/hooks/useRouteGroups'
 import {
   usePnlCycles,
   usePnlSummary,
@@ -24,8 +25,9 @@ import {
 } from '@/features/pnl/constants'
 import { PnlAnalyticsView } from '@/features/pnl-analytics/components/PnlAnalyticsView'
 import { AnalyticsScope } from '@/features/pnl-analytics/types'
-import { routeFromCell } from '@/features/pnl/utils/dailyMatrix'
+import { routeFromCell, unionRoutes } from '@/features/pnl/utils/dailyMatrix'
 import { PnlKpiCards, PnlKpiKey } from '@/features/pnl/components/PnlKpiCards'
+import { PnlEstimateFilterBar } from '@/features/pnl/components/PnlEstimateFilterBar'
 import { PnlDailyMarginChart } from '@/features/pnl/components/PnlDailyMarginChart'
 import { PnlBreakdownPanel } from '@/features/pnl/components/PnlBreakdownPanel'
 import { PnlAwbDrilldown } from '@/features/pnl/components/PnlAwbDrilldown'
@@ -94,27 +96,35 @@ function PnlPageContent() {
   const [activeKpi, setActiveKpi] = useState<PnlKpiKey | null>(null)
   const [showDq, setShowDq] = useState(false)
   const [view, setView] = useState<PnlView>('estimate')
-  const [drilldownRoute, setDrilldownRoute] = useState<PnlRouteFilter>({})
-  const drilldownRef = useRef<HTMLDivElement>(null)
+  // The Estimated tab's whole scope, not just the drilldown's. It narrows the KPI cards, the
+  // margin chart, the breakdowns and the AWB table together — the filter bar below owns the
+  // controls, this owns the value.
+  const [estimateScope, setEstimateScope] = useState<PnlRouteFilter>({})
+  const [estimateGroupId, setEstimateGroupId] = useState<string | undefined>(undefined)
+  const filterBarRef = useRef<HTMLDivElement>(null)
+
+  // The Daily Report keeps its OWN group. The two tabs are different scopes and must not drag
+  // each other around; this sits beside dailyRoutes for the same reason that does.
+  const [dailyGroupId, setDailyGroupId] = useState<string | undefined>(undefined)
 
   // Lifted out of PnlRouteComparisonView so switching tabs does not discard the selection: the
   // tab is rendered by a ternary below, so leaving it unmounts the component outright. Deliberately
-  // NOT cleared by the period effect below — a pick carries no date, unlike drilldownRoute.
+  // NOT cleared by the period effect below — a pick carries no date, unlike estimateScope.
   const [routePicks, setRoutePicks] = useState<PnlColumnPick[]>([])
 
   // Lifted out of PnlDailyMatrixView for the same reason routePicks is: the tab is rendered by a
   // ternary below, so leaving it unmounts the component outright. Deliberately NOT cleared by the
-  // period effect — a route carries no date, unlike drilldownRoute.
+  // period effect — a route carries no date, unlike estimateScope.
   const [dailyRoutes, setDailyRoutes] = useState<PnlRoutePair[]>([])
 
   // Lifted out of PnlVendorComparisonView for the same reason routePicks is: the tab is rendered
   // by a ternary below, so leaving it unmounts the component outright. Deliberately NOT cleared by
-  // the period effect — a pick carries no date, unlike drilldownRoute.
+  // the period effect — a pick carries no date, unlike estimateScope.
   const [vendorPicks, setVendorPicks] = useState<PnlVendorPick[]>([])
 
   // Lifted out of PnlAnalyticsView for the same reason vendorPicks is: the tab is rendered by a
   // ternary below, so leaving it unmounts the component outright. Deliberately NOT cleared by the
-  // period effect — a scope carries no date, unlike drilldownRoute.
+  // period effect — a scope carries no date, unlike estimateScope.
   const [analyticsScope, setAnalyticsScope] = useState<AnalyticsScope>({ kind: 'all' })
 
   useEffect(() => {
@@ -123,10 +133,14 @@ function PnlPageContent() {
     }
   }, [cycles, cycle])
 
-  // A route filter carries a date inside the old period; keeping it after the period changes would
-  // silently empty the table with no visible cause.
+  // Only the dates carry the old period. A route, a vendor and a group do not — the same reason
+  // routePicks, dailyRoutes and vendorPicks are deliberately left alone here. Dropping everything
+  // used to be acceptable when this scope narrowed one table; now it would wipe the filter for
+  // the whole tab every time the reader changed cycle.
   useEffect(() => {
-    setDrilldownRoute({})
+    setEstimateScope((prev) =>
+      prev.dateFrom || prev.dateTo ? { ...prev, dateFrom: undefined, dateTo: undefined } : prev,
+    )
   }, [dateBasis, mode, cycle, startDate, endDate])
 
   // The Route Comparison tab button below is gated on read.route_group, but view state is not
@@ -155,14 +169,16 @@ function PnlPageContent() {
     setCycle(undefined)
   }
 
-  // The page period, KPIs, chart and breakdowns keep showing the whole cycle; only the drilldown
-  // narrows, which is what makes it readable as a subset of them.
+  // A cell click REPLACES the scope rather than adding to it, so the group goes too — leaving it
+  // on would silently widen what the reader just asked to narrow.
   function applyDrilldownRoute(route: PnlRouteFilter) {
-    setDrilldownRoute(route)
+    setEstimateScope(route)
+    setEstimateGroupId(undefined)
     setView('estimate')
-    // Runs after the Estimated tab has mounted the drilldown.
+    // Runs after the Estimated tab has mounted the filter bar. The bar, not the table: what the
+    // reader needs to see is that the scope changed, which the numbers below then reflect.
     requestAnimationFrame(() => {
-      drilldownRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      filterBarRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     })
   }
 
@@ -175,7 +191,18 @@ function PnlPageContent() {
       ? cycle ? { mode: 'cycle', cycle, basis: dateBasis } : undefined
       : startDate && endDate ? { mode: 'range', start: startDate, end: endDate, basis: dateBasis } : undefined
 
-  const { data: summary, isLoading: isSummaryLoading, isError: isSummaryError, refetch: refetchSummary } = usePnlSummary(filter)
+  const { data: groups } = useRouteGroups({ enabled: hasPermission('read.route_group') })
+  const estimateGroupRoutes = (groups?.find((g) => g.id === estimateGroupId)?.routes ?? []).map(
+    (r) => ({ origin: r.origin, dest: r.dest }),
+  )
+  // The scope every panel actually queries. The bar keeps editing `estimateScope` — the
+  // hand-picked routes alone — so unticking a route never deletes a group member, and changing
+  // group later brings a pre-ticked route back still ticked (spec §2c).
+  const effectiveScope: PnlRouteFilter = estimateGroupRoutes.length
+    ? { ...estimateScope, routes: unionRoutes(estimateScope.routes ?? [], estimateGroupRoutes) }
+    : estimateScope
+
+  const { data: summary, isLoading: isSummaryLoading, isError: isSummaryError, refetch: refetchSummary } = usePnlSummary(filter, effectiveScope)
   const isPageLoading = !cycles || (!!filter && isSummaryLoading && !summary)
   const isPageError = isCyclesError || isSummaryError
 
@@ -344,6 +371,8 @@ function PnlPageContent() {
             filter={filter}
             picks={dailyRoutes}
             onPicksChange={setDailyRoutes}
+            groupId={dailyGroupId}
+            onGroupChange={setDailyGroupId}
             onCellClick={handleCellClick}
           />
         )
@@ -378,20 +407,25 @@ function PnlPageContent() {
       ) : (
         <>
           <PnlFormulaPanel />
-          {summary && (
-            <PnlKpiCards summary={summary} activeKpi={activeKpi} onSelect={handleKpiSelect} />
-          )}
-          {filter && <PnlDailyMarginChart filter={filter} />}
-          {filter && <PnlBreakdownPanel filter={filter} activeKpi={activeKpi} />}
           {filter && (
-            <div ref={drilldownRef}>
-              <PnlAwbDrilldown
+            <div ref={filterBarRef}>
+              <PnlEstimateFilterBar
                 filter={filter}
-                route={drilldownRoute}
-                onRouteChange={setDrilldownRoute}
+                scope={estimateScope}
+                onScopeChange={setEstimateScope}
+                groupId={estimateGroupId}
+                onGroupChange={setEstimateGroupId}
               />
             </div>
           )}
+          {summary && (
+            <PnlKpiCards summary={summary} activeKpi={activeKpi} onSelect={handleKpiSelect} />
+          )}
+          {filter && <PnlDailyMarginChart filter={filter} scope={effectiveScope} />}
+          {filter && (
+            <PnlBreakdownPanel filter={filter} activeKpi={activeKpi} scope={effectiveScope} />
+          )}
+          {filter && <PnlAwbDrilldown filter={filter} route={effectiveScope} />}
           {showDq ? (
             <PnlDataQuality />
           ) : (

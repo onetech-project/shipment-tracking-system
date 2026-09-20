@@ -4,8 +4,9 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard'
 import { Authorize } from '../../common/decorators/authorize.decorator'
 import { Permission } from '@shared/auth'
 import { PnlService } from './pnl.service'
-import { parseColumnPicks, parseRoutePairs } from './pnl-columns.util'
-import { parseVendorColumnPicks, parseVendorNames } from './pnl-vendor-columns.util'
+import { parseColumnPicks } from './pnl-columns.util'
+import { parseVendorColumnPicks } from './pnl-vendor-columns.util'
+import { parseScope } from './pnl-scope.util'
 
 @ApiTags('PnL')
 @Controller('pnl')
@@ -40,8 +41,18 @@ export class PnlController {
     @Query('start') start?: string,
     @Query('end') end?: string,
     @Query('basis') basis?: string,
+    @Query('routes') routes?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    // Repeats, because a vendor group carries many vendors and a vendor name may contain any
+    // punctuation a delimiter would use. Past qs's arrayLimit of 20 it arrives as a plain object
+    // keyed by index rather than an array — see parseVendorNames.
+    @Query('vendor') vendor?: string | string[] | Record<string, unknown>,
   ) {
-    return this.pnlService.getSummary(cycle, start, end, basis)
+    return this.pnlService.getSummary(
+      cycle, start, end, basis,
+      parseScope({ routes, dateFrom, dateTo, vendor }),
+    )
   }
 
   @Get('daily-margin')
@@ -50,8 +61,18 @@ export class PnlController {
     @Query('start') start?: string,
     @Query('end') end?: string,
     @Query('basis') basis?: string,
+    @Query('routes') routes?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    // Repeats, because a vendor group carries many vendors and a vendor name may contain any
+    // punctuation a delimiter would use. Past qs's arrayLimit of 20 it arrives as a plain object
+    // keyed by index rather than an array — see parseVendorNames.
+    @Query('vendor') vendor?: string | string[] | Record<string, unknown>,
   ) {
-    return this.pnlService.getDailyMargin(cycle, start, end, basis)
+    return this.pnlService.getDailyMargin(
+      cycle, start, end, basis,
+      parseScope({ routes, dateFrom, dateTo, vendor }),
+    )
   }
 
   @Get('awb-drilldown')
@@ -70,15 +91,10 @@ export class PnlController {
     // a plain object keyed by index rather than an array — see parseVendorNames.
     @Query('vendor') vendor?: string | string[] | Record<string, unknown>,
   ) {
-    const vendors = parseVendorNames(vendor)
-    return this.pnlService.getAwbDrilldown(page, limit, cycle, start, end, basis, {
-      routes: parseRoutePairs(routes),
-      dateFrom,
-      dateTo,
-      // Omitted rather than sent empty, so an untouched drilldown produces exactly the filter shape
-      // it produced before vendors existed — which is also what the existing specs pin.
-      ...(vendors.length ? { vendors } : {}),
-    })
+    return this.pnlService.getAwbDrilldown(
+      page, limit, cycle, start, end, basis,
+      parseScope({ routes, dateFrom, dateTo, vendor }),
+    )
   }
 
   @Get('awb-tos')
@@ -111,8 +127,18 @@ export class PnlController {
     @Query('start') start?: string,
     @Query('end') end?: string,
     @Query('basis') basis?: string,
+    @Query('routes') routes?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    // Repeats, because a vendor group carries many vendors and a vendor name may contain any
+    // punctuation a delimiter would use. Past qs's arrayLimit of 20 it arrives as a plain object
+    // keyed by index rather than an array — see parseVendorNames.
+    @Query('vendor') vendor?: string | string[] | Record<string, unknown>,
   ) {
-    return this.pnlService.getRevenueByRoute(cycle, start, end, basis)
+    return this.pnlService.getRevenueByRoute(
+      cycle, start, end, basis,
+      parseScope({ routes, dateFrom, dateTo, vendor }),
+    )
   }
 
   @Get('breakdown/cost-totals')
@@ -121,8 +147,18 @@ export class PnlController {
     @Query('start') start?: string,
     @Query('end') end?: string,
     @Query('basis') basis?: string,
+    @Query('routes') routes?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    // Repeats, because a vendor group carries many vendors and a vendor name may contain any
+    // punctuation a delimiter would use. Past qs's arrayLimit of 20 it arrives as a plain object
+    // keyed by index rather than an array — see parseVendorNames.
+    @Query('vendor') vendor?: string | string[] | Record<string, unknown>,
   ) {
-    return this.pnlService.getCostTotals(cycle, start, end, basis)
+    return this.pnlService.getCostTotals(
+      cycle, start, end, basis,
+      parseScope({ routes, dateFrom, dateTo, vendor }),
+    )
   }
 
   @Get('breakdown/cost-by-vendor')
@@ -131,8 +167,18 @@ export class PnlController {
     @Query('start') start?: string,
     @Query('end') end?: string,
     @Query('basis') basis?: string,
+    @Query('routes') routes?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    // Repeats, because a vendor group carries many vendors and a vendor name may contain any
+    // punctuation a delimiter would use. Past qs's arrayLimit of 20 it arrives as a plain object
+    // keyed by index rather than an array — see parseVendorNames.
+    @Query('vendor') vendor?: string | string[] | Record<string, unknown>,
   ) {
-    return this.pnlService.getCostByVendor(cycle, start, end, basis)
+    return this.pnlService.getCostByVendor(
+      cycle, start, end, basis,
+      parseScope({ routes, dateFrom, dateTo, vendor }),
+    )
   }
 
   @Get('breakdown/cost-by-ra')
@@ -141,8 +187,18 @@ export class PnlController {
     @Query('start') start?: string,
     @Query('end') end?: string,
     @Query('basis') basis?: string,
+    @Query('routes') routes?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    // Repeats, because a vendor group carries many vendors and a vendor name may contain any
+    // punctuation a delimiter would use. Past qs's arrayLimit of 20 it arrives as a plain object
+    // keyed by index rather than an array — see parseVendorNames.
+    @Query('vendor') vendor?: string | string[] | Record<string, unknown>,
   ) {
-    return this.pnlService.getCostByRa(cycle, start, end, basis)
+    return this.pnlService.getCostByRa(
+      cycle, start, end, basis,
+      parseScope({ routes, dateFrom, dateTo, vendor }),
+    )
   }
 
   @Get('breakdown/cost-by-sg-out')
@@ -151,8 +207,18 @@ export class PnlController {
     @Query('start') start?: string,
     @Query('end') end?: string,
     @Query('basis') basis?: string,
+    @Query('routes') routes?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    // Repeats, because a vendor group carries many vendors and a vendor name may contain any
+    // punctuation a delimiter would use. Past qs's arrayLimit of 20 it arrives as a plain object
+    // keyed by index rather than an array — see parseVendorNames.
+    @Query('vendor') vendor?: string | string[] | Record<string, unknown>,
   ) {
-    return this.pnlService.getCostBySgOut(cycle, start, end, basis)
+    return this.pnlService.getCostBySgOut(
+      cycle, start, end, basis,
+      parseScope({ routes, dateFrom, dateTo, vendor }),
+    )
   }
 
   @Get('breakdown/cost-by-sg-in')
@@ -161,8 +227,18 @@ export class PnlController {
     @Query('start') start?: string,
     @Query('end') end?: string,
     @Query('basis') basis?: string,
+    @Query('routes') routes?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    // Repeats, because a vendor group carries many vendors and a vendor name may contain any
+    // punctuation a delimiter would use. Past qs's arrayLimit of 20 it arrives as a plain object
+    // keyed by index rather than an array — see parseVendorNames.
+    @Query('vendor') vendor?: string | string[] | Record<string, unknown>,
   ) {
-    return this.pnlService.getCostBySgIn(cycle, start, end, basis)
+    return this.pnlService.getCostBySgIn(
+      cycle, start, end, basis,
+      parseScope({ routes, dateFrom, dateTo, vendor }),
+    )
   }
 
   @Get('breakdown/profit-by-route')
@@ -171,8 +247,18 @@ export class PnlController {
     @Query('start') start?: string,
     @Query('end') end?: string,
     @Query('basis') basis?: string,
+    @Query('routes') routes?: string,
+    @Query('dateFrom') dateFrom?: string,
+    @Query('dateTo') dateTo?: string,
+    // Repeats, because a vendor group carries many vendors and a vendor name may contain any
+    // punctuation a delimiter would use. Past qs's arrayLimit of 20 it arrives as a plain object
+    // keyed by index rather than an array — see parseVendorNames.
+    @Query('vendor') vendor?: string | string[] | Record<string, unknown>,
   ) {
-    return this.pnlService.getProfitByRoute(cycle, start, end, basis)
+    return this.pnlService.getProfitByRoute(
+      cycle, start, end, basis,
+      parseScope({ routes, dateFrom, dateTo, vendor }),
+    )
   }
 
   @Get('breakdown/daily-matrix')

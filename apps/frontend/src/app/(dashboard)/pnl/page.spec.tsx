@@ -21,6 +21,9 @@ jest.mock('@/features/auth/auth.context', () => ({
 jest.mock('@/shared/hooks/use-permissions', () => ({
   usePermissions: jest.fn(),
 }))
+jest.mock('@/features/route-groups/hooks/useRouteGroups', () => ({
+  useRouteGroups: jest.fn(),
+}))
 jest.mock('next/navigation', () => ({
   useRouter: jest.fn(),
 }))
@@ -42,13 +45,48 @@ const CELL_COLUMN: PnlDailyMatrixColumn = { origin: 'Jabo', originLabel: 'CGK', 
 const CELL_DATE = '2026-05-01'
 
 // A minimal stand-in for the real matrix table: one button that fires the same
-// onCellClick(column, date) callback a real body-cell click would.
+// onCellClick(column, date) callback a real body-cell click would, plus its OWN group prop echoed
+// back so a test can prove the Daily Report's group is not the Estimated tab's.
 jest.mock('@/features/pnl/components/PnlDailyMatrixView', () => ({
   PnlDailyMatrixView: ({
     onCellClick,
+    groupId,
+    onGroupChange,
   }: {
     onCellClick?: (column: PnlDailyMatrixColumn, date: string) => void
-  }) => <button onClick={() => onCellClick?.(CELL_COLUMN, CELL_DATE)}>Fake cell</button>,
+    groupId: string | undefined
+    onGroupChange: (id: string | undefined) => void
+  }) => (
+    <div>
+      <button onClick={() => onCellClick?.(CELL_COLUMN, CELL_DATE)}>Fake cell</button>
+      <div data-testid="daily-group">{String(groupId)}</div>
+      <button onClick={() => onGroupChange('gDaily')}>Pick daily group</button>
+    </div>
+  ),
+}))
+
+// Renders the scope and group it received as text, plus buttons that drive the same callbacks the
+// real filter bar's controls would — the page owns this state, so the mock has to echo it back or
+// the lifted state would be unobservable from this spec.
+jest.mock('@/features/pnl/components/PnlEstimateFilterBar', () => ({
+  PnlEstimateFilterBar: ({
+    scope,
+    groupId,
+    onScopeChange,
+    onGroupChange,
+  }: {
+    scope: Record<string, unknown>
+    groupId: string | undefined
+    onScopeChange: (next: Record<string, unknown>) => void
+    onGroupChange: (id: string | undefined) => void
+  }) => (
+    <div>
+      <div data-testid="filter-bar-scope">{JSON.stringify(scope)}</div>
+      <div data-testid="filter-bar-group">{String(groupId)}</div>
+      <button onClick={() => onScopeChange({ vendors: ['ESP'] })}>Set vendor scope</button>
+      <button onClick={() => onGroupChange('g1')}>Pick group</button>
+    </div>
+  ),
 }))
 
 // Renders the route it received as text so the test can assert on it without reaching into props.
@@ -139,8 +177,15 @@ jest.mock('@/features/pnl-analytics/components/PnlAnalyticsView', () => ({
 import PnlPage from './page'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
+import { useRouteGroups } from '@/features/route-groups/hooks/useRouteGroups'
 import { useRouter } from 'next/navigation'
 import { usePnlCycles, usePnlSummary } from '@/features/pnl/hooks/usePnl'
+
+// Every other describe block below is indifferent to route groups, so this default (undefined
+// data) covers them; the group's own describe block below overrides it with a fixture. Set once
+// at import time rather than per-beforeEach: jest.clearAllMocks() resets call history but not a
+// mock's return value, so this survives every describe's own clearAllMocks() call.
+;(useRouteGroups as jest.Mock).mockReturnValue({ data: undefined })
 
 // Backs usePermissions' hasPermission so a test can change what's granted *between* renders
 // (renderPage(...) then setPermissions(...) + rerender(...)) rather than only at initial mount —
@@ -463,5 +508,146 @@ describe('PnlPage Vendor Comparison tab', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Analytics' }))
 
     expect(screen.getByTestId('analytics-scope')).toHaveTextContent('scope:routes')
+  })
+})
+
+describe('PnlPage estimated scope', () => {
+  beforeAll(() => {
+    // jsdom implements neither; the click handler calls scrollIntoView inside a rAF callback.
+    window.requestAnimationFrame = jest.fn()
+    Element.prototype.scrollIntoView = jest.fn()
+  })
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    ;(useRouter as jest.Mock).mockReturnValue({ replace: jest.fn() })
+    ;(usePnlCycles as jest.Mock).mockReturnValue({
+      data: ['2026-05-1H'],
+      isLoading: false,
+      isError: false,
+      refetch: jest.fn(),
+    })
+    ;(usePnlSummary as jest.Mock).mockReturnValue({
+      data: { label: '2026-05-1H' },
+      isLoading: false,
+      isError: false,
+      refetch: jest.fn(),
+    })
+    // Matches the 'g1' id the mocked filter bar's "Pick group" button reports below — the fixture
+    // that lets the group-folding test prove estimateGroupId actually resolves to a real route.
+    ;(useRouteGroups as jest.Mock).mockReturnValue({
+      data: [
+        {
+          id: 'g1',
+          name: 'Test Group',
+          description: null,
+          routes: [{ origin: 'Jabo', originLabel: 'CGK', dest: 'Aceh' }],
+        },
+      ],
+    })
+  })
+
+  it('renders the filter bar above the drilldown', () => {
+    renderPage()
+    const bar = screen.getByTestId('filter-bar-scope')
+    const drilldown = screen.getByTestId('drilldown-route')
+    // Node.compareDocumentPosition: 4 means "follows". The filter narrows the cards and the chart
+    // now, so it has to be met before them, not after.
+    expect(bar.compareDocumentPosition(drilldown) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('hands the same scope to the filter bar and the drilldown', () => {
+    renderPage()
+    fireEvent.click(screen.getByText('Set vendor scope'))
+
+    expect(screen.getByTestId('filter-bar-scope')).toHaveTextContent('ESP')
+    expect(screen.getByTestId('drilldown-route')).toHaveTextContent('ESP')
+  })
+
+  // Every other test here only checks the mocked filter bar's and drilldown's rendered text, which
+  // both mocks reflect back whatever `scope` prop they were given regardless of usePnlSummary. That
+  // proves the scope reaches those two components, but not that it reaches the KPI cards' data
+  // source. usePnlSummary is itself mocked, so its call arguments are the only way to observe what
+  // the page actually passed it — without this assertion, deleting the second argument at the call
+  // site would leave every other test in this block green.
+  it('passes the estimate scope to usePnlSummary, so the KPI cards follow the filter', () => {
+    renderPage()
+    fireEvent.click(screen.getByText('Set vendor scope'))
+
+    expect(usePnlSummary).toHaveBeenLastCalledWith(
+      { mode: 'cycle', cycle: '2026-05-1H', basis: 'date' },
+      { vendors: ['ESP'] },
+    )
+  })
+
+  it('clears the group when a cell click replaces the scope', () => {
+    renderPage()
+    fireEvent.click(screen.getByText('Pick group'))
+    expect(screen.getByTestId('filter-bar-group')).toHaveTextContent('g1')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Daily Report' }))
+    fireEvent.click(screen.getByText('Fake cell'))
+
+    // A cell click REPLACES the scope; leaving the old group on would silently widen it.
+    expect(screen.getByTestId('filter-bar-group')).toHaveTextContent('undefined')
+    expect(screen.getByTestId('drilldown-route')).toHaveTextContent('Tanjung Pinang')
+  })
+
+  it('keeps routes but drops dates when the period changes', () => {
+    renderPage()
+    fireEvent.click(screen.getByText('Set vendor scope'))
+    expect(screen.getByTestId('filter-bar-scope')).toHaveTextContent('ESP')
+
+    // Switching the DATE BASIS is a period change that (unlike Custom Range with no dates typed
+    // in) leaves `filter` defined, so the Estimated tab — and the filter bar mock inside it —
+    // stays mounted to observe.
+    fireEvent.change(screen.getByTitle('Date field used to assign the billing cycle / filter the range'), {
+      target: { value: 'atd_origin' },
+    })
+
+    // Only a date carries the old period; a vendor, a route and a group do not — the same reason
+    // routePicks and vendorPicks survive a period change.
+    expect(screen.getByTestId('filter-bar-scope')).toHaveTextContent('ESP')
+  })
+
+  it('drops a date that belonged to the old period', () => {
+    renderPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Daily Report' }))
+    fireEvent.click(screen.getByText('Fake cell'))
+    expect(screen.getByTestId('drilldown-route')).toHaveTextContent('2026-05-01')
+
+    fireEvent.change(screen.getByTitle('Date field used to assign the billing cycle / filter the range'), {
+      target: { value: 'atd_origin' },
+    })
+    expect(screen.getByTestId('drilldown-route')).not.toHaveTextContent('2026-05-01')
+  })
+
+  it('gives the two tabs their own group, so one cannot move the other', () => {
+    renderPage()
+    fireEvent.click(screen.getByText('Pick group'))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Daily Report' }))
+    expect(screen.getByTestId('daily-group')).toHaveTextContent('undefined')
+
+    fireEvent.click(screen.getByText('Pick daily group'))
+    expect(screen.getByTestId('daily-group')).toHaveTextContent('gDaily')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Estimated' }))
+    expect(screen.getByTestId('filter-bar-group')).toHaveTextContent('g1')
+  })
+
+  // The test above only proves the filter bar mock echoes back the groupId prop it was handed —
+  // that passes even if estimateGroupId is write-only and never reaches a real query, which is
+  // exactly how the Critical shipped: the page kept the group id but never folded it into the
+  // scope usePnlSummary (and every other panel) actually consumes. This asserts against a real
+  // call argument instead of a mock's echo.
+  it('folds the chosen group into the scope the KPI cards query', () => {
+    renderPage()
+    fireEvent.click(screen.getByText('Pick group'))
+
+    expect(usePnlSummary).toHaveBeenLastCalledWith(
+      expect.anything(),
+      expect.objectContaining({ routes: [{ origin: 'Jabo', dest: 'Aceh' }] }),
+    )
   })
 })

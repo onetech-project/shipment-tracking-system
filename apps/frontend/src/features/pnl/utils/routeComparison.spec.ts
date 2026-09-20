@@ -15,6 +15,7 @@ const cell = (over: Partial<PnlRouteComparisonCell> = {}): PnlRouteComparisonCel
   costSgOut: 0,
   costSgIn: 0,
   incompleteTos: 0,
+  revenueMissingTos: 0,
   issues: [],
   ...over,
 })
@@ -56,6 +57,7 @@ const data: PnlRouteComparison = {
       avgCostPerDay: 53.3,
       avgMarginPerDay: 13.3,
       incompleteTos: 2,
+      revenueMissingTos: 0,
       issues: [{ issue: 'no_booking', awbs: 4 }],
     },
     {
@@ -70,6 +72,7 @@ const data: PnlRouteComparison = {
       avgCostPerDay: 0,
       avgMarginPerDay: 0,
       incompleteTos: 0,
+      revenueMissingTos: 0,
       issues: [],
     },
   ],
@@ -131,12 +134,17 @@ describe('toRouteComparisonTable warnings', () => {
     expect(model.rows[0].warnings[0]).toEqual({
       issues: [{ issue: 'no_booking', awbs: 2 }],
       incompleteTos: 2,
+      revenueMissingTos: 0,
     })
   })
 
   it('gives an absent cell a clean warning rather than undefined', () => {
     const model = toRouteComparisonTable(data)
-    expect(model.rows[0].warnings[1]).toEqual({ issues: [], incompleteTos: 0 })
+    expect(model.rows[0].warnings[1]).toEqual({
+      issues: [],
+      incompleteTos: 0,
+      revenueMissingTos: 0,
+    })
   })
 
   it('warns on the Total row but not on Avg / Day', () => {
@@ -145,8 +153,31 @@ describe('toRouteComparisonTable warnings', () => {
     expect(model.footerRows[0].warnings?.[0]).toEqual({
       issues: [{ issue: 'no_booking', awbs: 4 }],
       incompleteTos: 2,
+      revenueMissingTos: 0,
     })
     expect(model.footerRows[1].warnings).toBeNull()
+  })
+
+  // Every other fixture in this file omits revenueMissingTos, so `?? 0` passes whether the
+  // mapping is right or hardcoded to 0 — a mutation to `revenueMissingTos: 0,` on line 37 or 61
+  // survived the whole frontend pnl suite before this test existed. cellWarning.ts promises that
+  // yellow means the same thing on the Daily Report and both comparison tabs, so the count has to
+  // be pinned here too, per-cell and summed into the footer.
+  it('carries the revenue-missing count onto each cell and into the footer', () => {
+    const model = toRouteComparisonTable({
+      columns: data.columns,
+      rows: [
+        {
+          date: '2026-05-01',
+          cells: [cell({ revenueMissingTos: 2 }), cell({ revenueMissingTos: 3 })],
+        },
+      ],
+      footer: [{ ...data.footer[0], revenueMissingTos: 5 }, data.footer[1]],
+      periodDays: 15,
+    })
+
+    expect(model.rows[0].warnings.map((w) => w.revenueMissingTos)).toEqual([2, 3])
+    expect(model.footerRows[0].warnings?.[0].revenueMissingTos).toBe(5)
   })
 })
 
@@ -240,6 +271,7 @@ describe('toRouteComparisonTable row axis', () => {
               costSgOut: 0,
               costSgIn: 0,
               incompleteTos: 0,
+              revenueMissingTos: 0,
               issues: [],
             },
           ],
@@ -258,6 +290,7 @@ describe('toRouteComparisonTable row axis', () => {
           avgCostPerDay: 600,
           avgMarginPerDay: 385,
           incompleteTos: 0,
+          revenueMissingTos: 0,
           issues: [],
         },
       ],
