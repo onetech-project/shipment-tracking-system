@@ -56,6 +56,27 @@ const matrix: PnlDailyMatrix = {
   periodDays: 2,
 }
 
+// Every footer fixture above leaves revenueMissingTos at 0, so `f.revenueMissingTos ?? 0` in both
+// toRevenueTable (dailyMatrix.ts:80) and toMarginTable (dailyMatrix.ts:111) would return 0 whether
+// the mapping is correct or hardcoded to 0 — the field only ever varies on a CELL in this file. This
+// fixture sets it non-zero on a footer row and pairs it with incompleteTos and a cost issue, so the
+// two tables' different treatment of the same footer row is visible: revenueWarning() keeps the
+// count but drops the cost issue and zeroes incompleteTos, while toMarginTable keeps all three
+// unfiltered because margin is spoiled by a missing revenue AND a missing cost alike.
+const missingRevenueFooter: PnlDailyMatrix = {
+  ...matrix,
+  footer: [
+    {
+      ...matrix.footer[0],
+      incompleteTos: 7,
+      revenueMissingTos: 4,
+      issues: [{ issue: 'no_booking', awbs: 5 }],
+    },
+    matrix.footer[1],
+    matrix.footer[2],
+  ],
+}
+
 describe('groupOrigins', () => {
   it('collapses consecutive columns sharing an origin label into spans', () => {
     expect(groupOrigins(matrix.columns)).toEqual([
@@ -188,6 +209,16 @@ describe('toRevenueTable', () => {
     expect(warning.issues).toEqual([])
     expect(warning.incompleteTos).toBe(0)
   })
+
+  it('pins the footer revenue-missing count through to the table, not hardcoded to 0', () => {
+    // Kills a mutation of dailyMatrix.ts:80 (`f.revenueMissingTos ?? 0` -> `0`): the count keeps
+    // flowing through revenueWarning(), while the cost issue and incompleteTos it arrived with are
+    // scrubbed, exactly like a cell warning would be.
+    const model = toRevenueTable(missingRevenueFooter)
+    const expectedWarning = { issues: [], incompleteTos: 0, revenueMissingTos: 4 }
+    expect(model.footerRows[0].warnings?.[0]).toEqual(expectedWarning)
+    expect(model.footerRows[1].warnings?.[0]).toEqual(expectedWarning)
+  })
 })
 
 describe('toMarginTable', () => {
@@ -254,6 +285,23 @@ describe('toMarginTable', () => {
     expect(space.warnings?.[2]).toEqual(expectedWarning)
     // Total Tonase is gross weight: it never touches cost, so it deliberately stays clean.
     expect(tonase.warnings).toBeUndefined()
+  })
+
+  it('pins the footer revenue-missing count through unfiltered, unlike the revenue table', () => {
+    // Kills a mutation of dailyMatrix.ts:111 (`f.revenueMissingTos ?? 0` -> `0`). Same fixture as
+    // toRevenueTable's equivalent test, but here the whole warning survives unfiltered — margin is
+    // spoiled by a missing revenue and a missing cost alike — which must differ from that table's
+    // filtered result.
+    const model = toMarginTable(missingRevenueFooter)
+    const expectedWarning = {
+      issues: [{ issue: 'no_booking', awbs: 5 }],
+      incompleteTos: 7,
+      revenueMissingTos: 4,
+    }
+    expect(model.footerRows[0].warnings?.[0]).toEqual(expectedWarning)
+    expect(model.footerRows[1].warnings?.[0]).toEqual(expectedWarning)
+    expect(model.footerRows[2].warnings?.[0]).toEqual(expectedWarning)
+    expect(model.footerRows[4].warnings?.[0]).toEqual(expectedWarning)
   })
 })
 
