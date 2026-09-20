@@ -157,6 +157,28 @@ describe('toRouteComparisonTable warnings', () => {
     })
     expect(model.footerRows[1].warnings).toBeNull()
   })
+
+  // Every other fixture in this file omits revenueMissingTos, so `?? 0` passes whether the
+  // mapping is right or hardcoded to 0 — a mutation to `revenueMissingTos: 0,` on line 37 or 61
+  // survived the whole frontend pnl suite before this test existed. cellWarning.ts promises that
+  // yellow means the same thing on the Daily Report and both comparison tabs, so the count has to
+  // be pinned here too, per-cell and summed into the footer.
+  it('carries the revenue-missing count onto each cell and into the footer', () => {
+    const model = toRouteComparisonTable({
+      columns: data.columns,
+      rows: [
+        {
+          date: '2026-05-01',
+          cells: [cell({ revenueMissingTos: 2 }), cell({ revenueMissingTos: 3 })],
+        },
+      ],
+      footer: [{ ...data.footer[0], revenueMissingTos: 5 }, data.footer[1]],
+      periodDays: 15,
+    })
+
+    expect(model.rows[0].warnings.map((w) => w.revenueMissingTos)).toEqual([2, 3])
+    expect(model.footerRows[0].warnings?.[0].revenueMissingTos).toBe(5)
+  })
 })
 
 describe('overlappingRoutes', () => {
