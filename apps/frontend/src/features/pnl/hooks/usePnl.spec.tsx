@@ -15,6 +15,14 @@ import {
   routeToParams,
   usePnlAwbDrilldown,
   usePnlSummary,
+  usePnlDailyMargin,
+  usePnlRevenueByRoute,
+  usePnlProfitByRoute,
+  usePnlCostTotals,
+  usePnlCostByVendor,
+  usePnlCostByRa,
+  usePnlCostBySgOut,
+  usePnlCostBySgIn,
   PnlFilter,
   PnlRouteFilter,
   columnsToParam,
@@ -204,6 +212,90 @@ describe('scoped query keys', () => {
     expect(apiClient.get).toHaveBeenCalledWith(
       '/pnl/summary',
       expect.objectContaining({ params: expect.objectContaining({ routes: 'Jabo|Aceh' }) }),
+    )
+  })
+})
+
+// Only usePnlSummary (above) had any assertion on what reaches the wire. Every other scoped hook
+// carries `...routeToParams(scope)` and `paramsSerializer: { indexes: null }` in its request, but
+// nothing proved it — a prior audit found that deleting paramsSerializer from usePnlCostByVendor
+// passed the entire frontend pnl suite. The serializer assertion below is why this block exists:
+// without paramsSerializer: { indexes: null }, axios serialises the repeated `vendor` param as
+// `vendor[]=ESP`, qs parses that under a key literally named 'vendor[]' that no backend handler
+// reads, and the vendor filter vanishes from the response with no error or warning anywhere.
+describe.each([
+  {
+    name: 'usePnlDailyMargin',
+    path: '/pnl/daily-margin',
+    run: (scope?: PnlRouteFilter) => usePnlDailyMargin(FILTER, scope),
+  },
+  {
+    name: 'usePnlRevenueByRoute',
+    path: '/pnl/breakdown/revenue-by-route',
+    run: (scope?: PnlRouteFilter) => usePnlRevenueByRoute(FILTER, scope),
+  },
+  {
+    name: 'usePnlProfitByRoute',
+    path: '/pnl/breakdown/profit-by-route',
+    run: (scope?: PnlRouteFilter) => usePnlProfitByRoute(FILTER, scope),
+  },
+  {
+    name: 'usePnlCostTotals',
+    path: '/pnl/breakdown/cost-totals',
+    run: (scope?: PnlRouteFilter) => usePnlCostTotals(FILTER, true, scope),
+  },
+  {
+    name: 'usePnlCostByVendor',
+    path: '/pnl/breakdown/cost-by-vendor',
+    run: (scope?: PnlRouteFilter) => usePnlCostByVendor(FILTER, true, scope),
+  },
+  {
+    name: 'usePnlCostByRa',
+    path: '/pnl/breakdown/cost-by-ra',
+    run: (scope?: PnlRouteFilter) => usePnlCostByRa(FILTER, true, scope),
+  },
+  {
+    name: 'usePnlCostBySgOut',
+    path: '/pnl/breakdown/cost-by-sg-out',
+    run: (scope?: PnlRouteFilter) => usePnlCostBySgOut(FILTER, true, scope),
+  },
+  {
+    name: 'usePnlCostBySgIn',
+    path: '/pnl/breakdown/cost-by-sg-in',
+    run: (scope?: PnlRouteFilter) => usePnlCostBySgIn(FILTER, true, scope),
+  },
+])('$name wire contract', ({ path, run }) => {
+  // Same harness as 'scoped query keys' above: this file mocks '@tanstack/react-query' wholesale
+  // for the plain-function-call tests elsewhere in the file, so a real render needs the actual
+  // QueryClient/QueryClientProvider via requireActual, with the mocked useQuery binding pointed at
+  // the real implementation for the duration of one render, reset afterward.
+  const real = jest.requireActual('@tanstack/react-query')
+
+  afterEach(() => {
+    ;(useQuery as jest.Mock).mockReset()
+  })
+
+  it('sends the serialised scope to the wire behind paramsSerializer: { indexes: null }', () => {
+    ;(useQuery as jest.Mock).mockImplementation(real.useQuery)
+    const client = new real.QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+    })
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <real.QueryClientProvider client={client}>{children}</real.QueryClientProvider>
+    )
+    const scope: PnlRouteFilter = {
+      routes: [{ origin: 'Jabo', dest: 'Aceh' }],
+      vendors: ['ESP'],
+    }
+
+    renderHook(() => run(scope), { wrapper })
+
+    expect(apiClient.get).toHaveBeenCalledWith(
+      path,
+      expect.objectContaining({
+        params: expect.objectContaining({ routes: 'Jabo|Aceh', vendor: ['ESP'] }),
+        paramsSerializer: { indexes: null },
+      }),
     )
   })
 })
