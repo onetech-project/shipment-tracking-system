@@ -2038,8 +2038,8 @@ describe('PnlService', () => {
   // surface as nine separate mysterious query failures rather than one obvious one.
   describe('scopeSql', () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const call = (scope: unknown, dateCol: string, bound: number) =>
-      (service as any).scopeSql(scope, dateCol, bound) as { sql: string; params: unknown[] }
+    const call = (scope: unknown, dateCol: string, bound: number, alias?: string) =>
+      (service as any).scopeSql(scope, dateCol, bound, alias) as { sql: string; params: unknown[] }
 
     it('produces nothing at all for an absent or empty scope', () => {
       expect(call(undefined, 'shipment_date', 1)).toEqual({ sql: '', params: [] })
@@ -2104,6 +2104,34 @@ describe('PnlService', () => {
 
     it('ignores empty arrays rather than emitting a filter that matches nothing', () => {
       expect(call({ routes: [], vendors: [] }, 'shipment_date', 1)).toEqual({ sql: '', params: [] })
+    })
+
+    it('qualifies the columns it emits when given an alias', () => {
+      // A caller that joins a second table carrying its own `vendor` column — getCostBySgOut joins
+      // air_shipments_smu, which has one — gets "column reference is ambiguous" from Postgres
+      // without this. Proven against the live database, not hypothetical.
+      const { sql } = call(
+        { routes: [{ origin: 'Jabo', dest: 'Aceh' }], vendors: ['ESP'] },
+        'v.shipment_date',
+        1,
+        'v.',
+      )
+      expect(sql.replace(/\s+/g, ' ')).toContain('(v.origin_station, v.dest_station) IN')
+      expect(sql).toContain('v.vendor = ANY(')
+    })
+
+    it('leaves the date column alone, which the caller has already qualified', () => {
+      // buildFilter returns dateCol already alias-prefixed when the query needs it. Prefixing it
+      // here too would emit v.v.date_ata.
+      const { sql } = call({ dateFrom: '2026-05-01' }, 'v.date_ata', 1, 'v.')
+      expect(sql).toContain('v.date_ata >= $2::DATE')
+      expect(sql).not.toContain('v.v.')
+    })
+
+    it('emits bare column names when no alias is given', () => {
+      const { sql } = call({ vendors: ['ESP'] }, 'shipment_date', 1)
+      expect(sql).toContain(' vendor = ANY(')
+      expect(sql).not.toContain('v.vendor')
     })
   })
 
@@ -2197,6 +2225,18 @@ describe('PnlService', () => {
         '(origin_station, dest_station) IN (SELECT * FROM UNNEST($3::text[], $4::text[]))',
       )
       expect(params).toEqual(['2026-05-01', '2026-05-31', ['Jabo'], ['Aceh']])
+    })
+
+    it('qualifies the scope columns in the two queries that join a second table', async () => {
+      // air_shipments_smu carries its own `vendor` column, so an unqualified predicate is
+      // ambiguous to Postgres — a 500 the moment a vendor filter is applied.
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getCostBySgOut('2026-05-1H', undefined, undefined, undefined, { vendors: ['ESP'] })
+      expect(dataSource.query.mock.calls[0][0] as string).toContain('v.vendor = ANY(')
+
+      dataSource.query.mockResolvedValueOnce([])
+      await service.getCostByRa('2026-05-1H', undefined, undefined, undefined, { vendors: ['ESP'] })
+      expect(dataSource.query.mock.calls[1][0] as string).toContain('v.vendor = ANY(')
     })
   })
 })
