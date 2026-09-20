@@ -542,6 +542,22 @@ describe('PnlPage estimated scope', () => {
     expect(screen.getByTestId('drilldown-route')).toHaveTextContent('ESP')
   })
 
+  // Every other test here only checks the mocked filter bar's and drilldown's rendered text, which
+  // both mocks reflect back whatever `scope` prop they were given regardless of usePnlSummary. That
+  // proves the scope reaches those two components, but not that it reaches the KPI cards' data
+  // source. usePnlSummary is itself mocked, so its call arguments are the only way to observe what
+  // the page actually passed it — without this assertion, deleting the second argument at the call
+  // site would leave every other test in this block green.
+  it('passes the estimate scope to usePnlSummary, so the KPI cards follow the filter', () => {
+    renderPage()
+    fireEvent.click(screen.getByText('Set vendor scope'))
+
+    expect(usePnlSummary).toHaveBeenLastCalledWith(
+      { mode: 'cycle', cycle: '2026-05-1H', basis: 'date' },
+      { vendors: ['ESP'] },
+    )
+  })
+
   it('clears the group when a cell click replaces the scope', () => {
     renderPage()
     fireEvent.click(screen.getByText('Pick group'))
