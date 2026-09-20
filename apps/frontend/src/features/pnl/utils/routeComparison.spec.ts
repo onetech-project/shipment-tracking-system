@@ -15,6 +15,7 @@ const cell = (over: Partial<PnlRouteComparisonCell> = {}): PnlRouteComparisonCel
   costSgOut: 0,
   costSgIn: 0,
   incompleteTos: 0,
+  revenueMissingTos: 0,
   issues: [],
   ...over,
 })
@@ -56,6 +57,7 @@ const data: PnlRouteComparison = {
       avgCostPerDay: 53.3,
       avgMarginPerDay: 13.3,
       incompleteTos: 2,
+      revenueMissingTos: 0,
       issues: [{ issue: 'no_booking', awbs: 4 }],
     },
     {
@@ -70,6 +72,7 @@ const data: PnlRouteComparison = {
       avgCostPerDay: 0,
       avgMarginPerDay: 0,
       incompleteTos: 0,
+      revenueMissingTos: 0,
       issues: [],
     },
   ],
@@ -131,12 +134,17 @@ describe('toRouteComparisonTable warnings', () => {
     expect(model.rows[0].warnings[0]).toEqual({
       issues: [{ issue: 'no_booking', awbs: 2 }],
       incompleteTos: 2,
+      revenueMissingTos: 0,
     })
   })
 
   it('gives an absent cell a clean warning rather than undefined', () => {
     const model = toRouteComparisonTable(data)
-    expect(model.rows[0].warnings[1]).toEqual({ issues: [], incompleteTos: 0 })
+    expect(model.rows[0].warnings[1]).toEqual({
+      issues: [],
+      incompleteTos: 0,
+      revenueMissingTos: 0,
+    })
   })
 
   it('warns on the Total row but not on Avg / Day', () => {
@@ -145,6 +153,7 @@ describe('toRouteComparisonTable warnings', () => {
     expect(model.footerRows[0].warnings?.[0]).toEqual({
       issues: [{ issue: 'no_booking', awbs: 4 }],
       incompleteTos: 2,
+      revenueMissingTos: 0,
     })
     expect(model.footerRows[1].warnings).toBeNull()
   })
@@ -240,6 +249,7 @@ describe('toRouteComparisonTable row axis', () => {
               costSgOut: 0,
               costSgIn: 0,
               incompleteTos: 0,
+              revenueMissingTos: 0,
               issues: [],
             },
           ],
@@ -258,6 +268,7 @@ describe('toRouteComparisonTable row axis', () => {
           avgCostPerDay: 600,
           avgMarginPerDay: 385,
           incompleteTos: 0,
+          revenueMissingTos: 0,
           issues: [],
         },
       ],

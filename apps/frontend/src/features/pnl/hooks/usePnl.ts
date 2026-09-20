@@ -181,6 +181,7 @@ export interface PnlDailyMatrixCell {
   margin: number
   weight: number
   incompleteTos: number
+  revenueMissingTos: number
   issues: PnlCellIssue[]
 }
 
@@ -198,6 +199,7 @@ export interface PnlDailyMatrixFooter {
   marginPct: number | null
   spacePerKg: number | null
   incompleteTos: number
+  revenueMissingTos: number
   issues: PnlCellIssue[]
 }
 
@@ -239,6 +241,7 @@ export interface PnlRouteComparisonCell {
   costSgOut: number
   costSgIn: number
   incompleteTos: number
+  revenueMissingTos: number
   issues: PnlCellIssue[]
 }
 
@@ -259,6 +262,7 @@ export interface PnlRouteComparisonFooter {
   avgCostPerDay: number
   avgMarginPerDay: number
   incompleteTos: number
+  revenueMissingTos: number
   issues: PnlCellIssue[]
 }
 
@@ -300,6 +304,7 @@ export interface PnlVendorComparisonCell {
   costSgOut: number
   costSgIn: number
   incompleteTos: number
+  revenueMissingTos: number
   issues: PnlCellIssue[]
 }
 
@@ -323,6 +328,7 @@ export interface PnlVendorComparisonFooter {
   avgCostPerRoute: number | null
   avgMarginPerRoute: number | null
   incompleteTos: number
+  revenueMissingTos: number
   issues: PnlCellIssue[]
 }
 

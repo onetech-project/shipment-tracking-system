@@ -33,6 +33,7 @@ function data(over: Partial<PnlVendorComparison> = {}): PnlVendorComparison {
             costSgOut: 50,
             costSgIn: 50,
             incompleteTos: 1,
+            revenueMissingTos: 0,
             issues: [{ issue: 'no_booking', awbs: 2 }],
           },
         ],
@@ -53,6 +54,7 @@ function data(over: Partial<PnlVendorComparison> = {}): PnlVendorComparison {
         avgCostPerRoute: 600,
         avgMarginPerRoute: 385,
         incompleteTos: 1,
+        revenueMissingTos: 0,
         issues: [{ issue: 'no_booking', awbs: 5 }],
       },
     ],
@@ -80,7 +82,7 @@ describe('toVendorComparisonTable', () => {
     expect(model.rows[0].components.costSmu).toEqual([400])
     expect(model.rows[0].components.costSgIn).toEqual([50])
     expect(model.rows[0].warnings).toEqual([
-      { issues: [{ issue: 'no_booking', awbs: 2 }], incompleteTos: 1 },
+      { issues: [{ issue: 'no_booking', awbs: 2 }], incompleteTos: 1, revenueMissingTos: 0 },
     ])
   })
 
@@ -90,7 +92,7 @@ describe('toVendorComparisonTable', () => {
     expect(model.rows[1].revenue).toEqual([null])
     expect(model.rows[1].margin).toEqual([null])
     expect(model.rows[1].components.costRa).toEqual([null])
-    expect(model.rows[1].warnings).toEqual([{ issues: [], incompleteTos: 0 }])
+    expect(model.rows[1].warnings).toEqual([{ issues: [], incompleteTos: 0, revenueMissingTos: 0 }])
   })
 
   it('builds a Total row that expands and an Avg / Route row that does not', () => {

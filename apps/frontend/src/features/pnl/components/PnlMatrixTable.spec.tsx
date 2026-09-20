@@ -15,15 +15,18 @@ const columns = [
   { origin: 'Surabaya', originLabel: 'SUB', dest: 'Pontianak' },
 ]
 
-const warned = { issues: [{ issue: 'smu_rate_missing', awbs: 2 }], incompleteTos: 3 }
-const clean = { issues: [], incompleteTos: 0 }
+const warned = { issues: [{ issue: 'smu_rate_missing', awbs: 2 }], incompleteTos: 3, revenueMissingTos: 0 }
+const clean = { issues: [], incompleteTos: 0, revenueMissingTos: 0 }
 
 function baseModel(overrides: Partial<MatrixTableModel> = {}): MatrixTableModel {
   return {
     columns,
     dates: ['2026-07-01'],
     values: [[null, 0]],
-    warnings: [[{ issues: [], incompleteTos: 0 }, { issues: [], incompleteTos: 0 }]],
+    warnings: [[
+      { issues: [], incompleteTos: 0, revenueMissingTos: 0 },
+      { issues: [], incompleteTos: 0, revenueMissingTos: 0 },
+    ]],
     footerRows: [{ label: 'Total', values: [10, -5], format: 'number' }],
     highlightNegative: false,
     ...overrides,
