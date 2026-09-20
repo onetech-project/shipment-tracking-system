@@ -47,6 +47,65 @@ describe('PnlService', () => {
         grossMarginPct: (925000 / 4925000) * 100,
       })
     })
+
+    it('narrows to the scoped routes at TO grain', async () => {
+      dataSource.query.mockResolvedValueOnce([{
+        total_tos: '4', total_awbs: '1',
+        total_revenue: '1000', total_discount: '0', total_cost: '400',
+      }])
+
+      await service.getSummary('2026-05-1H', undefined, undefined, undefined, {
+        routes: [{ origin: 'Jabo', dest: 'Denpasar' }],
+      })
+
+      const [sql, params] = dataSource.query.mock.calls[0]
+      expect(sql.replace(/\s+/g, ' ')).toContain(
+        '(origin_station, dest_station) IN (SELECT * FROM UNNEST($2::text[], $3::text[]))',
+      )
+      expect(params).toEqual(['2026-05-1H', ['Jabo'], ['Denpasar']])
+    })
+
+    it('sends exactly the query it sent before scopes existed when none is given', async () => {
+      dataSource.query.mockResolvedValueOnce([{
+        total_tos: '1', total_awbs: '1',
+        total_revenue: '1', total_discount: '0', total_cost: '1',
+      }])
+
+      await service.getSummary('2026-05-1H')
+
+      const [sql, params] = dataSource.query.mock.calls[0]
+      expect(sql).not.toContain('UNNEST')
+      expect(sql).not.toContain('vendor = ANY')
+      expect(params).toEqual(['2026-05-1H'])
+    })
+  })
+
+  describe('getDailyMargin', () => {
+    it('narrows to the scoped vendors', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.getDailyMargin('2026-05-1H', undefined, undefined, undefined, {
+        vendors: ['ESP'],
+      })
+
+      const [sql, params] = dataSource.query.mock.calls[0]
+      expect(sql).toContain('vendor = ANY($2::text[])')
+      expect(params).toEqual(['2026-05-1H', ['ESP']])
+    })
+
+    it('keeps its own "date is not null" guard alongside the scope', async () => {
+      dataSource.query.mockResolvedValueOnce([])
+
+      await service.getDailyMargin('2026-05-1H', undefined, undefined, undefined, {
+        dateFrom: '2026-05-02',
+      })
+
+      const sql = dataSource.query.mock.calls[0][0] as string
+      // The chart groups by day, so a row with no date on the active basis has nowhere to go and
+      // must stay excluded regardless of what the scope says.
+      expect(sql).toContain('shipment_date IS NOT NULL')
+      expect(sql).toContain('shipment_date >= $2::DATE')
+    })
   })
 
   describe('getCycles', () => {
