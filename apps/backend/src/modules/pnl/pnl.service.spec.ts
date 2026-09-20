@@ -2140,7 +2140,9 @@ describe('PnlService', () => {
     // filter that charges a full AWB's cost against whichever subset of its TOs survived, so the
     // breakdown would overshoot the Est. Cost card it sits under.
     it('prorates cost-totals by weight_share instead of taking each whole AWB', async () => {
-      dataSource.query.mockResolvedValueOnce([{ smu: '0', ra: '0', sg_out: '0', sg_in: '0' }])
+      dataSource.query.mockResolvedValueOnce([
+        { cost_smu: '0', cost_ra: '0', cost_sg_out: '0', cost_sg_in: '0' },
+      ])
 
       await service.getCostTotals('2026-05-1H')
 
@@ -2150,7 +2152,9 @@ describe('PnlService', () => {
     })
 
     it('scopes cost-totals', async () => {
-      dataSource.query.mockResolvedValueOnce([{ smu: '0', ra: '0', sg_out: '0', sg_in: '0' }])
+      dataSource.query.mockResolvedValueOnce([
+        { cost_smu: '0', cost_ra: '0', cost_sg_out: '0', cost_sg_in: '0' },
+      ])
 
       await service.getCostTotals('2026-05-1H', undefined, undefined, undefined, {
         routes: [{ origin: 'Jabo', dest: 'Aceh' }],
@@ -2158,6 +2162,19 @@ describe('PnlService', () => {
 
       const [, params] = dataSource.query.mock.calls[0]
       expect(params).toEqual(['2026-05-1H', ['Jabo'], ['Aceh']])
+    })
+
+    it('maps each costSplitSql column onto its own field', async () => {
+      // Four distinct values, deliberately not interchangeable: costSplitSql emits cost_smu /
+      // cost_ra / cost_sg_out / cost_sg_in, and every read is `?? 0`, so a swapped or stale name
+      // yields a silent zero rather than an error. The SQL-text assertions nearby cannot see that.
+      dataSource.query.mockResolvedValueOnce([
+        { cost_smu: '1000', cost_ra: '200', cost_sg_out: '30', cost_sg_in: '4' },
+      ])
+
+      const totals = await service.getCostTotals('2026-05-1H')
+
+      expect(totals).toEqual({ smu: 1000, ra: 200, sgOut: 30, sgIn: 4 })
     })
 
     it('weighs cost-by-vendor on the rows in scope, not on each whole AWB', async () => {
