@@ -68,6 +68,16 @@ describe('RouteGroupSelect', () => {
     expect(screen.getByRole('combobox')).toHaveValue('');
   });
 
+  it('does fetch the groups when the permission is present', () => {
+    // The negative case below pins enabled:false, but nothing pinned the positive one — and the
+    // shared mockReturnValue ignores call arguments, so a source that hardcoded enabled:false
+    // would render the control and simply never fetch, leaving the dropdown silently empty.
+    allow(true);
+    render(<RouteGroupSelect value={undefined} onChange={jest.fn()} />);
+
+    expect(groupsHook.useRouteGroups).toHaveBeenCalledWith({ enabled: true });
+  });
+
   it('renders nothing and asks for nothing without read.route_group', () => {
     allow(false);
     const { container } = render(<RouteGroupSelect value={undefined} onChange={jest.fn()} />);
