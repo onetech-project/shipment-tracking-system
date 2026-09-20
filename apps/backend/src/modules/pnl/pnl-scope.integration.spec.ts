@@ -129,13 +129,39 @@ describe('PnL scope reconciliation (integration)', () => {
         // An AWB nothing could cost has a null cost and a null GP — there is no arithmetic to
         // check on it, and asserting one would be asserting against "unknown".
         if (row.totalCost == null || row.grossProfit == null) continue
-        // The defect this whole change set began with: revenue summed per TO, cost taken per
-        // whole AWB, so these two differed by the out-of-scope portion of the AWB's cost.
-        expect(row.totalRevenue - row.totalCost).toBeCloseTo(row.grossProfit, 0)
+        // NOT `revenue - cost === grossProfit`: the mapper derives grossProfit as exactly that
+        // subtraction, so asserting it restates the mapper to itself and cannot fail. These
+        // compare SQL's own aggregates against each other instead.
+        //
+        // Margin percent is derived from revenue and GP, so it must agree with them, and it is
+        // computed by a separate expression than the one that produced GP.
+        if (row.totalRevenue > 0) {
+          expect(row.grossMarginPct).toBeCloseTo((row.grossProfit / row.totalRevenue) * 100, 6)
+        }
         const components =
           (row.costSmu ?? 0) + (row.costRa ?? 0) + (row.costSgOut ?? 0) + (row.costSgIn ?? 0)
         expect(components).toBeCloseTo(row.totalCost, 0)
       }
+    })
+
+    it('has an AWB row agree with the sum of its own TOs', async () => {
+      // The real grain check, and the one the deleted per-row tautology was reaching for.
+      // getAwbTos returns the TOs themselves, costed per TO by the view; getAwbDrilldown
+      // aggregates them. If the drilldown ever went back to taking a whole AWB's cost against a
+      // subset of its TOs, these two would part company — and neither number is derived from the
+      // other, so they cannot be wrong together.
+      const { data } = await service.getAwbDrilldown(
+        1, 50, CYCLE, undefined, undefined, undefined, undefined,
+      )
+      const multi = data.find((r) => r.toCount > 1 && r.totalCost != null)
+      expect(multi).toBeDefined()
+
+      const tos = await service.getAwbTos(multi!.awb, CYCLE)
+      const revenue = tos.reduce((sum, t) => sum + t.revenue, 0)
+      const cost = tos.reduce((sum, t) => sum + (t.totalCost ?? 0), 0)
+
+      expect(revenue).toBeCloseTo(multi!.totalRevenue, 0)
+      expect(cost).toBeCloseTo(multi!.totalCost!, 0)
     })
 
     it('has the whole drilldown sum to the card above it', async () => {
