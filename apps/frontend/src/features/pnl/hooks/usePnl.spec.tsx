@@ -196,6 +196,16 @@ describe('scoped query keys', () => {
     // And the scope is what differs, not merely something.
     expect(JSON.stringify(scoped[0])).toContain('Jabo')
   })
+
+  it('sends the scope through to the request params, not only into the key', () => {
+    // A mutant that keeps scope in queryKey but drops ...routeToParams(scope) from params would
+    // pass the test above (the key still changes) while the backend never sees the filter at all.
+    keysAfter({ routes: [{ origin: 'Jabo', dest: 'Aceh' }] })
+    expect(apiClient.get).toHaveBeenCalledWith(
+      '/pnl/summary',
+      expect.objectContaining({ params: expect.objectContaining({ routes: 'Jabo|Aceh' }) }),
+    )
+  })
 })
 
 describe('routeToParams as the scope serialiser', () => {
