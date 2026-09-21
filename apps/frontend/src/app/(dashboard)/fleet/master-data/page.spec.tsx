@@ -322,6 +322,9 @@ describe('FleetMasterDataPage', () => {
       data: [
         { ...row, id: 'r1', category: 'jenis_berkas', code: 'stnk', label: 'STNK', isRequired: true },
         { ...row, id: 'r2', category: 'jenis_berkas', code: 'foto', label: 'Foto', isRequired: false },
+        // is_required is nullable and legacy rows created before this feature still hold null.
+        // Null must read as "not required", exactly like false, never as a tick or a blank.
+        { ...row, id: 'r3', category: 'jenis_berkas', code: 'legacy', label: 'Legacy', isRequired: null },
       ],
       isLoading: false,
     })
@@ -329,6 +332,7 @@ describe('FleetMasterDataPage', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Jenis Berkas' }))
     expect(within(screen.getAllByRole('row')[1]).getAllByRole('cell')[3].textContent).toBe('✓')
     expect(within(screen.getAllByRole('row')[2]).getAllByRole('cell')[3].textContent).toBe('—')
+    expect(within(screen.getAllByRole('row')[3]).getAllByRole('cell')[3].textContent).toBe('—')
   })
 
   // The badge is the only signal a row is deactivated — without it the row looks live and the
