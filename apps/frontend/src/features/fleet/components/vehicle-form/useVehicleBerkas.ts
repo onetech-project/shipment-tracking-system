@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { FleetMasterRow } from '../../types'
+import { uploadErrorMessage } from '../../utils/api-error'
 
 // Mirrors storage.constants.ts on the backend, duplicated for the same reason ACCEPTED is in
 // BerkasUploadDialog: this is a courtesy check that saves a doomed upload, and the backend
@@ -187,7 +188,7 @@ export function useVehicleBerkas({ upload }: UseVehicleBerkasOptions): VehicleBe
           })
           forget(row.slot.id)
         } catch (err: unknown) {
-          const message = err instanceof Error ? err.message : 'Gagal mengunggah berkas.'
+          const message = uploadErrorMessage(err, 'Gagal mengunggah berkas.')
           failed.push({ slotLabel: row.slot.label, message })
           // The File stays in `pending` deliberately: Coba lagi must not send the operator back
           // to the file picker for something they already chose.

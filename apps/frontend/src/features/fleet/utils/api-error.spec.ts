@@ -1,4 +1,4 @@
-import { apiErrorMessage } from './api-error'
+import { apiErrorMessage, uploadErrorMessage } from './api-error'
 
 describe('apiErrorMessage', () => {
   it('returns the backend message from an axios-shaped error', () => {
@@ -35,5 +35,43 @@ describe('apiErrorMessage', () => {
 
   it('returns the given fallback verbatim rather than a hardcoded one', () => {
     expect(apiErrorMessage(null, 'Gagal menghapus sopir.')).toBe('Gagal menghapus sopir.')
+  })
+})
+
+describe('uploadErrorMessage', () => {
+  it('prefers the backend message on an axios-shaped rejection', () => {
+    const err = {
+      isAxiosError: true,
+      message: 'Request failed with status code 400',
+      response: { data: { message: 'Slot Foto Depan hanya menerima foto (jpg, png, atau webp).' } },
+    }
+    expect(uploadErrorMessage(err, 'fallback')).toBe(
+      'Slot Foto Depan hanya menerima foto (jpg, png, atau webp).',
+    )
+  })
+
+  // The PUT to object storage is a bare fetch, so useFleetVehicleFiles raises this itself. It is
+  // the one upload error whose own message is meant for an operator.
+  it('keeps the message of a plain Error, which no axios call produced', () => {
+    expect(uploadErrorMessage(new Error('Gagal mengunggah berkas (403)'), 'fallback')).toBe(
+      'Gagal mengunggah berkas (403)',
+    )
+  })
+
+  it('falls back for an axios error that never reached the server', () => {
+    // No response means the request died in transport; "Network Error" is not worth showing.
+    expect(
+      uploadErrorMessage({ isAxiosError: true, message: 'Network Error' }, 'fallback'),
+    ).toBe('fallback')
+  })
+
+  it('falls back when the backend answered without a usable message', () => {
+    const err = { isAxiosError: true, message: 'Request failed', response: { data: {} } }
+    expect(uploadErrorMessage(err, 'fallback')).toBe('fallback')
+  })
+
+  it('falls back for a non-Error rejection', () => {
+    expect(uploadErrorMessage('boom', 'fallback')).toBe('fallback')
+    expect(uploadErrorMessage(null, 'fallback')).toBe('fallback')
   })
 })
