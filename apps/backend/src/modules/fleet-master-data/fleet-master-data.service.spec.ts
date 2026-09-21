@@ -109,6 +109,42 @@ describe('FleetMasterDataService', () => {
     })
   })
 
+  describe('create defaults isRequired', () => {
+    // A row born NULL can never be made required from the UI, and reads as "not required"
+    // forever. The two categories that consult the flag get an explicit answer instead.
+    it.each(['jenis_berkas', 'jenis_dokumen'])(
+      'stores FALSE when %s omits the flag',
+      async (category) => {
+        await service.create({ category, code: 'x', label: 'X' } as never)
+        expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({ isRequired: false }))
+      },
+    )
+
+    // Defaulting to true would make every new file type mandatory the moment it is created.
+    it('never defaults to true', async () => {
+      await service.create({ category: 'jenis_berkas', code: 'x', label: 'X' } as never)
+      expect(repo.save).not.toHaveBeenCalledWith(expect.objectContaining({ isRequired: true }))
+    })
+
+    // An explicit choice is the caller's to make, including an explicit false.
+    it('respects an explicit true', async () => {
+      await service.create({
+        category: 'jenis_berkas',
+        code: 'x',
+        label: 'X',
+        isRequired: true,
+      } as never)
+      expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({ isRequired: true }))
+    })
+
+    // The other six categories never read the flag, so inventing a value for them would record a
+    // policy that does not exist.
+    it('leaves categories that do not use the flag alone', async () => {
+      await service.create({ category: 'pool', code: 'x', label: 'X' } as never)
+      expect(repo.save).toHaveBeenCalledWith(expect.not.objectContaining({ isRequired: false }))
+    })
+  })
+
   describe('update', () => {
     it('throws NotFoundException for an unknown id', async () => {
       repo.findOne.mockResolvedValue(null)
@@ -161,6 +197,17 @@ describe('FleetMasterDataService', () => {
         defaultValidMonths: 12,
         isRequired: true,
       })
+    })
+
+    // A guard written as `if (dto.isRequired)` reads identically to the correct
+    // `!== undefined` guard for every case above, since all of them pass isRequired: true or omit
+    // it entirely. Only an explicit false tells them apart: a truthy guard drops it from the patch
+    // and un-ticking Wajib on the edit form silently does nothing.
+    it('carries an explicit false into the patch', async () => {
+      repo.findOne.mockResolvedValueOnce({ id: 'r1', category: 'jenis_berkas', code: 'stnk' })
+      repo.findOne.mockResolvedValueOnce({ id: 'r1' })
+      await service.update('r1', { isRequired: false })
+      expect(repo.update).toHaveBeenCalledWith('r1', expect.objectContaining({ isRequired: false }))
     })
 
     // Real TypeORM throws on an empty update value set, so an unconditional call would turn a

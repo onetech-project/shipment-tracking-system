@@ -109,6 +109,7 @@ describe('MasterDataFormDialog', () => {
         label: 'KIR Tahunan',
         sortOrder: 20,
         warnDays: 45,
+        isRequired: true,
       }),
     )
   })
@@ -151,6 +152,7 @@ describe('MasterDataFormDialog', () => {
         label: 'Pajak',
         sortOrder: 7,
         warnDays: null,
+        isRequired: false,
       }),
     )
   })
@@ -173,6 +175,7 @@ describe('MasterDataFormDialog', () => {
         label: 'Pajak',
         sortOrder: 0,
         warnDays: 0,
+        isRequired: false,
       }),
     )
   })
@@ -211,6 +214,7 @@ describe('MasterDataFormDialog', () => {
         label: 'KIR Tahunan',
         sortOrder: 20,
         warnDays: 0,
+        isRequired: true,
       }),
     )
   })
@@ -402,5 +406,117 @@ describe('MasterDataFormDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
     expect(await screen.findByText('Ditolak.')).toBeInTheDocument()
     expect(onCloseRejected).not.toHaveBeenCalled()
+  })
+
+  // The flag only means something where something reads it; a checkbox on a pool would invite an
+  // admin to mark a row required and watch nothing happen.
+  it.each(['jenis_berkas', 'jenis_dokumen'] as const)('shows the required toggle for %s', (category) => {
+    render(<MasterDataFormDialog {...base} category={category} />)
+    expect(screen.getByLabelText(/Wajib/)).toBeInTheDocument()
+  })
+
+  it.each(['pool', 'leasing', 'jenis_sim', 'jenis_armada'] as const)(
+    'hides the required toggle for %s',
+    (category) => {
+      render(<MasterDataFormDialog {...base} category={category} />)
+      expect(screen.queryByLabelText(/Wajib/)).not.toBeInTheDocument()
+    },
+  )
+
+  // Turning a file type required re-reads the completeness chip for every vehicle at once. The
+  // warning is the only place an operator is told that before it happens.
+  it('warns that the chip is recalculated fleet-wide', () => {
+    render(<MasterDataFormDialog {...base} category="jenis_berkas" />)
+    expect(screen.getByText(/kelengkapan semua kendaraan/i)).toBeInTheDocument()
+  })
+
+  // jenis_dokumen's flag has a completely different consequence: it does not touch a chip at all,
+  // it makes assertRequiredDocuments (backend) and useVehicleForm's validation (frontend) reject
+  // every vehicle save that lacks an expiry date for that document type. The chip sentence here
+  // would tell the operator "a chip refreshes" when the real effect is "saves start failing".
+  it('warns about the expiry-date save block on jenis_dokumen', () => {
+    render(<MasterDataFormDialog {...base} category="jenis_dokumen" />)
+    expect(screen.getByText(/tidak bisa disimpan/i)).toBeInTheDocument()
+    expect(screen.queryByText(/kelengkapan semua kendaraan/i)).not.toBeInTheDocument()
+  })
+
+  it('submits the ticked value', async () => {
+    const onSubmit = jest.fn().mockResolvedValue(undefined)
+    render(<MasterDataFormDialog {...base} category="jenis_berkas" onSubmit={onSubmit} />)
+    fireEvent.change(screen.getByLabelText(/Label/), { target: { value: 'Faktur' } })
+    fireEvent.click(screen.getByLabelText(/Wajib/))
+    fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ isRequired: true })),
+    )
+  })
+
+  // Unticked must travel as an explicit false, not as an absent key: absent is how rows became
+  // NULL in the first place.
+  it('submits false when left unticked', async () => {
+    const onSubmit = jest.fn().mockResolvedValue(undefined)
+    render(<MasterDataFormDialog {...base} category="jenis_berkas" onSubmit={onSubmit} />)
+    fireEvent.change(screen.getByLabelText(/Label/), { target: { value: 'Faktur' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+    await waitFor(() =>
+      expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ isRequired: false })),
+    )
+  })
+
+  // A category that does not read the flag must not have one invented for it.
+  it('omits the flag entirely for categories that do not use it', async () => {
+    const onSubmit = jest.fn().mockResolvedValue(undefined)
+    render(<MasterDataFormDialog {...base} category="pool" onSubmit={onSubmit} />)
+    fireEvent.change(screen.getByLabelText(/Label/), { target: { value: 'Pool Bekasi' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    // expect.anything() matches every value except null and undefined, so
+    // expect.not.objectContaining({ isRequired: expect.anything() }) would pass for a stray
+    // null and miss the bug. Assert absence of the property directly instead.
+    expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('isRequired')
+  })
+
+  it('reflects an existing required row when editing', () => {
+    render(
+      <MasterDataFormDialog
+        {...base}
+        category="jenis_berkas"
+        initial={{
+          id: 'r1',
+          category: 'jenis_berkas',
+          code: 'stnk',
+          label: 'STNK',
+          sortOrder: 10,
+          isActive: true,
+          warnDays: null,
+          defaultValidMonths: null,
+          isRequired: true,
+        }}
+      />,
+    )
+    expect(screen.getByLabelText(/Wajib/)).toBeChecked()
+  })
+
+  // Legacy rows predate the backfill. NULL reads as not required everywhere else, so the box must
+  // agree rather than render indeterminate.
+  it('treats a legacy null as unticked', () => {
+    render(
+      <MasterDataFormDialog
+        {...base}
+        category="jenis_berkas"
+        initial={{
+          id: 'r1',
+          category: 'jenis_berkas',
+          code: 'stnk',
+          label: 'STNK',
+          sortOrder: 10,
+          isActive: true,
+          warnDays: null,
+          defaultValidMonths: null,
+          isRequired: null,
+        }}
+      />,
+    )
+    expect(screen.getByLabelText(/Wajib/)).not.toBeChecked()
   })
 })

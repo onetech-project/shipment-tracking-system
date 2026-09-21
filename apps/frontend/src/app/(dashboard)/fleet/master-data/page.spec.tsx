@@ -182,6 +182,7 @@ describe('FleetMasterDataPage', () => {
         label: 'KIR Tahunan',
         sortOrder: 0,
         warnDays: 45,
+        isRequired: false,
       }),
     )
   })
@@ -246,6 +247,7 @@ describe('FleetMasterDataPage', () => {
       'Kode',
       'Urutan',
       'Ambang (hari)',
+      'Wajib',
       '',
     ])
 
@@ -275,7 +277,7 @@ describe('FleetMasterDataPage', () => {
     expect(screen.getByRole('columnheader', { name: 'Ambang (hari)' })).toBeInTheDocument()
   })
 
-  it.each(['Jenis Armada', 'Kepemilikan', 'Leasing', 'Status Kendaraan', 'Pool', 'Jenis Berkas'])(
+  it.each(['Jenis Armada', 'Kepemilikan', 'Leasing', 'Status Kendaraan', 'Pool'])(
     'hides the threshold column on %s',
     (tab) => {
       render(<FleetMasterDataPage />)
@@ -289,6 +291,49 @@ describe('FleetMasterDataPage', () => {
       ])
     },
   )
+
+  // Jenis Berkas is the one category with the required column but no threshold column, so its
+  // header row is the proof that the two conditionals are independent.
+  it('shows the required column without the threshold column on Jenis Berkas', () => {
+    render(<FleetMasterDataPage />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Jenis Berkas' }))
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual([
+      'Label',
+      'Kode',
+      'Urutan',
+      'Wajib',
+      '',
+    ])
+  })
+
+  it.each(['Jenis Armada', 'Kepemilikan', 'Leasing', 'Status Kendaraan', 'Pool', 'Jenis SIM'])(
+    'hides the required column on %s',
+    (tab) => {
+      render(<FleetMasterDataPage />)
+      fireEvent.click(screen.getByRole('tab', { name: tab }))
+      expect(screen.queryByRole('columnheader', { name: 'Wajib' })).not.toBeInTheDocument()
+    },
+  )
+
+  // A tick and an em dash, matching how the threshold column distinguishes a real value from an
+  // absent one.
+  it('renders a tick for a required row and a dash otherwise', () => {
+    mockUseFleetMasterData.mockReturnValue({
+      data: [
+        { ...row, id: 'r1', category: 'jenis_berkas', code: 'stnk', label: 'STNK', isRequired: true },
+        { ...row, id: 'r2', category: 'jenis_berkas', code: 'foto', label: 'Foto', isRequired: false },
+        // is_required is nullable and legacy rows created before this feature still hold null.
+        // Null must read as "not required", exactly like false, never as a tick or a blank.
+        { ...row, id: 'r3', category: 'jenis_berkas', code: 'legacy', label: 'Legacy', isRequired: null },
+      ],
+      isLoading: false,
+    })
+    render(<FleetMasterDataPage />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Jenis Berkas' }))
+    expect(within(screen.getAllByRole('row')[1]).getAllByRole('cell')[3].textContent).toBe('✓')
+    expect(within(screen.getAllByRole('row')[2]).getAllByRole('cell')[3].textContent).toBe('—')
+    expect(within(screen.getAllByRole('row')[3]).getAllByRole('cell')[3].textContent).toBe('—')
+  })
 
   // The badge is the only signal a row is deactivated — without it the row looks live and the
   // 'Aktifkan' button reads as a mistake.
@@ -349,5 +394,70 @@ describe('FleetMasterDataPage', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'Jenis Dokumen' }))
     expect(selectedLabels()).toEqual(['Jenis Dokumen'])
+  })
+
+  // handleSubmit narrows an edit to a fixed set of columns, so a field added to the form but not
+  // to that list is accepted by the dialog and dropped on the way out — the row saves, nothing
+  // changes, and no error is raised anywhere.
+  it('forwards the required flag when editing', async () => {
+    mockUseFleetMasterData.mockReturnValue({
+      data: [{ ...row, category: 'jenis_berkas', code: 'stnk', label: 'STNK', isRequired: false }],
+      isLoading: false,
+    })
+    render(<FleetMasterDataPage />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Jenis Berkas' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Ubah' }))
+    fireEvent.click(screen.getByLabelText(/Wajib/))
+    fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+
+    await waitFor(() =>
+      expect(mockUpdateAsync).toHaveBeenCalledWith({
+        id: 'r1',
+        payload: expect.objectContaining({ isRequired: true }),
+      }),
+    )
+  })
+
+  // The `!== undefined` guard in handleSubmit is what tells "key absent" from "explicitly false"
+  // apart. A `payload.isRequired ? ... : {}` guard would pass every other test in this file (they
+  // all tick to true or edit a non-flag category), but would drop isRequired entirely here --
+  // un-ticking Wajib and pressing Simpan would then silently keep the row required.
+  it('forwards an explicit false when un-ticking on edit', async () => {
+    mockUseFleetMasterData.mockReturnValue({
+      data: [{ ...row, category: 'jenis_berkas', code: 'stnk', label: 'STNK', isRequired: true }],
+      isLoading: false,
+    })
+    render(<FleetMasterDataPage />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Jenis Berkas' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Ubah' }))
+    fireEvent.click(screen.getByLabelText(/Wajib/))
+    fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+
+    await waitFor(() =>
+      expect(mockUpdateAsync).toHaveBeenCalledWith({
+        id: 'r1',
+        payload: expect.objectContaining({ isRequired: false }),
+      }),
+    )
+  })
+
+  // handleSubmit's edit branch only spreads isRequired in when the dialog's payload defines it.
+  // For a non-flag category like pool the dialog never defines the key, so an unconditional
+  // `isRequired: payload.isRequired` would send `isRequired: undefined` here. That would be
+  // invisible to toHaveBeenCalledWith/toEqual, which treat a key with an undefined value the same
+  // as a missing key, so an objectContaining or exact-object assertion cannot catch it — the
+  // property has to be checked directly with .not.toHaveProperty.
+  it('omits the required flag entirely when editing a category that does not use it', async () => {
+    mockUseFleetMasterData.mockReturnValue({
+      data: [{ ...row, category: 'pool', code: 'bekasi', label: 'Pool Bekasi' }],
+      isLoading: false,
+    })
+    render(<FleetMasterDataPage />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Pool' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Ubah' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+
+    await waitFor(() => expect(mockUpdateAsync).toHaveBeenCalled())
+    expect(mockUpdateAsync.mock.calls[0][0].payload).not.toHaveProperty('isRequired')
   })
 })
