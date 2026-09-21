@@ -418,6 +418,29 @@ describe('FleetMasterDataPage', () => {
     )
   })
 
+  // The `!== undefined` guard in handleSubmit is what tells "key absent" from "explicitly false"
+  // apart. A `payload.isRequired ? ... : {}` guard would pass every other test in this file (they
+  // all tick to true or edit a non-flag category), but would drop isRequired entirely here --
+  // un-ticking Wajib and pressing Simpan would then silently keep the row required.
+  it('forwards an explicit false when un-ticking on edit', async () => {
+    mockUseFleetMasterData.mockReturnValue({
+      data: [{ ...row, category: 'jenis_berkas', code: 'stnk', label: 'STNK', isRequired: true }],
+      isLoading: false,
+    })
+    render(<FleetMasterDataPage />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Jenis Berkas' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Ubah' }))
+    fireEvent.click(screen.getByLabelText(/Wajib/))
+    fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+
+    await waitFor(() =>
+      expect(mockUpdateAsync).toHaveBeenCalledWith({
+        id: 'r1',
+        payload: expect.objectContaining({ isRequired: false }),
+      }),
+    )
+  })
+
   // handleSubmit's edit branch only spreads isRequired in when the dialog's payload defines it.
   // For a non-flag category like pool the dialog never defines the key, so an unconditional
   // `isRequired: payload.isRequired` would send `isRequired: undefined` here. That would be

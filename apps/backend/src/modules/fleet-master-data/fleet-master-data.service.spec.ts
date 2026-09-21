@@ -199,6 +199,17 @@ describe('FleetMasterDataService', () => {
       })
     })
 
+    // A guard written as `if (dto.isRequired)` reads identically to the correct
+    // `!== undefined` guard for every case above, since all of them pass isRequired: true or omit
+    // it entirely. Only an explicit false tells them apart: a truthy guard drops it from the patch
+    // and un-ticking Wajib on the edit form silently does nothing.
+    it('carries an explicit false into the patch', async () => {
+      repo.findOne.mockResolvedValueOnce({ id: 'r1', category: 'jenis_berkas', code: 'stnk' })
+      repo.findOne.mockResolvedValueOnce({ id: 'r1' })
+      await service.update('r1', { isRequired: false })
+      expect(repo.update).toHaveBeenCalledWith('r1', expect.objectContaining({ isRequired: false }))
+    })
+
     // Real TypeORM throws on an empty update value set, so an unconditional call would turn a
     // PATCH carrying only the whitelist-stripped category/code into a 500 rather than a no-op
     // that returns the row untouched.

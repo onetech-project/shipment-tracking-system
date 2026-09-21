@@ -148,7 +148,12 @@ export function MasterDataFormDialog({
                 Wajib
               </label>
               <p className="text-xs text-amber-700 dark:text-amber-400">
-                Mengubah ini menghitung ulang chip kelengkapan semua kendaraan.
+                {category === 'jenis_dokumen'
+                  ? // jenis_dokumen's flag is not a chip input: assertRequiredDocuments (backend) and
+                    // useVehicleForm's validation (frontend) both reject a vehicle save that is
+                    // missing an expiry date for a required document type.
+                    'Dokumen wajib harus punya tanggal masa berlaku. Kendaraan tanpa tanggal itu tidak bisa disimpan.'
+                  : 'Mengubah ini menghitung ulang chip kelengkapan semua kendaraan.'}
               </p>
             </div>
           )}

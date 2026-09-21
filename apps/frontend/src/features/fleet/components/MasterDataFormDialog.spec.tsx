@@ -430,6 +430,16 @@ describe('MasterDataFormDialog', () => {
     expect(screen.getByText(/kelengkapan semua kendaraan/i)).toBeInTheDocument()
   })
 
+  // jenis_dokumen's flag has a completely different consequence: it does not touch a chip at all,
+  // it makes assertRequiredDocuments (backend) and useVehicleForm's validation (frontend) reject
+  // every vehicle save that lacks an expiry date for that document type. The chip sentence here
+  // would tell the operator "a chip refreshes" when the real effect is "saves start failing".
+  it('warns about the expiry-date save block on jenis_dokumen', () => {
+    render(<MasterDataFormDialog {...base} category="jenis_dokumen" />)
+    expect(screen.getByText(/tidak bisa disimpan/i)).toBeInTheDocument()
+    expect(screen.queryByText(/kelengkapan semua kendaraan/i)).not.toBeInTheDocument()
+  })
+
   it('submits the ticked value', async () => {
     const onSubmit = jest.fn().mockResolvedValue(undefined)
     render(<MasterDataFormDialog {...base} category="jenis_berkas" onSubmit={onSubmit} />)
