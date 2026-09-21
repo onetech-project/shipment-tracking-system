@@ -119,7 +119,7 @@ export function LeaseSection({ form, kepemilikan, leasing }: LeaseSectionProps) 
       {/* The one optional field on the section (requirement §2). Left blank the backend counts
           the months since the first instalment, and keeps counting as they pass. */}
       <FormField
-        label="Angsuran Sudah Dibayar"
+        label="Angsuran Sudah Dibayar (bulan)"
         htmlFor="vf-angsuran-terbayar"
         hint="Kosongkan untuk dihitung otomatis dari tanggal angsuran pertama"
       >
