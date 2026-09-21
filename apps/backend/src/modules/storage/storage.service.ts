@@ -16,18 +16,21 @@ const DOWNLOAD_URL_TTL_SECONDS = 120
 // never learns that S3 is behind it. Swapping MinIO for real S3 is then an env change.
 @Injectable()
 export class StorageService {
-  private readonly client: S3Client
+  // Two clients, because the two jobs have different network perspectives and one endpoint cannot
+  // satisfy both. `signing` produces URLs a BROWSER will open, so it must be signed for the public
+  // host. `internal` actually sends requests from this process, so it must name a host this
+  // container's resolver can answer. Collapsing them back into one client reintroduces the bug
+  // where every confirm() died with ENOTFOUND on its HEAD while the upload URL it had just handed
+  // out was perfectly good.
+  private readonly signing: S3Client
+  private readonly internal: S3Client
   private readonly bucket: string
 
   constructor(private readonly config: ConfigService) {
     this.bucket = this.config.get<string>('S3_BUCKET') ?? 'esp-fleet'
-    // Signed against the endpoint the BROWSER will call, not the one the backend uses to reach
-    // MinIO over the compose network. Signing for 'minio:9000' and handing that URL to a browser
-    // produces SignatureDoesNotMatch even though the credentials are right.
-    this.client = new S3Client({
+
+    const common = {
       region: this.config.get<string>('S3_REGION') ?? 'us-east-1',
-      endpoint:
-        this.config.get<string>('S3_PUBLIC_ENDPOINT') ?? this.config.get<string>('S3_ENDPOINT'),
       forcePathStyle: this.config.get<string>('S3_FORCE_PATH_STYLE') !== 'false',
       credentials: {
         accessKeyId: this.config.get<string>('S3_ACCESS_KEY') ?? '',
@@ -38,7 +41,25 @@ export class StorageService {
       // zero bytes — a store that validates it rejects every real upload, and the failure reads
       // like a CORS or signature problem rather than a checksum one. The browser sends no checksum
       // header, so requiring none is also the honest description of the request we are signing.
-      requestChecksumCalculation: 'WHEN_REQUIRED',
+      requestChecksumCalculation: 'WHEN_REQUIRED' as const,
+    }
+
+    // Signed against the endpoint the BROWSER will call, not the one the backend uses to reach
+    // MinIO over the compose network. Signing for 'minio:9000' and handing that URL to a browser
+    // produces SignatureDoesNotMatch even though the credentials are right.
+    this.signing = new S3Client({
+      ...common,
+      endpoint:
+        this.config.get<string>('S3_PUBLIC_ENDPOINT') ?? this.config.get<string>('S3_ENDPOINT'),
+    })
+
+    // Egress from this process. The ?? order is the mirror of the one above on purpose: the
+    // internal host is the right answer here, and the public host is only the fallback for a
+    // single-host deployment where the two happen to coincide.
+    this.internal = new S3Client({
+      ...common,
+      endpoint:
+        this.config.get<string>('S3_ENDPOINT') ?? this.config.get<string>('S3_PUBLIC_ENDPOINT'),
     })
   }
 
@@ -55,7 +76,7 @@ export class StorageService {
       ContentType: mime,
       ContentLength: maxBytes,
     })
-    return getSignedUrl(this.client, command, { expiresIn: UPLOAD_URL_TTL_SECONDS })
+    return getSignedUrl(this.signing, command, { expiresIn: UPLOAD_URL_TTL_SECONDS })
   }
 
   // The disposition is the caller's to choose but not the client's: it is signed into the URL, so
@@ -72,7 +93,7 @@ export class StorageService {
       // Quotes escaped so a filename containing one cannot terminate the header value early.
       ResponseContentDisposition: `${disposition}; filename="${filename.replace(/"/g, '')}"`,
     })
-    return getSignedUrl(this.client, command, { expiresIn: DOWNLOAD_URL_TTL_SECONDS })
+    return getSignedUrl(this.signing, command, { expiresIn: DOWNLOAD_URL_TTL_SECONDS })
   }
 
   // null means "no such object", which is the answer confirm() acts on. Any other failure is a
@@ -80,7 +101,7 @@ export class StorageService {
   // succeed against a bucket we cannot actually read.
   async statObject(key: string): Promise<{ size: number; mime: string } | null> {
     try {
-      const out = await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }))
+      const out = await this.internal.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }))
       return { size: Number(out.ContentLength ?? 0), mime: out.ContentType ?? '' }
     } catch (err: unknown) {
       const name = (err as { name?: string })?.name
@@ -90,6 +111,6 @@ export class StorageService {
   }
 
   async deleteObject(key: string): Promise<void> {
-    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }))
+    await this.internal.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }))
   }
 }

@@ -12,14 +12,25 @@ const send = jest.fn()
 const mockS3ClientCtor = jest.fn()
 jest.mock('@aws-sdk/client-s3', () => ({
   S3Client: jest.fn().mockImplementation((...args: unknown[]) => {
+    // __ctorIndex lets a test say WHICH constructed client a call used, not merely that some
+    // client was used - the whole point of the signing/internal split.
+    const __ctorIndex = mockS3ClientCtor.mock.calls.length
     mockS3ClientCtor(...args)
-    return { send: (...a: unknown[]) => send(...a) }
+    return { __ctorIndex, send: (...a: unknown[]) => send(__ctorIndex, ...a) }
   }),
   PutObjectCommand: jest.fn().mockImplementation((input) => ({ __cmd: 'put', input })),
   GetObjectCommand: jest.fn().mockImplementation((input) => ({ __cmd: 'get', input })),
   HeadObjectCommand: jest.fn().mockImplementation((input) => ({ __cmd: 'head', input })),
   DeleteObjectCommand: jest.fn().mockImplementation((input) => ({ __cmd: 'delete', input })),
 }))
+
+function clientIndexOf(client: unknown): number {
+  return (client as { __ctorIndex: number }).__ctorIndex
+}
+
+function endpointOfCtor(index: number): string {
+  return (mockS3ClientCtor.mock.calls[index][0] as { endpoint: string }).endpoint
+}
 
 function build(): StorageService {
   const config = {
@@ -147,9 +158,71 @@ describe('StorageService', () => {
     send.mockResolvedValue({})
     const service = build()
     await service.deleteObject('fleet/v1/stnk/abc.pdf')
-    expect(send.mock.calls[0][0].input).toMatchObject({
+    expect(send.mock.calls[0][1].input).toMatchObject({
       Bucket: 'esp-fleet',
       Key: 'fleet/v1/stnk/abc.pdf',
     })
+  })
+})
+
+// Regression: a single client cannot serve both perspectives. Presigning must be signed for the
+// host the BROWSER calls, but HeadObject/DeleteObject are egress from the backend and must go to
+// the host the BACKEND can reach. Deployed, the public host is a name the container's resolver
+// does not answer, so every confirm() died with ENOTFOUND on the HEAD while the upload URL it had
+// just handed out was perfectly good.
+describe('StorageService endpoint split', () => {
+  it('builds a client for the backend-reachable endpoint too', () => {
+    build()
+
+    const endpoints = mockS3ClientCtor.mock.calls.map((c) => (c[0] as { endpoint: string }).endpoint)
+    // Both perspectives, not one standing in for the other.
+    expect(endpoints).toEqual(
+      expect.arrayContaining(['http://localhost:9000', 'http://minio:9000']),
+    )
+  })
+
+  // The other half of the split: the internal client must carry the same credentials and the same
+  // checksum opt-out, or fixing the hostname would just trade ENOTFOUND for a 403 or a rejected
+  // upload.
+  it('gives the internal client the same credentials and checksum policy', () => {
+    build()
+
+    const internal = mockS3ClientCtor.mock.calls
+      .map((c) => c[0] as Record<string, unknown>)
+      .find((a) => a.endpoint === 'http://minio:9000')
+
+    expect(internal).toMatchObject({
+      forcePathStyle: true,
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      credentials: { accessKeyId: 'minioadmin', secretAccessKey: 'minioadmin' },
+    })
+  })
+
+  // Signing is the half that was already correct; pin it against the client that now exists
+  // alongside it so a future edit cannot quietly sign for the internal host.
+  it('presigns with the browser-facing client, not the internal one', async () => {
+    const service = build()
+    await service.createUploadUrl('fleet/v1/stnk/abc.pdf', 'application/pdf', 1)
+
+    const [client] = getSignedUrl.mock.calls[0] as [unknown]
+    expect(endpointOfCtor(clientIndexOf(client))).toBe('http://localhost:9000')
+  })
+
+  // These two are the actual regression. Building an internal client but still sending the HEAD
+  // through the signing one would leave production exactly as broken as it was.
+  it('sends the stat HEAD from the backend-reachable client', async () => {
+    send.mockResolvedValue({ ContentLength: 1, ContentType: 'image/png' })
+    const service = build()
+    await service.statObject('fleet/v1/stnk/abc.png')
+
+    expect(endpointOfCtor(send.mock.calls[0][0] as number)).toBe('http://minio:9000')
+  })
+
+  it('sends the delete from the backend-reachable client', async () => {
+    send.mockResolvedValue({})
+    const service = build()
+    await service.deleteObject('fleet/v1/stnk/abc.pdf')
+
+    expect(endpointOfCtor(send.mock.calls[0][0] as number)).toBe('http://minio:9000')
   })
 })
