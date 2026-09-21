@@ -109,6 +109,42 @@ describe('FleetMasterDataService', () => {
     })
   })
 
+  describe('create defaults isRequired', () => {
+    // A row born NULL can never be made required from the UI, and reads as "not required"
+    // forever. The two categories that consult the flag get an explicit answer instead.
+    it.each(['jenis_berkas', 'jenis_dokumen'])(
+      'stores FALSE when %s omits the flag',
+      async (category) => {
+        await service.create({ category, code: 'x', label: 'X' } as never)
+        expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({ isRequired: false }))
+      },
+    )
+
+    // Defaulting to true would make every new file type mandatory the moment it is created.
+    it('never defaults to true', async () => {
+      await service.create({ category: 'jenis_berkas', code: 'x', label: 'X' } as never)
+      expect(repo.save).not.toHaveBeenCalledWith(expect.objectContaining({ isRequired: true }))
+    })
+
+    // An explicit choice is the caller's to make, including an explicit false.
+    it('respects an explicit true', async () => {
+      await service.create({
+        category: 'jenis_berkas',
+        code: 'x',
+        label: 'X',
+        isRequired: true,
+      } as never)
+      expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({ isRequired: true }))
+    })
+
+    // The other six categories never read the flag, so inventing a value for them would record a
+    // policy that does not exist.
+    it('leaves categories that do not use the flag alone', async () => {
+      await service.create({ category: 'pool', code: 'x', label: 'X' } as never)
+      expect(repo.save).toHaveBeenCalledWith(expect.not.objectContaining({ isRequired: false }))
+    })
+  })
+
   describe('update', () => {
     it('throws NotFoundException for an unknown id', async () => {
       repo.findOne.mockResolvedValue(null)
