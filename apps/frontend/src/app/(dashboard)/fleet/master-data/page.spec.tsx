@@ -247,6 +247,7 @@ describe('FleetMasterDataPage', () => {
       'Kode',
       'Urutan',
       'Ambang (hari)',
+      'Wajib',
       '',
     ])
 
@@ -276,7 +277,7 @@ describe('FleetMasterDataPage', () => {
     expect(screen.getByRole('columnheader', { name: 'Ambang (hari)' })).toBeInTheDocument()
   })
 
-  it.each(['Jenis Armada', 'Kepemilikan', 'Leasing', 'Status Kendaraan', 'Pool', 'Jenis Berkas'])(
+  it.each(['Jenis Armada', 'Kepemilikan', 'Leasing', 'Status Kendaraan', 'Pool'])(
     'hides the threshold column on %s',
     (tab) => {
       render(<FleetMasterDataPage />)
@@ -290,6 +291,45 @@ describe('FleetMasterDataPage', () => {
       ])
     },
   )
+
+  // Jenis Berkas is the one category with the required column but no threshold column, so its
+  // header row is the proof that the two conditionals are independent.
+  it('shows the required column without the threshold column on Jenis Berkas', () => {
+    render(<FleetMasterDataPage />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Jenis Berkas' }))
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual([
+      'Label',
+      'Kode',
+      'Urutan',
+      'Wajib',
+      '',
+    ])
+  })
+
+  it.each(['Jenis Armada', 'Kepemilikan', 'Leasing', 'Status Kendaraan', 'Pool', 'Jenis SIM'])(
+    'hides the required column on %s',
+    (tab) => {
+      render(<FleetMasterDataPage />)
+      fireEvent.click(screen.getByRole('tab', { name: tab }))
+      expect(screen.queryByRole('columnheader', { name: 'Wajib' })).not.toBeInTheDocument()
+    },
+  )
+
+  // A tick and an em dash, matching how the threshold column distinguishes a real value from an
+  // absent one.
+  it('renders a tick for a required row and a dash otherwise', () => {
+    mockUseFleetMasterData.mockReturnValue({
+      data: [
+        { ...row, id: 'r1', category: 'jenis_berkas', code: 'stnk', label: 'STNK', isRequired: true },
+        { ...row, id: 'r2', category: 'jenis_berkas', code: 'foto', label: 'Foto', isRequired: false },
+      ],
+      isLoading: false,
+    })
+    render(<FleetMasterDataPage />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Jenis Berkas' }))
+    expect(within(screen.getAllByRole('row')[1]).getAllByRole('cell')[3].textContent).toBe('✓')
+    expect(within(screen.getAllByRole('row')[2]).getAllByRole('cell')[3].textContent).toBe('—')
+  })
 
   // The badge is the only signal a row is deactivated — without it the row looks live and the
   // 'Aktifkan' button reads as a mistake.
