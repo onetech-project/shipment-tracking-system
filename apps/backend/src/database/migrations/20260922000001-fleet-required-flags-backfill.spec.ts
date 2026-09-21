@@ -49,4 +49,13 @@ describe('FleetRequiredFlagsBackfill migration', () => {
     expect(sql).toContain("'jenis_berkas'")
     expect(sql).toContain("'jenis_dokumen'")
   })
+
+  // 20260912000003 deliberately set four jenis_dokumen rows (stnk, pajak, asuransi, emisi) to
+  // TRUE. Rollback must only null the rows this migration could have written (the ones up() set
+  // FALSE) — without the FALSE guard it would also null those TRUE rows, silently destroying
+  // 20260912000003's policy.
+  it('only nulls rows that are FALSE, sparing the TRUE rows 20260912000003 set on purpose', async () => {
+    const [sql] = await capture('down')
+    expect(sql).toMatch(/is_required\s*=\s*FALSE\s+AND\s+category\s+IN/i)
+  })
 })
