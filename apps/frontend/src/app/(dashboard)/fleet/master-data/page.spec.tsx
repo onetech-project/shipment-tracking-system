@@ -350,4 +350,26 @@ describe('FleetMasterDataPage', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Jenis Dokumen' }))
     expect(selectedLabels()).toEqual(['Jenis Dokumen'])
   })
+
+  // handleSubmit narrows an edit to a fixed set of columns, so a field added to the form but not
+  // to that list is accepted by the dialog and dropped on the way out — the row saves, nothing
+  // changes, and no error is raised anywhere.
+  it('forwards the required flag when editing', async () => {
+    mockUseFleetMasterData.mockReturnValue({
+      data: [{ ...row, category: 'jenis_berkas', code: 'stnk', label: 'STNK', isRequired: false }],
+      isLoading: false,
+    })
+    render(<FleetMasterDataPage />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Jenis Berkas' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Ubah' }))
+    fireEvent.click(screen.getByLabelText(/Wajib/))
+    fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+
+    await waitFor(() =>
+      expect(mockUpdateAsync).toHaveBeenCalledWith({
+        id: 'r1',
+        payload: expect.objectContaining({ isRequired: true }),
+      }),
+    )
+  })
 })

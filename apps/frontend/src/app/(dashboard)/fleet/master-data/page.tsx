@@ -58,6 +58,9 @@ export default function FleetMasterDataPage() {
           label: payload.label,
           sortOrder: payload.sortOrder,
           warnDays: payload.warnDays,
+          // The dialog omits this key for the six categories that do not read the flag, so
+          // spreading rather than assigning keeps those updates exactly as they were.
+          ...(payload.isRequired !== undefined ? { isRequired: payload.isRequired } : {}),
         },
       })
     } else {
