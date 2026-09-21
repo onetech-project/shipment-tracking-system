@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { FormField } from '@/components/shared/form-field'
 import {
+  CATEGORIES_WITH_REQUIRED,
   CATEGORIES_WITH_WARN_DAYS,
   FLEET_CATEGORY_LABELS,
   FleetMasterCategory,
@@ -50,10 +51,12 @@ export function MasterDataFormDialog({
   const [warnDays, setWarnDays] = useState(
     initial?.warnDays == null ? '' : String(initial.warnDays),
   )
+  const [isRequired, setIsRequired] = useState(initial?.isRequired ?? false)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const showWarnDays = CATEGORIES_WITH_WARN_DAYS.includes(category)
+  const showRequired = CATEGORIES_WITH_REQUIRED.includes(category)
   const code = initial?.code ?? slugify(label)
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -75,6 +78,7 @@ export function MasterDataFormDialog({
         label: label.trim(),
         sortOrder: Number(sortOrder) || 0,
         warnDays: showWarnDays && warnDays !== '' ? Number(warnDays) : null,
+        ...(showRequired ? { isRequired } : {}),
       })
       onClose()
     } catch (err: unknown) {
@@ -129,6 +133,24 @@ export function MasterDataFormDialog({
                 onChange={(e) => setWarnDays(e.target.value)}
               />
             </FormField>
+          )}
+
+          {showRequired && (
+            <div className="flex flex-col gap-1.5">
+              <label className="flex items-center gap-2 text-sm font-medium" htmlFor="md-required">
+                <input
+                  id="md-required"
+                  type="checkbox"
+                  className="h-4 w-4"
+                  checked={isRequired}
+                  onChange={(e) => setIsRequired(e.target.checked)}
+                />
+                Wajib
+              </label>
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                Mengubah ini menghitung ulang chip kelengkapan semua kendaraan.
+              </p>
+            </div>
           )}
 
           {error && (

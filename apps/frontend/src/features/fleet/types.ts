@@ -30,6 +30,14 @@ export const CATEGORIES_WITH_WARN_DAYS: readonly FleetMasterCategory[] = [
   'jenis_sim',
 ]
 
+// Mirrors the backend's own list. jenis_berkas drives the completeness chip's denominator and
+// jenis_dokumen drives the expiry-date validation; the other six never read the flag, so offering
+// the toggle there would be a control that does nothing.
+export const CATEGORIES_WITH_REQUIRED: readonly FleetMasterCategory[] = [
+  'jenis_berkas',
+  'jenis_dokumen',
+]
+
 export interface FleetMasterRow {
   id: string
   category: FleetMasterCategory
