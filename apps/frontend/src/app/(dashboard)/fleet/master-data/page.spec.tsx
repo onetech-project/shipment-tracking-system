@@ -182,6 +182,7 @@ describe('FleetMasterDataPage', () => {
         label: 'KIR Tahunan',
         sortOrder: 0,
         warnDays: 45,
+        isRequired: false,
       }),
     )
   })
@@ -371,5 +372,25 @@ describe('FleetMasterDataPage', () => {
         payload: expect.objectContaining({ isRequired: true }),
       }),
     )
+  })
+
+  // handleSubmit's edit branch only spreads isRequired in when the dialog's payload defines it.
+  // For a non-flag category like pool the dialog never defines the key, so an unconditional
+  // `isRequired: payload.isRequired` would send `isRequired: undefined` here. That would be
+  // invisible to toHaveBeenCalledWith/toEqual, which treat a key with an undefined value the same
+  // as a missing key, so an objectContaining or exact-object assertion cannot catch it — the
+  // property has to be checked directly with .not.toHaveProperty.
+  it('omits the required flag entirely when editing a category that does not use it', async () => {
+    mockUseFleetMasterData.mockReturnValue({
+      data: [{ ...row, category: 'pool', code: 'bekasi', label: 'Pool Bekasi' }],
+      isLoading: false,
+    })
+    render(<FleetMasterDataPage />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Pool' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Ubah' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+
+    await waitFor(() => expect(mockUpdateAsync).toHaveBeenCalled())
+    expect(mockUpdateAsync.mock.calls[0][0].payload).not.toHaveProperty('isRequired')
   })
 })
