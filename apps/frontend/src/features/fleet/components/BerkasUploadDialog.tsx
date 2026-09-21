@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { FleetMasterRow, FleetVehicle } from '../types'
+import { uploadErrorMessage } from '../utils/api-error'
 
 // Mirrors the backend allow-list (storage.constants.ts). Duplicated deliberately rather than
 // fetched: this is a courtesy check that saves a doomed upload, and the backend remains the
@@ -56,7 +57,7 @@ export function BerkasUploadDialog({ open, vehicle, slot, onUpload, onSetUrl, on
       await action()
       onClose()
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Gagal menyimpan berkas.')
+      setError(uploadErrorMessage(err, 'Gagal menyimpan berkas.'))
     } finally {
       setBusy(false)
     }

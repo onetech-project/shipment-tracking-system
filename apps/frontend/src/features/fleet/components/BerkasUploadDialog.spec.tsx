@@ -251,4 +251,33 @@ describe('BerkasUploadDialog', () => {
     expect(await screen.findByText(/harus diawali http/i)).toBeInTheDocument()
     expect(onSetUrl).not.toHaveBeenCalled()
   })
+
+  // An axios rejection is an Error whose own message is the transport line; the backend's
+  // reason — a pdf dropped on a photo slot, say — is in response.data.message. Reading
+  // err.message showed the operator "Request failed with status code 400" instead.
+  it('shows the backend reason rather than the transport message', async () => {
+    const onUpload = jest.fn().mockRejectedValue(
+      Object.assign(new Error('Request failed with status code 400'), {
+        response: {
+          data: { message: 'Slot Foto Depan hanya menerima foto (jpg, png, atau webp).' },
+        },
+      }),
+    )
+    render(
+      <BerkasUploadDialog
+        open
+        vehicle={VEHICLE as never}
+        slot={{ id: 's-foto', code: 'foto_depan', label: 'Foto Depan' }}
+        onUpload={onUpload}
+        onSetUrl={jest.fn()}
+        onClose={jest.fn()}
+      />,
+    )
+    await userEvent.upload(screen.getByLabelText(/pilih berkas/i), pdf())
+    await userEvent.click(screen.getByRole('button', { name: /unggah/i }))
+
+    expect(
+      await screen.findByText(/hanya menerima foto \(jpg, png, atau webp\)/i),
+    ).toBeInTheDocument()
+  })
 })

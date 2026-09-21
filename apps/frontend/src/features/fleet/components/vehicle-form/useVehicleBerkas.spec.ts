@@ -222,3 +222,38 @@ describe('uploadAll', () => {
     expect(view.result.current.pendingCount).toBe(1)
   })
 })
+
+describe('upload errors', () => {
+  // An axios rejection is an Error whose own message is the transport line ("Request failed with
+  // status code 400"); the backend's reason — "Slot Foto Depan hanya menerima foto" — is in
+  // response.data.message. Reading err.message here threw that reason away.
+  it('reports the backend reason rather than the transport message', async () => {
+    const upload = jest.fn().mockRejectedValue(
+      Object.assign(new Error('Request failed with status code 400'), {
+        response: {
+          data: { message: 'Slot Foto Depan hanya menerima foto (jpg, png, atau webp).' },
+        },
+      }),
+    )
+    const { view } = setup(upload)
+    act(() => {
+      view.result.current.pick(PHOTO, fileOf('a.jpg', 'image/jpeg', 1024))
+    })
+
+    let failures: { slotLabel: string; message: string }[] = []
+    await act(async () => {
+      failures = await view.result.current.uploadAll('veh-1')
+    })
+
+    expect(failures).toEqual([
+      {
+        slotLabel: 'Foto Depan',
+        message: 'Slot Foto Depan hanya menerima foto (jpg, png, atau webp).',
+      },
+    ])
+    const state = view.result.current.slotState('s-foto')
+    expect(state.status === 'failed' && state.message).toBe(
+      'Slot Foto Depan hanya menerima foto (jpg, png, atau webp).',
+    )
+  })
+})
