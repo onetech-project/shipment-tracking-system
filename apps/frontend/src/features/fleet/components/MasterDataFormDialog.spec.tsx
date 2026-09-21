@@ -459,9 +459,11 @@ describe('MasterDataFormDialog', () => {
     render(<MasterDataFormDialog {...base} category="pool" onSubmit={onSubmit} />)
     fireEvent.change(screen.getByLabelText(/Label/), { target: { value: 'Pool Bekasi' } })
     fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
-    await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledWith(expect.not.objectContaining({ isRequired: expect.anything() })),
-    )
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled())
+    // expect.anything() matches every value except null and undefined, so
+    // expect.not.objectContaining({ isRequired: expect.anything() }) would pass for a stray
+    // null and miss the bug. Assert absence of the property directly instead.
+    expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('isRequired')
   })
 
   it('reflects an existing required row when editing', () => {
