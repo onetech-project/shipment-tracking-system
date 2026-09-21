@@ -23,9 +23,20 @@ sides.
 - **User-facing copy is Indonesian.** Everything else in the codebase stays English.
 - **Never default `isRequired` to `true`.** A new required slot raises the completeness
   denominator for every vehicle at once.
-- **Backend test commands need both flags.** A bare `pnpm test` is OOM-killed on this machine:
-  `cd apps/backend && NODE_OPTIONS="--max-old-space-size=4096" npx jest --runInBand <path>`
-- **Frontend needs no flags:** `cd apps/frontend && npx jest <path>`
+- **`/home/faris/code/esp/esp-dashboard/.superpowers/sdd/FLEET-RULES.md` is BINDING on this branch
+  and overrides anything in this plan it contradicts. Read it by absolute path before you start.**
+- **Every jest command caps workers** (`--maxWorkers=1 --workerIdleMemoryLimit=512MB`). A bare run
+  spawns ~15 ts-jest workers and the OOM killer takes them out; the tell is "N suites failed" with
+  **0 individual tests failed**. Never raise `--maxWorkers` above 1.
+- **Judge every jest run by its EXIT CODE, never by grepping stdout.** The `rtk` wrapper reorders
+  jest output and has produced false green reports here. Redirect to your own `/tmp` log and make
+  `echo "EXIT=$?"` the very next command — a pipe or second command overwrites it.
+- **Never pass a path containing `(dashboard)` to jest.** Positional args are *regexes*, so
+  `(dashboard)` is a capture group matching the bare string `dashboard`, which no path contains —
+  it matches ZERO files. Alone that exits 1; named alongside other specs the run exits **0 on the
+  others' strength while that suite never runs**, a false green. Use the paren-free substring
+  `fleet/master-data/page.spec`, and always confirm the `Test Suites: N passed` line matches the
+  number of files you named.
 - Use `FALSE`/`TRUE` uppercase in migration SQL, matching `20260912000003`.
 
 ## File Structure
@@ -142,9 +153,12 @@ describe('FleetRequiredFlagsBackfill migration', () => {
 
 Run:
 ```bash
-cd apps/backend && NODE_OPTIONS="--max-old-space-size=4096" npx jest --runInBand src/database/migrations/20260922000001-fleet-required-flags-backfill.spec.ts
+cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB \
+  src/database/migrations/20260922000001-fleet-required-flags-backfill.spec.ts \
+  >/tmp/mdreq-t1.log 2>&1; echo "EXIT=$?"
 ```
-Expected: FAIL — `Cannot find module './20260922000001-fleet-required-flags-backfill'`.
+Expected: **EXIT=1**; `tail -40 /tmp/mdreq-t1.log` shows `Cannot find module './20260922000001-fleet-required-flags-backfill'`.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -187,9 +201,12 @@ export class FleetRequiredFlagsBackfill20260922000001 implements MigrationInterf
 
 Run:
 ```bash
-cd apps/backend && NODE_OPTIONS="--max-old-space-size=4096" npx jest --runInBand src/database/migrations/20260922000001-fleet-required-flags-backfill.spec.ts
+cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB \
+  src/database/migrations/20260922000001-fleet-required-flags-backfill.spec.ts \
+  >/tmp/mdreq-t1b.log 2>&1; echo "EXIT=$?"
 ```
-Expected: PASS — 4 passed.
+Expected: **EXIT=0**, with `Test Suites: 1 passed` and `Tests: 4 passed` in the log.
 
 - [ ] **Step 5: Commit**
 
@@ -265,9 +282,13 @@ asserting on `repo.save` shows what would be persisted:
 
 Run:
 ```bash
-cd apps/backend && NODE_OPTIONS="--max-old-space-size=4096" npx jest --runInBand src/modules/fleet-master-data/fleet-master-data.service.spec.ts -t "create defaults isRequired"
+cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB \
+  src/modules/fleet-master-data/fleet-master-data.service.spec.ts \
+  -t "create defaults isRequired" \
+  >/tmp/mdreq-t2.log 2>&1; echo "EXIT=$?"
 ```
-Expected: FAIL — the first cases report `isRequired: undefined` where `false` was expected.
+Expected: **EXIT=1**; the log shows the first cases reporting `isRequired: undefined` where `false` was expected.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -306,9 +327,11 @@ Then replace the body of `create()` (currently at lines 47-55):
 
 Run:
 ```bash
-cd apps/backend && NODE_OPTIONS="--max-old-space-size=4096" npx jest --runInBand src/modules/fleet-master-data
+cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB src/modules/fleet-master-data \
+  >/tmp/mdreq-t2b.log 2>&1; echo "EXIT=$?"
 ```
-Expected: PASS, including the pre-existing `create` tests — they pass a DTO without `isRequired`
+Expected: **EXIT=0**, including the pre-existing `create` tests — they pass a DTO without `isRequired`
 for non-flag categories and must be unaffected.
 
 - [ ] **Step 5: Commit**
@@ -353,9 +376,10 @@ export const CATEGORIES_WITH_REQUIRED: readonly FleetMasterCategory[] = [
 
 Run:
 ```bash
-cd apps/frontend && npx tsc --noEmit
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec tsc --noEmit; echo "TSC_EXIT=$?"
 ```
-Expected: no errors.
+Expected: **TSC_EXIT=0**.
 
 ---
 
@@ -483,9 +507,12 @@ category must be overridden per test:
 
 Run:
 ```bash
-cd apps/frontend && npx jest src/features/fleet/components/MasterDataFormDialog.spec.tsx
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB \
+  src/features/fleet/components/MasterDataFormDialog.spec.tsx \
+  >/tmp/mdreq-t4.log 2>&1; echo "EXIT=$?"
 ```
-Expected: FAIL — `Unable to find a label with the text of: /Wajib/`.
+Expected: **EXIT=1**; the log shows `Unable to find a label with the text of: /Wajib/`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -559,9 +586,12 @@ the `{error && (` block. A native checkbox matches `VehicleFilters.tsx:131-139`;
 
 Run:
 ```bash
-cd apps/frontend && npx jest src/features/fleet/components/MasterDataFormDialog.spec.tsx
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB \
+  src/features/fleet/components/MasterDataFormDialog.spec.tsx \
+  >/tmp/mdreq-t4b.log 2>&1; echo "EXIT=$?"
 ```
-Expected: PASS, all tests including the pre-existing ones.
+Expected: **EXIT=0** and `Test Suites: 1 passed`, all tests including the pre-existing ones.
 
 - [ ] **Step 5: Commit** (includes Task 3's constant)
 
@@ -620,9 +650,12 @@ describe. `mockUpdateAsync` is the existing mock behind `updateRow.mutateAsync`:
 
 Run:
 ```bash
-cd apps/frontend && npx jest src/app/\(dashboard\)/fleet/master-data/page.spec.tsx -t "forwards the required flag"
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB \
+  "fleet/master-data/page.spec" -t "forwards the required flag" \
+  >/tmp/mdreq-t5.log 2>&1; echo "EXIT=$?"
 ```
-Expected: FAIL — the payload holds only `label`, `sortOrder` and `warnDays`.
+Expected: **EXIT=1**; the log shows the payload holding only `label`, `sortOrder` and `warnDays`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -647,9 +680,12 @@ In `apps/frontend/src/app/(dashboard)/fleet/master-data/page.tsx`, extend the up
 
 Run:
 ```bash
-cd apps/frontend && npx jest src/app/\(dashboard\)/fleet/master-data/page.spec.tsx -t "forwards the required flag"
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB \
+  "fleet/master-data/page.spec" -t "forwards the required flag" \
+  >/tmp/mdreq-t5b.log 2>&1; echo "EXIT=$?"
 ```
-Expected: PASS.
+Expected: **EXIT=0**.
 
 - [ ] **Step 5: Commit**
 
@@ -746,9 +782,11 @@ carries both `warnDays` and `isRequired`, so its header row is:
 
 Run:
 ```bash
-cd apps/frontend && npx jest src/app/\(dashboard\)/fleet/master-data/page.spec.tsx
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB "fleet/master-data/page.spec" \
+  >/tmp/mdreq-t6.log 2>&1; echo "EXIT=$?"
 ```
-Expected: FAIL — the new cases report the `Wajib` header missing.
+Expected: **EXIT=1**; the log shows the new cases reporting the `Wajib` header missing.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -778,9 +816,11 @@ Expected: FAIL — the new cases report the `Wajib` header missing.
 
 Run:
 ```bash
-cd apps/frontend && npx jest src/app/\(dashboard\)/fleet/master-data/page.spec.tsx
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB "fleet/master-data/page.spec" \
+  >/tmp/mdreq-t6b.log 2>&1; echo "EXIT=$?"
 ```
-Expected: PASS, including the two repaired tests.
+Expected: **EXIT=0** and `Test Suites: 1 passed`, including the two repaired tests.
 
 - [ ] **Step 5: Commit**
 
@@ -805,32 +845,38 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 Run:
 ```bash
-cd apps/frontend && npx jest
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB \
+  >/tmp/mdreq-final-fe.log 2>&1; echo "EXIT=$?"
 ```
-Expected: PASS. The fleet vehicle and driver suites read `isRequired`; a break there means a
+Expected: **EXIT=0**. The fleet vehicle and driver suites read `isRequired`; a break there means a
 fixture disagrees with the new default.
 
 - [ ] **Step 2: Backend fleet and master data suites**
 
 Run:
 ```bash
-cd apps/backend && NODE_OPTIONS="--max-old-space-size=4096" npx jest --runInBand src/modules/fleet-master-data src/modules/fleet-vehicles src/database/migrations
+cd /home/faris/code/esp/esp-dashboard/apps/backend && \
+  pnpm exec jest --maxWorkers=1 --workerIdleMemoryLimit=512MB \
+  src/modules/fleet-master-data src/modules/fleet-vehicles src/database/migrations \
+  >/tmp/mdreq-final-be.log 2>&1; echo "EXIT=$?"
 ```
-Expected: PASS.
+Expected: **EXIT=0**.
 
 - [ ] **Step 3: Typecheck both sides**
 
 Run:
 ```bash
-cd apps/backend && npx tsc --noEmit && cd ../frontend && npx tsc --noEmit
+cd /home/faris/code/esp/esp-dashboard/apps/backend && pnpm exec tsc --noEmit; echo "BE_TSC=$?"
+cd /home/faris/code/esp/esp-dashboard/apps/frontend && pnpm exec tsc --noEmit; echo "FE_TSC=$?"
 ```
-Expected: no errors.
+Expected: **BE_TSC=0** and **FE_TSC=0**.
 
 - [ ] **Step 4: Confirm the migration runs**
 
 Run:
 ```bash
-cd apps/backend && npm run migration:run
+cd /home/faris/code/esp/esp-dashboard && pnpm migration:run; echo "EXIT=$?"
 ```
 Expected: `FleetRequiredFlagsBackfill20260922000001` reported as executed. (`migration:run` is
 defined in `apps/backend/package.json:17`.)
