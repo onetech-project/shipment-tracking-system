@@ -16,11 +16,11 @@ pipeline {
             defaultValue: '',
             description: 'Git branch to build (leave empty to use environment default)'
         )
-        choice(
-            name: 'DROP_STG_BE',
-            choices: [true, false],
-            description: 'Drop staging backend service before deployment (true/false)'
-        )
+        // choice(
+        //     name: 'DROP_STG_BE',
+        //     choices: [true, false],
+        //     description: 'Drop staging backend service before deployment (true/false)'
+        // )
     }
 
     options {
@@ -94,27 +94,27 @@ pipeline {
             }
         }
 
-        stage('Drop Staging Backend Service') {
-            when {
-                expression { params.DROP_STG_BE.toString() == 'true' }
-            }
-            steps {
-                script {
-                    echo "Dropping staging backend service: stg-backend"
-                    sh """
-                        set -euo pipefail
+        // stage('Drop Staging Backend Service') {
+        //     when {
+        //         expression { params.DROP_STG_BE.toString() == 'true' }
+        //     }
+        //     steps {
+        //         script {
+        //             echo "Dropping staging backend service: stg-backend"
+        //             sh """
+        //                 set -euo pipefail
                         
-                        # Navigate to compose directory
-                        cd /var/sts-app/staging
+        //                 # Navigate to compose directory
+        //                 cd /var/sts-app/staging
                         
-                        # Stop and remove the staging backend service
-                        docker compose down stg-backend || true
+        //                 # Stop and remove the staging backend service
+        //                 docker compose down stg-backend || true
                         
-                        echo "Staging backend service dropped successfully!"
-                    """
-                }
-            }
-        }
+        //                 echo "Staging backend service dropped successfully!"
+        //             """
+        //         }
+        //     }
+        // }
 
         stage('Checkout') {
             steps {
@@ -396,30 +396,30 @@ pipeline {
             }
         }
 
-        stage('Up Staging Backend Service') {
-            when {
-                allOf {
-                    expression { params.TARGET_ENV == 'production' }
-                    expression { params.DROP_STG_BE.toString() == 'true' }
-                }
-            }
-            steps {
-                script {
-                    echo "Up staging backend service: stg-backend"
-                    sh """
-                        set -euo pipefail
+        // stage('Up Staging Backend Service') {
+        //     when {
+        //         allOf {
+        //             expression { params.TARGET_ENV == 'production' }
+        //             expression { params.DROP_STG_BE.toString() == 'true' }
+        //         }
+        //     }
+        //     steps {
+        //         script {
+        //             echo "Up staging backend service: stg-backend"
+        //             sh """
+        //                 set -euo pipefail
                         
-                        # Navigate to compose directory
-                        cd /var/sts-app/staging
+        //                 # Navigate to compose directory
+        //                 cd /var/sts-app/staging
                         
-                        # Stop and remove the staging backend service
-                        docker compose up -d stg-backend || true
+        //                 # Stop and remove the staging backend service
+        //                 docker compose up -d stg-backend || true
                         
-                        echo "Staging backend service started successfully!"
-                    """
-                }
-            }
-        }
+        //                 echo "Staging backend service started successfully!"
+        //             """
+        //         }
+        //     }
+        // }
     }
 
     post {
