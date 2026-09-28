@@ -24,6 +24,10 @@ interface VehicleTableProps {
   onDocuments: (row: FleetVehicle) => void
   onArchive: (row: FleetVehicle) => void
   onRestore: (row: FleetVehicle) => void
+  // Optional and separate from showActions: existing callers (and their fixed-shape
+  // showActions) stay unaffected, and the item only ever appears when a handler is actually
+  // wired in — never a live-looking menu entry with nothing behind it.
+  onBerkas?: (row: FleetVehicle) => void
   showActions?: { edit: boolean; documents: boolean; archive: boolean }
 }
 
@@ -100,6 +104,7 @@ export function VehicleTable({
   onDocuments,
   onArchive,
   onRestore,
+  onBerkas,
   showActions,
 }: VehicleTableProps) {
   const show = showActions ?? { edit: true, documents: true, archive: true }
@@ -260,6 +265,7 @@ export function VehicleTable({
             (row.isActive
               ? { key: 'archive', label: 'Arsipkan', run: () => onArchive(row) }
               : { key: 'restore', label: 'Pulihkan', run: () => onRestore(row) }),
+          onBerkas && { key: 'berkas', label: 'Berkas', run: () => onBerkas(row) },
         ].filter(Boolean) as { key: string; label: string; run: () => void }[]
 
         // Spec §7.2: a menu whose items are all filtered out is not rendered at all. An empty ⋮

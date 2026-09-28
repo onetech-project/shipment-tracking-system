@@ -9,6 +9,7 @@
  */
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
+import userEvent from '@testing-library/user-event'
 import FleetDriversPage from './page'
 import { FleetDriver, FleetMasterRow } from '@/features/fleet/types'
 
@@ -22,6 +23,9 @@ const mockUseSimTypes = jest.fn()
 const mockCreate = jest.fn()
 const mockUpdate = jest.fn()
 const mockDelete = jest.fn()
+const mockUploadSim = jest.fn()
+const mockViewSim = jest.fn()
+const mockDeleteSim = jest.fn()
 
 jest.mock('@/features/fleet/hooks/useFleetDrivers', () => ({
   useFleetDrivers: (params: unknown) => mockUseFleetDrivers(params),
@@ -34,6 +38,15 @@ jest.mock('@/features/fleet/hooks/useFleetDrivers', () => ({
   useDeleteFleetDriver: () => ({ mutateAsync: mockDelete }),
 }))
 
+// The real hooks call useMutation, which needs a QueryClientProvider this page never wraps
+// itself with (the app root does). Mocked here the same way the driver mutations above are, so
+// the SIM wiring can be asserted without dragging react-query's provider into every test.
+jest.mock('@/features/fleet/hooks/useDriverSimFile', () => ({
+  useUploadDriverSim: () => ({ mutateAsync: mockUploadSim }),
+  useDriverSimDownloadUrl: () => ({ mutateAsync: mockViewSim }),
+  useDeleteDriverSim: () => ({ mutateAsync: mockDeleteSim }),
+}))
+
 const driver: FleetDriver = {
   id: 'd1',
   nama: 'Budi',
@@ -42,6 +55,7 @@ const driver: FleetDriver = {
   simJenisId: 's1',
   simJenis: { id: 's1', label: 'B1 Umum' },
   simExpiresAt: '2027-01-31',
+  simFile: null,
   isActive: true,
 }
 
@@ -71,6 +85,9 @@ describe('FleetDriversPage', () => {
     mockCreate.mockResolvedValue(undefined)
     mockUpdate.mockResolvedValue(undefined)
     mockDelete.mockResolvedValue(undefined)
+    mockUploadSim.mockResolvedValue(undefined)
+    mockViewSim.mockResolvedValue('https://signed/get')
+    mockDeleteSim.mockResolvedValue(undefined)
   })
 
   const openDeleteDialog = () => {
@@ -452,6 +469,166 @@ describe('FleetDriversPage', () => {
       })
       render(<FleetDriversPage />)
       expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('the SIM slot', () => {
+    const driverWithScan: FleetDriver = {
+      ...driver,
+      simFile: { originalName: 'sim.png', mimeType: 'image/png', sizeBytes: 524288 },
+    }
+
+    it('shows the scan in a dialog rather than fetching it away', async () => {
+      mockUseFleetDrivers.mockReturnValue({
+        data: [driverWithScan],
+        isLoading: false,
+        isError: false,
+        refetch: jest.fn(),
+      })
+      mockViewSim.mockResolvedValue('https://signed/inline')
+      const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null)
+      render(<FleetDriversPage />)
+      fireEvent.click(screen.getByRole('button', { name: 'Ubah' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Lihat' }))
+
+      await waitFor(() =>
+        expect(mockViewSim).toHaveBeenCalledWith({ driverId: 'd1', disposition: 'inline' }),
+      )
+      // Two dialogs are open — the driver form underneath, the preview above it. Pick the preview
+      // by the image it renders rather than by getByRole('dialog'), which would find both.
+      expect(await screen.findByRole('img', { name: 'sim.png' })).toHaveAttribute(
+        'src',
+        'https://signed/inline',
+      )
+      expect(openSpy).not.toHaveBeenCalled()
+      openSpy.mockRestore()
+    })
+
+    // The upload invalidates ['fleet','drivers'], so the list behind the dialog refetches. The
+    // dialog has to read that answer: a copy of the row taken when "Ubah" was clicked leaves the
+    // operator looking at "Belum ada softcopy" over a file that is already in the bucket.
+    it('reflects the uploaded scan without reopening the dialog', async () => {
+      mockUseFleetDrivers.mockReturnValue({
+        data: [driver],
+        isLoading: false,
+        isError: false,
+        refetch: jest.fn(),
+      })
+      const { rerender } = render(<FleetDriversPage />)
+      fireEvent.click(screen.getByRole('button', { name: 'Ubah' }))
+      expect(screen.getByText('Belum ada softcopy.')).toBeInTheDocument()
+
+      const file = new File(['x'], 'sim.png', { type: 'image/png' })
+      await userEvent.upload(screen.getByLabelText(/unggah sim/i), file)
+      await waitFor(() => expect(mockUploadSim).toHaveBeenCalled())
+
+      // What the refetch triggered by the upload's invalidation brings back. The rerender stands
+      // in for react-query pushing that answer into the page; the mock cannot do it itself.
+      mockUseFleetDrivers.mockReturnValue({
+        data: [driverWithScan],
+        isLoading: false,
+        isError: false,
+        refetch: jest.fn(),
+      })
+      rerender(<FleetDriversPage />)
+
+      expect(await screen.findByText(/sim\.png/)).toBeInTheDocument()
+      expect(screen.queryByText('Belum ada softcopy.')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Lihat' })).toBeInTheDocument()
+      expect(screen.getByLabelText(/ganti sim/i)).toBeInTheDocument()
+    })
+
+    // The mirror case: deleting leaves the dialog claiming a file that is gone.
+    it('reflects a deleted scan without reopening the dialog', async () => {
+      mockUseFleetDrivers.mockReturnValue({
+        data: [driverWithScan],
+        isLoading: false,
+        isError: false,
+        refetch: jest.fn(),
+      })
+      const { rerender } = render(<FleetDriversPage />)
+      fireEvent.click(screen.getByRole('button', { name: 'Ubah' }))
+      expect(screen.getByText(/sim\.png/)).toBeInTheDocument()
+
+      await userEvent.click(screen.getByRole('button', { name: 'Hapus' }))
+      await waitFor(() => expect(mockDeleteSim).toHaveBeenCalled())
+
+      mockUseFleetDrivers.mockReturnValue({
+        data: [driver],
+        isLoading: false,
+        isError: false,
+        refetch: jest.fn(),
+      })
+      rerender(<FleetDriversPage />)
+
+      expect(await screen.findByText('Belum ada softcopy.')).toBeInTheDocument()
+    })
+
+    it('uploads the chosen scan for the driver being edited', async () => {
+      render(<FleetDriversPage />)
+      fireEvent.click(screen.getByRole('button', { name: 'Ubah' }))
+      const file = new File(['x'], 'sim.png', { type: 'image/png' })
+      await userEvent.upload(screen.getByLabelText(/unggah sim/i), file)
+
+      await waitFor(() => expect(mockUploadSim).toHaveBeenCalledWith({ driverId: 'd1', file }))
+    })
+
+    it('deletes the scan for the driver being edited', async () => {
+      mockUseFleetDrivers.mockReturnValue({
+        data: [driverWithScan],
+        isLoading: false,
+        isError: false,
+        refetch: jest.fn(),
+      })
+      render(<FleetDriversPage />)
+      fireEvent.click(screen.getByRole('button', { name: 'Ubah' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Hapus' }))
+
+      await waitFor(() => expect(mockDeleteSim).toHaveBeenCalledWith('d1'))
+    })
+
+    // A failed view must not fail silently — an operator clicking "Lihat" on a broken link with
+    // no feedback would assume the scan is simply gone. It belongs in the dialog they are looking
+    // at, not in the page banner behind it.
+    it('surfaces a failed view inside the dialog', async () => {
+      mockUseFleetDrivers.mockReturnValue({
+        data: [driverWithScan],
+        isLoading: false,
+        isError: false,
+        refetch: jest.fn(),
+      })
+      mockViewSim.mockRejectedValue({ response: { data: { message: 'Berkas tidak ditemukan.' } } })
+      render(<FleetDriversPage />)
+      fireEvent.click(screen.getByRole('button', { name: 'Ubah' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Lihat' }))
+
+      expect(await screen.findByText('Berkas tidak ditemukan.')).toBeInTheDocument()
+    })
+
+    it('fetches a second, attachment URL when asked to download', async () => {
+      mockUseFleetDrivers.mockReturnValue({
+        data: [driverWithScan],
+        isLoading: false,
+        isError: false,
+        refetch: jest.fn(),
+      })
+      mockViewSim.mockResolvedValue('https://signed/inline')
+      const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null)
+      render(<FleetDriversPage />)
+      fireEvent.click(screen.getByRole('button', { name: 'Ubah' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Lihat' }))
+      await screen.findByRole('img', { name: 'sim.png' })
+
+      mockViewSim.mockResolvedValue('https://signed/attachment')
+      await userEvent.click(screen.getByRole('button', { name: 'Unduh' }))
+
+      await waitFor(() => expect(mockViewSim).toHaveBeenLastCalledWith({ driverId: 'd1' }))
+      expect(openSpy).toHaveBeenCalledWith(
+        'https://signed/attachment',
+        '_blank',
+        'noopener,noreferrer',
+      )
+      openSpy.mockRestore()
     })
   })
 })

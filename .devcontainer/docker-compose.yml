@@ -12,9 +12,17 @@ services:
     depends_on:
       - postgres
       - redis
+      - minio
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/app
       REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      S3_BUCKET: esp-fleet
+      S3_FORCE_PATH_STYLE: "true"
     ports:
       - "3000:3000"
       - "4000:4000"
@@ -44,5 +52,34 @@ services:
       - "1025:1025" # SMTP
       - "8025:8025" # Web UI
 
+  minio:
+    image: minio/minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000" # S3 API
+      - "9001:9001" # console
+    volumes:
+      - minio-data:/data
+
+  # One-shot: creates the bucket and opens CORS so the browser's direct PUT is not rejected by a
+  # preflight. Without the CORS rule the upload fails in the browser while curl from the backend
+  # succeeds, which is a confusing way to spend an afternoon.
+  minio-init:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 minioadmin minioadmin; do sleep 1; done;
+      mc mb --ignore-existing local/esp-fleet;
+      mc anonymous set none local/esp-fleet;
+      echo done
+      "
+
 volumes:
   postgres-data:
+  minio-data:

@@ -2,7 +2,8 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import '@testing-library/jest-dom'
 import FleetVehiclesPage from './page'
 import { useFleetVehicles } from '@/features/fleet/hooks/useFleetVehicles'
-import { FleetVehicle } from '@/features/fleet/types'
+import { useFleetSummary } from '@/features/fleet/hooks/useFleetSummary'
+import { FleetVehicle, FleetSummary, FleetVehicleFile, FleetAlert } from '@/features/fleet/types'
 
 const mutations = {
   create: jest.fn().mockResolvedValue({}),
@@ -10,6 +11,11 @@ const mutations = {
   archive: jest.fn().mockResolvedValue({}),
   restore: jest.fn().mockResolvedValue({}),
   documents: jest.fn().mockResolvedValue({}),
+  export: jest.fn().mockResolvedValue({}),
+  upload: jest.fn().mockResolvedValue({}),
+  setUrl: jest.fn().mockResolvedValue({}),
+  deleteFile: jest.fn().mockResolvedValue({}),
+  downloadUrl: jest.fn().mockResolvedValue('https://files.example.com/presigned?sig=1'),
 }
 
 const refetchVehicles = jest.fn()
@@ -23,6 +29,13 @@ let listResult: {
   refetch: jest.Mock
 } = { data: { rows: [], total: 0, page: 1, pageSize: 25 }, ...ok }
 
+// Mutable like listResult above, so individual tests can prove the page threads what this hook
+// returns (loading state, figures) through to FleetSummaryCards rather than fixed props.
+let summaryResult: { data?: FleetSummary; isLoading: boolean } = {
+  data: undefined,
+  isLoading: false,
+}
+
 jest.mock('@/features/fleet/hooks/useFleetVehicles', () => ({
   useFleetVehicles: jest.fn(() => listResult),
   useFleetVehicle: jest.fn(() => ({ data: undefined })),
@@ -31,6 +44,42 @@ jest.mock('@/features/fleet/hooks/useFleetVehicles', () => ({
   useArchiveFleetVehicle: () => ({ mutateAsync: mutations.archive }),
   useRestoreFleetVehicle: () => ({ mutateAsync: mutations.restore }),
   useReplaceVehicleDocuments: () => ({ mutateAsync: mutations.documents }),
+}))
+
+// Summary cards and export are exercised by their own specs; here the page only needs the
+// hooks to exist so it does not reach for a live QueryClient. Reads summaryResult, not a fixed
+// value, so the wiring tests below can vary it the same way listResult varies useFleetVehicles.
+jest.mock('@/features/fleet/hooks/useFleetSummary', () => ({
+  useFleetSummary: jest.fn(() => summaryResult),
+}))
+jest.mock('@/features/fleet/hooks/useFleetExport', () => ({
+  useFleetExport: jest.fn(() => ({ mutateAsync: mutations.export, isPending: false })),
+}))
+
+// FleetAlertList's own rendering is exercised by its own spec; what belongs here is the page's
+// wiring — handleOpenAlert(vehicleId) looking up the right row in `rows` — which a fixed empty
+// list can never reach. Mutable like listResult/summaryResult, so the wiring test below can give
+// it two alerts pointing at two different vehicles.
+let alertsResult: { data: FleetAlert[]; isLoading: boolean; isError: boolean } = {
+  data: [],
+  isLoading: false,
+  isError: false,
+}
+jest.mock('@/features/fleet/hooks/useFleetAlerts', () => ({
+  useFleetAlerts: jest.fn(() => alertsResult),
+}))
+
+// A jest.fn rather than a fixed value, so the §6.4 filter-reset test can give one vehicle files
+// and leave the other empty — BerkasTab renders a card per vehicle, each calling this itself.
+const mockVehicleFiles: jest.Mock<{ data: FleetVehicleFile[] }, [string]> = jest.fn(
+  (_vehicleId: string) => ({ data: [] }),
+)
+jest.mock('@/features/fleet/hooks/useFleetVehicleFiles', () => ({
+  useVehicleFiles: (vehicleId: string) => mockVehicleFiles(vehicleId),
+  useUploadVehicleFile: () => ({ mutateAsync: mutations.upload }),
+  useSetExternalUrl: () => ({ mutateAsync: mutations.setUrl }),
+  useDeleteVehicleFile: () => ({ mutateAsync: mutations.deleteFile }),
+  useFileDownloadUrl: () => ({ mutateAsync: mutations.downloadUrl }),
 }))
 
 // A jest.fn rather than an inline arrow, because the permission-gating tests assert on the
@@ -128,6 +177,7 @@ beforeEach(() => {
   // clearAllMocks leaves implementations in place, so the paging test's per-filter
   // implementation would otherwise leak into every test after it.
   ;(useFleetVehicles as jest.Mock).mockImplementation(() => listResult)
+  ;(useFleetSummary as jest.Mock).mockImplementation(() => summaryResult)
   permissions = [
     'read.fleet_vehicle',
     'create.fleet_vehicle',
@@ -138,6 +188,26 @@ beforeEach(() => {
     data: { rows: [vehicle()], total: 1, page: 1, pageSize: 25 },
     ...ok,
   }
+  summaryResult = { data: undefined, isLoading: false }
+  alertsResult = { data: [], isLoading: false, isError: false }
+})
+
+// Two alerts, two different vehicleIds — a fixture with a single alert cannot tell handleOpenAlert
+// apart from a bug that always opens rows[0], since there would be nothing else for it to open.
+const alert = (over: Partial<FleetAlert> = {}): FleetAlert => ({
+  kind: 'document',
+  vehicleId: 'v1',
+  nopol: 'B9114KYZ',
+  merk: 'Mitsubishi',
+  tipe: 'Canter',
+  pool: 'Pool Cakung',
+  subjectId: 'dt-1',
+  label: 'KIR',
+  expiresAt: '2026-09-20',
+  daysLeft: 4,
+  severity: 'warn',
+  driverName: null,
+  ...over,
 })
 
 describe('FleetVehiclesPage', () => {
@@ -259,6 +329,35 @@ describe('FleetVehiclesPage', () => {
     expect(screen.getByLabelText(/nomor polisi/i)).toHaveValue('B9114KYZ')
     fireEvent.click(screen.getByRole('button', { name: 'Batal' }))
     clickRowAction('Ubah', 1)
+    expect(screen.getByLabelText(/nomor polisi/i)).toHaveValue('D4567XY')
+  })
+
+  // A reviewer swapped handleOpenAlert's rows.find(v => v.id === vehicleId) for rows[0] and all
+  // existing tests passed, because the only alerts fixture in this file was always empty. Two
+  // alerts pointing at two different vehicles is the point: clicking the second one must open the
+  // second unit, which a single-alert fixture could not distinguish from the rows[0] bug.
+  it('opens the edit modal for the vehicle the clicked alert names, not the first row', () => {
+    listResult = {
+      data: {
+        rows: [vehicle(), vehicle({ id: 'v2', nopol: 'D4567XY' })],
+        total: 2,
+        page: 1,
+        pageSize: 25,
+      },
+      ...ok,
+    }
+    alertsResult = {
+      data: [
+        alert({ vehicleId: 'v1', nopol: 'B9114KYZ', subjectId: 'dt-1', label: 'KIR' }),
+        alert({ vehicleId: 'v2', nopol: 'D4567XY', subjectId: 'dt-2', label: 'STNK' }),
+      ],
+      isLoading: false,
+      isError: false,
+    }
+    render(<FleetVehiclesPage />)
+    // Scoped to /STNK/ rather than the plate alone: the row's own "Aksi D4567XY" menu button also
+    // matches the plate, and clicking that would prove nothing about handleOpenAlert.
+    fireEvent.click(screen.getByRole('button', { name: /STNK/ }))
     expect(screen.getByLabelText(/nomor polisi/i)).toHaveValue('D4567XY')
   })
 
@@ -582,5 +681,326 @@ describe('FleetVehiclesPage', () => {
     render(<FleetVehiclesPage />)
     const headers = Array.from(document.querySelectorAll('th')).map((th) => th.textContent)
     expect(headers).toContain('jenis_dokumen satu')
+  })
+
+  // useFleetSummary's mock had a fixed { isLoading: false } no matter what the test needed, so
+  // nothing proved the page passes ITS isLoading through rather than a hardcoded value — the
+  // page compiles and every other test still passes if that prop is wired wrong.
+  it('shows the summary skeleton while the summary is loading', () => {
+    summaryResult = { data: undefined, isLoading: true }
+    render(<FleetVehiclesPage />)
+    expect(screen.getByTestId('summary-skeleton')).toBeInTheDocument()
+  })
+
+  // Same gap for the data half of the wire: a summary the hook resolves must actually reach a
+  // tile, not just a prop the component happens to receive as undefined in every other test.
+  it('renders a figure the summary hook resolves', () => {
+    summaryResult = {
+      data: {
+        totalUnit: 5,
+        dokumenKedaluwarsa: 1,
+        jatuhTempo30Hari: 0,
+        cicilanPerBulan: 1000000,
+        sisaKewajiban: 2000000,
+      },
+      isLoading: false,
+    }
+    render(<FleetVehiclesPage />)
+    expect(screen.getByText('5')).toBeInTheDocument()
+  })
+
+  // Task 15: the tab bar, BerkasTab, the upload dialog, and file actions all get wired together.
+  describe('files and instalments tabs', () => {
+    beforeEach(() => {
+      mockVehicleFiles.mockReturnValue({ data: [] })
+    })
+
+    it('switches between the armada, berkas, and angsuran tabs', () => {
+      listResult = {
+        data: { rows: [vehicle({ berkasCount: { ada: 1, wajib: 1 } })], total: 1, page: 1, pageSize: 25 },
+        ...ok,
+      }
+      render(<FleetVehiclesPage />)
+      expect(screen.getByText(/1 armada/)).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('tab', { name: /softcopy berkas/i }))
+      expect(screen.getByPlaceholderText(/cari nopol, merk, sopir/i)).toBeInTheDocument()
+
+      fireEvent.click(screen.getByRole('tab', { name: /kepemilikan & angsuran/i }))
+      expect(screen.getByText('Total kewajiban berjalan')).toBeInTheDocument()
+    })
+
+    // The slot card's own spec covers its buttons; what belongs here is that "Lihat" now means
+    // looking. A fresh presigned URL is still fetched per click — a GET expires in two minutes.
+    it('shows an uploaded file in a dialog rather than fetching it away', async () => {
+      mockVehicleFiles.mockReturnValue({
+        data: [
+          {
+            id: 'f1',
+            slotId: 'jenis_berkas-1',
+            slotCode: 'c',
+            slotLabel: 'jenis_berkas satu',
+            originalName: 'stnk.pdf',
+            mimeType: 'application/pdf',
+            sizeBytes: 1024,
+            externalUrl: null,
+            uploadedAt: '2026-01-01',
+          },
+        ],
+      })
+      listResult = {
+        data: { rows: [vehicle({ berkasCount: { ada: 1, wajib: 1 } })], total: 1, page: 1, pageSize: 25 },
+        ...ok,
+      }
+      const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null)
+      render(<FleetVehiclesPage />)
+      fireEvent.click(screen.getByRole('tab', { name: /softcopy berkas/i }))
+      fireEvent.click(screen.getByRole('button', { name: 'Lihat' }))
+
+      await waitFor(() =>
+        expect(mutations.downloadUrl).toHaveBeenCalledWith({
+          vehicleId: 'v1',
+          fileId: 'f1',
+          disposition: 'inline',
+        }),
+      )
+      const dialog = within(await screen.findByRole('dialog'))
+      expect(dialog.getByTitle('stnk.pdf')).toHaveAttribute(
+        'src',
+        'https://files.example.com/presigned?sig=1',
+      )
+      expect(openSpy).not.toHaveBeenCalled()
+      openSpy.mockRestore()
+    })
+
+    // An arbitrary host can refuse to be framed, and an empty frame reads as a lost document. The
+    // link is also not ours to sign, so there is no inline URL to ask for.
+    it('still opens an external link in a new tab', async () => {
+      mockVehicleFiles.mockReturnValue({
+        data: [
+          {
+            id: 'f1',
+            slotId: 'jenis_berkas-1',
+            slotCode: 'c',
+            slotLabel: 'jenis_berkas satu',
+            originalName: null,
+            mimeType: null,
+            sizeBytes: null,
+            externalUrl: 'https://arsip.example/stnk.pdf',
+            uploadedAt: '2026-01-01',
+          },
+        ],
+      })
+      listResult = {
+        data: { rows: [vehicle({ berkasCount: { ada: 1, wajib: 1 } })], total: 1, page: 1, pageSize: 25 },
+        ...ok,
+      }
+      const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null)
+      render(<FleetVehiclesPage />)
+      fireEvent.click(screen.getByRole('tab', { name: /softcopy berkas/i }))
+      fireEvent.click(screen.getByRole('button', { name: 'Lihat' }))
+
+      await waitFor(() =>
+        expect(openSpy).toHaveBeenCalledWith(
+          'https://arsip.example/stnk.pdf',
+          '_blank',
+          'noopener,noreferrer',
+        ),
+      )
+      expect(mutations.downloadUrl).not.toHaveBeenCalled()
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      openSpy.mockRestore()
+    })
+
+    // The failure belongs where the operator is looking, not in a banner behind the dialog.
+    it('reports a failed fetch inside the dialog', async () => {
+      mockVehicleFiles.mockReturnValue({
+        data: [
+          {
+            id: 'f1',
+            slotId: 'jenis_berkas-1',
+            slotCode: 'c',
+            slotLabel: 'jenis_berkas satu',
+            originalName: 'stnk.pdf',
+            mimeType: 'application/pdf',
+            sizeBytes: 1024,
+            externalUrl: null,
+            uploadedAt: '2026-01-01',
+          },
+        ],
+      })
+      listResult = {
+        data: { rows: [vehicle({ berkasCount: { ada: 1, wajib: 1 } })], total: 1, page: 1, pageSize: 25 },
+        ...ok,
+      }
+      mutations.downloadUrl.mockRejectedValueOnce({
+        response: { data: { message: 'Berkas tidak ditemukan.' } },
+      })
+      render(<FleetVehiclesPage />)
+      fireEvent.click(screen.getByRole('tab', { name: /softcopy berkas/i }))
+      fireEvent.click(screen.getByRole('button', { name: 'Lihat' }))
+
+      const dialog = within(await screen.findByRole('dialog'))
+      expect(await dialog.findByText('Berkas tidak ditemukan.')).toBeInTheDocument()
+    })
+
+    // Unduh asks the endpoint again with no disposition: the attachment URL is a different URL,
+    // and <a download> is ignored across origins, which is what MinIO is from here.
+    it('fetches a second, attachment URL when asked to download', async () => {
+      mockVehicleFiles.mockReturnValue({
+        data: [
+          {
+            id: 'f1',
+            slotId: 'jenis_berkas-1',
+            slotCode: 'c',
+            slotLabel: 'jenis_berkas satu',
+            originalName: 'stnk.pdf',
+            mimeType: 'application/pdf',
+            sizeBytes: 1024,
+            externalUrl: null,
+            uploadedAt: '2026-01-01',
+          },
+        ],
+      })
+      listResult = {
+        data: { rows: [vehicle({ berkasCount: { ada: 1, wajib: 1 } })], total: 1, page: 1, pageSize: 25 },
+        ...ok,
+      }
+      const openSpy = jest.spyOn(window, 'open').mockImplementation(() => null)
+      render(<FleetVehiclesPage />)
+      fireEvent.click(screen.getByRole('tab', { name: /softcopy berkas/i }))
+      fireEvent.click(screen.getByRole('button', { name: 'Lihat' }))
+      const dialog = within(await screen.findByRole('dialog'))
+      fireEvent.click(await dialog.findByRole('button', { name: 'Unduh' }))
+
+      await waitFor(() =>
+        expect(mutations.downloadUrl).toHaveBeenLastCalledWith({ vehicleId: 'v1', fileId: 'f1' }),
+      )
+      expect(openSpy).toHaveBeenCalledWith(
+        'https://files.example.com/presigned?sig=1',
+        '_blank',
+        'noopener,noreferrer',
+      )
+      openSpy.mockRestore()
+    })
+
+    // The prototype deleted straight from its edit modal (spec §6.4): one mis-click removed a
+    // vehicle's file with nothing to undo. Every deletion here must go through ConfirmDialog.
+    it('confirms before deleting a berkas', async () => {
+      mockVehicleFiles.mockReturnValue({
+        data: [
+          {
+            id: 'f1',
+            slotId: 'jenis_berkas-1',
+            slotCode: 'c',
+            slotLabel: 'jenis_berkas satu',
+            originalName: 'stnk.pdf',
+            mimeType: 'application/pdf',
+            sizeBytes: 1024,
+            externalUrl: null,
+            uploadedAt: '2026-01-01',
+          },
+        ],
+      })
+      listResult = {
+        data: { rows: [vehicle({ berkasCount: { ada: 1, wajib: 1 } })], total: 1, page: 1, pageSize: 25 },
+        ...ok,
+      }
+      render(<FleetVehiclesPage />)
+      fireEvent.click(screen.getByRole('tab', { name: /softcopy berkas/i }))
+      fireEvent.click(screen.getByRole('button', { name: 'Hapus' }))
+      expect(mutations.deleteFile).not.toHaveBeenCalled()
+      const dialog = within(screen.getByRole('dialog'))
+      expect(dialog.getByText(/stnk\.pdf/)).toBeInTheDocument()
+      fireEvent.click(dialog.getByRole('button', { name: 'Hapus' }))
+      await waitFor(() =>
+        expect(mutations.deleteFile).toHaveBeenCalledWith({ vehicleId: 'v1', fileId: 'f1' }),
+      )
+    })
+
+    // Spec §6.4 "Filter berkas tidak lagi buntu": in the prototype, the row's Berkas button only
+    // filled the search box, so an operator who had the "Lengkap" filter active landed on an
+    // empty state for the unit they had just clicked — a dead end. The row action here must
+    // reset the Berkas tab's completeness filter so the target unit is always visible.
+    it('resets the berkas filter so the unit a row action opens is never hidden by it', () => {
+      listResult = {
+        data: {
+          rows: [
+            vehicle({ id: 'v1', nopol: 'B9114KYZ', berkasCount: { ada: 1, wajib: 1 } }),
+            vehicle({ id: 'v2', nopol: 'D2222XY', berkasCount: { ada: 0, wajib: 1 } }),
+          ],
+          total: 2,
+          page: 1,
+          pageSize: 25,
+        },
+        ...ok,
+      }
+      render(<FleetVehiclesPage />)
+
+      // Reach the Berkas tab through the top nav and apply the "Lengkap" filter, which hides the
+      // incomplete unit v2.
+      fireEvent.click(screen.getByRole('tab', { name: /softcopy berkas/i }))
+      fireEvent.click(screen.getByRole('button', { name: 'Lengkap' }))
+      expect(screen.getByText('B9114KYZ')).toBeInTheDocument()
+      expect(screen.queryByText('D2222XY')).not.toBeInTheDocument()
+
+      // Back to Armada, then open v2 through its row's Berkas action — the same dead end the
+      // prototype's search-only reset produced.
+      fireEvent.click(screen.getByRole('tab', { name: /armada & dokumen/i }))
+      clickRowAction('Berkas', 1)
+
+      // The operator lands on the Berkas tab seeing the unit they clicked, not an empty state,
+      // and the filter itself is back on "Semua" rather than still stuck on "Lengkap".
+      expect(screen.getByText('D2222XY')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Semua' })).toHaveAttribute('aria-pressed', 'true')
+      expect(screen.getByRole('button', { name: 'Lengkap' })).toHaveAttribute('aria-pressed', 'false')
+    })
+
+    // Nothing else in this file opens the upload dialog: a reviewer proved that by wiring
+    // BerkasUploadDialog's vehicle prop to rows[0] instead of modal.vehicle and watching all 104
+    // tests stay green. Two units in the fixture so the wrong one is actually distinguishable —
+    // with one vehicle, feeding it the wrong id would look identical to feeding it the right one.
+    it('uploads through the dialog against the unit whose slot was clicked, not any other row', async () => {
+      listResult = {
+        data: {
+          rows: [
+            vehicle({ id: 'v1', nopol: 'B9114KYZ', berkasCount: { ada: 0, wajib: 1 } }),
+            vehicle({ id: 'v2', nopol: 'D2222XY', berkasCount: { ada: 0, wajib: 1 } }),
+          ],
+          total: 2,
+          page: 1,
+          pageSize: 25,
+        },
+        ...ok,
+      }
+      render(<FleetVehiclesPage />)
+      fireEvent.click(screen.getByRole('tab', { name: /softcopy berkas/i }))
+
+      // Each unit gets its own card with its own "Unggah" button, so the click is scoped to
+      // D2222XY's card — clicking the first "Unggah" found on the page would not prove anything.
+      const card = screen.getByText('D2222XY').closest('article')
+      if (!card) throw new Error('vehicle card for D2222XY not found')
+      fireEvent.click(within(card).getByRole('button', { name: 'Unggah' }))
+
+      // BerkasUploadDialog is a plain overlay div, not built on the Radix primitive the other
+      // dialogs use, so it carries no role="dialog" — scoped instead via the panel its own
+      // heading sits in, the same way the row's card was scoped above.
+      const panel = screen.getByRole('heading', { name: /softcopy/i }).closest('div')
+      if (!panel) throw new Error('upload dialog panel not found')
+      const dialog = within(panel as HTMLElement)
+      expect(dialog.getByText('D2222XY')).toBeInTheDocument()
+
+      const file = new File(['isi'], 'stnk.pdf', { type: 'application/pdf' })
+      fireEvent.change(dialog.getByLabelText(/pilih berkas/i), { target: { files: [file] } })
+      fireEvent.click(dialog.getByRole('button', { name: 'Unggah' }))
+
+      await waitFor(() =>
+        expect(mutations.upload).toHaveBeenCalledWith({
+          vehicleId: 'v2',
+          slotId: 'jenis_berkas-1',
+          file,
+        }),
+      )
+    })
   })
 })

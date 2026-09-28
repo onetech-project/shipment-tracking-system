@@ -9,12 +9,21 @@ import { Input } from '@/components/ui/input'
 import { usePermissions } from '@/shared/hooks/use-permissions'
 import { DriverFormDialog } from '@/features/fleet/components/DriverFormDialog'
 import {
+  FilePreviewDialog,
+  FilePreviewState,
+} from '@/features/fleet/components/FilePreviewDialog'
+import {
   useCreateFleetDriver,
   useDeleteFleetDriver,
   useFleetDrivers,
   useFleetMasterDataByCategory,
   useUpdateFleetDriver,
 } from '@/features/fleet/hooks/useFleetDrivers'
+import {
+  useDeleteDriverSim,
+  useDriverSimDownloadUrl,
+  useUploadDriverSim,
+} from '@/features/fleet/hooks/useDriverSimFile'
 import { apiErrorMessage } from '@/features/fleet/utils/api-error'
 import { FleetDriver, FleetDriverPayload } from '@/features/fleet/types'
 
@@ -38,12 +47,94 @@ export default function FleetDriversPage() {
   const createDriver = useCreateFleetDriver()
   const updateDriver = useUpdateFleetDriver()
   const deleteDriver = useDeleteFleetDriver()
+  const uploadSim = useUploadDriverSim()
+  const viewSim = useDriverSimDownloadUrl()
+  const deleteSim = useDeleteDriverSim()
+  const [simError, setSimError] = useState<string | null>(null)
+  // The form dialog stays open underneath: the preview is a look at one of its fields, not a
+  // different place to be.
+  const [preview, setPreview] = useState<{ driver: FleetDriver; state: FilePreviewState } | null>(
+    null,
+  )
 
   const handleSubmit = async (payload: FleetDriverPayload) => {
     if (modal?.type === 'edit') {
       await updateDriver.mutateAsync({ id: modal.driver.id, payload })
     } else {
       await createDriver.mutateAsync(payload)
+    }
+  }
+
+  // A fresh presigned URL every click, never a cached one: a GET expires in two minutes, the same
+  // reason the vehicle files tab re-fetches on every "Lihat".
+  const handleViewSim = async (driverId: string) => {
+    const driver = (drivers ?? []).find((d) => d.id === driverId)
+    if (!driver) return
+    setSimError(null)
+    setPreview({ driver, state: { status: 'loading' } })
+    try {
+      const url = await viewSim.mutateAsync({ driverId, disposition: 'inline' })
+      setPreview((current) =>
+        current?.driver.id === driverId
+          ? {
+              ...current,
+              state: {
+                status: 'ready',
+                url,
+                mimeType: driver.simFile?.mimeType ?? null,
+                filename: driver.simFile?.originalName ?? null,
+              },
+            }
+          : current,
+      )
+    } catch (err: unknown) {
+      const message = apiErrorMessage(err, 'Gagal membuka berkas SIM.')
+      setPreview((current) =>
+        current?.driver.id === driverId
+          ? { ...current, state: { status: 'error', message } }
+          : current,
+      )
+    }
+  }
+
+  // Asking again without a disposition gets the attachment URL. `<a download>` is ignored across
+  // origins, and the object store is a different origin from here.
+  const handleDownloadSim = async () => {
+    if (!preview) return
+    const { driver } = preview
+    try {
+      const url = await viewSim.mutateAsync({ driverId: driver.id })
+      window.open(url, '_blank', 'noopener,noreferrer')
+    } catch (err: unknown) {
+      setPreview((current) =>
+        current?.driver.id === driver.id
+          ? {
+              ...current,
+              state: {
+                status: 'error',
+                message: apiErrorMessage(err, 'Gagal mengunduh berkas SIM.'),
+              },
+            }
+          : current,
+      )
+    }
+  }
+
+  const handleUploadSim = async (driverId: string, file: File) => {
+    setSimError(null)
+    try {
+      await uploadSim.mutateAsync({ driverId, file })
+    } catch (err: unknown) {
+      setSimError(apiErrorMessage(err, 'Gagal mengunggah SIM.'))
+    }
+  }
+
+  const handleDeleteSim = async (driverId: string) => {
+    setSimError(null)
+    try {
+      await deleteSim.mutateAsync(driverId)
+    } catch (err: unknown) {
+      setSimError(apiErrorMessage(err, 'Gagal menghapus SIM.'))
     }
   }
 
@@ -60,6 +151,12 @@ export default function FleetDriversPage() {
       {deleteError && (
         <p className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {deleteError}
+        </p>
+      )}
+
+      {simError && (
+        <p className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {simError}
         </p>
       )}
 
@@ -117,11 +214,23 @@ export default function FleetDriversPage() {
       {(modal?.type === 'create' || modal?.type === 'edit') && (
         <DriverFormDialog
           open
-          initial={modal.type === 'edit' ? modal.driver : undefined}
+          // Resolved from the live list on every render rather than read off `modal`. Uploading or
+          // deleting a scan invalidates ['fleet','drivers'], so the row behind this dialog is
+          // already correct; the copy `setModal` captured when "Ubah" was clicked is not, and it
+          // would keep saying "Belum ada softcopy" over a file that is in the bucket. Falls back to
+          // that copy so a row that leaves the list does not blank the form mid-edit.
+          initial={
+            modal.type === 'edit'
+              ? ((drivers ?? []).find((d) => d.id === modal.driver.id) ?? modal.driver)
+              : undefined
+          }
           simTypes={simTypes ?? []}
           simTypesUnavailable={!canReadMaster}
           onSubmit={handleSubmit}
           onClose={() => setModal(null)}
+          onUploadSim={handleUploadSim}
+          onViewSim={handleViewSim}
+          onDeleteSim={handleDeleteSim}
         />
       )}
 
@@ -150,6 +259,17 @@ export default function FleetDriversPage() {
           }
         }}
       />
+
+      {preview && (
+        <FilePreviewDialog
+          open
+          title="Softcopy SIM"
+          subtitle={preview.driver.nama}
+          state={preview.state}
+          onDownload={() => void handleDownloadSim()}
+          onClose={() => setPreview(null)}
+        />
+      )}
     </div>
   )
 }

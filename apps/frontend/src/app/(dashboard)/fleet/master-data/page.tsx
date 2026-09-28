@@ -17,6 +17,7 @@ import {
 } from '@/features/fleet/hooks/useFleetMasterData'
 import { apiErrorMessage } from '@/features/fleet/utils/api-error'
 import {
+  CATEGORIES_WITH_REQUIRED,
   CATEGORIES_WITH_WARN_DAYS,
   FLEET_CATEGORY_LABELS,
   FLEET_MASTER_CATEGORIES,
@@ -49,6 +50,7 @@ export default function FleetMasterDataPage() {
   // Only the expiring categories carry a threshold; on the rest the column would be a full width
   // of em dashes, so it is left out of those tabs entirely.
   const showWarnDays = CATEGORIES_WITH_WARN_DAYS.includes(category)
+  const showRequired = CATEGORIES_WITH_REQUIRED.includes(category)
 
   const handleSubmit = async (payload: FleetMasterPayload) => {
     if (modal?.type === 'edit') {
@@ -58,6 +60,9 @@ export default function FleetMasterDataPage() {
           label: payload.label,
           sortOrder: payload.sortOrder,
           warnDays: payload.warnDays,
+          // The dialog omits this key for the six categories that do not read the flag, so
+          // spreading rather than assigning keeps those updates exactly as they were.
+          ...(payload.isRequired !== undefined ? { isRequired: payload.isRequired } : {}),
         },
       })
     } else {
@@ -127,6 +132,14 @@ export default function FleetMasterDataPage() {
           { header: 'Urutan', accessor: (r) => r.sortOrder },
           ...(showWarnDays
             ? [{ header: 'Ambang (hari)', accessor: (r: FleetMasterRow) => r.warnDays ?? '—' }]
+            : []),
+          ...(showRequired
+            ? [
+                {
+                  header: 'Wajib',
+                  accessor: (r: FleetMasterRow) => (r.isRequired === true ? '✓' : '—'),
+                },
+              ]
             : []),
           {
             header: '',

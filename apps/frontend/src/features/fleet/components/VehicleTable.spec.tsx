@@ -64,6 +64,7 @@ const vehicle = (over: Partial<FleetVehicle> = {}): FleetVehicle => ({
   ],
   worstSeverity: 'warn',
   minDaysLeft: 5,
+  berkasCount: { ada: 0, wajib: 0 },
   isActive: true,
   ...over,
 })
@@ -635,6 +636,7 @@ describe('VehicleTable', () => {
             cicilanPerBulan: 8750000,
             tenorBulan: 36,
             angsuranMulai: '2026-01-10',
+            closedAt: null,
             angsuranTerbayarOverride: null,
             angsuranTerbayar: 9,
             sisaAngsuran: 27,

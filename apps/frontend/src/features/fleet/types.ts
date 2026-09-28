@@ -30,6 +30,14 @@ export const CATEGORIES_WITH_WARN_DAYS: readonly FleetMasterCategory[] = [
   'jenis_sim',
 ]
 
+// Mirrors the backend's own list. jenis_berkas drives the completeness chip's denominator and
+// jenis_dokumen drives the expiry-date validation; the other six never read the flag, so offering
+// the toggle there would be a control that does nothing.
+export const CATEGORIES_WITH_REQUIRED: readonly FleetMasterCategory[] = [
+  'jenis_berkas',
+  'jenis_dokumen',
+]
+
 export interface FleetMasterRow {
   id: string
   category: FleetMasterCategory
@@ -56,6 +64,14 @@ export type FleetMasterUpdatePayload = Partial<Omit<FleetMasterPayload, 'categor
   isActive?: boolean
 }
 
+// The storage key is deliberately absent: the browser reaches an object through a presigned URL,
+// never by path.
+export interface FleetSimFile {
+  originalName: string | null
+  mimeType: string | null
+  sizeBytes: number | null
+}
+
 export interface FleetDriver {
   id: string
   nama: string
@@ -64,6 +80,7 @@ export interface FleetDriver {
   simJenisId: string | null
   simJenis?: { id: string; label: string } | null
   simExpiresAt: string | null
+  simFile: FleetSimFile | null
   isActive: boolean
 }
 
@@ -125,6 +142,8 @@ export interface FleetVehicleLease {
   // this, never from angsuranTerbayar: prefilling from the computed figure would freeze a count
   // that is supposed to keep rising on its own.
   angsuranTerbayarOverride: number | null
+  // null on the unit's current financing; a date means the contract is history.
+  closedAt: string | null
   angsuranTerbayar: number
   sisaAngsuran: number
   sisaKewajiban: number
@@ -139,6 +158,13 @@ export interface FleetLeasePayload {
   // The one optional field (requirement §2): blank means the backend derives it from the start
   // date.
   angsuranTerbayar?: number | null
+}
+
+// ada / wajib rather than a ratio string, so the chip can colour on the comparison without
+// parsing text apart.
+export interface FleetBerkasCount {
+  ada: number
+  wajib: number
 }
 
 export interface FleetVehicle {
@@ -163,6 +189,7 @@ export interface FleetVehicle {
   documents: FleetVehicleDocument[]
   worstSeverity: FleetSeverity
   minDaysLeft: number | null
+  berkasCount: FleetBerkasCount
   isActive: boolean
 }
 
@@ -171,6 +198,28 @@ export interface FleetVehicleListResponse {
   total: number
   page: number
   pageSize: number
+}
+
+export interface FleetVehicleFile {
+  id: string
+  slotId: string
+  slotCode: string
+  slotLabel: string
+  originalName: string | null
+  mimeType: string | null
+  sizeBytes: number | null
+  // Set when the slot holds a link to an archive elsewhere instead of an uploaded file. Exactly
+  // one of this and an uploaded object is ever present.
+  externalUrl: string | null
+  uploadedAt: string
+}
+
+export interface FleetSummary {
+  totalUnit: number
+  dokumenKedaluwarsa: number
+  jatuhTempo30Hari: number
+  cicilanPerBulan: number
+  sisaKewajiban: number
 }
 
 export interface FleetVehicleFilters {
@@ -213,4 +262,26 @@ export interface FleetVehicleDocumentPayload {
   nomor?: string | null
   issuedAt?: string | null
   expiresAt?: string | null
+}
+
+export const FLEET_ALERT_KINDS = ['document', 'sim'] as const
+export type FleetAlertKind = (typeof FLEET_ALERT_KINDS)[number]
+
+// daysLeft and severity arrive computed, for the reason every other date in this module does: the
+// browser clock belongs to the user, and two operators must not see a different order.
+export interface FleetAlert {
+  kind: FleetAlertKind
+  // Null for a licence held by a driver assigned to no vehicle — the row is still shown, it just
+  // has nothing to open.
+  vehicleId: string | null
+  nopol: string | null
+  merk: string | null
+  tipe: string | null
+  pool: string | null
+  subjectId: string
+  label: string
+  expiresAt: string
+  daysLeft: number
+  severity: FleetSeverity
+  driverName: string | null
 }

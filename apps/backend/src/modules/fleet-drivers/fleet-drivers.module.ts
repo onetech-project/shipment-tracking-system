@@ -5,6 +5,8 @@ import { FleetMasterDataEntity } from '../fleet-master-data/entities/fleet-maste
 import { FleetVehicleEntity } from '../fleet-vehicles/entities/fleet-vehicle.entity'
 import { FleetDriversService } from './fleet-drivers.service'
 import { FleetDriversController } from './fleet-drivers.controller'
+import { FleetDriverFilesService } from './fleet-driver-files.service'
+import { FleetDriverFilesController } from './fleet-driver-files.controller'
 
 @Module({
   // FleetMasterDataEntity is registered here so the service can validate that a submitted
@@ -13,8 +15,8 @@ import { FleetDriversController } from './fleet-drivers.controller'
   imports: [
     TypeOrmModule.forFeature([FleetDriverEntity, FleetMasterDataEntity, FleetVehicleEntity]),
   ],
-  providers: [FleetDriversService],
-  controllers: [FleetDriversController],
+  providers: [FleetDriversService, FleetDriverFilesService],
+  controllers: [FleetDriversController, FleetDriverFilesController],
   exports: [FleetDriversService],
 })
 export class FleetDriversModule {}

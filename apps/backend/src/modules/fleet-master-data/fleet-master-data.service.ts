@@ -24,6 +24,11 @@ const REFERENCING_COLUMNS: { table: string; column: string }[] = [
   { table: 'fleet_lease_contracts', column: 'leasing_id' },
 ]
 
+// The only two categories whose rows are ever consulted for is_required: jenis_berkas feeds the
+// completeness chip's denominator, jenis_dokumen feeds the expiry-date validation on the vehicle
+// form. Anywhere else the column is noise.
+const CATEGORIES_WITH_REQUIRED = ['jenis_berkas', 'jenis_dokumen']
+
 @Injectable()
 export class FleetMasterDataService {
   constructor(
@@ -46,8 +51,15 @@ export class FleetMasterDataService {
 
   async create(dto: CreateFleetMasterDataDto): Promise<FleetMasterDataEntity> {
     await this.assertCodeFree(dto.category, dto.code)
+    // A row born NULL reads as "not required" and can never be flipped from the UI, so the two
+    // categories that consult the flag get an explicit FALSE rather than an absent answer. Set
+    // here rather than in the form so a direct API call lands in the same state.
+    const withDefault =
+      dto.isRequired === undefined && CATEGORIES_WITH_REQUIRED.includes(dto.category)
+        ? { ...dto, isRequired: false }
+        : dto
     try {
-      return await this.repo.save(this.repo.create(dto as Partial<FleetMasterDataEntity>))
+      return await this.repo.save(this.repo.create(withDefault as Partial<FleetMasterDataEntity>))
     } catch (err: unknown) {
       this.throwIfCodeUniqueViolation(err, dto.category, dto.code)
       throw err

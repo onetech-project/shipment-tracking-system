@@ -17,6 +17,17 @@ interface UpdateInput extends Partial<CreateInput> {
   isActive?: boolean
 }
 
+export interface FleetDriverSimFileView {
+  originalName: string | null
+  mimeType: string | null
+  sizeBytes: number | null
+}
+
+export type FleetDriverView = Omit<
+  FleetDriverEntity,
+  'simStorageKey' | 'simOriginalName' | 'simMimeType' | 'simSizeBytes'
+> & { simFile: FleetDriverSimFileView | null }
+
 @Injectable()
 export class FleetDriversService {
   constructor(
@@ -28,7 +39,7 @@ export class FleetDriversService {
     private readonly vehicleRepo: Repository<FleetVehicleEntity>,
   ) {}
 
-  async findAll(q?: string, includeInactive = false): Promise<FleetDriverEntity[]> {
+  async findAll(q?: string, includeInactive = false): Promise<FleetDriverView[]> {
     const qb = this.repo
       .createQueryBuilder('d')
       .leftJoinAndSelect('d.simJenis', 'sim')
@@ -41,12 +52,13 @@ export class FleetDriversService {
         q: `%${q.trim()}%`,
       })
     }
-    return qb.orderBy('d.nama', 'ASC').getMany()
+    const rows = await qb.orderBy('d.nama', 'ASC').getMany()
+    return rows.map((row) => this.toView(row))
   }
 
-  async create(dto: CreateInput): Promise<FleetDriverEntity> {
+  async create(dto: CreateInput): Promise<FleetDriverView> {
     await this.assertSimJenisValid(dto.simJenisId)
-    return this.repo.save(
+    const saved = await this.repo.save(
       this.repo.create({
         nama: dto.nama.trim(),
         telepon: this.blankToNull(dto.telepon),
@@ -55,9 +67,10 @@ export class FleetDriversService {
         simExpiresAt: dto.simExpiresAt ?? null,
       }),
     )
+    return this.toView(saved)
   }
 
-  async update(id: string, dto: UpdateInput): Promise<FleetDriverEntity> {
+  async update(id: string, dto: UpdateInput): Promise<FleetDriverView> {
     const existing = await this.repo.findOne({ where: { id } })
     if (!existing) throw new NotFoundException('Driver not found')
 
@@ -77,7 +90,28 @@ export class FleetDriversService {
 
     const updated = await this.repo.findOne({ where: { id } })
     if (!updated) throw new NotFoundException('Driver not found')
-    return updated
+    return this.toView(updated)
+  }
+
+  // This service has no toView until now: findAll/create/update handed the entity straight to the
+  // controller. That was fine while there was nothing on it worth hiding. sim_storage_key changes
+  // that — the browser must reach the scan through a presigned URL, never by path — so every
+  // response now goes through this mapping instead.
+  private toView(e: FleetDriverEntity): FleetDriverView {
+    const { simStorageKey, simOriginalName, simMimeType, simSizeBytes, ...rest } = e
+    return {
+      ...rest,
+      // Reported so the form can show "sim.png · 412 KB" instead of an upload button over a file
+      // that is already there. The key itself is never sent: the browser reaches the object
+      // through a presigned URL, never by path.
+      simFile: simStorageKey
+        ? {
+            originalName: simOriginalName,
+            mimeType: simMimeType,
+            sizeBytes: simSizeBytes == null ? null : Number(simSizeBytes),
+          }
+        : null,
+    }
   }
 
   // fleet_vehicles.driver_id is ON DELETE SET NULL, so deleting an assigned driver would not

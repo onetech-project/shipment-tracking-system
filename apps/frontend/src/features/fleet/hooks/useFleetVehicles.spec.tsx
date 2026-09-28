@@ -217,6 +217,15 @@ describe('useFleetVehicles', () => {
     expect(result.current.data?.rows[0].isActive).toBe(true)
   })
 
+  // A backend that predates Phase 3 sends no berkasCount at all. 0/0 must render as a neutral
+  // chip — anything else would falsely claim files are present (or missing) on a unit nobody has
+  // looked at yet.
+  it('defaults a missing berkasCount to zero over zero', async () => {
+    const { result } = renderHook(() => useFleetVehicles({}), { wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data?.rows[0].berkasCount).toEqual({ ada: 0, wajib: 0 })
+  })
+
   it('defaults a missing worstSeverity to none', async () => {
     mocked.get.mockResolvedValue({
       data: { rows: [{ id: 'v1', nopol: 'B 1 A' }], total: 1, page: 1, pageSize: 25 },

@@ -99,6 +99,7 @@ describe('useFleetDrivers', () => {
         simJenisId: null,
         simJenis: null,
         simExpiresAt: null,
+        simFile: null,
         // A backend that cannot answer has not said the driver is archived.
         isActive: true,
       },
@@ -143,6 +144,7 @@ describe('useFleetDrivers', () => {
           simJenisId: 's1',
           simJenis: { id: 's1', label: 'B1 Umum' },
           simExpiresAt: '2027-01-31',
+          simFile: { originalName: 'sim.jpg', mimeType: 'image/jpeg', sizeBytes: 1024 },
           isActive: true,
         },
       ]),
@@ -155,6 +157,7 @@ describe('useFleetDrivers', () => {
         simJenisId: 's1',
         simJenis: { id: 's1', label: 'B1 Umum' },
         simExpiresAt: '2027-01-31',
+        simFile: { originalName: 'sim.jpg', mimeType: 'image/jpeg', sizeBytes: 1024 },
         isActive: true,
       },
     ])

@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiClient } from '@/shared/api/client'
-import { FleetDriver, FleetDriverPayload, FleetMasterCategory, FleetMasterRow } from '../types'
+import {
+  FleetDriver,
+  FleetDriverPayload,
+  FleetMasterCategory,
+  FleetMasterRow,
+  FleetSimFile,
+} from '../types'
 
 // Wire shapes are looser than the domain types: frontend and backend deploy in parallel, so a
 // response from a backend that predates a field must still parse. Same convention as
@@ -13,6 +19,7 @@ interface FleetDriverWire {
   simJenisId?: string | null
   simJenis?: { id: string; label: string } | null
   simExpiresAt?: string | null
+  simFile?: FleetSimFile | null
   isActive?: boolean
 }
 
@@ -33,6 +40,7 @@ export function useFleetDrivers(params: { q?: string; includeInactive?: boolean 
         simJenisId: row.simJenisId ?? null,
         simJenis: row.simJenis ?? null,
         simExpiresAt: row.simExpiresAt ?? null,
+        simFile: row.simFile ?? null,
         // Defaults to true: a backend that cannot answer has not said the driver is archived.
         isActive: row.isActive ?? true,
       })),
