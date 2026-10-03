@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { usePermissions } from '@/shared/hooks/use-permissions'
 import { fromPayload, toPayloadWithSource } from '../engine'
@@ -10,6 +11,9 @@ import {
 } from '../hooks/useRouteSimulation'
 import { Tag } from './ui'
 
+// Must match useScenario's queryKey in hooks/useRouteSimulation.ts.
+const scenarioDetailKey = (id: string | null) => ['route-simulation', 'scenarios', id] as const
+
 type ApiError = { response?: { status?: number; data?: { message?: string | string[] } } }
 const messageOf = (err: unknown) => {
   const m = (err as ApiError)?.response?.data?.message
@@ -18,6 +22,7 @@ const messageOf = (err: unknown) => {
 
 export function ScenarioBar({ state, dispatch, onFlash }: { state: ReducerState; dispatch: React.Dispatch<SimAction>; onFlash: (msg: string) => void }) {
   const { hasPermission } = usePermissions()
+  const queryClient = useQueryClient()
   const [openId, setOpenId] = useState<string | null>(null)
   const [revision, setRevision] = useState<number | null>(null)
   const list = useScenarios(true)
@@ -41,7 +46,11 @@ export function ScenarioBar({ state, dispatch, onFlash }: { state: ReducerState;
 
   const pick = (id: string) => {
     if (state.dirty && !window.confirm('Perubahan yang belum disimpan akan hilang. Lanjut?')) return
-    setOpenId(id || null)
+    const nextId = id || null
+    // Never trust a cached detail: an explicit open always invalidates it first, so useScenario's
+    // refetchOnMount: 'always' hits the network instead of replaying a possibly-stale revision.
+    queryClient.invalidateQueries({ queryKey: scenarioDetailKey(nextId) })
+    setOpenId(nextId)
     setRevision(null)
   }
 
@@ -60,7 +69,9 @@ export function ScenarioBar({ state, dispatch, onFlash }: { state: ReducerState;
   }
 
   const save = async () => {
-    if (!openId || revision == null) return saveAs()
+    // Simpan is only rendered with an openId, and is disabled below while its detail (and so its
+    // revision) is still loading — so there is nothing sensible to fall through to here.
+    if (!openId || revision == null) return
     try {
       const saved = await update.mutateAsync({ id: openId, body: { revision, payload: payload() } })
       setRevision(saved.revision)
@@ -68,7 +79,10 @@ export function ScenarioBar({ state, dispatch, onFlash }: { state: ReducerState;
       onFlash('Skenario disimpan')
     } catch (err) {
       if ((err as ApiError)?.response?.status === 409) {
-        onFlash('Skenario ini sudah disimpan orang lain setelah kamu membukanya. Buka ulang skenario, atau simpan sebagai skenario baru.')
+        // The cached detail is now known-stale: invalidate it so the next pick() (after "Baru")
+        // fetches the latest revision instead of 409ing again on the same cached payload.
+        queryClient.invalidateQueries({ queryKey: scenarioDetailKey(openId) })
+        onFlash('Skenario ini sudah disimpan orang lain setelah kamu membukanya. Pilih "Baru" lalu buka skenario ini lagi untuk memuat versi terbaru, atau simpan sebagai skenario baru.')
       } else onFlash(messageOf(err))
     }
   }
@@ -98,7 +112,7 @@ export function ScenarioBar({ state, dispatch, onFlash }: { state: ReducerState;
       {state.dirty && <Tag tone="warn">Belum disimpan</Tag>}
       <div className="ml-auto flex gap-2">
         {openId && hasPermission('update.route_simulation') && (
-          <Button size="sm" onClick={save} disabled={update.isPending || !state.dirty}>Simpan</Button>
+          <Button size="sm" onClick={save} disabled={update.isPending || !state.dirty || revision == null}>Simpan</Button>
         )}
         {hasPermission('create.route_simulation') && (
           <Button size="sm" variant="outline" onClick={saveAs} disabled={create.isPending}>Simpan sebagai…</Button>

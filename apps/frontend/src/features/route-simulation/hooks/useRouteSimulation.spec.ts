@@ -34,6 +34,16 @@ it('keys the source and scenarios under route-simulation', async () => {
   expect(lastQuery().queryKey).toEqual(['route-simulation', 'scenarios'])
 })
 
+it('never refetches the simulation source in the background: it only changes via the reducer', () => {
+  ;(useQuery as jest.Mock).mockReturnValue({})
+  useSimulationSource(true)
+  expect(lastQuery()).toMatchObject({
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  })
+})
+
 it('only fetches a scenario once one is picked', () => {
   ;(useQuery as jest.Mock).mockReturnValue({})
   useScenario(null)
@@ -41,6 +51,17 @@ it('only fetches a scenario once one is picked', () => {
   useScenario('s1')
   expect(lastQuery().queryKey).toEqual(['route-simulation', 'scenarios', 's1'])
   expect(lastQuery().enabled).toBe(true)
+})
+
+it('never serves a scenario detail from a stale cache: only an explicit mount refetches it', () => {
+  ;(useQuery as jest.Mock).mockReturnValue({})
+  useScenario('s1')
+  expect(lastQuery()).toMatchObject({
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  })
 })
 
 it('invalidates the scenario list after every write', async () => {

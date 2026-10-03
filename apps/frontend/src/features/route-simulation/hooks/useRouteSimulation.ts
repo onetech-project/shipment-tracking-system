@@ -9,7 +9,11 @@ export function useSimulationSource(enabled: boolean) {
     queryKey: [...KEY, 'source'],
     queryFn: () => apiClient.get('/route-simulation/source').then((r) => r.data),
     enabled,
-    staleTime: 5 * 60 * 1000,
+    // Once loaded, the source only changes through the reducer (routeAdd/routeDel/etc.); a
+    // background refetch would silently diverge from whatever the user has edited.
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   })
 }
 
@@ -27,8 +31,13 @@ export function useScenario(id: string | null) {
     queryKey: [...KEY, 'scenarios', id],
     queryFn: () => apiClient.get(`/route-simulation/scenarios/${id}`).then((r) => r.data),
     enabled: !!id,
-    // A scenario is opened deliberately; refetching it behind the user's back would overwrite edits.
-    staleTime: Infinity,
+    // A scenario is opened deliberately: no background refetch may overwrite edits. But the cached
+    // revision must never be trusted either (a stale revision 409s forever), so every explicit open
+    // (mount) always hits the network; nothing refetches behind the user's back afterwards.
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   })
 }
 
