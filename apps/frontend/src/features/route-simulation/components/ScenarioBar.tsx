@@ -32,10 +32,15 @@ export function ScenarioBar({ state, dispatch, onFlash }: { state: ReducerState;
   const remove = useDeleteScenario()
 
   // The working state is replaced by a server payload ONLY as the direct result of an explicit
-  // pick(), exactly once per pick. loadedFor holds the "id:revision" applied (or written by a save)
-  // since the last pick; pick() resets it to null, and nothing else does — so a refetch, a 409, a
-  // save or a delete can never dispatch `load` over the user's edits.
+  // pick(), exactly once per pick. Only null vs non-null of loadedFor matters: null means "the
+  // current pick has not loaded yet"; the "id:revision" stored otherwise is informational (handy
+  // when debugging). pick() is the only thing that resets it to null — so a refetch, a 409, a save
+  // or a delete can never dispatch `load` over the user's edits.
   const loadedFor = useRef<string | null>(null)
+  // Bumped by every pick(). A write captures it before awaiting and drops all its state writes if
+  // the user picked something else meanwhile: the result belongs to the scenario that was open
+  // when it started, not to whatever is open now (defence in depth behind the `busy` lock below).
+  const pickGen = useRef(0)
   useEffect(() => {
     const d = detail.data
     // isFetching: never apply a payload that a fetch in flight is about to replace.
@@ -53,6 +58,9 @@ export function ScenarioBar({ state, dispatch, onFlash }: { state: ReducerState;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openId, detail.data?.id, detail.data?.revision, detail.isFetching])
 
+  // While any write is in flight the selection must not move: its result is about the scenario
+  // that was open when it started.
+  const busy = update.isPending || create.isPending || remove.isPending
   const current = list.data?.find((s) => s.id === openId)
   const payload = () => toPayloadWithSource(state.source, state.sim)
 
@@ -62,6 +70,7 @@ export function ScenarioBar({ state, dispatch, onFlash }: { state: ReducerState;
     // Never trust a cached detail: drop it so the new observer starts from data === undefined and
     // the effect above loads exactly once, from a fresh fetch of the latest revision.
     if (nextId) queryClient.removeQueries({ queryKey: scenarioDetailKey(nextId), exact: true })
+    pickGen.current += 1
     loadedFor.current = null
     setOpenId(nextId)
     setRevision(null)
@@ -70,8 +79,10 @@ export function ScenarioBar({ state, dispatch, onFlash }: { state: ReducerState;
   const saveAs = async () => {
     const name = window.prompt('Nama skenario', current ? `${current.name} (salinan)` : '')?.trim()
     if (!name) return
+    const gen = pickGen.current
     try {
       const saved = await create.mutateAsync({ name, payload: payload() })
+      if (gen !== pickGen.current) return onFlash(`Skenario "${name}" disimpan`)
       // The working state IS this revision: its detail fetch must not load it back over later edits.
       loadedFor.current = `${saved.id}:${saved.revision}`
       setOpenId(saved.id)
@@ -87,8 +98,10 @@ export function ScenarioBar({ state, dispatch, onFlash }: { state: ReducerState;
     // Simpan is only rendered with an openId, and is disabled below while its detail (and so its
     // revision) is still loading — so there is nothing sensible to fall through to here.
     if (!openId || revision == null) return
+    const gen = pickGen.current
     try {
       const saved = await update.mutateAsync({ id: openId, body: { revision, payload: payload() } })
+      if (gen !== pickGen.current) return onFlash('Skenario disimpan')
       loadedFor.current = `${openId}:${saved.revision}`
       setRevision(saved.revision)
       dispatch({ type: 'markSaved' })
@@ -104,8 +117,10 @@ export function ScenarioBar({ state, dispatch, onFlash }: { state: ReducerState;
 
   const del = async () => {
     if (!current || !window.confirm(`Hapus skenario "${current.name}"?`)) return
+    const gen = pickGen.current
     try {
       await remove.mutateAsync(current.id)
+      if (gen !== pickGen.current) return onFlash('Skenario dihapus')
       setOpenId(null)
       setRevision(null)
       onFlash('Skenario dihapus')
@@ -118,7 +133,7 @@ export function ScenarioBar({ state, dispatch, onFlash }: { state: ReducerState;
     <div className="flex flex-wrap items-center gap-2 rounded-md border bg-card p-3">
       <label className="flex items-center gap-2 text-sm">
         <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Skenario</span>
-        <select aria-label="Skenario" className="h-8 min-w-48 rounded border border-input bg-background px-2 text-sm" value={openId ?? ''} onChange={(e) => pick(e.target.value)}>
+        <select aria-label="Skenario" className="h-8 min-w-48 rounded border border-input bg-background px-2 text-sm" value={openId ?? ''} disabled={busy} onChange={(e) => pick(e.target.value)}>
           <option value="">Baru (belum disimpan)</option>
           {list.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
@@ -127,13 +142,13 @@ export function ScenarioBar({ state, dispatch, onFlash }: { state: ReducerState;
       {state.dirty && <Tag tone="warn">Belum disimpan</Tag>}
       <div className="ml-auto flex gap-2">
         {openId && hasPermission('update.route_simulation') && (
-          <Button size="sm" onClick={save} disabled={update.isPending || !state.dirty || revision == null}>Simpan</Button>
+          <Button size="sm" onClick={save} disabled={busy || !state.dirty || revision == null}>Simpan</Button>
         )}
         {hasPermission('create.route_simulation') && (
-          <Button size="sm" variant="outline" onClick={saveAs} disabled={create.isPending}>Simpan sebagai…</Button>
+          <Button size="sm" variant="outline" onClick={saveAs} disabled={busy}>Simpan sebagai…</Button>
         )}
         {openId && hasPermission('delete.route_simulation') && (
-          <Button size="sm" variant="outline" className="text-red-700 dark:text-red-400" onClick={del} disabled={remove.isPending}>Hapus</Button>
+          <Button size="sm" variant="outline" className="text-red-700 dark:text-red-400" onClick={del} disabled={busy}>Hapus</Button>
         )}
       </div>
     </div>
