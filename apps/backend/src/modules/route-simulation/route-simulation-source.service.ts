@@ -38,8 +38,10 @@ export class RouteSimulationSourceService {
   // DC-pair master FULL JOIN the pairs TOs carry. FULL rather than LEFT (unlike
   // RouteGroupsService.getAvailableRoutes) so a pair that flew but fell out of the master is
   // still simulated — with a null rate the user has to fill in, which beats a missing route.
-  // One master row per pair: the one that has a rate wins, then the newest — the same tie-break
-  // v_pnl_to's station_map uses, so the rate shown here is the rate revenue was billed at.
+  // One master row per station pair: the one that has a rate wins, then the newest. This is a
+  // coarser grain than v_pnl_to's station_map (one row per DC pair), so if two DC pairs sharing a
+  // station pair ever carry different rates, this shows one of them while billing used each. On the
+  // data as of 2026-10-03 every station pair has a single rate, so the two agree.
   private async getRoutes(): Promise<SimulationRoute[]> {
     const rows = await this.dataSource.query(`
       WITH master AS (
