@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { usePermissions } from '@/shared/hooks/use-permissions'
@@ -31,20 +31,27 @@ export function ScenarioBar({ state, dispatch, onFlash }: { state: ReducerState;
   const update = useUpdateScenario()
   const remove = useDeleteScenario()
 
-  // Opening a scenario replaces the working state once, when its payload arrives.
+  // The working state is replaced by a server payload ONLY as the direct result of an explicit
+  // pick(), exactly once per pick. loadedFor holds the "id:revision" applied (or written by a save)
+  // since the last pick; pick() resets it to null, and nothing else does — so a refetch, a 409, a
+  // save or a delete can never dispatch `load` over the user's edits.
+  const loadedFor = useRef<string | null>(null)
   useEffect(() => {
     const d = detail.data
-    if (!d || d.id !== openId) return
-    setRevision(d.revision)
-    if (d.payload == null) return
+    // isFetching: never apply a payload that a fetch in flight is about to replace.
+    if (!d || d.id !== openId || detail.isFetching || loadedFor.current !== null) return
+    loadedFor.current = `${d.id}:${d.revision}`
     if (!isScenarioPayload(d.payload)) {
+      // Drop the selection too: Simpan must not write the unrelated working state into it.
+      setOpenId(null)
+      setRevision(null)
       onFlash('Skenario ini tidak bisa dibuka: format datanya tidak dikenal.')
       return
     }
+    setRevision(d.revision)
     dispatch({ type: 'load', sim: fromPayload(state.source, d.payload) })
-    // openId is a dep because a cached detail can already be present when the user picks it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openId, detail.data?.id, detail.data?.revision])
+  }, [openId, detail.data?.id, detail.data?.revision, detail.isFetching])
 
   const current = list.data?.find((s) => s.id === openId)
   const payload = () => toPayloadWithSource(state.source, state.sim)
@@ -52,9 +59,10 @@ export function ScenarioBar({ state, dispatch, onFlash }: { state: ReducerState;
   const pick = (id: string) => {
     if (state.dirty && !window.confirm('Perubahan yang belum disimpan akan hilang. Lanjut?')) return
     const nextId = id || null
-    // Never trust a cached detail: an explicit open always invalidates it first, so useScenario's
-    // refetchOnMount: 'always' hits the network instead of replaying a possibly-stale revision.
-    queryClient.invalidateQueries({ queryKey: scenarioDetailKey(nextId) })
+    // Never trust a cached detail: drop it so the new observer starts from data === undefined and
+    // the effect above loads exactly once, from a fresh fetch of the latest revision.
+    if (nextId) queryClient.removeQueries({ queryKey: scenarioDetailKey(nextId), exact: true })
+    loadedFor.current = null
     setOpenId(nextId)
     setRevision(null)
   }
@@ -64,6 +72,8 @@ export function ScenarioBar({ state, dispatch, onFlash }: { state: ReducerState;
     if (!name) return
     try {
       const saved = await create.mutateAsync({ name, payload: payload() })
+      // The working state IS this revision: its detail fetch must not load it back over later edits.
+      loadedFor.current = `${saved.id}:${saved.revision}`
       setOpenId(saved.id)
       setRevision(saved.revision)
       dispatch({ type: 'markSaved' })
@@ -79,14 +89,14 @@ export function ScenarioBar({ state, dispatch, onFlash }: { state: ReducerState;
     if (!openId || revision == null) return
     try {
       const saved = await update.mutateAsync({ id: openId, body: { revision, payload: payload() } })
+      loadedFor.current = `${openId}:${saved.revision}`
       setRevision(saved.revision)
       dispatch({ type: 'markSaved' })
       onFlash('Skenario disimpan')
     } catch (err) {
       if ((err as ApiError)?.response?.status === 409) {
-        // The cached detail is now known-stale: invalidate it so the next pick() (after "Baru")
-        // fetches the latest revision instead of 409ing again on the same cached payload.
-        queryClient.invalidateQueries({ queryKey: scenarioDetailKey(openId) })
+        // Leave the cache and the working state alone: refetching here would reload the newer
+        // revision over the user's unsaved edits. The next pick() drops the cached detail anyway.
         onFlash('Skenario ini sudah disimpan orang lain setelah kamu membukanya. Pilih "Baru" lalu buka skenario ini lagi untuk memuat versi terbaru, atau simpan sebagai skenario baru.')
       } else onFlash(messageOf(err))
     }

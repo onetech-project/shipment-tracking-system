@@ -56,7 +56,8 @@ export interface UpdateScenarioBody {
 
 function useInvalidateList() {
   const queryClient = useQueryClient()
-  return () => queryClient.invalidateQueries({ queryKey: [...KEY, 'scenarios'] })
+  // The list only: a prefix match would also refetch the open scenario's detail after every write.
+  return () => queryClient.invalidateQueries({ queryKey: [...KEY, 'scenarios'], exact: true })
 }
 
 export function useCreateScenario() {

@@ -64,7 +64,7 @@ it('never serves a scenario detail from a stale cache: only an explicit mount re
   })
 })
 
-it('invalidates the scenario list after every write', async () => {
+it('invalidates only the scenario list after every write, never an open scenario detail', async () => {
   const invalidateQueries = jest.fn()
   ;(useQueryClient as jest.Mock).mockReturnValue({ invalidateQueries })
   ;(useMutation as jest.Mock).mockReturnValue({})
@@ -72,7 +72,7 @@ it('invalidates the scenario list after every write', async () => {
   await lastMutation().mutationFn({ name: 'A', payload: {} })
   expect(apiClient.post).toHaveBeenCalledWith('/route-simulation/scenarios', { name: 'A', payload: {} })
   lastMutation().onSuccess()
-  expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['route-simulation', 'scenarios'] })
+  expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['route-simulation', 'scenarios'], exact: true })
   useUpdateScenario()
   await lastMutation().mutationFn({ id: 's1', body: { revision: 2 } })
   expect(apiClient.patch).toHaveBeenCalledWith('/route-simulation/scenarios/s1', { revision: 2 })

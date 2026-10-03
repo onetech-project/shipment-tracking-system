@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { fixtureSource } from '../engine/__fixtures__/source'
+import { toPayloadWithSource } from '../engine'
 import { initReducer } from '../state/reducer'
 import { ScenarioBar } from './ScenarioBar'
 import * as hooks from '../hooks/useRouteSimulation'
@@ -15,9 +16,11 @@ const create = jest.fn()
 const update = jest.fn()
 const remove = jest.fn()
 const invalidateQueries = jest.fn()
+const removeQueries = jest.fn()
+const validPayload = () => toPayloadWithSource(fixtureSource(), initReducer(fixtureSource()).sim)
 beforeEach(() => {
   jest.clearAllMocks()
-  ;(useQueryClient as jest.Mock).mockReturnValue({ invalidateQueries })
+  ;(useQueryClient as jest.Mock).mockReturnValue({ invalidateQueries, removeQueries })
   ;(hooks.useScenarios as jest.Mock).mockReturnValue({ data: [{ id: 's1', name: 'Baseline', description: null, revision: 2, updatedAt: '2026-10-02T00:00:00Z', updatedBy: 'faris' }] })
   ;(hooks.useScenario as jest.Mock).mockReturnValue({ data: undefined })
   ;(hooks.useCreateScenario as jest.Mock).mockReturnValue({ mutateAsync: create.mockResolvedValue({ id: 's2', revision: 1, name: 'Baru' }), isPending: false })
@@ -36,37 +39,45 @@ it('saves a new scenario with the full payload and marks the state clean', async
   await waitFor(() => expect(dispatch).toHaveBeenCalledWith({ type: 'markSaved' }))
 })
 
-it('reports a stale save instead of overwriting, and invalidates the cached detail so reopening fetches the latest revision', async () => {
+it('reports a stale save without touching the cache, so the unsaved edits are not reloaded over', async () => {
   const onFlash = jest.fn()
+  const dispatch = jest.fn()
   jest.spyOn(window, 'confirm').mockReturnValue(true) // switching away from a dirty state asks first
   update.mockRejectedValueOnce({ response: { status: 409, data: { message: 'stale' } } })
-  ;(hooks.useScenario as jest.Mock).mockReturnValue({ data: { id: 's1', name: 'Baseline', revision: 2, payload: null } })
-  render(<ScenarioBar state={{ ...initReducer(fixtureSource()), dirty: true }} dispatch={jest.fn()} onFlash={onFlash} />)
+  ;(hooks.useScenario as jest.Mock).mockReturnValue({ data: { id: 's1', name: 'Baseline', revision: 2, payload: validPayload() }, isFetching: false })
+  render(<ScenarioBar state={{ ...initReducer(fixtureSource()), dirty: true }} dispatch={dispatch} onFlash={onFlash} />)
   fireEvent.change(screen.getByLabelText('Skenario'), { target: { value: 's1' } })
-  invalidateQueries.mockClear() // picking also invalidates; isolate the post-409 call
+  dispatch.mockClear()
+  removeQueries.mockClear()
   fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
   await waitFor(() =>
     expect(onFlash).toHaveBeenCalledWith(
       'Skenario ini sudah disimpan orang lain setelah kamu membukanya. Pilih "Baru" lalu buka skenario ini lagi untuk memuat versi terbaru, atau simpan sebagai skenario baru.',
     ),
   )
-  expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['route-simulation', 'scenarios', 's1'] })
+  expect(invalidateQueries).not.toHaveBeenCalled()
+  expect(removeQueries).not.toHaveBeenCalled()
+  expect(dispatch).not.toHaveBeenCalled()
 })
 
-it('invalidates the cached scenario detail when picking it, so a reopen never serves a stale revision', () => {
+it('drops the cached scenario detail when picking it, so a reopen never serves a stale revision', () => {
   render(<ScenarioBar state={{ ...initReducer(fixtureSource()), dirty: false }} dispatch={jest.fn()} onFlash={jest.fn()} />)
   fireEvent.change(screen.getByLabelText('Skenario'), { target: { value: 's1' } })
-  expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['route-simulation', 'scenarios', 's1'] })
+  expect(removeQueries).toHaveBeenCalledWith({ queryKey: ['route-simulation', 'scenarios', 's1'], exact: true })
+  expect(invalidateQueries).not.toHaveBeenCalled()
 })
 
 it('refuses to load a scenario whose payload is not recognised, and flashes instead of crashing', () => {
   const onFlash = jest.fn()
   const dispatch = jest.fn()
-  ;(hooks.useScenario as jest.Mock).mockReturnValue({ data: { id: 's1', name: 'Baseline', revision: 2, payload: {} } })
+  ;(hooks.useScenario as jest.Mock).mockReturnValue({ data: { id: 's1', name: 'Baseline', revision: 2, payload: {} }, isFetching: false })
   render(<ScenarioBar state={{ ...initReducer(fixtureSource()), dirty: false }} dispatch={dispatch} onFlash={onFlash} />)
   fireEvent.change(screen.getByLabelText('Skenario'), { target: { value: 's1' } })
   expect(onFlash).toHaveBeenCalledWith('Skenario ini tidak bisa dibuka: format datanya tidak dikenal.')
   expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'load' }))
+  // The refused scenario is deselected, so Simpan cannot write the unrelated working state into it.
+  expect((screen.getByLabelText('Skenario') as HTMLSelectElement).value).toBe('')
+  expect(screen.queryByRole('button', { name: 'Simpan' })).not.toBeInTheDocument()
 })
 
 it('disables Simpan while the picked scenario detail has not loaded yet', () => {
@@ -79,7 +90,7 @@ it('disables Simpan while the picked scenario detail has not loaded yet', () => 
 it('saves an update to an already-open scenario', async () => {
   const onFlash = jest.fn()
   update.mockResolvedValueOnce({ id: 's1', revision: 3 })
-  ;(hooks.useScenario as jest.Mock).mockReturnValue({ data: { id: 's1', name: 'Baseline', revision: 2, payload: null } })
+  ;(hooks.useScenario as jest.Mock).mockReturnValue({ data: { id: 's1', name: 'Baseline', revision: 2, payload: validPayload() }, isFetching: false })
   render(<ScenarioBar state={{ ...initReducer(fixtureSource()), dirty: true }} dispatch={jest.fn()} onFlash={onFlash} />)
   fireEvent.change(screen.getByLabelText('Skenario'), { target: { value: 's1' } })
   fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
