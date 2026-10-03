@@ -31,20 +31,29 @@ export function ScenarioBar({ state, dispatch, onFlash }: { state: ReducerState;
   const update = useUpdateScenario()
   const remove = useDeleteScenario()
 
+  // While any write is in flight the selection must not move: its result is about the scenario
+  // that was open when it started.
+  const busy = update.isPending || create.isPending || remove.isPending
+  // A picked scenario whose detail has not loaded yet: the working state still holds whatever was
+  // there before the pick, so nothing may save it under (or delete) that scenario until it lands.
+  const loading = openId != null && revision == null
+  // Bumped by every pick(). A write captures it before awaiting and drops all its state writes if
+  // the user picked something else meanwhile: the result belongs to the scenario that was open
+  // when it started, not to whatever is open now (defence in depth behind the `busy` lock).
+  const pickGen = useRef(0)
+
   // The working state is replaced by a server payload ONLY as the direct result of an explicit
   // pick(), exactly once per pick. Only null vs non-null of loadedFor matters: null means "the
   // current pick has not loaded yet"; the "id:revision" stored otherwise is informational (handy
   // when debugging). pick() is the only thing that resets it to null — so a refetch, a 409, a save
   // or a delete can never dispatch `load` over the user's edits.
   const loadedFor = useRef<string | null>(null)
-  // Bumped by every pick(). A write captures it before awaiting and drops all its state writes if
-  // the user picked something else meanwhile: the result belongs to the scenario that was open
-  // when it started, not to whatever is open now (defence in depth behind the `busy` lock below).
-  const pickGen = useRef(0)
   useEffect(() => {
     const d = detail.data
     // isFetching: never apply a payload that a fetch in flight is about to replace.
-    if (!d || d.id !== openId || detail.isFetching || loadedFor.current !== null) return
+    // busy: never load under a pending write — it was started against the pre-load working state
+    // and its late result (selection, revision, markSaved) must win; the load runs once it settles.
+    if (!d || d.id !== openId || detail.isFetching || busy || loadedFor.current !== null) return
     loadedFor.current = `${d.id}:${d.revision}`
     if (!isScenarioPayload(d.payload)) {
       // Drop the selection too: Simpan must not write the unrelated working state into it.
@@ -56,11 +65,8 @@ export function ScenarioBar({ state, dispatch, onFlash }: { state: ReducerState;
     setRevision(d.revision)
     dispatch({ type: 'load', sim: fromPayload(state.source, d.payload) })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [openId, detail.data?.id, detail.data?.revision, detail.isFetching])
+  }, [openId, detail.data?.id, detail.data?.revision, detail.isFetching, busy])
 
-  // While any write is in flight the selection must not move: its result is about the scenario
-  // that was open when it started.
-  const busy = update.isPending || create.isPending || remove.isPending
   const current = list.data?.find((s) => s.id === openId)
   const payload = () => toPayloadWithSource(state.source, state.sim)
 
@@ -142,13 +148,13 @@ export function ScenarioBar({ state, dispatch, onFlash }: { state: ReducerState;
       {state.dirty && <Tag tone="warn">Belum disimpan</Tag>}
       <div className="ml-auto flex gap-2">
         {openId && hasPermission('update.route_simulation') && (
-          <Button size="sm" onClick={save} disabled={busy || !state.dirty || revision == null}>Simpan</Button>
+          <Button size="sm" onClick={save} disabled={busy || loading || !state.dirty}>Simpan</Button>
         )}
         {hasPermission('create.route_simulation') && (
-          <Button size="sm" variant="outline" onClick={saveAs} disabled={busy}>Simpan sebagai…</Button>
+          <Button size="sm" variant="outline" onClick={saveAs} disabled={busy || loading}>Simpan sebagai…</Button>
         )}
         {openId && hasPermission('delete.route_simulation') && (
-          <Button size="sm" variant="outline" className="text-red-700 dark:text-red-400" onClick={del} disabled={busy}>Hapus</Button>
+          <Button size="sm" variant="outline" className="text-red-700 dark:text-red-400" onClick={del} disabled={busy || loading}>Hapus</Button>
         )}
       </div>
     </div>

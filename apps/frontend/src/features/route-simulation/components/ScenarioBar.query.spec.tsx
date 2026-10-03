@@ -261,3 +261,97 @@ it('f) a pick made while Simpan sebagai is in flight wins over the late create',
   expect(select().value).toBe('s1')
   expect(loads).toHaveLength(1)
 })
+
+it('g) Simpan sebagai and Hapus wait until the picked scenario has loaded', async () => {
+  renderBar()
+  const s1Get = deferred<void>()
+  gates.s1 = s1Get.promise
+  await pick('s1')
+  expect(select().value).toBe('s1')
+  await settle()
+  expect(button('Simpan sebagai…')).toBeDisabled()
+  expect(button('Hapus')).toBeDisabled()
+  expect(loads).toHaveLength(0)
+
+  await act(async () => s1Get.resolve())
+  await waitFor(() => expect(rate()).toBe('111'))
+  await waitFor(() => expect(button('Simpan sebagai…')).toBeEnabled())
+  expect(button('Hapus')).toBeEnabled()
+})
+
+it('h) a pick made while Hapus is in flight loads that scenario once, and the late delete does not deselect it', async () => {
+  servers.s2 = { name: 'Kedua', revision: 5, payload: payloadWithRate(555) }
+  renderBar()
+  await pick('s1')
+  await waitFor(() => expect(rate()).toBe('111'))
+  await settle()
+
+  const deleteDone = deferred<{ data: unknown }>()
+  ;(apiClient.delete as jest.Mock).mockImplementationOnce(() => deleteDone.promise)
+  fireEvent.click(button('Hapus'))
+  await waitFor(() => expect(select()).toBeDisabled())
+
+  const before = loads.length
+  fireEvent.change(select(), { target: { value: 's2' } }) // bypasses the lock, as in d)
+  expect(select().value).toBe('s2')
+  await settle()
+  await act(async () => {
+    delete servers.s1
+    deleteDone.resolve({ data: undefined })
+  })
+  await waitFor(() => expect(rate()).toBe('555'))
+  await settle()
+  expect(rate()).toBe('555')
+  expect(loads.length - before).toBe(1)
+  expect(select().value).toBe('s2')
+  await waitFor(() => expect(onFlash).toHaveBeenCalledWith('Skenario dihapus'))
+})
+
+it('i) a failed Simpan sebagai unlocks the scenario bar again', async () => {
+  renderBar()
+  await screen.findByRole('option', { name: 'Baseline' })
+  fireEvent.click(button('edit-999'))
+  jest.spyOn(window, 'prompt').mockReturnValue('Kedua')
+  let reject!: (e: unknown) => void
+  post.mockImplementationOnce(() => new Promise((_r, rj) => { reject = rj }))
+  fireEvent.click(button('Simpan sebagai…'))
+  await waitFor(() => expect(select()).toBeDisabled())
+  expect(button('Simpan sebagai…')).toBeDisabled()
+
+  await act(async () => reject({ response: { status: 500, data: { message: 'boom' } } }))
+  await waitFor(() => expect(onFlash).toHaveBeenCalledWith('boom'))
+  await waitFor(() => expect(select()).toBeEnabled())
+  expect(button('Simpan sebagai…')).toBeEnabled()
+  expect(select().value).toBe('')
+  expect(rate()).toBe('999')
+})
+
+it('j) a detail that lands while a write is pending is not loaded until that write has settled', async () => {
+  servers.s2 = { name: 'Kedua', revision: 5, payload: payloadWithRate(555) }
+  renderBar()
+  await pick('s1')
+  await waitFor(() => expect(rate()).toBe('111'))
+  await settle()
+  fireEvent.click(button('edit-999'))
+
+  const patchDone = deferred<{ data: unknown }>()
+  patch.mockImplementationOnce(() => patchDone.promise)
+  fireEvent.click(button('Simpan'))
+  await waitFor(() => expect(select()).toBeDisabled())
+  const before = loads.length
+  fireEvent.change(select(), { target: { value: 's2' } }) // bypasses the lock, as in d)
+
+  // s2's detail arrives while the PATCH of s1 is still pending: nothing may load under it.
+  await settle()
+  expect(get).toHaveBeenCalledWith('/route-simulation/scenarios/s2')
+  expect(rate()).toBe('999')
+  expect(loads.length).toBe(before)
+
+  await act(async () => {
+    patchDone.resolve({ data: detailOf('s1', { name: 'Baseline', revision: 3, payload: payloadWithRate(999) }) })
+  })
+  await waitFor(() => expect(rate()).toBe('555'))
+  await settle()
+  expect(loads.length - before).toBe(1)
+  expect(select().value).toBe('s2')
+})

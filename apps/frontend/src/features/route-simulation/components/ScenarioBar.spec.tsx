@@ -103,6 +103,7 @@ it('saves an update to an already-open scenario', async () => {
 it('deletes the open scenario and flashes confirmation on success', async () => {
   const onFlash = jest.fn()
   jest.spyOn(window, 'confirm').mockReturnValue(true)
+  ;(hooks.useScenario as jest.Mock).mockReturnValue({ data: { id: 's1', name: 'Baseline', revision: 2, payload: validPayload() }, isFetching: false }) // Hapus waits for the detail
   render(<ScenarioBar state={{ ...initReducer(fixtureSource()), dirty: false }} dispatch={jest.fn()} onFlash={onFlash} />)
   fireEvent.change(screen.getByLabelText('Skenario'), { target: { value: 's1' } })
   fireEvent.click(screen.getByRole('button', { name: 'Hapus' }))
@@ -114,6 +115,7 @@ it('reports a failed delete without losing the current scenario selection', asyn
   const onFlash = jest.fn()
   jest.spyOn(window, 'confirm').mockReturnValue(true)
   remove.mockRejectedValueOnce({ response: { data: { message: 'nope' } } })
+  ;(hooks.useScenario as jest.Mock).mockReturnValue({ data: { id: 's1', name: 'Baseline', revision: 2, payload: validPayload() }, isFetching: false }) // Hapus waits for the detail
   render(<ScenarioBar state={{ ...initReducer(fixtureSource()), dirty: false }} dispatch={jest.fn()} onFlash={onFlash} />)
   fireEvent.change(screen.getByLabelText('Skenario'), { target: { value: 's1' } })
   fireEvent.click(screen.getByRole('button', { name: 'Hapus' }))
