@@ -101,6 +101,15 @@ export enum Permission {
   UPDATE_VENDOR_GROUP = 'update.vendor_group',
   DELETE_VENDOR_GROUP = 'delete.vendor_group',
 
+  // Route Simulation (Simulasi Rekomendasi Rute). Read gates the menu, the source endpoint and the
+  // scenario list; the write verbs gate saving, renaming and deleting named scenarios. Kept apart
+  // from read.pnl because the page exposes capital, COF and vendor accounts that PnL readers need
+  // not see.
+  READ_ROUTE_SIMULATION = 'read.route_simulation',
+  CREATE_ROUTE_SIMULATION = 'create.route_simulation',
+  UPDATE_ROUTE_SIMULATION = 'update.route_simulation',
+  DELETE_ROUTE_SIMULATION = 'delete.route_simulation',
+
   // Fleet registry (Registrasi Armada). Vehicles, drivers, documents, files and lease contracts
   // all sit behind the vehicle permissions; only the lookup lists are separate, so a field
   // operator can register a vehicle without being able to edit the leasing or pool list.
