@@ -11,13 +11,14 @@ jest.mock('@/shared/hooks/use-permissions', () => ({ usePermissions: () => ({ ha
 
 const create = jest.fn()
 const update = jest.fn()
+const remove = jest.fn()
 beforeEach(() => {
   jest.clearAllMocks()
   ;(hooks.useScenarios as jest.Mock).mockReturnValue({ data: [{ id: 's1', name: 'Baseline', description: null, revision: 2, updatedAt: '2026-10-02T00:00:00Z', updatedBy: 'faris' }] })
   ;(hooks.useScenario as jest.Mock).mockReturnValue({ data: undefined })
   ;(hooks.useCreateScenario as jest.Mock).mockReturnValue({ mutateAsync: create.mockResolvedValue({ id: 's2', revision: 1, name: 'Baru' }), isPending: false })
   ;(hooks.useUpdateScenario as jest.Mock).mockReturnValue({ mutateAsync: update, isPending: false })
-  ;(hooks.useDeleteScenario as jest.Mock).mockReturnValue({ mutateAsync: jest.fn(), isPending: false })
+  ;(hooks.useDeleteScenario as jest.Mock).mockReturnValue({ mutateAsync: remove.mockResolvedValue(undefined), isPending: false })
 })
 
 it('saves a new scenario with the full payload and marks the state clean', async () => {
@@ -40,4 +41,38 @@ it('reports a stale save instead of overwriting', async () => {
   fireEvent.change(screen.getByLabelText('Skenario'), { target: { value: 's1' } })
   fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
   await waitFor(() => expect(onFlash).toHaveBeenCalledWith(expect.stringMatching(/disimpan orang lain/)))
+})
+
+it('saves an update to an already-open scenario', async () => {
+  const onFlash = jest.fn()
+  update.mockResolvedValueOnce({ id: 's1', revision: 3 })
+  ;(hooks.useScenario as jest.Mock).mockReturnValue({ data: { id: 's1', name: 'Baseline', revision: 2, payload: null } })
+  render(<ScenarioBar state={{ ...initReducer(fixtureSource()), dirty: true }} dispatch={jest.fn()} onFlash={onFlash} />)
+  fireEvent.change(screen.getByLabelText('Skenario'), { target: { value: 's1' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Simpan' }))
+  await waitFor(() =>
+    expect(update).toHaveBeenCalledWith({ id: 's1', body: expect.objectContaining({ revision: 2 }) }),
+  )
+  await waitFor(() => expect(onFlash).toHaveBeenCalledWith('Skenario disimpan'))
+})
+
+it('deletes the open scenario and flashes confirmation on success', async () => {
+  const onFlash = jest.fn()
+  jest.spyOn(window, 'confirm').mockReturnValue(true)
+  render(<ScenarioBar state={{ ...initReducer(fixtureSource()), dirty: false }} dispatch={jest.fn()} onFlash={onFlash} />)
+  fireEvent.change(screen.getByLabelText('Skenario'), { target: { value: 's1' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Hapus' }))
+  await waitFor(() => expect(remove).toHaveBeenCalledWith('s1'))
+  await waitFor(() => expect(onFlash).toHaveBeenCalledWith('Skenario dihapus'))
+})
+
+it('reports a failed delete without losing the current scenario selection', async () => {
+  const onFlash = jest.fn()
+  jest.spyOn(window, 'confirm').mockReturnValue(true)
+  remove.mockRejectedValueOnce({ response: { data: { message: 'nope' } } })
+  render(<ScenarioBar state={{ ...initReducer(fixtureSource()), dirty: false }} dispatch={jest.fn()} onFlash={onFlash} />)
+  fireEvent.change(screen.getByLabelText('Skenario'), { target: { value: 's1' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Hapus' }))
+  await waitFor(() => expect(onFlash).toHaveBeenCalledWith('nope'))
+  expect((screen.getByLabelText('Skenario') as HTMLSelectElement).value).toBe('s1')
 })

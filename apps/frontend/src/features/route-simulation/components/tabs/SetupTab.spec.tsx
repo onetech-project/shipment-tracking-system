@@ -29,3 +29,17 @@ it('shows the daily allowance hint per tranche', () => {
   render(<SetupTab source={src} sim={sim} dispatch={jest.fn()} />)
   expect(screen.getAllByText(/boleh dipakai Rp 100\.000 \/ hari/)[0]).toBeInTheDocument()
 })
+
+it('refreshes the label input after loading a scenario that reuses the same tranche id', () => {
+  const sim = createState(src)
+  const { rerender } = render(<SetupTab source={src} sim={sim} dispatch={jest.fn()} />)
+  const loaded = {
+    ...sim,
+    accounts: sim.accounts.map((a, ai) =>
+      ai === 0 ? { ...a, tranches: a.tranches.map((t, ti) => (ti === 0 ? { ...t, label: 'Label baru' } : t)) } : a,
+    ),
+  }
+  rerender(<SetupTab source={src} sim={loaded} dispatch={jest.fn()} />)
+  const input = screen.getAllByLabelText('Label modal')[0] as HTMLInputElement
+  expect(input.value).toBe('Label baru')
+})

@@ -50,7 +50,7 @@ function AccountCard({ account: a, dispatch }: { account: Account } & Pick<TabPr
             {a.tranches.length ? a.tranches.map((t) => (
               <tr key={t.id}>
                 <td className={TD}>
-                  <input aria-label="Label modal" className="h-8 w-40 rounded border border-input bg-background px-2 text-sm" defaultValue={t.label} onBlur={(e) => set(t.id, 'label', e.target.value)} />
+                  <input key={`${t.id}:${t.label}`} aria-label="Label modal" className="h-8 w-40 rounded border border-input bg-background px-2 text-sm" defaultValue={t.label} onBlur={(e) => set(t.id, 'label', e.target.value)} />
                 </td>
                 <td className={TDN}>
                   <NumInput ariaLabel="Nominal modal" className="w-36" step={1_000_000} value={t.amount} onCommit={(v) => set(t.id, 'amount', v ?? 0)} />

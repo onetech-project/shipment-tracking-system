@@ -75,10 +75,14 @@ export function ScenarioBar({ state, dispatch, onFlash }: { state: ReducerState;
 
   const del = async () => {
     if (!current || !window.confirm(`Hapus skenario "${current.name}"?`)) return
-    await remove.mutateAsync(current.id)
-    setOpenId(null)
-    setRevision(null)
-    onFlash('Skenario dihapus')
+    try {
+      await remove.mutateAsync(current.id)
+      setOpenId(null)
+      setRevision(null)
+      onFlash('Skenario dihapus')
+    } catch (err) {
+      onFlash(messageOf(err))
+    }
   }
 
   return (
