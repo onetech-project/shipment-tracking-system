@@ -23,6 +23,7 @@ import {
   Route,
   Truck,
   Container,
+  Calculator,
 } from 'lucide-react'
 
 interface NavLinkProps {
@@ -160,6 +161,15 @@ export function Sidebar({ onNavClick, collapsed = false, onToggleCollapse }: Sid
                 href="/vendor-groups"
                 icon={<Truck size={16} />}
                 label="Vendor Group"
+                onClick={onNavClick}
+                collapsed={collapsed}
+              />
+            )}
+            {hasPermission('read.route_simulation') && (
+              <NavLink
+                href="/route-simulation"
+                icon={<Calculator size={16} />}
+                label="Simulasi Rute"
                 onClick={onNavClick}
                 collapsed={collapsed}
               />
