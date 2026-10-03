@@ -49,7 +49,7 @@ export function LanesTab({ source, sim, dispatch }: TabProps) {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="max-w-4xl">
           <h2 className="text-base font-semibold">SMU Rute</h2>
-          <Hint>Patokan rute. Daftar vendor dan airlines di tiap rute diambil dari data AWB (vendor, airlines, berat, cost) pada rentang histori tab 1, jadi tidak perlu ditambah manual. Cost/kg dari data = total cost dibagi total berat, hanya dari AWB yang sudah dibooking dan cost-nya bukan estimasi. Data AWB tidak memuat kapasitas maskapai, jadi load awal = kg per hari tertinggi yang pernah tercapai dalam satu periode.</Hint>
+          <Hint>Patokan rute. Daftar vendor dan airlines di tiap rute diambil dari seluruh histori AWB (vendor, airlines, berat, cost), jadi tidak perlu ditambah manual; cost/kg, load, dan tag &quot;tidak ada data&quot; memakai rentang histori tab 1. Cost/kg dari data = total cost dibagi total berat, hanya dari AWB yang sudah dibooking dan cost-nya bukan estimasi. Data AWB tidak memuat kapasitas maskapai, jadi load awal = kg per hari tertinggi dalam satu periode pada rentang histori.</Hint>
           <Hint>Cost dan load boleh diubah untuk mencoba; nilai yang diubah bergaris oranye dan bisa dikembalikan ke data. Hapus centang Ikut bila suatu airlines tidak boleh dipakai. Margin/kg = Rate SPX - cost maskapai, ditambah cashback 2% untuk akun ESP.</Hint>
         </div>
         <div className="flex flex-wrap items-center gap-3">

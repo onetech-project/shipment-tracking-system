@@ -23,6 +23,13 @@ it('offers only vendors that are not accounts yet', () => {
   expect(options).toEqual(['AURI'])
 })
 
+it('explains that history also feeds lane cost/load (tab 2) and that the horizon lives in tab 9', () => {
+  const sim = createState(src)
+  render(<SetupTab source={src} sim={sim} dispatch={jest.fn()} />)
+  expect(screen.getByText(/cost\/kg dan load lane \(tab 2\)/)).toBeInTheDocument()
+  expect(screen.getByText(/jangka hari hanya diatur di tab 9 Coba-coba/)).toBeInTheDocument()
+})
+
 it('shows the daily allowance hint per tranche', () => {
   const sim = createState(src)
   sim.accounts[0].tranches[0].amount = 3_000_000

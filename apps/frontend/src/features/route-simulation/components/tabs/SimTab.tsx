@@ -6,13 +6,22 @@ import {
   DAYS_PER_MONTH, RouteResult, TrancheUse, Violation, accountOf, actualDistribution, cycleDays, evaluatePlan,
   groupNames, hasOverride, histDays, laneMargin, optimizePlan, routeHistTon, routeLabel, routeOf, simOpts, simPlan, sumRow,
 } from '../../engine'
-import { SimState } from '../../types'
+import { Account, Lane, SimState } from '../../types'
 import { fmtIdr, fmtNum } from '../../utils/format'
 import { ReasonTag } from '../Reason'
 import { EspTag, Hint, Kpi, NumInput, RouteChip, RouteFilter, RouteFilterBar, Signed, Tag, TabProps, TD, TDN, TH, THN, visibleRoutes } from '../ui'
 import { SlotEditor } from './RoutesTab'
 
 const runoutText = (day: number) => (day < 1 ? 'tidak cukup untuk sehari' : `habis hari ke-${day}`)
+
+// Mirrors usable's own checks (lane.enabled, account present+enabled, account has tranches) so the
+// note always names the actual blocker instead of a generic "akun nonaktif" for every case.
+function unusableLaneNote(l: Lane, account?: Account): string {
+  if (!l.enabled) return 'tidak ikut simulasi'
+  if (!account) return 'belum ada akun'
+  if (!account.tranches.length) return 'akun tanpa modal'
+  return 'akun nonaktif'
+}
 
 export function violationText(v: Violation, sim: SimState): string {
   if (v.type === 'modal') return `Modal ${v.account.name} (${v.tranche.label}) ${runoutText(v.runoutDay)}, uang baru balik hari ke-${cycleDays(v.tranche)}. Kurang ${fmtIdr(v.over)}`
@@ -128,7 +137,7 @@ export function SimTab({ source, sim, dispatch }: TabProps) {
                         <td className={TDN}><Signed value={x.m.netPerKg} /></td>
                         <td className={TDN}>
                           <NumInput ariaLabel={`Kg per hari ${l.vendor} ${l.airline}`} className="w-20" disabled={!usable} value={kg} onCommit={(v) => dispatch({ type: 'simKg', id: l.id, value: v ?? 0 })} />
-                          {!usable ? <div className="text-xs text-muted-foreground">{l.enabled ? 'akun nonaktif' : 'tidak ikut simulasi'}</div>
+                          {!usable ? <div className="text-xs text-muted-foreground">{unusableLaneNote(l, x.account)}</div>
                             : manual ? (kg !== r && <div className="text-xs text-muted-foreground">saran {fmtNum(r)}</div>)
                             : r > 0 && <div><Tag tone="best">Disarankan</Tag></div>}
                         </td>

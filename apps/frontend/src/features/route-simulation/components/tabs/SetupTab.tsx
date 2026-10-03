@@ -103,7 +103,7 @@ export function SetupTab({ source, sim, dispatch }: TabProps) {
       <div className="rounded-md border bg-card p-4">
         <h2 className="text-base font-semibold">Rentang histori</h2>
         <Hint className="mb-3">
-          Histori dipakai untuk rata-rata tonase rute per hari (tab 5) dan distribusi aktual (tab 7). Rentang sekarang {histDays(sim)} hari. Simulasi tidak memakai tanggal mulai atau horizon: semua dihitung per hari, dan modal berputar mengikuti siklus bayarnya.
+          Histori dipakai untuk rata-rata tonase rute per hari (tab 5), cost/kg dan load lane (tab 2), dan distribusi aktual (tab 7). Rentang sekarang {histDays(sim)} hari. Semua hasil dihitung per hari dan modal berputar mengikuti siklus bayarnya; jangka hari hanya diatur di tab 9 Coba-coba.
         </Hint>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {(['histStart', 'histEnd'] as const).map((field) => (

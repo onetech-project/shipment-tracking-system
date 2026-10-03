@@ -25,3 +25,10 @@ it('shows the data value under each editable cost', () => {
   render(<LanesTab source={src} sim={createState(src)} dispatch={jest.fn()} />)
   expect(screen.getAllByText(/^data Rp /).length).toBeGreaterThan(0)
 })
+
+it('describes vendor/airline lists as all-history, while cost, load and the data tag use tab 1\'s range', () => {
+  render(<LanesTab source={src} sim={createState(src)} dispatch={jest.fn()} />)
+  expect(screen.getByText(/diambil dari seluruh histori AWB/)).toBeInTheDocument()
+  expect(screen.getByText(/cost\/kg, load, dan tag "tidak ada data" memakai rentang histori tab 1/)).toBeInTheDocument()
+  expect(screen.getByText(/kg per hari tertinggi dalam satu periode pada rentang histori/)).toBeInTheDocument()
+})

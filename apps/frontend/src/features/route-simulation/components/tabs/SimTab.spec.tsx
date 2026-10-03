@@ -41,3 +41,25 @@ it('sets the horizon in days, blank meaning run on', () => {
   fireEvent.blur(days)
   expect(dispatch).toHaveBeenCalledWith({ type: 'simDays', value: null })
 })
+
+it('explains an unusable lane as missing an account, not just "akun nonaktif"', () => {
+  const noAccount = { ...sim, accounts: sim.accounts.filter((a) => a.id !== 'PELITA') }
+  render(<SimTab source={src} sim={noAccount} dispatch={jest.fn()} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Buka semua' }))
+  expect(screen.getAllByText('belum ada akun').length).toBeGreaterThan(0)
+  expect(screen.queryByText('akun nonaktif')).not.toBeInTheDocument()
+})
+
+it('explains an unusable lane as the account having no capital when it has no tranches', () => {
+  const noTranches = { ...sim, accounts: sim.accounts.map((a) => (a.id === 'PELITA' ? { ...a, tranches: [] } : a)) }
+  render(<SimTab source={src} sim={noTranches} dispatch={jest.fn()} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Buka semua' }))
+  expect(screen.getAllByText('akun tanpa modal').length).toBeGreaterThan(0)
+})
+
+it('still reports "akun nonaktif" when the account itself is switched off', () => {
+  const disabled = { ...sim, accounts: sim.accounts.map((a) => (a.id === 'PELITA' ? { ...a, enabled: false } : a)) }
+  render(<SimTab source={src} sim={disabled} dispatch={jest.fn()} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Buka semua' }))
+  expect(screen.getAllByText('akun nonaktif').length).toBeGreaterThan(0)
+})
