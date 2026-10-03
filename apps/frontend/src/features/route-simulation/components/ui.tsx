@@ -83,7 +83,7 @@ export function NumInput({
       onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
       className={cn(
         'h-8 rounded border border-input bg-background px-2 text-right text-sm tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50',
-        edited && 'border-amber-500',
+        edited && 'border-amber-500 dark:border-amber-400',
         className,
       )}
     />

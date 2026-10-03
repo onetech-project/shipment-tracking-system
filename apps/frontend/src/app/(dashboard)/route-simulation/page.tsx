@@ -20,7 +20,7 @@ export default function RouteSimulationPage() {
 
   if (!canRead) return null
   if (isLoading) return <p className="text-muted-foreground">Loading...</p>
-  if (isError || !source) return <p className="text-red-700">Gagal memuat data simulasi. Muat ulang halaman.</p>
+  if (isError || !source) return <p className="text-red-700 dark:text-red-400">Gagal memuat data simulasi. Muat ulang halaman.</p>
   if (!source.cycles.length) return <p className="text-muted-foreground">Belum ada data PnL untuk disimulasikan.</p>
   return <RouteSimulationView source={source} />
 }
