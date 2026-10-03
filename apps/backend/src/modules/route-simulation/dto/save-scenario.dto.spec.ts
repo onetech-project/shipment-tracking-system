@@ -14,12 +14,26 @@ describe('SaveScenarioDto', () => {
     it('rejects a blank name and a non-object payload', () => {
       expect(errorsOf(CreateScenarioDto, { name: '', payload: [] })).toEqual(['name', 'payload'])
     })
+
+    it('rejects a whitespace-only name', () => {
+      expect(errorsOf(CreateScenarioDto, { name: '   ', payload: {} })).toEqual(['name'])
+    })
+
+    it('trims the name before validation', () => {
+      const instance = plainToInstance(CreateScenarioDto, { name: '  Okt  ', payload: {} })
+      expect(validateSync(instance as object)).toEqual([])
+      expect(instance.name).toBe('Okt')
+    })
   })
 
   describe('UpdateScenarioDto', () => {
     it('requires the revision on update so a stale save can be refused', () => {
       expect(errorsOf(UpdateScenarioDto, { name: 'x' })).toEqual(['revision'])
       expect(errorsOf(UpdateScenarioDto, { revision: 3 })).toEqual([])
+    })
+
+    it('rejects a whitespace-only name', () => {
+      expect(errorsOf(UpdateScenarioDto, { revision: 1, name: '   ' })).toEqual(['name'])
     })
   })
 })

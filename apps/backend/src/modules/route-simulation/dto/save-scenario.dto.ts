@@ -1,9 +1,15 @@
+import { Transform } from 'class-transformer'
 import { IsInt, IsNotEmpty, IsObject, IsOptional, IsString, MaxLength, Min } from 'class-validator'
+
+// Trim before validation so a whitespace-only name (e.g. '   ') fails @IsNotEmpty() instead of
+// passing it and only being caught (or silently swallowed, on update) once the service trims it.
+const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value)
 
 // The payload is the frontend engine's ScenarioPayload; it is validated only as an object here
 // (and for size in the service). Per-field decorators would duplicate a shape the backend never
 // reads and would turn every engine change into a two-app deploy.
 export class CreateScenarioDto {
+  @Transform(trim)
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
@@ -24,6 +30,7 @@ export class UpdateScenarioDto {
   revision: number
 
   @IsOptional()
+  @Transform(trim)
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)

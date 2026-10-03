@@ -67,6 +67,18 @@ describe('RouteSimulationScenariosService', () => {
     await expect(service.create({ name: 'Big', payload }, 'u1')).rejects.toBeInstanceOf(PayloadTooLargeException)
   })
 
+  it('maps a save-time unique violation (lost the race after the pre-check) to 409', async () => {
+    repo.findOne.mockResolvedValueOnce(null)
+    repo.save.mockRejectedValueOnce({ code: '23505', constraint: 'uq_route_simulation_scenarios_name' })
+    await expect(service.create({ name: 'Baseline', payload: {} }, 'u1')).rejects.toBeInstanceOf(ConflictException)
+  })
+
+  it('propagates an unrelated save error unchanged', async () => {
+    repo.findOne.mockResolvedValueOnce(null)
+    repo.save.mockRejectedValueOnce(new Error('boom'))
+    await expect(service.create({ name: 'Baseline', payload: {} }, 'u1')).rejects.toThrow('boom')
+  })
+
   it('updates only when the revision matches, bumping it by one', async () => {
     repo.findOne.mockResolvedValueOnce(row({ revision: 2 })) // existence
     dataSource.query
@@ -84,6 +96,34 @@ describe('RouteSimulationScenariosService', () => {
     repo.findOne.mockResolvedValueOnce(row({ revision: 3 }))
     dataSource.query.mockResolvedValueOnce([]) // UPDATE matched no row
     await expect(service.update('s1', { revision: 2, name: 'x' }, 'u1')).rejects.toBeInstanceOf(ConflictException)
+  })
+
+  it('maps a unique violation from the UPDATE itself to 409', async () => {
+    repo.findOne.mockResolvedValueOnce(row({ revision: 2 }))
+    dataSource.query.mockRejectedValueOnce({ code: '23505', constraint: 'uq_route_simulation_scenarios_name' })
+    await expect(service.update('s1', { revision: 2, name: 'Taken' }, 'u1')).rejects.toBeInstanceOf(ConflictException)
+  })
+
+  it('binds a null description and includes it in the SET clause when explicitly cleared', async () => {
+    repo.findOne.mockResolvedValueOnce(row({ revision: 2 }))
+    dataSource.query
+      .mockResolvedValueOnce([{ id: 's1' }])
+      .mockResolvedValueOnce([{ ...row({ revision: 3, description: null }), updated_at: new Date(), username: 'faris' }])
+    await service.update('s1', { revision: 2, description: null }, 'u1')
+    const [sql, params] = dataSource.query.mock.calls[0]
+    expect(sql).toContain('description = $4')
+    expect(params).toEqual(['s1', 2, 'u1', null])
+  })
+
+  it('omits the description clause entirely when description is not provided', async () => {
+    repo.findOne.mockResolvedValueOnce(row({ revision: 2 }))
+    dataSource.query
+      .mockResolvedValueOnce([{ id: 's1' }])
+      .mockResolvedValueOnce([{ ...row({ revision: 3 }), updated_at: new Date(), username: 'faris' }])
+    await service.update('s1', { revision: 2, name: 'Renamed' }, 'u1')
+    const [sql, params] = dataSource.query.mock.calls[0]
+    expect(sql).not.toContain('description =')
+    expect(params).toEqual(['s1', 2, 'u1', 'Renamed'])
   })
 
   it('deletes and 404s when nothing was removed', async () => {
