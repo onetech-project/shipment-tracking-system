@@ -12,6 +12,11 @@ export function OptimalTab({ source, sim, onOpenSim }: TabProps & { onOpenSim: (
   const M = DAYS_PER_MONTH
   const count = (r: string) => res.perRoute.filter((x) => x.reason === r).length
   const short = res.perRoute.filter((x) => x.unmet >= 1 && x.served >= 1).length
+  // createState seeds every account with one tranche of amount 0, so a brand-new scenario has no
+  // capital anywhere: every route is 'idle' not because it is a bad trade, but because there is
+  // nothing to allocate yet. Distinguish that case so the copy points at tab 1 instead of blaming
+  // the route.
+  const noCapital = res.totals.cash < 1
   return (
     <>
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -22,6 +27,11 @@ export function OptimalTab({ source, sim, onOpenSim }: TabProps & { onOpenSim: (
         </div>
         <Button size="sm" onClick={onOpenSim}>Buka Coba-coba</Button>
       </div>
+      {noCapital && (
+        <div className="rounded-md border bg-card p-3">
+          <Hint>Belum ada modal. Isi nominal modal tiap akun di tab 1 · Setup Histori & Akun untuk melihat rekomendasi.</Hint>
+        </div>
+      )}
       <div className="flex flex-wrap gap-x-6 gap-y-1 rounded-md border bg-card p-3 text-sm">
         <span><b>{count('single')}</b> rute cukup 1 vendor 1 airlines</span>
         <span><b>{count('load')}</b> rute lane terbaiknya penuh, sisanya ke lane berikutnya</span>
@@ -47,7 +57,7 @@ export function OptimalTab({ source, sim, onOpenSim }: TabProps & { onOpenSim: (
                     <td className={TDN}>{fmtNum(r.kg)}</td><td className={TDN}>{fmtIdr(r.costDay)}</td><td className={TDN}><Signed value={r.netDay} /></td><td className={TDN}><Signed value={r.netDay * M} /></td>
                   </tr>
                 )) : (
-                  <tr><td colSpan={6} className={`${TD} pl-7`}><Hint>{pr.reason === 'none' ? 'Belum ada airlines yang layak di rute ini. Cek centang Ikut dan cost di tab 2, serta tonase di tab 5.' : 'Modal vendor di rute ini lebih menguntungkan dipakai di rute lain.'}</Hint></td></tr>
+                  <tr><td colSpan={6} className={`${TD} pl-7`}><Hint>{pr.reason === 'none' ? 'Belum ada airlines yang layak di rute ini. Cek centang Ikut dan cost di tab 2, serta tonase di tab 5.' : noCapital ? 'Belum ada modal untuk dialokasikan. Isi modal di tab 1.' : 'Modal vendor di rute ini lebih menguntungkan dipakai di rute lain.'}</Hint></td></tr>
                 )}
               </React.Fragment>
             )) : <tr><td colSpan={6} className={TD}><Hint>Belum ada rute. Tambah rute di tab 5.</Hint></td></tr>}
@@ -65,7 +75,7 @@ export function OptimalTab({ source, sim, onOpenSim }: TabProps & { onOpenSim: (
                   <tr key={x.tranche.id}>
                     <td className={`${TD} whitespace-nowrap`}>{x.account.name}<EspTag account={x.account} /></td><td className={`${TD} whitespace-nowrap`}>{x.tranche.label}</td>
                     <td className={TDN}>{fmtIdr(x.cash)}</td><td className={TDN}>{fmtIdr(x.locked)}</td>
-                    <td className={TDN}>{x.locked < 1 ? <Tag tone="warn">Menganggur</Tag> : fmtPct(x.locked / x.cash)}</td>
+                    <td className={TDN}>{x.cash < 1 ? <Hint>Belum ada modal</Hint> : x.locked < 1 ? <Tag tone="warn">Menganggur</Tag> : fmtPct(x.locked / x.cash)}</td>
                     <td className={TDN}>{x.refillDay} hari</td><td className={TDN}>{fmtIdr(x.cofDay * M)}</td><td className={TD} />
                   </tr>
                 ))}

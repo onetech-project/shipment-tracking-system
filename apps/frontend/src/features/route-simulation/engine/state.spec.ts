@@ -1,5 +1,5 @@
 import { fixtureSource } from './__fixtures__/source'
-import { buildLanes, createState, fromPayload, histDays, laneId, toPayloadWithSource } from './state'
+import { buildLanes, createState, fromPayload, histDays, isScenarioPayload, laneId, toPayloadWithSource } from './state'
 import { SimulationSource } from '../types'
 
 describe('createState', () => {
@@ -98,5 +98,30 @@ describe('payload round trip', () => {
     const payload = toPayloadWithSource(src, createState(src))
     const grown: SimulationSource = { ...src, routes: [...src.routes, { origin: 'Jabo', originLabel: 'CGK', dest: 'Ternate', rateSpx: 35000, pph2: 0, disc15: 0, hasData: false }] }
     expect(fromPayload(grown, payload).routes.some((r) => r.key === 'Jabo|Ternate')).toBe(true)
+  })
+
+  it('tolerates a payload missing every optional key and still returns a usable state', () => {
+    const src = fixtureSource()
+    const s = fromPayload(src, { version: 1 } as never)
+    expect(s.accounts).toEqual([])
+    expect(s.laneEdits).toEqual({})
+    expect(s.sim).toEqual({ days: 30, cash: {}, kg: null })
+    expect(s.costBasis).toBe('smu')
+    expect(s.routes).toHaveLength(src.routes.length)
+    const defaults = createState(src)
+    expect(s.histStart).toBe(defaults.histStart)
+    expect(s.histEnd).toBe(defaults.histEnd)
+  })
+})
+
+describe('isScenarioPayload', () => {
+  it('is true only for an object carrying version 1', () => {
+    expect(isScenarioPayload({ version: 1 })).toBe(true)
+    expect(isScenarioPayload({ version: 2 })).toBe(false)
+    expect(isScenarioPayload({})).toBe(false)
+    expect(isScenarioPayload(null)).toBe(false)
+    expect(isScenarioPayload(undefined)).toBe(false)
+    expect(isScenarioPayload('version 1')).toBe(false)
+    expect(isScenarioPayload([])).toBe(false)
   })
 })

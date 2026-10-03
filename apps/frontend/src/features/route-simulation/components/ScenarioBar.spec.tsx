@@ -59,6 +59,16 @@ it('invalidates the cached scenario detail when picking it, so a reopen never se
   expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['route-simulation', 'scenarios', 's1'] })
 })
 
+it('refuses to load a scenario whose payload is not recognised, and flashes instead of crashing', () => {
+  const onFlash = jest.fn()
+  const dispatch = jest.fn()
+  ;(hooks.useScenario as jest.Mock).mockReturnValue({ data: { id: 's1', name: 'Baseline', revision: 2, payload: {} } })
+  render(<ScenarioBar state={{ ...initReducer(fixtureSource()), dirty: false }} dispatch={dispatch} onFlash={onFlash} />)
+  fireEvent.change(screen.getByLabelText('Skenario'), { target: { value: 's1' } })
+  expect(onFlash).toHaveBeenCalledWith('Skenario ini tidak bisa dibuka: format datanya tidak dikenal.')
+  expect(dispatch).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'load' }))
+})
+
 it('disables Simpan while the picked scenario detail has not loaded yet', () => {
   ;(hooks.useScenario as jest.Mock).mockReturnValue({ data: undefined })
   render(<ScenarioBar state={{ ...initReducer(fixtureSource()), dirty: true }} dispatch={jest.fn()} onFlash={jest.fn()} />)

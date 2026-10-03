@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { usePermissions } from '@/shared/hooks/use-permissions'
-import { fromPayload, toPayloadWithSource } from '../engine'
+import { fromPayload, isScenarioPayload, toPayloadWithSource } from '../engine'
 import { ReducerState, SimAction } from '../state/reducer'
 import {
   useCreateScenario, useDeleteScenario, useScenario, useScenarios, useUpdateScenario,
@@ -36,7 +36,12 @@ export function ScenarioBar({ state, dispatch, onFlash }: { state: ReducerState;
     const d = detail.data
     if (!d || d.id !== openId) return
     setRevision(d.revision)
-    if (d.payload) dispatch({ type: 'load', sim: fromPayload(state.source, d.payload) })
+    if (d.payload == null) return
+    if (!isScenarioPayload(d.payload)) {
+      onFlash('Skenario ini tidak bisa dibuka: format datanya tidak dikenal.')
+      return
+    }
+    dispatch({ type: 'load', sim: fromPayload(state.source, d.payload) })
     // openId is a dep because a cached detail can already be present when the user picks it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openId, detail.data?.id, detail.data?.revision])

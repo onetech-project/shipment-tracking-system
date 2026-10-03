@@ -168,25 +168,44 @@ export function toPayloadWithSource(source: SimulationSource, s: SimState): Scen
   return { ...toPayload(s), removedRoutes: source.routes.map(routeKey).filter((k) => !present.has(k)) }
 }
 
+// True iff x looks like a payload this engine's fromPayload can read: a loaded scenario whose
+// payload fails this (wrong shape, wrong version, or not an object at all — e.g. a future format,
+// or corrupted storage) must not be loaded at all, rather than crash on a missing/renamed key.
+export function isScenarioPayload(x: unknown): x is ScenarioPayload {
+  return typeof x === 'object' && x !== null && !Array.isArray(x) && (x as { version?: unknown }).version === 1
+}
+
 // Routes the master gained since the scenario was saved are included with defaults; routes it
 // lost survive only as long as the scenario edited them (their edit is the only rate left).
+// Every field beyond `version` is optional here: an older or hand-edited payload missing a key
+// (routeEdits, sim, accounts, …) still produces a usable state instead of throwing, falling back
+// to the same defaults createState() would pick for a brand-new scenario.
 export function fromPayload(source: SimulationSource, p: ScenarioPayload): SimState {
-  const removed = new Set(p.removedRoutes)
+  const cycles = source.cycles
+  const histStart = p.histStart ?? cycles[Math.max(0, cycles.length - 6)] ?? ''
+  const histEnd = p.histEnd ?? cycles[cycles.length - 1] ?? ''
+  const costBasis = p.costBasis ?? 'smu'
+  const accounts = p.accounts ?? []
+  const routeEdits = p.routeEdits ?? {}
+  const customRoutes = p.customRoutes ?? []
+  const laneEdits = p.laneEdits ?? {}
+  const sim = p.sim ?? { days: 30, cash: {}, kg: null }
+  const removed = new Set(p.removedRoutes ?? [])
   const sourceRoutes = source.routes
     .filter((r) => !removed.has(routeKey(r)))
     .map((r) => {
       const base = toSimRoute(r)
-      const e = p.routeEdits[base.key]
+      const e = routeEdits[base.key]
       return e ? { ...base, ...e, overrideTon: e.overrideTon ?? null, slots: e.slots ?? base.slots } : base
     })
   const s: SimState = {
-    histStart: p.histStart,
-    histEnd: p.histEnd,
-    costBasis: p.costBasis,
-    accounts: p.accounts,
-    routes: [...sourceRoutes, ...p.customRoutes.filter((r) => !sourceRoutes.some((x) => x.key === r.key))],
-    laneEdits: p.laneEdits,
-    sim: p.sim,
+    histStart,
+    histEnd,
+    costBasis,
+    accounts,
+    routes: [...sourceRoutes, ...customRoutes.filter((r) => !sourceRoutes.some((x) => x.key === r.key))],
+    laneEdits,
+    sim,
     lanes: [],
   }
   s.lanes = buildLanes(source, s)

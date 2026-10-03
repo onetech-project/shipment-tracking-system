@@ -29,3 +29,13 @@ it('jumps to Coba-coba', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Buka Coba-coba' }))
   expect(onOpenSim).toHaveBeenCalled()
 })
+
+it('explains that there is no capital yet instead of blaming routes and tranches for idling', () => {
+  // createState's default accounts each have one tranche of amount 0: no capital anywhere.
+  const noCapSim = createState(src)
+  render(<OptimalTab source={src} sim={noCapSim} dispatch={jest.fn()} onOpenSim={jest.fn()} />)
+  expect(screen.getByText(/Belum ada modal\. Isi nominal modal tiap akun di tab 1 · Setup Histori & Akun/)).toBeInTheDocument()
+  expect(screen.queryByText('Menganggur')).not.toBeInTheDocument()
+  expect(screen.queryByText(/lebih menguntungkan/)).not.toBeInTheDocument()
+  expect(screen.getAllByText('Belum ada modal untuk dialokasikan. Isi modal di tab 1.').length).toBeGreaterThan(0)
+})
