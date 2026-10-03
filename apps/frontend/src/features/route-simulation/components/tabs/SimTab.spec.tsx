@@ -1,0 +1,43 @@
+import React from 'react'
+import { fireEvent, render, screen } from '@testing-library/react'
+import '@testing-library/jest-dom'
+import { fixtureSource, PROTOTYPE_ACCOUNTS } from '../../engine/__fixtures__/source'
+import { buildLanes, createState } from '../../engine'
+import { SimTab } from './SimTab'
+
+const src = fixtureSource()
+const sim0 = { ...createState(src), accounts: PROTOTYPE_ACCOUNTS }
+const sim = { ...sim0, lanes: buildLanes(src, sim0) }
+
+it('starts from the recommendation and offers no revert', () => {
+  render(<SimTab source={src} sim={sim} dispatch={jest.fn()} />)
+  expect(screen.getByText(/Ini rekomendasi/)).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Pakai rekomendasi' })).toBeDisabled()
+})
+
+it('opens a route and edits kg per day', () => {
+  const dispatch = jest.fn()
+  render(<SimTab source={src} sim={sim} dispatch={dispatch} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Buka semua' }))
+  const kg = screen.getAllByLabelText(/^Kg per hari /)[0]
+  fireEvent.change(kg, { target: { value: '5' } })
+  fireEvent.blur(kg)
+  expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'simKg', value: 5 }))
+})
+
+it('warns when a manual plan breaks a limit', () => {
+  const lane = sim.lanes.find((l) => l.vendor === 'PELITA')!
+  const manual = { ...sim, sim: { ...sim.sim, kg: { [lane.id]: 1_000_000 } } }
+  render(<SimTab source={src} sim={manual} dispatch={jest.fn()} />)
+  expect(screen.getByText('Peringatan')).toBeInTheDocument()
+  expect(screen.getByText(/melanggar batas/)).toBeInTheDocument()
+})
+
+it('sets the horizon in days, blank meaning run on', () => {
+  const dispatch = jest.fn()
+  render(<SimTab source={src} sim={sim} dispatch={dispatch} />)
+  const days = screen.getByLabelText('Untuk berapa hari ke depan')
+  fireEvent.change(days, { target: { value: '' } })
+  fireEvent.blur(days)
+  expect(dispatch).toHaveBeenCalledWith({ type: 'simDays', value: null })
+})
