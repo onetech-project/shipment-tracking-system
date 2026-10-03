@@ -24,6 +24,11 @@ describe('SaveScenarioDto', () => {
       expect(validateSync(instance as object)).toEqual([])
       expect(instance.name).toBe('Okt')
     })
+
+    it('rejects a description over 1000 characters', () => {
+      expect(errorsOf(CreateScenarioDto, { name: 'Baseline', payload: {}, description: 'x'.repeat(1001) })).toEqual(['description'])
+      expect(errorsOf(CreateScenarioDto, { name: 'Baseline', payload: {}, description: 'x'.repeat(1000) })).toEqual([])
+    })
   })
 
   describe('UpdateScenarioDto', () => {
@@ -34,6 +39,10 @@ describe('SaveScenarioDto', () => {
 
     it('rejects a whitespace-only name', () => {
       expect(errorsOf(UpdateScenarioDto, { revision: 1, name: '   ' })).toEqual(['name'])
+    })
+
+    it('rejects a description over 1000 characters', () => {
+      expect(errorsOf(UpdateScenarioDto, { revision: 1, description: 'x'.repeat(1001) })).toEqual(['description'])
     })
   })
 })

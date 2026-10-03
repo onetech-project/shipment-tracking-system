@@ -17,6 +17,7 @@ export class CreateScenarioDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(1000)
   description?: string | null
 
   @IsObject()
@@ -39,6 +40,7 @@ export class UpdateScenarioDto {
   // null clears, absent leaves unchanged.
   @IsOptional()
   @IsString()
+  @MaxLength(1000)
   description?: string | null
 
   @IsOptional()
