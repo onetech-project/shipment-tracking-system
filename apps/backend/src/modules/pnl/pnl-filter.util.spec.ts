@@ -1,4 +1,11 @@
-import { buildFilter, calendarDatesForFilter, calendarDaysForFilter } from './pnl-filter.util'
+import { buildFilter, calendarDatesForFilter, calendarDaysForFilter, resolveBasis } from './pnl-filter.util'
+
+describe('resolveBasis', () => {
+  it('falls back to date for Object.prototype keys instead of resolving them as a basis', () => {
+    expect(resolveBasis('constructor')).toBe('date')
+    expect(resolveBasis('toString')).toBe('date')
+  })
+})
 
 describe('buildFilter', () => {
   it('range mode includes the whole end day via a half-open upper bound', () => {

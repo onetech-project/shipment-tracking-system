@@ -29,6 +29,7 @@ import { PnlSettlementModule } from './modules/pnl-settlement/pnl-settlement.mod
 import { BarhalModule } from './modules/barhal/barhal.module'
 import { RouteGroupsModule } from './modules/route-groups/route-groups.module'
 import { VendorGroupsModule } from './modules/vendor-groups/vendor-groups.module'
+import { RouteSimulationModule } from './modules/route-simulation/route-simulation.module'
 import { StorageModule } from './modules/storage/storage.module'
 import { FleetMasterDataModule } from './modules/fleet-master-data/fleet-master-data.module'
 import { FleetDriversModule } from './modules/fleet-drivers/fleet-drivers.module'
@@ -104,6 +105,7 @@ import { FleetVehiclesModule } from './modules/fleet-vehicles/fleet-vehicles.mod
     PnlSettlementModule,
     RouteGroupsModule,
     VendorGroupsModule,
+    RouteSimulationModule,
     StorageModule,
     FleetMasterDataModule,
     FleetDriversModule,

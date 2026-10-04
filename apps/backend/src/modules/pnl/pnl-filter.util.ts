@@ -22,7 +22,7 @@ export const BASIS_COLS: Record<DateBasis, { cycle: string; date: string }> = {
 const DEFAULT_BASIS: DateBasis = 'date'
 
 export function resolveBasis(basis?: string): DateBasis {
-  return basis && basis in BASIS_COLS ? (basis as DateBasis) : DEFAULT_BASIS
+  return basis && Object.prototype.hasOwnProperty.call(BASIS_COLS, basis) ? (basis as DateBasis) : DEFAULT_BASIS
 }
 
 // Builds a WHERE clause and its bound params for either cycle or date-range mode, against the
