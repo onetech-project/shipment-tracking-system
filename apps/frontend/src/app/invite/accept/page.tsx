@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { FormField } from '@/components/shared/form-field'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { AlertCircle, CheckCircle2 } from 'lucide-react'
+import { Banner } from '@/components/shared/banner'
+import { BrandLogo } from '@/components/shared/brand-logo'
 
 function AcceptInvitationForm() {
   const params = useSearchParams()
@@ -49,29 +50,17 @@ function AcceptInvitationForm() {
   }
 
   if (status === 'error') {
-    return (
-      <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-4 text-sm text-destructive">
-        <AlertCircle size={16} /> {message}
-      </div>
-    )
+    return <Banner tone="danger">{message}</Banner>
   }
 
   if (status === 'success') {
-    return (
-      <div className="flex items-center gap-2 rounded-md bg-green-50 p-4 text-sm text-green-700">
-        <CheckCircle2 size={16} /> {message}
-      </div>
-    )
+    return <Banner tone="success">{message}</Banner>
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <h2 className="text-xl font-bold">Create your account</h2>
-      {message && (
-        <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-          <AlertCircle size={14} /> {message}
-        </div>
-      )}
+      <h2 className="font-display text-xl font-bold">Create your account</h2>
+      {message && <Banner tone="danger">{message}</Banner>}
       <FormField label="Username" htmlFor="acc-username" required>
         <Input
           id="acc-username"
@@ -113,10 +102,11 @@ function AcceptInvitationForm() {
 export default function AcceptInvitationPage() {
   return (
     <Suspense fallback={<p className="text-muted-foreground">Loading...</p>}>
-      <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
-        <Card className="w-full max-w-md shadow-lg">
-          <CardHeader>
-            <CardTitle>Join Shipment Tracker</CardTitle>
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        <Card className="w-full max-w-md shadow-soft-md">
+          <CardHeader className="items-center text-center">
+            <BrandLogo size="md" className="mb-2" />
+            <CardTitle className="text-2xl">Join Shipment Tracker</CardTitle>
           </CardHeader>
           <CardContent>
             <AcceptInvitationForm />
