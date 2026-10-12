@@ -39,6 +39,7 @@ export function SettlementView({ filter }: { filter: PnlFilter | undefined }) {
   const { data: rows, isLoading: rowsLoading } = useToComparison(filter, page, settled, PAGE_SIZE)
 
   const totalPages = rows ? Math.max(1, Math.ceil(rows.total / PAGE_SIZE)) : 1
+  const revenueVarianceTone = varTone(summary?.varRevenue)
 
   function changeSettled(next: SettledFilter) {
     setSettled(next)
@@ -90,23 +91,23 @@ export function SettlementView({ filter }: { filter: PnlFilter | undefined }) {
         <KpiCard
           label="Variance"
           value={
-            <span className={varTone(summary?.varRevenue) === 'pos' ? 'text-good' : varTone(summary?.varRevenue) === 'neg' ? 'text-destructive' : undefined}>
+            <span className={revenueVarianceTone === 'pos' ? 'text-good' : revenueVarianceTone === 'neg' ? 'text-bad' : undefined}>
               {summary ? fmt.format(summary.varRevenue) : '—'}
             </span>
           }
           hint="actual − estimasi"
-          icon={varTone(summary?.varRevenue) === 'neg' ? TrendingDown : TrendingUp}
-          tone={varTone(summary?.varRevenue) === 'neg' ? 'danger' : 'info'}
+          icon={revenueVarianceTone === 'neg' ? TrendingDown : TrendingUp}
+          tone={revenueVarianceTone === 'neg' ? 'danger' : 'info'}
         />
         <KpiCard
           label="Variance %"
           value={
-            <span className={varTone(summary?.varRevenue) === 'pos' ? 'text-good' : varTone(summary?.varRevenue) === 'neg' ? 'text-destructive' : undefined}>
+            <span className={revenueVarianceTone === 'pos' ? 'text-good' : revenueVarianceTone === 'neg' ? 'text-bad' : undefined}>
               {summary ? pct(summary.varRevenuePct) : '—'}
             </span>
           }
           icon={Percent}
-          tone={varTone(summary?.varRevenue) === 'neg' ? 'danger' : 'info'}
+          tone={revenueVarianceTone === 'neg' ? 'danger' : 'info'}
         />
         <KpiCard
           label="Actual Cost"

@@ -68,17 +68,33 @@ describe('colorForMargin', () => {
     expect(colorForMargin(40)).not.toBe(MARGIN_GREY)
   })
 
+  // Pinned against the literal design value, not against `CHART_STATUS.neutral` itself — asserting
+  // one re-export equals the other can never fail (they are the same reference by construction),
+  // so it would silently stop guarding this the moment either side drifted together.
   it('is the exact scale used by the Daily Report margin chart', () => {
-    expect(MARGIN_GREY).toBe(CHART_STATUS.neutral)
+    expect(MARGIN_GREY).toBe('#556655')
     expect([colorForMargin(-1), colorForMargin(5), colorForMargin(20)]).toEqual([RED, AMBER, GREEN])
   })
 })
 
 describe('SERIES_COLORS', () => {
   // Order is load-bearing: series are coloured by index, so a reordered palette silently recolours
-  // every categorical chart on the tab between releases.
+  // every categorical chart on the tab between releases. Pinned to the literal palette from
+  // app-unified.html rather than to `CHART_COLORS` itself — `SERIES_COLORS` IS `CHART_COLORS` by
+  // construction, so comparing one against the other can never fail and would not catch a
+  // reordering of the palette in `src/lib/chart-colors.ts`.
   it('is the fixed, ordered chart palette', () => {
-    expect(SERIES_COLORS).toEqual(CHART_COLORS)
+    expect(SERIES_COLORS).toEqual([
+      '#3dae68',
+      '#4fc87b',
+      '#7ddba0',
+      '#1f2a22',
+      '#2d7a4a',
+      '#0e7490',
+      '#ca8a04',
+      '#dc2626',
+      '#556655',
+    ])
   })
 
   it('carries no duplicate, so two adjacent series cannot share a colour', () => {
