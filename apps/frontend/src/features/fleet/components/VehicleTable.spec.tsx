@@ -429,9 +429,9 @@ describe('VehicleTable', () => {
     screen.getByTestId('vehicle-row').querySelectorAll('td')[0].querySelectorAll('span')[1]
 
   it.each([
-    ['aktif', 'emerald'],
-    ['servis', 'amber'],
-    ['nonaktif', 'slate'],
+    ['aktif', 'good'],
+    ['servis', 'warn'],
+    ['nonaktif', 'surface'],
   ])('tints the status chip for a %s unit', (code, tint) => {
     setup({ rows: [vehicle({ status: { id: 's9', code, label: 'Label apa pun' } })] })
     expect(statusChip()).toHaveTextContent('Label apa pun')
@@ -443,14 +443,14 @@ describe('VehicleTable', () => {
   it('tints the chip from the code even when the label was renamed', () => {
     setup()
     expect(statusChip()).toHaveTextContent('Beroperasi')
-    expect(statusChip().className).toContain('emerald')
+    expect(statusChip().className).toContain('good')
   })
 
   // A code this table has never seen gets the plain tint, not a guessed colour — the honest
   // reading of a status nobody has decided a meaning for.
   it('leaves an unknown status code untinted', () => {
     setup({ rows: [vehicle({ status: { id: 's9', code: 'dikandangkan', label: 'Dikandangkan' } })] })
-    expect(statusChip().className).toContain('slate')
+    expect(statusChip().className).toContain('surface')
   })
 
   // Archived is the row's own state and outranks the status it was archived with: a unit in the
@@ -459,7 +459,7 @@ describe('VehicleTable', () => {
     setup({ rows: [vehicle({ isActive: false })] })
     expect(statusChip()).toHaveTextContent('Arsip')
     expect(statusChip()).not.toHaveTextContent('Beroperasi')
-    expect(statusChip().className).toContain('slate')
+    expect(statusChip().className).toContain('surface')
   })
 
   it('sorts by plate when the plate header is clicked', () => {

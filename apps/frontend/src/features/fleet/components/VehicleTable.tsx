@@ -55,10 +55,10 @@ const DOC_COLUMN = 'min-w-[9.5rem] align-top'
 // unknown code lands on plain rather than a guessed colour, which is the honest reading of a
 // status this table has never seen.
 const STATUS_TONE: Record<string, string> = {
-  aktif: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
-  servis: 'bg-amber-50 text-amber-800 ring-amber-600/20',
+  aktif: 'bg-good-soft text-brand-ink ring-good/20',
+  servis: 'bg-warn-soft text-warn-ink ring-warn/20',
 }
-const STATUS_TONE_FALLBACK = 'bg-slate-100 text-slate-600 ring-slate-500/20'
+const STATUS_TONE_FALLBACK = 'bg-surface-2 text-faint ring-border-strong/30'
 
 // Archived is the row's own state and outranks whatever status it was archived with: a unit in the
 // bin is not "Aktif", whatever the column says.
@@ -167,7 +167,7 @@ export function VehicleTable({
       className: STICKY_PLATE,
       accessor: (row) => (
         <div className="flex flex-col items-start gap-1">
-          <span className="font-medium">{row.nopol}</span>
+          <span className="font-display font-extrabold tabular">{row.nopol}</span>
           <StatusChip row={row} />
         </div>
       ),

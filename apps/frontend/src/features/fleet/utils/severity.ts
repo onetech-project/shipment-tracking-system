@@ -12,24 +12,27 @@ export interface SeverityMeta {
 const META: Record<FleetSeverity, SeverityMeta> = {
   crit: {
     label: 'Kadaluarsa',
-    tone: 'bg-red-50 text-red-700 ring-red-600/20',
-    dot: 'bg-red-500',
+    tone: 'bg-bad-soft text-bad-ink ring-bad/20',
+    dot: 'bg-bad-strong',
   },
   warn: {
     label: 'Segera',
-    tone: 'bg-amber-50 text-amber-800 ring-amber-600/20',
-    dot: 'bg-amber-500',
+    tone: 'bg-warn-soft text-warn-ink ring-warn/20',
+    dot: 'bg-warn',
   },
   ok: {
     label: 'Aktif',
-    tone: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
-    dot: 'bg-emerald-500',
+    tone: 'bg-good-soft text-brand-ink ring-good/20',
+    dot: 'bg-good',
   },
   // Grey, not green: no dated document is an absence of information, not a clean bill of health.
+  // Dashed border rather than a ring, matching the prototype's pending-doc chip: this is the one
+  // tone that is not "something happening to a document," so it does not get the ring the other
+  // three share.
   none: {
     label: 'Belum ada',
-    tone: 'bg-slate-100 text-slate-600 ring-slate-500/20',
-    dot: 'bg-slate-400',
+    tone: 'bg-surface-2 text-faint border border-dashed border-border ring-0',
+    dot: 'bg-faint',
   },
 }
 
