@@ -6,6 +6,7 @@ import { usePermissions } from '@/shared/hooks/use-permissions'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
+import { BrandLogo } from '@/components/shared/brand-logo'
 import {
   LayoutDashboard,
   Users,
@@ -30,11 +31,12 @@ interface NavLinkProps {
   href: string
   icon: React.ReactNode
   label: string
+  badge?: string
   onClick?: () => void
   collapsed?: boolean
 }
 
-function NavLink({ href, icon, label, onClick, collapsed }: NavLinkProps) {
+function NavLink({ href, icon, label, badge, onClick, collapsed }: NavLinkProps) {
   const pathname = usePathname()
   const isActive = pathname === href || pathname?.startsWith(href + '/')
   return (
@@ -43,15 +45,21 @@ function NavLink({ href, icon, label, onClick, collapsed }: NavLinkProps) {
       onClick={onClick}
       title={collapsed ? label : undefined}
       className={cn(
-        'flex items-center rounded-md py-2 text-sm font-medium motion-safe:transition-colors',
-        collapsed ? 'justify-center px-2' : 'gap-3 px-3',
-        isActive
-          ? 'bg-white/10 text-white'
-          : 'text-sidebar-muted hover:bg-white/10 hover:text-white'
+        'relative flex items-center rounded-[9px] py-[9px] text-[13px] font-medium motion-safe:transition-colors',
+        collapsed ? 'justify-center px-2' : 'gap-2.5 px-2.5',
+        isActive ? 'bg-brand/[.18] text-white' : 'text-sidebar-foreground hover:bg-white/5 hover:text-white'
       )}
     >
-      <span className="h-4 w-4 shrink-0">{icon}</span>
+      {isActive && !collapsed && (
+        <span aria-hidden="true" className="absolute -left-3.5 top-2.5 bottom-2.5 w-[3px] rounded-r-[3px] bg-brand" />
+      )}
+      <span className="inline-flex w-[18px] shrink-0 justify-center opacity-90">{icon}</span>
       {!collapsed && label}
+      {badge && !collapsed && (
+        <span className="ml-auto rounded-full bg-brand/[.18] px-1.5 py-0.5 text-[10px] font-semibold text-[#a6e5c0]">
+          {badge}
+        </span>
+      )}
     </Link>
   )
 }
@@ -67,24 +75,31 @@ export function Sidebar({ onNavClick, collapsed = false, onToggleCollapse }: Sid
   const { isSuperAdmin, isAdminOrAbove, hasPermission } = usePermissions()
 
   return (
-    <nav data-sidebar className="flex h-full w-full flex-col overflow-hidden bg-sidebar px-3 py-4">
-      <div className={cn('mb-4 flex items-center gap-2', collapsed ? 'justify-center' : 'px-3')}>
-        <button
-          type="button"
-          onClick={onToggleCollapse}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className="shrink-0 rounded-md p-1 text-sidebar-muted transition-colors hover:bg-white/10 hover:text-white"
-        >
-          <Menu size={16} />
-        </button>
+    <nav
+      data-sidebar
+      className="flex h-full w-full flex-col overflow-hidden border-r border-white/[.06] bg-sidebar px-3.5 py-[22px] text-sidebar-foreground"
+    >
+      <div className={cn('mb-4 flex items-center gap-2.5', collapsed ? 'flex-col' : 'px-1.5')}>
+        <BrandLogo size={collapsed ? 'sm' : 'md'} />
         {!collapsed && (
-          <h2 className="text-sm font-semibold uppercase tracking-widest text-sidebar-muted">
-            Shipment Tracker
-          </h2>
+          <div className="min-w-0 flex-1 leading-tight">
+            <div className="text-[15px] font-bold tracking-[-0.01em] text-white">Shipment Tracker</div>
+            <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-[#88a088]">
+              Eka Satya Puspita
+            </div>
+          </div>
+        )}
+        {onToggleCollapse && (
+          <button
+            type="button"
+            onClick={onToggleCollapse}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className="shrink-0 rounded-md p-1 text-sidebar-muted transition-colors hover:bg-white/10 hover:text-white"
+          >
+            <Menu size={16} />
+          </button>
         )}
       </div>
-
-      <Separator className="mb-4 bg-white/10" />
 
       <div className="flex flex-1 flex-col gap-1 overflow-y-auto">
         <NavLink
@@ -95,9 +110,9 @@ export function Sidebar({ onNavClick, collapsed = false, onToggleCollapse }: Sid
           collapsed={collapsed}
         />
 
-        <div className="mt-4">
+        <div>
           {!collapsed ? (
-            <p className="mb-1 px-3 text-[0.65rem] font-semibold uppercase tracking-widest text-sidebar-muted">
+            <p className="px-2.5 pb-1.5 pt-4 text-[10px] font-bold uppercase tracking-[0.1em] text-sidebar-muted">
               Air Shipments
             </p>
           ) : (
@@ -125,6 +140,7 @@ export function Sidebar({ onNavClick, collapsed = false, onToggleCollapse }: Sid
                 href="/sla"
                 icon={<ShieldAlert size={16} />}
                 label="SLA Monitoring"
+                badge="LIVE"
                 onClick={onNavClick}
                 collapsed={collapsed}
               />
@@ -187,9 +203,9 @@ export function Sidebar({ onNavClick, collapsed = false, onToggleCollapse }: Sid
         </div>
 
         {isAdminOrAbove && (
-          <div className="mt-4">
+          <div>
             {!collapsed ? (
-              <p className="mb-1 px-3 text-[0.65rem] font-semibold uppercase tracking-widest text-sidebar-muted">
+              <p className="px-2.5 pb-1.5 pt-4 text-[10px] font-bold uppercase tracking-[0.1em] text-sidebar-muted">
                 Settings
               </p>
             ) : (
@@ -261,7 +277,7 @@ export function Sidebar({ onNavClick, collapsed = false, onToggleCollapse }: Sid
           onClick={() => logout()}
           title={collapsed ? 'Sign out' : undefined}
           className={cn(
-            'text-sidebar-muted hover:bg-white/10 hover:text-white',
+            'text-sidebar-foreground hover:bg-white/5 hover:text-white',
             collapsed ? 'w-9 justify-center px-0' : 'w-full justify-start gap-3'
           )}
         >

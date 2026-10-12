@@ -7,7 +7,7 @@ interface MobileDrawerProps { open: boolean; onClose: () => void; }
 export function MobileDrawer({ open, onClose }: MobileDrawerProps) {
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side="left" className="w-60 p-0 bg-sidebar border-0">
+      <SheetContent side="left" className="w-[248px] p-0 bg-sidebar border-0">
         <SheetHeader className="sr-only">
           <SheetTitle>Navigation</SheetTitle>
         </SheetHeader>
