@@ -78,7 +78,7 @@ export function RouteSimulationView({ source }: { source: SimulationSource }) {
       {/* Kept as plain buttons (not ModeTabs): the spec drives this nav by button role + aria-current,
           styled here to match ModeTabs' own look (see components/ui/segmented.tsx). */}
       <nav aria-label="Tab simulasi" className="sticky top-0 z-20 -mx-1 overflow-x-auto bg-background px-1 py-2">
-        <div className="inline-flex flex-wrap gap-0.5 rounded-md bg-surface-2 p-1">
+        <div className="inline-flex gap-0.5 whitespace-nowrap rounded-md bg-surface-2 p-1">
           {TAB_IDS.map((id) => (
             <button
               key={id}
