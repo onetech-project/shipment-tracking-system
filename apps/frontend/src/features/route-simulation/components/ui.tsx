@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils'
 import { Account, Scope, SimRoute, SimState, SimulationSource } from '../types'
 import { NO_GROUP, groupNames, groupsOfRoute, routeKey, routeLabel } from '../engine'
 import { SimAction } from '../state/reducer'
-import { fmtIdr } from '../utils/format'
+import { fmtIdr, toneClass } from '../utils/format'
 
 export interface TabProps {
   source: SimulationSource
@@ -16,11 +16,7 @@ export interface TabProps {
 export const TAB_IDS = ['setup', 'smu', 'rate', 'history', 'routes', 'compare', 'actual', 'distribute', 'sim'] as const
 export type TabId = (typeof TAB_IDS)[number]
 
-// Local tone resolver (format.ts is pure-logic and out of this task's scope): same sign test as
-// utils/format.ts's toneClass, restyled onto the good/bad tokens instead of its hardcoded hues.
-const toneCls = (n: number) => (n < 0 ? 'text-bad' : 'text-good')
-
-export const Signed = ({ value }: { value: number }) => <span className={toneCls(value)}>{fmtIdr(value)}</span>
+export const Signed = ({ value }: { value: number }) => <span className={toneClass(value)}>{fmtIdr(value)}</span>
 
 export const RouteChip = ({ route }: { route: Pick<SimRoute, 'originLabel' | 'dest'> }) => (
   <span data-route-chip className="whitespace-nowrap font-display font-bold">{routeLabel(route)}</span>
@@ -42,7 +38,7 @@ export const EspTag = ({ account }: { account?: Account }) => (account?.isEsp ? 
 export const Kpi = ({ label, value, tone }: { label: string; value: React.ReactNode; tone?: number }) => (
   <div>
     <div className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-muted-foreground">{label}</div>
-    <div className={cn('font-display text-base font-bold tabular [overflow-wrap:anywhere]', tone != null && toneCls(tone))}>{value}</div>
+    <div className={cn('font-display text-base font-bold tabular [overflow-wrap:anywhere]', tone != null && toneClass(tone))}>{value}</div>
   </div>
 )
 
