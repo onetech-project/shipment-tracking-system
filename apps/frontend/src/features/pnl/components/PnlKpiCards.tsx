@@ -14,9 +14,6 @@ interface PnlKpiCardsProps {
 }
 
 export function PnlKpiCards({ summary, activeKpi, onSelect }: PnlKpiCardsProps) {
-  const selectedRing = (key: PnlKpiKey) =>
-    activeKpi === key ? 'ring-2 ring-primary border-primary' : ''
-
   return (
     <KpiGrid cols={6}>
       <KpiCard
@@ -26,7 +23,7 @@ export function PnlKpiCards({ summary, activeKpi, onSelect }: PnlKpiCardsProps) 
         icon={Wallet}
         tone="brand"
         onClick={() => onSelect('revenue')}
-        className={selectedRing('revenue')}
+        selected={activeKpi === 'revenue'}
       />
       <KpiCard
         label="Est. Cost"
@@ -35,7 +32,7 @@ export function PnlKpiCards({ summary, activeKpi, onSelect }: PnlKpiCardsProps) 
         icon={ArrowUpFromLine}
         tone="dark"
         onClick={() => onSelect('cost')}
-        className={selectedRing('cost')}
+        selected={activeKpi === 'cost'}
       />
       <KpiCard
         label="Est. Gross Profit"
@@ -44,7 +41,7 @@ export function PnlKpiCards({ summary, activeKpi, onSelect }: PnlKpiCardsProps) 
         icon={TrendingUp}
         tone="alt"
         onClick={() => onSelect('gp')}
-        className={selectedRing('gp')}
+        selected={activeKpi === 'gp'}
       />
       <KpiCard
         label="Est. Gross Margin"
@@ -53,9 +50,9 @@ export function PnlKpiCards({ summary, activeKpi, onSelect }: PnlKpiCardsProps) 
         icon={Target}
         tone="brand"
         // The mockup's margin icon is a darker green (#2d7a4a) than the shared "brand" tone
-        // (#3dae68) — overridden here via an arbitrary descendant selector rather than widening
-        // IconTone for one card.
-        className="[&_[data-testid='icon-square']]:bg-[#2d7a4a]"
+        // (#3dae68) — overridden via KpiCard's iconClassName rather than widening IconTone for
+        // one card.
+        iconClassName="bg-[#2d7a4a]"
       />
       <KpiCard label="Total TOs" value={num(summary.totalTos)} hint="orders" icon={Package} tone="light" />
       <KpiCard label="Total AWBs" value={num(summary.totalAwbs)} hint="waybills" icon={Receipt} tone="muted" />

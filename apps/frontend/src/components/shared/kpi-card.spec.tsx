@@ -14,3 +14,23 @@ it('is a button when clickable', () => {
   render(<KpiCard label="Breach" value="3" onClick={() => {}} />);
   expect(screen.getByRole('button', { name: /breach/i })).toBeInTheDocument();
 });
+
+it('wraps a long value instead of overflowing, and shrinks at the 6-col breakpoint', () => {
+  render(<KpiCard label="Revenue" value="Rp 123.456.789.012" />);
+  expect(screen.getByText('Rp 123.456.789.012')).toHaveClass('break-words', '2xl:text-lg');
+});
+
+it('only sets aria-pressed when the card is clickable', () => {
+  render(<KpiCard label="Breach" value="3" onClick={() => {}} selected />);
+  expect(screen.getByRole('button', { name: /breach/i })).toHaveAttribute('aria-pressed', 'true');
+
+  render(<KpiCard label="Static" value="3" selected data-testid="static-kpi" />);
+  expect(screen.getByTestId('static-kpi')).not.toHaveAttribute('aria-pressed');
+});
+
+it('rings a selected card and forwards iconClassName to the icon square', () => {
+  render(<KpiCard label="Revenue" value="1" icon={Wallet} iconClassName="bg-[#2d7a4a]" onClick={() => {}} selected />);
+  const button = screen.getByRole('button', { name: /revenue/i });
+  expect(button).toHaveClass('ring-2', 'ring-brand');
+  expect(screen.getByTestId('icon-square')).toHaveClass('bg-[#2d7a4a]');
+});

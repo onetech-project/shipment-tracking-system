@@ -22,31 +22,35 @@ export interface KpiCardProps {
   delta?: { dir: 'up' | 'down'; text: string };
   icon?: LucideIcon;
   tone?: IconTone;
+  iconClassName?: string;
   muted?: boolean;
   onClick?: () => void;
+  selected?: boolean;
   className?: string;
   children?: React.ReactNode;
   'data-testid'?: string;
 }
 
-export function KpiCard({ label, value, hint, delta, icon, tone = 'brand', muted, onClick, className, children, 'data-testid': testId }: KpiCardProps) {
+export function KpiCard({ label, value, hint, delta, icon, tone = 'brand', iconClassName, muted, onClick, selected, className, children, 'data-testid': testId }: KpiCardProps) {
   const Comp = onClick ? 'button' : 'div';
   return (
     <Comp
       type={onClick ? 'button' : undefined}
       onClick={onClick}
+      aria-pressed={onClick ? selected : undefined}
       data-testid={testId}
       className={cn(
-        'relative rounded-lg border bg-card px-[18px] py-4 text-left motion-safe:transition-shadow hover:shadow-soft-md',
+        'relative min-w-0 rounded-lg border bg-card px-[18px] py-4 text-left motion-safe:transition-shadow hover:shadow-soft-md',
         onClick && 'cursor-pointer hover:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        selected && 'ring-2 ring-brand',
         className,
       )}
     >
       <div className="mb-2.5 flex items-start justify-between gap-2">
         <span className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-muted-foreground">{label}</span>
-        {icon && <IconSquare icon={icon} tone={tone} size="md" />}
+        {icon && <IconSquare icon={icon} tone={tone} size="md" className={iconClassName} />}
       </div>
-      <div className={cn('tabular my-0.5 font-display text-xl font-bold leading-tight tracking-[-0.02em]', muted ? 'text-faint' : 'text-foreground')}>
+      <div className={cn('tabular my-0.5 break-words font-display text-xl font-bold leading-tight tracking-[-0.02em] 2xl:text-lg', muted ? 'text-faint' : 'text-foreground')}>
         {value}
       </div>
       {(hint || delta) && (
