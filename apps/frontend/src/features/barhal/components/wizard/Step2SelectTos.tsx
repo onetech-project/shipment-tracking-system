@@ -100,18 +100,18 @@ export function Step2SelectTos({ koli, onAttached }: Step2SelectTosProps) {
           placeholder="Cari No. TO / LT / AWB…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium text-foreground outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40"
         />
         <input
           type="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
-          className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium text-foreground outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40"
         />
         <select
           value={origin}
           onChange={(e) => setOrigin(e.target.value)}
-          className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium text-foreground outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40"
         >
           <option value="">Semua Origin</option>
           {(stations?.origins ?? []).map((o) => (
@@ -123,7 +123,7 @@ export function Step2SelectTos({ koli, onAttached }: Step2SelectTosProps) {
         <select
           value={dest}
           onChange={(e) => setDest(e.target.value)}
-          className="rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium text-foreground outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40"
         >
           <option value="">Semua Destinasi</option>
           {(stations?.dests ?? []).map((d) => (
