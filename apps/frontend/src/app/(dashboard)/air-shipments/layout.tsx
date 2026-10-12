@@ -8,6 +8,8 @@ import { GoogleSheetConfig } from '../../../features/air-shipments/types'
 import Spinner from '@/components/ui/spinner'
 import { useRouter } from 'next/navigation'
 import { getAirShipmentsTabName } from '../../../features/air-shipments/utils/normalizeTableName'
+import { PageHeader } from '@/components/shared/page-header'
+import { Banner } from '@/components/shared/banner'
 
 // Module-level flag to avoid duplicate fetches in development (React Strict Mode)
 let _airShipmentsSublinksFetched = false
@@ -69,31 +71,31 @@ export default function AirShipmentsLayout({ children }: { children: React.React
         <Spinner size="h-12 w-12" ariaLabel="Loading Air Shipments sublinks" />
       </div>
     )
-  if (error) return <div className="text-red-500">Error: {error}</div>
+  if (error) return <Banner tone="danger">Error: {error}</Banner>
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Air Shipments</h1>
-        <nav className="mt-3 flex gap-1 border-b">
-          {sublinks.map(({ href, label }) => {
-            const isActive = pathname === href || pathname?.startsWith(href + '/')
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={cn(
-                  'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
-                  isActive
-                    ? 'border-primary text-foreground'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {label}
-              </Link>
-            )
-          })}
-        </nav>
-      </div>
+    <div className="flex flex-col gap-4">
+      <PageHeader title="Air Shipments" />
+      {/* Route-based navigation between sheet sources — styled like the mockup's mode-tabs,
+          but kept as <Link>s (not ModeTabs) since it navigates rather than toggling local state. */}
+      <nav className="inline-flex flex-wrap gap-0.5 rounded-md bg-surface-2 p-1" aria-label="Sheet sources">
+        {sublinks.map(({ href, label }) => {
+          const isActive = pathname === href || pathname?.startsWith(href + '/')
+          return (
+            <Link
+              key={href}
+              href={href}
+              className={cn(
+                'inline-flex items-center rounded-[7px] px-3 py-[7px] text-[12.5px] font-medium motion-safe:transition-all',
+                isActive
+                  ? 'bg-card font-semibold text-foreground shadow-soft-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {label}
+            </Link>
+          )
+        })}
+      </nav>
       {children}
     </div>
   )

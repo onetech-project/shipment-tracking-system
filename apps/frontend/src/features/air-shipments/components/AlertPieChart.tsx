@@ -3,6 +3,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, TooltipProps } from 'recharts'
 import { apiClient } from '@/shared/api/client'
+import { CHART_COLORS } from '@/lib/chart-colors'
+import { cn } from '@/lib/utils'
+import { Banner } from '@/components/shared/banner'
+import { EmptyState } from '@/components/shared/empty-state'
 
 export type AlertType = 'slaAlert' | 'tjphAlert' | 'ataFlightAlert' | 'atdFlightAlert' | 'smuAlert'
 
@@ -22,12 +26,13 @@ export const ALERT_TYPE_LABELS: Record<AlertType, string> = {
   smuAlert: 'SMU Alert',
 }
 
+// Categorical slice colors from the app's CHART_COLORS palette (bad, warn, info, brand-alt, neutral).
 const ALERT_COLORS: Record<AlertType, string> = {
-  slaAlert: '#EF4444',
-  tjphAlert: '#F97316',
-  ataFlightAlert: '#EAB308',
-  atdFlightAlert: '#3B82F6',
-  smuAlert: '#8B5CF6',
+  slaAlert: CHART_COLORS[7],
+  tjphAlert: CHART_COLORS[6],
+  ataFlightAlert: CHART_COLORS[5],
+  atdFlightAlert: CHART_COLORS[1],
+  smuAlert: CHART_COLORS[8],
 }
 
 const ALERT_KEYS: AlertType[] = [
@@ -53,10 +58,10 @@ function CustomTooltip({ active, payload }: TooltipProps<any, string>) {
   if (!active || !payload?.length) return null
   const item = payload[0].payload as { name: string; value: number; percent: number }
   return (
-    <div className="rounded border border-border bg-background px-3 py-2 text-sm shadow">
-      <div className="font-semibold">{item.name}</div>
-      <div className="text-slate-600">Count: {item.value}</div>
-      <div className="text-slate-600">Share: {formatPercent(item.percent * 100)}</div>
+    <div className="rounded-md border bg-card px-3 py-2 text-sm shadow-soft-md">
+      <div className="font-semibold text-foreground">{item.name}</div>
+      <div className="text-muted-foreground">Count: {item.value}</div>
+      <div className="text-muted-foreground">Share: {formatPercent(item.percent * 100)}</div>
     </div>
   )
 }
@@ -123,28 +128,24 @@ export function AlertPieChart({
   const hasData = totalCount > 0
 
   return (
-    <section
-      aria-labelledby="alert-pie-chart-heading"
-      className="rounded-xl border border-border bg-panel p-4 shadow-sm"
-    >
-      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+    <section aria-labelledby="alert-pie-chart-heading" className="rounded-lg border bg-card">
+      <div className="flex flex-col gap-2 border-b px-[18px] py-3.5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 id="alert-pie-chart-heading" className="text-base font-semibold text-foreground">
+          <h2 id="alert-pie-chart-heading" className="font-display text-sm font-bold tracking-[-0.01em] text-foreground">
             Shipment Alerts
           </h2>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs font-medium text-faint">
             Review alert volume and click a slice to filter rows.
           </p>
         </div>
-        <div className="text-sm text-slate-500">
+        <div className="tabular text-xs text-muted-foreground">
           {isLoading ? 'Loading summary…' : `${totalCount} total alert matches`}
         </div>
       </div>
 
+      <div className="px-[18px] pb-4 pt-4">
       {error ? (
-        <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {error}
-        </div>
+        <Banner tone="danger">{error}</Banner>
       ) : (
         <div className="flex flex-col items-center gap-6">
           <div className="h-[400px] w-full">
@@ -168,7 +169,8 @@ export function AlertPieChart({
                       <Cell
                         key={entry.key}
                         fill={entry.color}
-                        stroke={activeAlert === entry.key ? '#334155' : 'transparent'}
+                        // '#1f2a22' is the design system's `ink-2` token, used literally since recharts needs a raw color.
+                        stroke={activeAlert === entry.key ? '#1f2a22' : 'transparent'}
                         strokeWidth={activeAlert === entry.key ? 4 : 0}
                         fillOpacity={entry.value > 0 ? 1 : 0.36}
                       />
@@ -178,11 +180,10 @@ export function AlertPieChart({
                 </PieChart>
               </ResponsiveContainer>
             ) : (
-              <div className="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-border bg-background px-4 text-center text-sm text-muted-foreground">
-                {isLoading
-                  ? 'Loading chart...'
-                  : 'No alert counts available for this shipment table.'}
-              </div>
+              <EmptyState
+                className="h-full"
+                title={isLoading ? 'Loading chart...' : 'No alert counts available for this shipment table.'}
+              />
             )}
           </div>
 
@@ -192,11 +193,10 @@ export function AlertPieChart({
                 key={item.key}
                 type="button"
                 onClick={() => onAlertSelect(activeAlert === item.key ? null : item.key)}
-                className={`flex w-full sm:w-auto items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left transition hover:border-slate-400 ${
-                  activeAlert === item.key
-                    ? 'border-slate-900 bg-slate-50'
-                    : 'border-border bg-background'
-                }`}
+                className={cn(
+                  'flex w-full sm:w-auto items-center justify-between gap-3 rounded-md border px-3 py-2 text-left motion-safe:transition-colors hover:border-border-strong',
+                  activeAlert === item.key ? 'border-primary bg-brand-soft' : 'border-border bg-card',
+                )}
                 aria-pressed={activeAlert === item.key}
               >
                 <div className="flex items-center gap-3">
@@ -209,7 +209,7 @@ export function AlertPieChart({
                     <div className="text-xs text-muted-foreground">{item.value} rows</div>
                   </div>
                 </div>
-                <span className="text-xs text-muted-foreground">
+                <span className="tabular text-xs text-muted-foreground">
                   {formatPercent(item.percent * 100)}
                 </span>
               </button>
@@ -217,6 +217,7 @@ export function AlertPieChart({
           </div>
         </div>
       )}
+      </div>
     </section>
   )
 }
