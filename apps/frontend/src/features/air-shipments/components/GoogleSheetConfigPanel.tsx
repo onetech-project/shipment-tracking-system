@@ -232,6 +232,7 @@ export function GoogleSheetConfigPanel() {
     <div>
       <div className="mb-6">
         <PageHeader
+          as="h2"
           title="Google Sheet Configs"
           action={!editMode ? <Button onClick={handleAdd}>+ Add Config</Button> : undefined}
         />

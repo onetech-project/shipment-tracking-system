@@ -48,14 +48,14 @@ function RecapStatusBadge({ status }: { status: BarhalRecapStatus }) {
 function RecapMetricCells({ row }: { row: RecapMetricFields }) {
   return (
     <>
-      <TableCell num className="tabular">{row.totalTo}</TableCell>
-      <TableCell num className="tabular">{row.totalKoli}</TableCell>
-      <TableCell num className="tabular">{fmt.format(row.weightBefore)} kg</TableCell>
-      <TableCell num className="tabular">{fmt.format(row.weightAfter)} kg</TableCell>
-      <TableCell num className="tabular">{fmt.format(row.chwt)} kg</TableCell>
-      <TableCell num className="tabular">{fmt.format(row.variance)} kg</TableCell>
-      <TableCell num className="tabular">{fmt.format(row.variancePercent)}%</TableCell>
-      <TableCell num className="tabular">{idr.format(row.addRevenue)}</TableCell>
+      <TableCell num>{row.totalTo}</TableCell>
+      <TableCell num>{row.totalKoli}</TableCell>
+      <TableCell num>{fmt.format(row.weightBefore)} kg</TableCell>
+      <TableCell num>{fmt.format(row.weightAfter)} kg</TableCell>
+      <TableCell num>{fmt.format(row.chwt)} kg</TableCell>
+      <TableCell num>{fmt.format(row.variance)} kg</TableCell>
+      <TableCell num>{fmt.format(row.variancePercent)}%</TableCell>
+      <TableCell num>{idr.format(row.addRevenue)}</TableCell>
       <TableCell>
         <RecapStatusBadge status={row.status} />
       </TableCell>

@@ -63,7 +63,11 @@ function PreviewBody({ state }: { state: FilePreviewState }) {
   }
 
   if (state.status === 'error') {
-    return <Banner tone="danger">{state.message}</Banner>
+    return (
+      <div className="mx-auto max-w-md text-center">
+        <Banner tone="danger">{state.message}</Banner>
+      </div>
+    )
   }
 
   const name = state.filename ?? 'berkas'

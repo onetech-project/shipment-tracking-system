@@ -8,8 +8,8 @@
  *
  * The stripe is therefore painted as a layer on top of an opaque `bg-card` rather than swapped in
  * as a solid colour: solid `bg-surface-2` composited at full opacity over `bg-card` reproduces the
- * same tint a translucent overlay would, without the layer the frozen column visibly against the
- * rest of the table. `before:-z-10` keeps that layer above the cell's own background but below its
+ * same tint a translucent overlay would, without letting the frozen column show through against
+ * the rest of the table. `before:-z-10` keeps that layer above the cell's own background but below its
  * text — the cell is already `sticky z-10`, so the pseudo-element is positioned against it and
  * contained by its stacking context.
  *

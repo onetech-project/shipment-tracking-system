@@ -51,7 +51,7 @@ export function FleetAlertList({ alerts, isLoading, isError, onOpen }: Props) {
         ) : alerts.length === 0 ? (
           <EmptyState title="Tidak ada dokumen yang jatuh tempo dalam ambang peringatan." />
         ) : (
-          <ul className="action-list flex flex-col gap-1.5">
+          <ul className="flex flex-col gap-1.5">
             {alerts.map((alert) => {
               const overdue = alert.severity === 'crit'
               const subtitle = [

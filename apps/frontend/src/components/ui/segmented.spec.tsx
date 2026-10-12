@@ -31,3 +31,18 @@ it('moves selection and focus with arrow keys, one tab stop for the list', async
   await userEvent.keyboard('{End}');
   expect(onChange).toHaveBeenLastCalledWith('sea');
 });
+
+it('keeps the group keyboard-reachable when value matches no enabled item', () => {
+  // value="land" names nothing in items — without a fallback, every tab would get tabindex -1
+  // and the group would silently drop out of the page's tab order.
+  render(
+    <ModeTabs
+      aria-label="Mode"
+      value={'land' as unknown as 'air' | 'sea'}
+      onValueChange={() => {}}
+      items={[...items]}
+    />,
+  );
+  expect(screen.getByRole('tab', { name: 'Air' })).toHaveAttribute('tabindex', '0');
+  expect(screen.getByRole('tab', { name: 'Sea' })).toHaveAttribute('tabindex', '-1');
+});

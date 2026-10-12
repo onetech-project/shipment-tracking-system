@@ -37,12 +37,12 @@ export function BarhalRecapBatangKayuTable({ data }: BarhalRecapBatangKayuTableP
             data.map((row) => (
               <TableRow key={row.date}>
                 <TableCell>{formatDate(row.date)}</TableCell>
-                <TableCell num className="tabular">{row.totalKoli}</TableCell>
-                <TableCell num className="tabular">{fmt.format(row.totalP)}</TableCell>
-                <TableCell num className="tabular">{fmt.format(row.totalL)}</TableCell>
-                <TableCell num className="tabular">{fmt.format(row.totalT)}</TableCell>
-                <TableCell num className="tabular">{fmt.format(row.totalVolume)}</TableCell>
-                <TableCell num className="tabular">{row.totalBatangKayu}</TableCell>
+                <TableCell num>{row.totalKoli}</TableCell>
+                <TableCell num>{fmt.format(row.totalP)}</TableCell>
+                <TableCell num>{fmt.format(row.totalL)}</TableCell>
+                <TableCell num>{fmt.format(row.totalT)}</TableCell>
+                <TableCell num>{fmt.format(row.totalVolume)}</TableCell>
+                <TableCell num>{row.totalBatangKayu}</TableCell>
               </TableRow>
             ))
           )}

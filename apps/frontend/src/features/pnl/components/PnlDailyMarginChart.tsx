@@ -10,7 +10,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
-import { BarChart3 } from 'lucide-react'
+import { AlertTriangle, BarChart3 } from 'lucide-react'
 import { PnlFilter, usePnlDailyMargin } from '../hooks/usePnl'
 import { fmt } from '../utils/format'
 import { CHART_STATUS } from '@/lib/chart-colors'
@@ -55,7 +55,10 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Toolti
         Margin: {p.marginPct == null ? '—' : `${p.marginPct.toFixed(1)}%`}
       </p>
       {p.hasIncompleteCost && (
-        <p className="mt-1 text-warn-ink font-medium">⚠ Cost data incomplete</p>
+        <p className="mt-1 flex items-center gap-1 text-warn-ink font-medium">
+          <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+          Cost data incomplete
+        </p>
       )}
     </div>
   )

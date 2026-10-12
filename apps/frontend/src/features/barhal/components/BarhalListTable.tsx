@@ -51,11 +51,11 @@ function KoliRow({ koli, index, page, pageSize, isExpanded, onToggleExpanded, on
             {koli.koli_number}
           </button>
         </TableCell>
-        <TableCell num className="tabular">{koli.total_to}</TableCell>
-        <TableCell num className="tabular">
+        <TableCell num>{koli.total_to}</TableCell>
+        <TableCell num>
           {koli.weight_before != null ? `${fmt.format(koli.weight_before)} kg` : '-'}
         </TableCell>
-        <TableCell num className="tabular">
+        <TableCell num>
           {koli.weight_after != null ? `${fmt.format(koli.weight_after)} kg` : '-'}
         </TableCell>
         <TableCell>{koli.origin_name}</TableCell>
@@ -98,7 +98,7 @@ function KoliRow({ koli, index, page, pageSize, isExpanded, onToggleExpanded, on
                       <TableCell>{koli.origin_name}</TableCell>
                       <TableCell>{koli.dest_name}</TableCell>
                       <TableCell>{line.to_number}</TableCell>
-                      <TableCell num className="tabular">
+                      <TableCell num>
                         {line.gross_weight != null ? `${fmt.format(line.gross_weight)} kg` : '-'}
                       </TableCell>
                     </TableRow>

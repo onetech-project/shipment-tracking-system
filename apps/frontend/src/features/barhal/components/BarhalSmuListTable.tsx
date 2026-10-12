@@ -33,15 +33,15 @@ function SmuGroupRow({ item, onUnassigned }: { item: BarhalSmuListItem; onUnassi
       <TableCell>{formatDate(item.date)}</TableCell>
       <TableCell>{item.originName}</TableCell>
       <TableCell>{item.destName}</TableCell>
-      <TableCell num className="tabular">{item.totalKoli}</TableCell>
-      <TableCell num className="tabular">{item.totalTo}</TableCell>
+      <TableCell num>{item.totalKoli}</TableCell>
+      <TableCell num>{item.totalTo}</TableCell>
       <TableCell className="font-medium">{item.smuNumber}</TableCell>
       <TableCell>{item.airlines || '-'}</TableCell>
       <TableCell>{item.flightNo || '-'}</TableCell>
       <TableCell>
         {item.std ? `${formatDateTime(item.std)} / ${formatDateTime(item.sta)}` : '—'}
       </TableCell>
-      <TableCell num className="tabular">
+      <TableCell num>
         {item.chwt != null ? (
           `${fmt.format(item.chwt)} kg`
         ) : (

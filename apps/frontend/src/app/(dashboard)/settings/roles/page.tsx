@@ -109,7 +109,7 @@ export default function RolesSettingsPage() {
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
                       {role.permissions?.slice(0, 5).map((p) => (
-                        <Badge key={p.id} variant="info">{p.name}</Badge>
+                        <Badge key={p.id} variant="info" className="normal-case font-mono">{p.name}</Badge>
                       ))}
                       {role.permissions?.length > 5 && (
                         <span className="text-xs text-muted-foreground">+{role.permissions.length - 5} more</span>

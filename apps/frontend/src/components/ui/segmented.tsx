@@ -23,10 +23,16 @@ export interface SegmentedProps<T extends string> {
 function makeTabs(styles: { list: string; tab: string; active: string; idle: string }) {
   return function Tabs<T extends string>({ value, onValueChange, items, className, 'aria-label': ariaLabel }: SegmentedProps<T>) {
     const tabRefs = React.useRef(new Map<T, HTMLButtonElement>());
+    const enabledItems = items.filter((i) => !i.disabled);
+    // If `value` names no enabled item (e.g. it's disabled, or absent entirely), no tab would
+    // otherwise get tabIndex 0 and the group would drop out of the page's tab order altogether.
+    // The first enabled item takes the roving tab stop instead, same as a fresh keyboard user
+    // landing on any other roving-tabindex widget.
+    const hasActiveEnabled = enabledItems.some((i) => i.value === value);
 
     // WAI-ARIA tabs: one tab stop for the whole list, arrows/Home/End move and select.
     const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-      const enabled = items.filter((i) => !i.disabled);
+      const enabled = enabledItems;
       const at = enabled.findIndex((i) => i.value === value);
       if (enabled.length === 0) return;
       let next: number;
@@ -45,6 +51,10 @@ function makeTabs(styles: { list: string; tab: string; active: string; idle: str
       <div role="tablist" aria-label={ariaLabel} onKeyDown={onKeyDown} className={cn(styles.list, className)}>
         {items.map((item) => {
           const active = item.value === value;
+          // The usual case: the active item owns the tab stop. Only when nothing is active
+          // among the enabled items does the first enabled one step in as a fallback stop, so
+          // the group never drops out of the page's tab order entirely.
+          const isFallbackStop = !hasActiveEnabled && item === enabledItems[0];
           const Icon = item.icon;
           return (
             <button
@@ -52,7 +62,7 @@ function makeTabs(styles: { list: string; tab: string; active: string; idle: str
               type="button"
               role="tab"
               aria-selected={active}
-              tabIndex={active ? 0 : -1}
+              tabIndex={active || isFallbackStop ? 0 : -1}
               ref={(el) => { if (el) tabRefs.current.set(item.value, el); else tabRefs.current.delete(item.value); }}
               disabled={item.disabled}
               data-testid={item['data-testid']}

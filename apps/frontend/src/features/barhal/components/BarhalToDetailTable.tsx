@@ -94,7 +94,7 @@ export function BarhalToDetailTable({ startDate, endDate, origin, dest }: Barhal
                   <TableCell>{row.destName}</TableCell>
                   <TableCell>{row.toNumber}</TableCell>
                   {inKoli && <TableCell>{row.koliNumber ?? '—'}</TableCell>}
-                  <TableCell num className="tabular">
+                  <TableCell num>
                     {row.grossWeight != null ? `${fmt.format(row.grossWeight)} kg` : '—'}
                   </TableCell>
                 </TableRow>
