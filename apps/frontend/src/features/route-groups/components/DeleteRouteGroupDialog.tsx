@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Banner } from '@/components/shared/banner'
 import { RouteGroup } from '../types'
 
 interface DeleteRouteGroupDialogProps {
@@ -39,12 +39,7 @@ export function DeleteRouteGroupDialog({ group, onConfirm, onClose }: DeleteRout
           The {group.routes.length} route(s) in this group stay untouched — only the grouping is
           removed. Any PnL comparison currently showing this group will drop its column.
         </p>
-        {error && (
-          <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-            <AlertCircle size={14} />
-            {error}
-          </div>
-        )}
+        {error && <Banner tone="danger">{error}</Banner>}
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel

@@ -3,8 +3,18 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/shared/page-header'
+import { EmptyState } from '@/components/shared/empty-state'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+  TableWrap,
+} from '@/components/ui/table'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
 import { RouteGroupForm } from '@/features/route-groups/components/RouteGroupForm'
@@ -74,55 +84,56 @@ export default function RouteGroupsPage() {
         }
       />
 
-      <div className="overflow-x-auto rounded-md border">
-        <table className="w-full border-collapse text-sm">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="whitespace-nowrap px-4 py-3 text-left font-medium text-muted-foreground">Name</th>
-              <th className="whitespace-nowrap px-4 py-3 text-left font-medium text-muted-foreground">Description</th>
-              <th className="whitespace-nowrap px-4 py-3 text-left font-medium text-muted-foreground">Routes</th>
-              <th className="whitespace-nowrap px-4 py-3 text-left font-medium text-muted-foreground">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(groups ?? []).map((group, idx) => (
-              <tr key={group.id} className={`border-t hover:bg-muted/30 ${idx % 2 === 1 ? 'bg-muted/70' : ''}`}>
-                <td className="px-4 py-3 font-medium">{group.name}</td>
-                <td className="px-4 py-3">{group.description ?? '—'}</td>
-                <td className="px-4 py-3 text-xs text-muted-foreground">
-                  {group.routes.map((r) => `${r.originLabel} → ${r.dest}`).join(', ')}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex gap-1">
-                    {hasPermission('update.route_group') && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={isRoutesLoading}
-                        onClick={() => setModal({ type: 'edit', group })}
-                      >
-                        Edit
-                      </Button>
-                    )}
-                    {hasPermission('delete.route_group') && (
-                      <Button size="sm" variant="destructive" onClick={() => setModal({ type: 'delete', group })}>
-                        Delete
-                      </Button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {(groups ?? []).length === 0 && (
-              <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
-                  No route groups yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      {(groups ?? []).length === 0 ? (
+        <EmptyState title="No route groups yet." />
+      ) : (
+        <TableWrap>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Routes</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {(groups ?? []).map((group) => (
+                <TableRow key={group.id}>
+                  <TableCell className="font-medium">{group.name}</TableCell>
+                  <TableCell>{group.description ?? '—'}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {group.routes.map((r) => `${r.originLabel} → ${r.dest}`).join(', ')}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-1.5">
+                      {hasPermission('update.route_group') && (
+                        <Button
+                          size="sm"
+                          variant="subtle"
+                          disabled={isRoutesLoading}
+                          onClick={() => setModal({ type: 'edit', group })}
+                        >
+                          Edit
+                        </Button>
+                      )}
+                      {hasPermission('delete.route_group') && (
+                        <Button
+                          size="sm"
+                          variant="danger-soft"
+                          onClick={() => setModal({ type: 'delete', group })}
+                        >
+                          Delete
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableWrap>
+      )}
 
       {modal?.type === 'create' && (
         <Dialog open onOpenChange={(open) => { if (!open) setModal(null) }}>

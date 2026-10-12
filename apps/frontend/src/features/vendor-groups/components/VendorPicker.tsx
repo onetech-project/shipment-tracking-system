@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { Input } from '@/components/ui/input'
 import { AvailableVendor } from '../types'
 
 interface VendorPickerProps {
@@ -50,13 +51,12 @@ export function VendorPicker({ vendors, value, onChange }: VendorPickerProps) {
 
   return (
     <div className="space-y-2">
-      <input
+      <Input
         type="search"
         aria-label="Search vendors"
         placeholder="Cari vendor…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        className="w-full rounded-md border px-3 py-2 text-sm"
       />
       {/* Counts `value`, not `filtered`, so narrowing the search never looks like it dropped picks. */}
       <p className="text-xs text-muted-foreground">{value.length} selected</p>
@@ -74,7 +74,7 @@ export function VendorPicker({ vendors, value, onChange }: VendorPickerProps) {
               // hasData/inMaster are both false for an orphan row, but that combination never
               // occurs for a genuine vendor, so this marker replaces the two below rather than
               // stacking alongside them.
-              <span className="shrink-0 whitespace-nowrap text-xs text-destructive">
+              <span className="shrink-0 whitespace-nowrap text-xs text-bad">
                 tidak ada di daftar vendor
               </span>
             ) : (
@@ -82,7 +82,7 @@ export function VendorPicker({ vendors, value, onChange }: VendorPickerProps) {
                 {!v.hasData && (
                   <span
                     title="Belum ada TO yang memakai vendor ini"
-                    className="shrink-0 text-xs text-amber-600"
+                    className="shrink-0 text-xs text-warn"
                   >
                     •
                   </span>
