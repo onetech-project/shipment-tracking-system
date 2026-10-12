@@ -1,7 +1,7 @@
 'use client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { AlertCircle } from 'lucide-react';
+import { Banner } from '@/components/shared/banner';
 import { useState } from 'react';
 
 interface UnlockUserDialogProps {
@@ -31,21 +31,16 @@ export default function UnlockUserDialog({ user, onConfirm, onClose }: UnlockUse
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle className="text-green-700">Unlock User</DialogTitle>
+          <DialogTitle className="text-brand-ink">Unlock User</DialogTitle>
           <DialogDescription>
             Unlock account for <strong>{user.username}</strong>?
             This will reset the failed login counter and allow the user to sign in again.
           </DialogDescription>
         </DialogHeader>
-        {error && (
-          <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-            <AlertCircle size={14} />
-            {error}
-          </div>
-        )}
+        {error && <Banner tone="danger">{error}</Banner>}
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
-          <Button className="bg-green-600 hover:bg-green-700" onClick={handleConfirm} disabled={loading}>
+          <Button onClick={handleConfirm} disabled={loading}>
             {loading ? 'Unlocking…' : 'Unlock'}
           </Button>
         </DialogFooter>

@@ -1,7 +1,7 @@
 'use client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { AlertCircle } from 'lucide-react';
+import { Banner } from '@/components/shared/banner';
 import { useState } from 'react';
 
 interface InactivateUserDialogProps {
@@ -37,12 +37,7 @@ export default function InactivateUserDialog({ user, onConfirm, onClose }: Inact
             The user will be signed out immediately and will not be able to log in until reactivated.
           </DialogDescription>
         </DialogHeader>
-        {error && (
-          <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-            <AlertCircle size={14} />
-            {error}
-          </div>
-        )}
+        {error && <Banner tone="danger">{error}</Banner>}
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
           <Button variant="destructive" onClick={handleConfirm} disabled={loading}>

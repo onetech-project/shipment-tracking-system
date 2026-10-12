@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FormField } from '@/components/shared/form-field';
-import { AlertCircle } from 'lucide-react';
+import { Banner } from '@/components/shared/banner';
 
 interface PermissionFormProps {
   onSubmit: (data: { name: string; description?: string }) => Promise<void>;
@@ -39,12 +39,7 @@ export default function PermissionForm({ onSubmit, onCancel }: PermissionFormPro
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {error && (
-        <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-          <AlertCircle size={14} />
-          {error}
-        </div>
-      )}
+      {error && <Banner tone="danger">{error}</Banner>}
       <FormField label="Action" htmlFor="perm-action" required>
         <select id="perm-action" className={selectCls} value={action} onChange={(e) => setAction(e.target.value)}>
           {ACTIONS.map((a) => <option key={a} value={a}>{a}</option>)}

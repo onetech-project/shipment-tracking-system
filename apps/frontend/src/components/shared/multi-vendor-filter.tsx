@@ -69,7 +69,7 @@ export function MultiVendorFilter({
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="true"
         aria-expanded={open}
-        className="flex w-full items-center justify-between gap-2 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+        className="flex w-full items-center justify-between gap-2 rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium text-foreground outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40"
       >
         <span className="flex min-w-0 items-center gap-1.5 truncate text-left">
           <Truck size={14} className="shrink-0 text-muted-foreground" />
@@ -94,7 +94,7 @@ export function MultiVendorFilter({
                   onChange([])
                 }
               }}
-              className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="rounded p-0.5 text-muted-foreground hover:bg-surface-2 hover:text-foreground"
             >
               <X size={13} />
             </span>
@@ -110,20 +110,20 @@ export function MultiVendorFilter({
           }`}
           style={{ boxShadow: '0 8px 32px 0 rgba(0,0,0,0.18)' }}
         >
-          <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-border bg-muted px-3 py-2">
+          <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-border bg-surface-2 px-3 py-2">
             <span className="text-xs font-semibold text-muted-foreground">Filter Vendors</span>
             <div className="flex gap-1">
               <button
                 type="button"
                 onClick={() => onChange([...vendors])}
-                className="rounded border border-border px-2 py-0.5 text-xs transition-colors hover:bg-accent"
+                className="rounded border border-border px-2 py-0.5 text-xs transition-colors hover:border-brand hover:bg-brand-soft/40"
               >
                 All
               </button>
               <button
                 type="button"
                 onClick={() => onChange([])}
-                className="rounded border border-border px-2 py-0.5 text-xs transition-colors hover:bg-accent"
+                className="rounded border border-border px-2 py-0.5 text-xs transition-colors hover:border-brand hover:bg-brand-soft/40"
               >
                 None
               </button>
@@ -135,7 +135,7 @@ export function MultiVendorFilter({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search vendors…"
-              className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+              className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs outline-none focus:border-brand focus:ring-1 focus:ring-brand/40"
             />
           </div>
 
@@ -146,14 +146,14 @@ export function MultiVendorFilter({
               filtered.map((vendor) => (
                 <label
                   key={vendor}
-                  className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-xs transition-colors hover:bg-accent/30"
+                  className="flex cursor-pointer items-center gap-2 rounded-md border border-transparent px-2 py-1.5 text-xs font-medium transition hover:border-brand-line hover:bg-brand-soft/40"
                 >
                   <input
                     type="checkbox"
                     aria-label={vendor}
                     checked={selectedSet.has(vendor)}
                     onChange={() => toggle(vendor)}
-                    className="h-3 w-3 rounded border border-border accent-accent focus:ring-1 focus:ring-accent"
+                    className="h-3.5 w-3.5 rounded border border-border accent-brand-2 focus:ring-1 focus:ring-brand/40"
                   />
                   <span className="truncate" title={vendor}>
                     {vendor}

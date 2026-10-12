@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FormField } from '@/components/shared/form-field';
-import { AlertCircle } from 'lucide-react';
+import { Banner } from '@/components/shared/banner';
 
 interface Role { id: string; name: string; }
 interface Organization { id: string; name: string; }
@@ -48,12 +48,7 @@ export default function InvitationForm({ roles, organizations, isSuperAdmin = fa
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {error && (
-        <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-          <AlertCircle size={14} />
-          {error}
-        </div>
-      )}
+      {error && <Banner tone="danger">{error}</Banner>}
       <FormField label="Email" htmlFor="inv-email" required>
         <Input id="inv-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
       </FormField>

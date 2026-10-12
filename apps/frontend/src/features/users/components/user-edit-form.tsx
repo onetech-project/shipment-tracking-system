@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FormField } from '@/components/shared/form-field';
-import { AlertCircle } from 'lucide-react';
+import { Banner } from '@/components/shared/banner';
 
 interface UserProfile {
   name?: string;
@@ -46,12 +46,7 @@ export default function UserEditForm({ initial, onSubmit, onCancel }: UserEditFo
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {error && (
-        <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-          <AlertCircle size={14} />
-          {error}
-        </div>
-      )}
+      {error && <Banner tone="danger">{error}</Banner>}
       <FormField label="Full Name" htmlFor="edit-name">
         <Input id="edit-name" value={profile.name ?? ''} onChange={(e) => set('name', e.target.value)} maxLength={255} />
       </FormField>
