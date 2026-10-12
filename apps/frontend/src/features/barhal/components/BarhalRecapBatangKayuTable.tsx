@@ -1,5 +1,6 @@
 'use client'
 
+import { TableWrap, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { BarhalRecapBatangKayuItem } from '../types'
 import { formatDate } from '../utils/dateFormat'
 
@@ -8,44 +9,45 @@ interface BarhalRecapBatangKayuTableProps {
 }
 
 const fmt = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 1 })
+const COLUMN_COUNT = 7
 
 export function BarhalRecapBatangKayuTable({ data }: BarhalRecapBatangKayuTableProps) {
   return (
-    <div className="overflow-x-auto rounded-lg border bg-card">
-      <table className="w-full text-sm">
-        <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-          <tr>
-            <th className="px-3 py-2 font-medium">Date</th>
-            <th className="px-3 py-2 font-medium">Total Koli</th>
-            <th className="px-3 py-2 font-medium">Total P</th>
-            <th className="px-3 py-2 font-medium">Total L</th>
-            <th className="px-3 py-2 font-medium">Total T</th>
-            <th className="px-3 py-2 font-medium">Total Volume</th>
-            <th className="px-3 py-2 font-medium">Total Batang Kayu</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
+    <TableWrap>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Date</TableHead>
+            <TableHead num>Total Koli</TableHead>
+            <TableHead num>Total P</TableHead>
+            <TableHead num>Total L</TableHead>
+            <TableHead num>Total T</TableHead>
+            <TableHead num>Total Volume</TableHead>
+            <TableHead num>Total Batang Kayu</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {data.length === 0 ? (
-            <tr>
-              <td colSpan={7} className="px-3 py-6 text-center text-muted-foreground">
+            <TableRow>
+              <TableCell colSpan={COLUMN_COUNT} className="py-6 text-center text-muted-foreground">
                 No data for this range.
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ) : (
             data.map((row) => (
-              <tr key={row.date} className="hover:bg-accent/30">
-                <td className="px-3 py-2">{formatDate(row.date)}</td>
-                <td className="px-3 py-2">{row.totalKoli}</td>
-                <td className="px-3 py-2">{fmt.format(row.totalP)}</td>
-                <td className="px-3 py-2">{fmt.format(row.totalL)}</td>
-                <td className="px-3 py-2">{fmt.format(row.totalT)}</td>
-                <td className="px-3 py-2">{fmt.format(row.totalVolume)}</td>
-                <td className="px-3 py-2">{row.totalBatangKayu}</td>
-              </tr>
+              <TableRow key={row.date}>
+                <TableCell>{formatDate(row.date)}</TableCell>
+                <TableCell num className="tabular">{row.totalKoli}</TableCell>
+                <TableCell num className="tabular">{fmt.format(row.totalP)}</TableCell>
+                <TableCell num className="tabular">{fmt.format(row.totalL)}</TableCell>
+                <TableCell num className="tabular">{fmt.format(row.totalT)}</TableCell>
+                <TableCell num className="tabular">{fmt.format(row.totalVolume)}</TableCell>
+                <TableCell num className="tabular">{row.totalBatangKayu}</TableCell>
+              </TableRow>
             ))
           )}
-        </tbody>
-      </table>
-    </div>
+        </TableBody>
+      </Table>
+    </TableWrap>
   )
 }

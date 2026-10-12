@@ -1,13 +1,16 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { SubTabs } from '@/components/ui/segmented'
+import { Button } from '@/components/ui/button'
+import { TableWrap, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { useBarhalToDetail } from '../hooks/useBarhalDashboard'
 import { BarhalToDetailTab } from '../types'
 import { formatDate } from '../utils/dateFormat'
 
-const TABS: { key: BarhalToDetailTab; label: string }[] = [
-  { key: 'in-koli', label: 'TO dalam koli' },
-  { key: 'not-in-koli', label: 'TO belum masuk koli' },
+const TABS: { value: BarhalToDetailTab; label: string }[] = [
+  { value: 'in-koli', label: 'TO dalam koli' },
+  { value: 'not-in-koli', label: 'TO belum masuk koli' },
 ]
 
 const PAGE_SIZE = 25
@@ -47,96 +50,83 @@ export function BarhalToDetailTable({ startDate, endDate, origin, dest }: Barhal
 
   return (
     <div className="space-y-2">
-      <div className="flex gap-1 border-b border-border">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key)}
-            className={`px-4 py-2 text-sm font-medium ${
-              tab === t.key
-                ? 'border-b-2 border-primary text-primary'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <SubTabs aria-label="Filter TO" value={tab} onValueChange={setTab} items={TABS} />
 
-      <div className="overflow-x-auto rounded-lg border bg-card">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-            <tr>
-              <th className="px-3 py-2 font-medium">Tanggal</th>
-              <th className="px-3 py-2 font-medium">Origin</th>
-              <th className="px-3 py-2 font-medium">Destinasi</th>
-              <th className="px-3 py-2 font-medium">No. TO</th>
-              {inKoli && <th className="px-3 py-2 font-medium">No. Koli</th>}
-              <th className="px-3 py-2 font-medium">Gross Weight</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
+      <TableWrap>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Tanggal</TableHead>
+              <TableHead>Origin</TableHead>
+              <TableHead>Destinasi</TableHead>
+              <TableHead>No. TO</TableHead>
+              {inKoli && <TableHead>No. Koli</TableHead>}
+              <TableHead num>Gross Weight</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {isError ? (
-              <tr>
-                <td colSpan={colSpan} className="px-3 py-6 text-center text-muted-foreground">
+              <TableRow>
+                <TableCell colSpan={colSpan} className="py-6 text-center text-muted-foreground">
                   Failed to load.{' '}
                   <button type="button" onClick={() => refetch()} className="text-primary underline">
                     Retry
                   </button>
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ) : isLoading ? (
-              <tr>
-                <td colSpan={colSpan} className="px-3 py-6 text-center text-muted-foreground">
+              <TableRow>
+                <TableCell colSpan={colSpan} className="py-6 text-center text-muted-foreground">
                   Loading…
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ) : (data?.data.length ?? 0) === 0 ? (
-              <tr>
-                <td colSpan={colSpan} className="px-3 py-6 text-center text-muted-foreground">
+              <TableRow>
+                <TableCell colSpan={colSpan} className="py-6 text-center text-muted-foreground">
                   No data for this range.
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ) : (
               data!.data.map((row) => (
-                <tr key={row.toNumber} className="hover:bg-accent/30">
-                  <td className="px-3 py-2">{formatDate(row.date)}</td>
-                  <td className="px-3 py-2">{row.originName}</td>
-                  <td className="px-3 py-2">{row.destName}</td>
-                  <td className="px-3 py-2">{row.toNumber}</td>
-                  {inKoli && <td className="px-3 py-2">{row.koliNumber ?? '—'}</td>}
-                  <td className="px-3 py-2">
+                <TableRow key={row.toNumber}>
+                  <TableCell>{formatDate(row.date)}</TableCell>
+                  <TableCell>{row.originName}</TableCell>
+                  <TableCell>{row.destName}</TableCell>
+                  <TableCell>{row.toNumber}</TableCell>
+                  {inKoli && <TableCell>{row.koliNumber ?? '—'}</TableCell>}
+                  <TableCell num className="tabular">
                     {row.grossWeight != null ? `${fmt.format(row.grossWeight)} kg` : '—'}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))
             )}
-          </tbody>
-        </table>
-      </div>
+          </TableBody>
+        </Table>
+      </TableWrap>
 
       <div className="flex items-center justify-between text-sm text-muted-foreground">
         <span>
           {total} TO · Halaman {page} dari {totalPages}
         </span>
         <div className="flex gap-2">
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}
-            className="rounded-md border border-border px-3 py-1 transition hover:bg-muted disabled:opacity-50"
           >
             Prev
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={() => setPage((p) => p + 1)}
             disabled={page >= totalPages}
-            className="rounded-md border border-border px-3 py-1 transition hover:bg-muted disabled:opacity-50"
           >
             Next
-          </button>
+          </Button>
         </div>
       </div>
     </div>

@@ -1,6 +1,8 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { FilterBar } from '@/components/shared/filter-bar'
 import { useAvailableTos, useAttachTos, useBarhalStations } from '../../hooks/useBarhal'
 import { ToMultiSelect } from '../ToMultiSelect'
 import { BarhalKoli } from '../../types'
@@ -92,7 +94,7 @@ export function Step2SelectTos({ koli, onAttached }: Step2SelectTosProps) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-4 gap-3">
+      <FilterBar className="mb-0">
         <input
           type="text"
           placeholder="Cari No. TO / LT / AWB…"
@@ -130,7 +132,7 @@ export function Step2SelectTos({ koli, onAttached }: Step2SelectTosProps) {
             </option>
           ))}
         </select>
-      </div>
+      </FilterBar>
 
       <ToMultiSelect
         options={toOptions}
@@ -142,22 +144,17 @@ export function Step2SelectTos({ koli, onAttached }: Step2SelectTosProps) {
       />
 
       <div className="flex flex-wrap items-start gap-3 text-sm">
-        <span className="shrink-0 rounded-full bg-muted px-3 py-1">Dipilih: {selected.length} TO</span>
-        <span className="shrink-0 rounded-full bg-muted px-3 py-1">Total berat: {fmt.format(totalWeight)} kg</span>
+        <span className="shrink-0 rounded-full bg-muted px-3 py-1 tabular">Dipilih: {selected.length} TO</span>
+        <span className="shrink-0 rounded-full bg-muted px-3 py-1 tabular">Total berat: {fmt.format(totalWeight)} kg</span>
         {selected.length > 0 && <SelectedToChips toNumbers={selected} />}
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p className="text-sm text-bad">{error}</p>}
 
       <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={attachTos.isPending}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
-        >
+        <Button type="button" onClick={handleSubmit} disabled={attachTos.isPending}>
           {attachTos.isPending ? 'Menyimpan…' : 'Lanjut'}
-        </button>
+        </Button>
       </div>
     </div>
   )

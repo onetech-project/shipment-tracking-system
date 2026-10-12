@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { Button } from '@/components/ui/button'
 import { useBarhalList, useBarhalStations, useCreateKoliShell } from '../../hooks/useBarhal'
 import { BarhalKoli } from '../../types'
 import { formatDate } from '../../utils/dateFormat'
@@ -84,13 +85,9 @@ export function Step1CreateKoli({ koli: existingKoli, onCreated }: Step1CreateKo
           Tanggal, origin, dan destinasi tidak dapat diubah setelah Koli dibuat.
         </p>
         <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={() => onCreated(existingKoli)}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90"
-          >
+          <Button type="button" onClick={() => onCreated(existingKoli)}>
             Lanjut
-          </button>
+          </Button>
         </div>
       </div>
     )
@@ -164,17 +161,12 @@ export function Step1CreateKoli({ koli: existingKoli, onCreated }: Step1CreateKo
         </div>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p className="text-sm text-bad">{error}</p>}
 
       <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={!canSubmit}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
-        >
+        <Button type="button" onClick={handleSubmit} disabled={!canSubmit}>
           {createShell.isPending ? 'Membuat…' : 'Buat Koli'}
-        </button>
+        </Button>
       </div>
     </div>
   )

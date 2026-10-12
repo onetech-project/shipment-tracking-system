@@ -1,5 +1,6 @@
 'use client'
 
+import { Banner } from '@/components/shared/banner'
 import { AvailableTo } from '../types'
 import { formatDate } from '../utils/dateFormat'
 
@@ -77,14 +78,10 @@ export function ToMultiSelect({ options, selected, onChange, isLoading, unmatche
         </p>
       )}
       {!isLoading && !!unmatchedRouteCount && (
-        <div className="border-t border-border px-3 py-2 text-center text-xs space-y-1">
-          <p className="text-amber-600">
-            {unmatchedRouteCount} TO disembunyikan — rutenya belum terdaftar di master air_shipments_data.
-          </p>
-          <p className="text-muted-foreground">
-            Jumlah ini mencakup semua rute dan tidak mengikuti filter Origin/Destinasi.
-          </p>
-        </div>
+        <Banner tone="warn" className="mb-0 rounded-none border-x-0 border-b-0">
+          <p>{unmatchedRouteCount} TO disembunyikan — rutenya belum terdaftar di master air_shipments_data.</p>
+          <p className="text-faint">Jumlah ini mencakup semua rute dan tidak mengikuti filter Origin/Destinasi.</p>
+        </Banner>
       )}
     </div>
   )

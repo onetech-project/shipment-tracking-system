@@ -2,6 +2,8 @@
 
 import { Fragment, useEffect, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import { TableWrap, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { BarhalRecapPerTanggalItem, BarhalRecapPerRuteItem, BarhalRecapStatus } from '../types'
 import { BarhalDashboardParams, useBarhalRecapDrilldown } from '../hooks/useBarhalDashboard'
 import { formatDate } from '../utils/dateFormat'
@@ -37,30 +39,26 @@ function groupKeyAndLabel(row: RecapItem): { key: string; groupLabel: string } {
 function RecapStatusBadge({ status }: { status: BarhalRecapStatus }) {
   if (status === 'none') return <span className="text-muted-foreground">–</span>
   return (
-    <span
-      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-        status === 'completed' ? 'bg-green-500/15 text-green-600' : 'bg-amber-500/15 text-amber-600'
-      }`}
-    >
+    <Badge variant={status === 'completed' ? 'active' : 'pending'}>
       {status === 'completed' ? 'Completed' : 'Incomplete'}
-    </span>
+    </Badge>
   )
 }
 
 function RecapMetricCells({ row }: { row: RecapMetricFields }) {
   return (
     <>
-      <td className="px-3 py-2">{row.totalTo}</td>
-      <td className="px-3 py-2">{row.totalKoli}</td>
-      <td className="px-3 py-2">{fmt.format(row.weightBefore)} kg</td>
-      <td className="px-3 py-2">{fmt.format(row.weightAfter)} kg</td>
-      <td className="px-3 py-2">{fmt.format(row.chwt)} kg</td>
-      <td className="px-3 py-2">{fmt.format(row.variance)} kg</td>
-      <td className="px-3 py-2">{fmt.format(row.variancePercent)}%</td>
-      <td className="px-3 py-2">{idr.format(row.addRevenue)}</td>
-      <td className="px-3 py-2">
+      <TableCell num className="tabular">{row.totalTo}</TableCell>
+      <TableCell num className="tabular">{row.totalKoli}</TableCell>
+      <TableCell num className="tabular">{fmt.format(row.weightBefore)} kg</TableCell>
+      <TableCell num className="tabular">{fmt.format(row.weightAfter)} kg</TableCell>
+      <TableCell num className="tabular">{fmt.format(row.chwt)} kg</TableCell>
+      <TableCell num className="tabular">{fmt.format(row.variance)} kg</TableCell>
+      <TableCell num className="tabular">{fmt.format(row.variancePercent)}%</TableCell>
+      <TableCell num className="tabular">{idr.format(row.addRevenue)}</TableCell>
+      <TableCell>
         <RecapStatusBadge status={row.status} />
-      </td>
+      </TableCell>
     </>
   )
 }
@@ -106,33 +104,33 @@ function DrilldownBody({
   if (!data || data.length === 0) return <p className="text-xs text-muted-foreground">Tidak ada aktivitas.</p>
 
   return (
-    <table className="w-full text-xs">
-      <thead className="text-left uppercase text-muted-foreground">
-        <tr>
-          <th className="px-2 py-1 font-medium">{groupBy === 'date' ? 'Rute' : 'Tanggal'}</th>
-          <th className="px-2 py-1 font-medium">Total TO</th>
-          <th className="px-2 py-1 font-medium">Total Koli</th>
-          <th className="px-2 py-1 font-medium">Weight Before</th>
-          <th className="px-2 py-1 font-medium">Weight After</th>
-          <th className="px-2 py-1 font-medium">chWt Airlines</th>
-          <th className="px-2 py-1 font-medium">Variance</th>
-          <th className="px-2 py-1 font-medium">Variance %</th>
-          <th className="px-2 py-1 font-medium">Add. Revenue</th>
-          <th className="px-2 py-1 font-medium">Status</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-border">
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>{groupBy === 'date' ? 'Rute' : 'Tanggal'}</TableHead>
+          <TableHead num>Total TO</TableHead>
+          <TableHead num>Total Koli</TableHead>
+          <TableHead num>Weight Before</TableHead>
+          <TableHead num>Weight After</TableHead>
+          <TableHead num>chWt Airlines</TableHead>
+          <TableHead num>Variance</TableHead>
+          <TableHead num>Variance %</TableHead>
+          <TableHead num>Add. Revenue</TableHead>
+          <TableHead>Status</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
         {(data as RecapItem[]).map((child) => {
           const { key, groupLabel } = groupKeyAndLabel(child)
           return (
-            <tr key={key}>
-              <td className="px-2 py-1">{groupLabel}</td>
+            <TableRow key={key}>
+              <TableCell>{groupLabel}</TableCell>
               <RecapMetricCells row={child} />
-            </tr>
+            </TableRow>
           )
         })}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   )
 }
 
@@ -155,70 +153,69 @@ export function BarhalRecapToTable({ rows, groupColumnLabel, groupBy, filters }:
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border bg-card">
-      <table className="w-full text-sm">
-        <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-          <tr>
-            <th className="px-3 py-2 font-medium">{groupColumnLabel}</th>
-            <th className="px-3 py-2 font-medium">Total TO</th>
-            <th className="px-3 py-2 font-medium">Total Koli</th>
-            <th className="px-3 py-2 font-medium">Weight Before</th>
-            <th className="px-3 py-2 font-medium">Weight After</th>
-            <th className="px-3 py-2 font-medium">chWt Airlines</th>
-            <th className="px-3 py-2 font-medium">Variance</th>
-            <th className="px-3 py-2 font-medium">Variance %</th>
-            <th className="px-3 py-2 font-medium">Add. Revenue</th>
-            <th className="px-3 py-2 font-medium">Status</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
+    <TableWrap>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{groupColumnLabel}</TableHead>
+            <TableHead num>Total TO</TableHead>
+            <TableHead num>Total Koli</TableHead>
+            <TableHead num>Weight Before</TableHead>
+            <TableHead num>Weight After</TableHead>
+            <TableHead num>chWt Airlines</TableHead>
+            <TableHead num>Variance</TableHead>
+            <TableHead num>Variance %</TableHead>
+            <TableHead num>Add. Revenue</TableHead>
+            <TableHead>Status</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rows.length === 0 ? (
-            <tr>
-              <td colSpan={COLUMN_COUNT} className="px-3 py-6 text-center text-muted-foreground">
+            <TableRow>
+              <TableCell colSpan={COLUMN_COUNT} className="py-6 text-center text-muted-foreground">
                 No data for this range.
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ) : (
             rows.map((row) => {
               const { key, groupLabel } = groupKeyAndLabel(row)
               const isOpen = expanded.has(key)
+              const isEmptyRow = row.totalTo === 0 && row.totalKoli === 0
               return (
                 <Fragment key={key}>
-                  <tr
-                    className={`hover:bg-accent/30 ${
-                      row.totalTo === 0 && row.totalKoli === 0 ? 'text-muted-foreground' : ''
-                    }`}
-                  >
-                    <td className="px-3 py-2">
+                  <TableRow className={isEmptyRow ? 'text-muted-foreground' : ''}>
+                    <TableCell>
                       <button
                         type="button"
                         onClick={() => toggle(key)}
                         aria-expanded={isOpen}
-                        className="flex items-center gap-1.5 hover:underline"
+                        className="group flex items-center gap-1.5 hover:underline"
                       >
-                        {isOpen ? (
-                          <ChevronDown className="h-3.5 w-3.5 shrink-0" />
-                        ) : (
-                          <ChevronRight className="h-3.5 w-3.5 shrink-0" />
-                        )}
+                        <span className="text-faint group-hover:text-brand-2">
+                          {isOpen ? (
+                            <ChevronDown className="h-3.5 w-3.5 shrink-0" />
+                          ) : (
+                            <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                          )}
+                        </span>
                         {groupLabel}
                       </button>
-                    </td>
+                    </TableCell>
                     <RecapMetricCells row={row} />
-                  </tr>
+                  </TableRow>
                   {isOpen && (
-                    <tr>
-                      <td colSpan={COLUMN_COUNT} className="bg-muted/20 px-3 py-3">
+                    <TableRow>
+                      <TableCell colSpan={COLUMN_COUNT} className="bg-surface-2 py-3">
                         <DrilldownBody row={row} groupBy={groupBy} filters={filters} />
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   )}
                 </Fragment>
               )
             })
           )}
-        </tbody>
-      </table>
-    </div>
+        </TableBody>
+      </Table>
+    </TableWrap>
   )
 }

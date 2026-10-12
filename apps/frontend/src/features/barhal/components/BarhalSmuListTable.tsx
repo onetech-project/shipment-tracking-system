@@ -1,5 +1,7 @@
 'use client'
 
+import { Button } from '@/components/ui/button'
+import { TableWrap, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { useUnassignSmu } from '../hooks/useBarhal'
 import { BarhalSmuListItem } from '../types'
 import { formatDate, formatDateTime } from '../utils/dateFormat'
@@ -27,74 +29,71 @@ function SmuGroupRow({ item, onUnassigned }: { item: BarhalSmuListItem; onUnassi
   }
 
   return (
-    <tr className="hover:bg-accent/30">
-      <td className="px-3 py-2">{formatDate(item.date)}</td>
-      <td className="px-3 py-2">{item.originName}</td>
-      <td className="px-3 py-2">{item.destName}</td>
-      <td className="px-3 py-2">{item.totalKoli}</td>
-      <td className="px-3 py-2">{item.totalTo}</td>
-      <td className="px-3 py-2 font-medium">{item.smuNumber}</td>
-      <td className="px-3 py-2">{item.airlines || '-'}</td>
-      <td className="px-3 py-2">{item.flightNo || '-'}</td>
-      <td className="px-3 py-2">
+    <TableRow>
+      <TableCell>{formatDate(item.date)}</TableCell>
+      <TableCell>{item.originName}</TableCell>
+      <TableCell>{item.destName}</TableCell>
+      <TableCell num className="tabular">{item.totalKoli}</TableCell>
+      <TableCell num className="tabular">{item.totalTo}</TableCell>
+      <TableCell className="font-medium">{item.smuNumber}</TableCell>
+      <TableCell>{item.airlines || '-'}</TableCell>
+      <TableCell>{item.flightNo || '-'}</TableCell>
+      <TableCell>
         {item.std ? `${formatDateTime(item.std)} / ${formatDateTime(item.sta)}` : '—'}
-      </td>
-      <td className="px-3 py-2">
-        {item.chwt != null ? `${fmt.format(item.chwt)} kg` : (
-          <span className="text-xs text-destructive">SMU Rate belum diupdate</span>
+      </TableCell>
+      <TableCell num className="tabular">
+        {item.chwt != null ? (
+          `${fmt.format(item.chwt)} kg`
+        ) : (
+          <span className="text-xs text-bad">SMU Rate belum diupdate</span>
         )}
-      </td>
-      <td className="px-3 py-2">
-        <button
-          type="button"
-          onClick={handleUnassign}
-          disabled={unassignSmu.isPending}
-          className="rounded-md border border-destructive/50 px-3 py-1 text-xs font-medium text-destructive transition hover:bg-destructive/10 disabled:opacity-50"
-        >
+      </TableCell>
+      <TableCell>
+        <Button type="button" variant="danger-soft" size="sm" onClick={handleUnassign} disabled={unassignSmu.isPending}>
           {unassignSmu.isPending ? 'Menghapus…' : 'Hapus'}
-        </button>
-      </td>
-    </tr>
+        </Button>
+      </TableCell>
+    </TableRow>
   )
 }
 
 export function BarhalSmuListTable({ data, isLoading, onUnassigned }: BarhalSmuListTableProps) {
   return (
-    <div className="overflow-x-auto rounded-lg border bg-card">
-      <table className="w-full text-sm">
-        <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-          <tr>
-            <th className="px-3 py-2 font-medium">Date</th>
-            <th className="px-3 py-2 font-medium">Origin</th>
-            <th className="px-3 py-2 font-medium">Destination</th>
-            <th className="px-3 py-2 font-medium">Total Koli</th>
-            <th className="px-3 py-2 font-medium">Total TO</th>
-            <th className="px-3 py-2 font-medium">No. SMU</th>
-            <th className="px-3 py-2 font-medium">Airlines</th>
-            <th className="px-3 py-2 font-medium">Flight No</th>
-            <th className="px-3 py-2 font-medium">STD / STA</th>
-            <th className="px-3 py-2 font-medium">chWt Airlines</th>
-            <th className="px-3 py-2 font-medium">Aksi</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
+    <TableWrap>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Date</TableHead>
+            <TableHead>Origin</TableHead>
+            <TableHead>Destination</TableHead>
+            <TableHead num>Total Koli</TableHead>
+            <TableHead num>Total TO</TableHead>
+            <TableHead>No. SMU</TableHead>
+            <TableHead>Airlines</TableHead>
+            <TableHead>Flight No</TableHead>
+            <TableHead>STD / STA</TableHead>
+            <TableHead num>chWt Airlines</TableHead>
+            <TableHead>Aksi</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {isLoading ? (
-            <tr>
-              <td colSpan={COLUMN_COUNT} className="px-3 py-6 text-center text-muted-foreground">
+            <TableRow>
+              <TableCell colSpan={COLUMN_COUNT} className="py-6 text-center text-muted-foreground">
                 Loading…
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ) : data.length === 0 ? (
-            <tr>
-              <td colSpan={COLUMN_COUNT} className="px-3 py-6 text-center text-muted-foreground">
+            <TableRow>
+              <TableCell colSpan={COLUMN_COUNT} className="py-6 text-center text-muted-foreground">
                 No SMU found.
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ) : (
             data.map((item) => <SmuGroupRow key={item.smuNumber} item={item} onUnassigned={onUnassigned} />)
           )}
-        </tbody>
-      </table>
-    </div>
+        </TableBody>
+      </Table>
+    </TableWrap>
   )
 }

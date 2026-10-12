@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { TableWrap, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { useUpdateSmu } from '../hooks/useBarhal'
 import { BarhalKoli } from '../types'
 import { formatDate, formatDateTime, toDateTimeLocalInput } from '../utils/dateFormat'
@@ -10,6 +12,8 @@ interface BarhalSmuInlineTableProps {
   isLoading?: boolean
   onSaved: () => void
 }
+
+const COLUMN_COUNT = 9
 
 function SmuRow({ koli, onSaved }: { koli: BarhalKoli; onSaved: () => void }) {
   const [editing, setEditing] = useState(false)
@@ -39,82 +43,83 @@ function SmuRow({ koli, onSaved }: { koli: BarhalKoli; onSaved: () => void }) {
   }
 
   return (
-    <tr className="hover:bg-accent/30">
-      <td className="px-3 py-2">{formatDate(koli.koli_date)}</td>
-      <td className="px-3 py-2">{koli.dest_name}</td>
-      <td className="px-3 py-2 font-medium">{koli.koli_number}</td>
-      <td className="px-3 py-2">
+    <TableRow>
+      <TableCell>{formatDate(koli.koli_date)}</TableCell>
+      <TableCell>{koli.dest_name}</TableCell>
+      <TableCell className="font-medium">{koli.koli_number}</TableCell>
+      <TableCell>
         {editing ? <input value={airlines} onChange={(e) => setAirlines(e.target.value)} className={inputClass} /> : koli.airlines || '-'}
-      </td>
-      <td className="px-3 py-2">
+      </TableCell>
+      <TableCell>
         {editing ? <input value={flightNo} onChange={(e) => setFlightNo(e.target.value)} className={inputClass} /> : koli.flight_no || '-'}
-      </td>
-      <td className="px-3 py-2">
+      </TableCell>
+      <TableCell>
         {editing ? (
           <input type="datetime-local" value={std} onChange={(e) => setStd(e.target.value)} className={inputClass} />
         ) : (
           formatDateTime(koli.std)
         )}
-      </td>
-      <td className="px-3 py-2">
+      </TableCell>
+      <TableCell>
         {editing ? (
           <input type="datetime-local" value={sta} onChange={(e) => setSta(e.target.value)} className={inputClass} />
         ) : (
           formatDateTime(koli.sta)
         )}
-      </td>
-      <td className="px-3 py-2">
+      </TableCell>
+      <TableCell>
         {editing ? <input value={smuNumber} onChange={(e) => setSmuNumber(e.target.value)} className={inputClass} /> : koli.smu_number || '-'}
-      </td>
-      <td className="px-3 py-2">
-        <button
+      </TableCell>
+      <TableCell>
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={() => (editing ? handleSave() : setEditing(true))}
           disabled={updateSmu.isPending}
-          className="rounded-md border border-border px-3 py-1 text-xs font-medium transition hover:bg-accent/50 disabled:opacity-50"
         >
           {updateSmu.isPending ? 'Menyimpan…' : editing ? 'Save' : 'Edit'}
-        </button>
-      </td>
-    </tr>
+        </Button>
+      </TableCell>
+    </TableRow>
   )
 }
 
 export function BarhalSmuInlineTable({ data, isLoading, onSaved }: BarhalSmuInlineTableProps) {
   return (
-    <div className="overflow-x-auto rounded-lg border bg-card">
-      <table className="w-full text-sm">
-        <thead className="bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-          <tr>
-            <th className="px-3 py-2 font-medium">Date</th>
-            <th className="px-3 py-2 font-medium">Destination</th>
-            <th className="px-3 py-2 font-medium">No. Koli</th>
-            <th className="px-3 py-2 font-medium">Airlines</th>
-            <th className="px-3 py-2 font-medium">Flight No</th>
-            <th className="px-3 py-2 font-medium">STD</th>
-            <th className="px-3 py-2 font-medium">STA</th>
-            <th className="px-3 py-2 font-medium">SMU</th>
-            <th className="px-3 py-2 font-medium">Action</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
+    <TableWrap>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Date</TableHead>
+            <TableHead>Destination</TableHead>
+            <TableHead>No. Koli</TableHead>
+            <TableHead>Airlines</TableHead>
+            <TableHead>Flight No</TableHead>
+            <TableHead>STD</TableHead>
+            <TableHead>STA</TableHead>
+            <TableHead>SMU</TableHead>
+            <TableHead>Action</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {isLoading ? (
-            <tr>
-              <td colSpan={9} className="px-3 py-6 text-center text-muted-foreground">
+            <TableRow>
+              <TableCell colSpan={COLUMN_COUNT} className="py-6 text-center text-muted-foreground">
                 Loading…
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ) : data.length === 0 ? (
-            <tr>
-              <td colSpan={9} className="px-3 py-6 text-center text-muted-foreground">
+            <TableRow>
+              <TableCell colSpan={COLUMN_COUNT} className="py-6 text-center text-muted-foreground">
                 No Koli found.
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ) : (
             data.map((koli) => <SmuRow key={koli.id} koli={koli} onSaved={onSaved} />)
           )}
-        </tbody>
-      </table>
-    </div>
+        </TableBody>
+      </Table>
+    </TableWrap>
   )
 }
