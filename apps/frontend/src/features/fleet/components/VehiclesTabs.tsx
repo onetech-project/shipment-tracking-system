@@ -1,5 +1,7 @@
 'use client'
 
+import { ModeTabs } from '@/components/ui/segmented'
+
 export type VehiclesTab = 'armada' | 'berkas' | 'angsuran'
 
 const TABS: { value: VehiclesTab; label: string }[] = [
@@ -17,22 +19,12 @@ interface Props {
 // three views of the same register, and the spec keeps them that way (§6.3).
 export function VehiclesTabs({ value, onChange }: Props) {
   return (
-    <nav role="tablist" aria-label="Tampilan" className="mb-4 flex gap-1 border-b">
-      {TABS.map((tab) => (
-        <button
-          key={tab.value}
-          role="tab"
-          aria-selected={value === tab.value}
-          onClick={() => onChange(tab.value)}
-          className={`-mb-px border-b-2 px-4 py-2 text-sm transition-colors ${
-            value === tab.value
-              ? 'border-primary font-medium text-foreground'
-              : 'border-transparent text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          {tab.label}
-        </button>
-      ))}
-    </nav>
+    <ModeTabs
+      value={value}
+      onValueChange={onChange}
+      items={TABS}
+      aria-label="Tampilan"
+      className="mb-4"
+    />
   )
 }

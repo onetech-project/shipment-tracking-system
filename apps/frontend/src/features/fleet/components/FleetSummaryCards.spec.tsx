@@ -33,14 +33,17 @@ describe('FleetSummaryCards', () => {
     expect(within(getTile(/sisa kewajiban leasing/i)).getByText(/177\.500\.000/)).toBeInTheDocument()
   })
 
-  it('gives the already-expired tile the destructive tone and the expiring-soon tile the warning tone', () => {
+  it('gives the already-expired tile the danger tone and the expiring-soon tile the warning tone', () => {
     render(<FleetSummaryCards summary={SUMMARY} isLoading={false} />)
 
     // Colour is the operator's fast read: red for papers already lapsed, amber for papers still
-    // running out. Scoped to each tile so a tone swap between these two is what fails, not a
-    // brittle match on the full Tailwind string (spacing/shade utilities are free to change).
-    expect(getTile(/dokumen kedaluwarsa/i).className).toMatch(/destructive/)
-    expect(getTile(/jatuh tempo/i).className).toMatch(/amber/)
+    // running out. Scoped to each tile's own icon so a tone swap between these two is what
+    // fails, not a brittle match on the full Tailwind string (spacing/shade utilities are free
+    // to change).
+    expect(within(getTile(/dokumen kedaluwarsa/i)).getByTestId('icon-square').className).toMatch(
+      /bad/,
+    )
+    expect(within(getTile(/jatuh tempo/i)).getByTestId('icon-square').className).toMatch(/warn/)
   })
 
   // A figure of zero is a real answer; a skeleton is what "we do not know yet" looks like.

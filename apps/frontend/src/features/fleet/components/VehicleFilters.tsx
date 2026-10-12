@@ -2,6 +2,7 @@
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { FilterBar } from '@/components/shared/filter-bar'
 import { FleetMasterRow, FleetSeverity, FleetVehicleFilters } from '../types'
 import { SEVERITY_FILTER_OPTIONS } from '../utils/severity'
 
@@ -13,7 +14,10 @@ interface VehicleFiltersProps {
   statusOptions: FleetMasterRow[]
 }
 
-const SELECT_CLASS = 'h-9 w-full rounded-md border border-input bg-background px-3 text-sm'
+// Matches Input's own styling (see BarhalFilters.tsx:18) so every field across the fleet area —
+// text, date, and these hand-rolled selects alike — reads as one field style, not several.
+const fieldClass =
+  'h-8 w-full rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium text-foreground outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40'
 
 export function VehicleFilters({
   value,
@@ -36,7 +40,7 @@ export function VehicleFilters({
   )
 
   return (
-    <div className="mb-4 flex flex-col gap-3 rounded-md border bg-muted/20 p-3 md:flex-row md:flex-wrap md:items-end">
+    <FilterBar>
       <div className="flex min-w-[220px] flex-1 flex-col gap-1.5">
         <label className="text-sm font-medium" htmlFor="vehicle-q">
           Cari armada
@@ -55,7 +59,7 @@ export function VehicleFilters({
         </label>
         <select
           id="vehicle-severity"
-          className={SELECT_CLASS}
+          className={fieldClass}
           value={value.severity ?? ''}
           // undefined, not '': an empty string would travel to the backend as a filter value and
           // the DTO would reject it.
@@ -77,7 +81,7 @@ export function VehicleFilters({
         </label>
         <select
           id="vehicle-kepemilikan"
-          className={SELECT_CLASS}
+          className={fieldClass}
           value={value.kepemilikanId ?? ''}
           onChange={(e) => patch({ kepemilikanId: e.target.value || undefined })}
         >
@@ -96,7 +100,7 @@ export function VehicleFilters({
         </label>
         <select
           id="vehicle-pool"
-          className={SELECT_CLASS}
+          className={fieldClass}
           value={value.poolId ?? ''}
           onChange={(e) => patch({ poolId: e.target.value || undefined })}
         >
@@ -115,7 +119,7 @@ export function VehicleFilters({
         </label>
         <select
           id="vehicle-status"
-          className={SELECT_CLASS}
+          className={fieldClass}
           value={value.statusId ?? ''}
           onChange={(e) => patch({ statusId: e.target.value || undefined })}
         >
@@ -132,7 +136,7 @@ export function VehicleFilters({
         <input
           id="vehicle-archived"
           type="checkbox"
-          className="h-4 w-4"
+          className="h-4 w-4 accent-brand-2"
           checked={value.includeArchived ?? false}
           onChange={(e) => patch({ includeArchived: e.target.checked || undefined })}
         />
@@ -144,6 +148,6 @@ export function VehicleFilters({
           Reset filter
         </Button>
       )}
-    </div>
+    </FilterBar>
   )
 }
