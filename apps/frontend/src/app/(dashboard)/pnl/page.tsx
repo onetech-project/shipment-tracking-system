@@ -6,6 +6,7 @@ import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
 import { PageHeader } from '@/components/shared/page-header'
 import { PeriodChip } from '@/components/shared/period-chip'
+import { fieldClass } from '@/components/ui/input'
 import {
   usePnlCycles,
   usePnlSummary,
@@ -216,7 +217,7 @@ function PnlPageContent() {
 
             <div className="flex items-center gap-2">
               <select
-                className="rounded-md border bg-background px-3 py-1.5 text-sm"
+                className={fieldClass}
                 value={dateBasis}
                 onChange={(e) => handleBasisChange(e.target.value as DateBasis)}
                 title="Date field used to assign the billing cycle / filter the range"
@@ -228,7 +229,7 @@ function PnlPageContent() {
 
               {mode === 'cycle' && (
                 <select
-                  className="rounded-md border bg-background px-3 py-1.5 text-sm"
+                  className={fieldClass}
                   value={cycle ?? ''}
                   onChange={(e) => setCycle(e.target.value)}
                 >
@@ -252,14 +253,14 @@ function PnlPageContent() {
                 <div className="flex items-center gap-2">
                   <input
                     type="date"
-                    className="rounded-md border bg-background px-2 py-1.5 text-sm"
+                    className={fieldClass}
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
                   />
                   <span className="text-xs text-muted-foreground">to</span>
                   <input
                     type="date"
-                    className="rounded-md border bg-background px-2 py-1.5 text-sm"
+                    className={fieldClass}
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
                   />

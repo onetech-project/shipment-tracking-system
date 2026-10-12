@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { fieldClass } from '@/components/ui/input'
 import { Banner } from '@/components/shared/banner'
 import { FleetMasterRow, FleetVehicle } from '../types'
 import { uploadErrorMessage } from '../utils/api-error'
@@ -118,7 +119,7 @@ export function BerkasUploadDialog({ open, vehicle, slot, onUpload, onSetUrl, on
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://arsip.example/stnk.pdf"
-            className="mt-1 h-9 w-full rounded-md border bg-background px-3 text-sm"
+            className={`mt-1 w-full ${fieldClass}`}
           />
           <Button variant="outline" className="mt-2" disabled={!url.trim() || busy} onClick={submitUrl}>
             Simpan tautan

@@ -12,6 +12,7 @@ import { FilterBar } from '@/components/shared/filter-bar';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { TableWrap, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
+import { fieldClass } from '@/components/ui/input';
 
 interface Invitation {
   id: string;
@@ -31,9 +32,9 @@ const STATUS_VARIANT: Record<string, StatusVariant> = {
   revoked: 'error',
 };
 
-// Matches Input's own styling (see BarhalFilters.tsx:18 / VehicleFilters.tsx), so this select
-// reads as the same field as every other filter control in the app.
-const selectCls = 'h-8 w-full rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium text-foreground outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40';
+// Matches Input's own styling (the shared fieldClass export), so this select reads as the same
+// field as every other filter control in the app.
+const selectCls = `w-full ${fieldClass}`;
 
 export default function InvitationsSettingsPage() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);

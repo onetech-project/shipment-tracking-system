@@ -4,7 +4,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { apiClient } from '@/shared/api/client'
 import { PageHeader } from '@/components/shared/page-header'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Input, fieldClass } from '@/components/ui/input'
 import { Banner } from '@/components/shared/banner'
 import { EmptyState } from '@/components/shared/empty-state'
 import { FilterBar } from '@/components/shared/filter-bar'
@@ -894,7 +894,7 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
                   id="sla-filter-alert"
                   value={activeAlert ?? 'null'}
                   onChange={(e) => handleAlertDropdownChange(e.target.value)}
-                  className="w-full rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40"
+                  className={`w-full ${fieldClass}`}
                 >
                   {ALERT_OPTIONS.map((option) => (
                     <option key={option.label} value={option.value ?? 'null'}>
@@ -1025,14 +1025,14 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
                       type="date"
                       value={batchDialog.start}
                       onChange={(e) => setBatchDialog((s) => ({ ...s, start: e.target.value }))}
-                      className="mb-2 w-full rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40"
+                      className={`mb-2 w-full ${fieldClass}`}
                     />
                     <label className="mb-1 block text-[10.5px] font-bold uppercase tracking-[0.06em] text-muted-foreground">End</label>
                     <input
                       type="date"
                       value={batchDialog.end}
                       onChange={(e) => setBatchDialog((s) => ({ ...s, end: e.target.value }))}
-                      className="mb-3 w-full rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40"
+                      className={`mb-3 w-full ${fieldClass}`}
                     />
                     <div className="flex justify-end gap-2">
                       <Button type="button" variant="outline" size="sm" onClick={closeBatch} disabled={batchDialog.loading}>

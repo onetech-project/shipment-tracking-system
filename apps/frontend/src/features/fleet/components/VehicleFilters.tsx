@@ -1,7 +1,7 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Input, fieldClass } from '@/components/ui/input'
 import { FilterBar } from '@/components/shared/filter-bar'
 import { FleetMasterRow, FleetSeverity, FleetVehicleFilters } from '../types'
 import { SEVERITY_FILTER_OPTIONS } from '../utils/severity'
@@ -13,11 +13,6 @@ interface VehicleFiltersProps {
   poolOptions: FleetMasterRow[]
   statusOptions: FleetMasterRow[]
 }
-
-// Matches Input's own styling (see BarhalFilters.tsx:18) so every field across the fleet area —
-// text, date, and these hand-rolled selects alike — reads as one field style, not several.
-const fieldClass =
-  'h-8 w-full rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium text-foreground outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40'
 
 export function VehicleFilters({
   value,
@@ -59,7 +54,7 @@ export function VehicleFilters({
         </label>
         <select
           id="vehicle-severity"
-          className={fieldClass}
+          className={`w-full ${fieldClass}`}
           value={value.severity ?? ''}
           // undefined, not '': an empty string would travel to the backend as a filter value and
           // the DTO would reject it.
@@ -81,7 +76,7 @@ export function VehicleFilters({
         </label>
         <select
           id="vehicle-kepemilikan"
-          className={fieldClass}
+          className={`w-full ${fieldClass}`}
           value={value.kepemilikanId ?? ''}
           onChange={(e) => patch({ kepemilikanId: e.target.value || undefined })}
         >
@@ -100,7 +95,7 @@ export function VehicleFilters({
         </label>
         <select
           id="vehicle-pool"
-          className={fieldClass}
+          className={`w-full ${fieldClass}`}
           value={value.poolId ?? ''}
           onChange={(e) => patch({ poolId: e.target.value || undefined })}
         >
@@ -119,7 +114,7 @@ export function VehicleFilters({
         </label>
         <select
           id="vehicle-status"
-          className={fieldClass}
+          className={`w-full ${fieldClass}`}
           value={value.statusId ?? ''}
           onChange={(e) => patch({ statusId: e.target.value || undefined })}
         >
@@ -144,7 +139,7 @@ export function VehicleFilters({
       </label>
 
       {isFiltered && (
-        <Button type="button" variant="ghost" onClick={() => onChange({ page: 1 })}>
+        <Button type="button" variant="ghost" size="sm" onClick={() => onChange({ page: 1 })}>
           Reset filter
         </Button>
       )}

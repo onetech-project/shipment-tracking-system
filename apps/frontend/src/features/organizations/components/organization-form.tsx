@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Input, fieldClass } from '@/components/ui/input';
 import { FormField } from '@/components/shared/form-field';
 import { Banner } from '@/components/shared/banner';
 
@@ -45,7 +45,7 @@ export default function OrganizationForm({ initial, onSubmit, onCancel, slug }: 
           value={address}
           onChange={(e) => setAddress(e.target.value)}
           rows={3}
-          className="flex min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className={`min-h-[80px] w-full ${fieldClass}`}
         />
       </FormField>
       {slug && (

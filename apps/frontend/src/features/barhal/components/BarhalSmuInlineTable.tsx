@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { fieldClass } from '@/components/ui/input'
 import { TableWrap, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { useUpdateSmu } from '../hooks/useBarhal'
 import { BarhalKoli } from '../types'
@@ -27,8 +28,7 @@ function SmuRow({ koli, onSaved }: { koli: BarhalKoli; onSaved: () => void }) {
 
   const updateSmu = useUpdateSmu(koli.id)
 
-  const inputClass =
-    'w-full rounded-md border border-border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-ring'
+  const inputClass = `w-full ${fieldClass}`
 
   const handleSave = async () => {
     await updateSmu.mutateAsync({

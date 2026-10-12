@@ -4,6 +4,7 @@ import { ReactNode, useState } from 'react'
 import { ClipboardEdit } from 'lucide-react'
 import { Card, CardHead, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { fieldClass } from '@/components/ui/input'
 import { useBulkUpdateSmu } from '../hooks/useBarhal'
 import { BarhalStations } from '../types'
 
@@ -12,8 +13,7 @@ interface BulkSmuFormProps {
   onApplied: () => void
 }
 
-const inputClass =
-  'rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring'
+const inputClass = fieldClass
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (

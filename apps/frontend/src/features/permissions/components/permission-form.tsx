@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Input, fieldClass } from '@/components/ui/input';
 import { FormField } from '@/components/shared/form-field';
 import { Banner } from '@/components/shared/banner';
 
@@ -11,7 +11,7 @@ interface PermissionFormProps {
 }
 
 const ACTIONS = ['read', 'create', 'update', 'delete'];
-const selectCls = 'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2';
+const selectCls = `w-full ${fieldClass}`;
 
 export default function PermissionForm({ onSubmit, onCancel }: PermissionFormProps) {
   const [action, setAction] = useState('read');

@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
+import { fieldClass } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { Account, Scope, SimRoute, SimState, SimulationSource } from '../types'
 import { NO_GROUP, groupNames, groupsOfRoute, routeKey, routeLabel } from '../engine'
@@ -91,8 +92,8 @@ export function NumInput({
 }
 
 // Shared field look across this feature's hand-rolled selects/inputs, matching Input's own
-// styling (see components/ui/input.tsx) so every control in Simulasi Rute reads as one field style.
-export const FIELD = 'h-8 rounded-[7px] border border-input bg-card px-2.5 text-[12.5px] font-medium text-foreground outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40'
+// styling (the shared fieldClass export) so every control in Simulasi Rute reads as one field style.
+export const FIELD = fieldClass
 
 export interface RouteFilter {
   group: string // 'all' | group id | NO_GROUP.id

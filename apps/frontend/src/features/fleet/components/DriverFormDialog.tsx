@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Input, fieldClass } from '@/components/ui/input'
 import {
   Dialog,
   DialogContent,
@@ -113,7 +113,7 @@ export function DriverFormDialog({
               id="driver-sim-jenis"
               value={simJenisId}
               onChange={(e) => setSimJenisId(e.target.value)}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className={`w-full ${fieldClass}`}
             >
               <option value="">— pilih —</option>
               {simTypes.map((t) => (
