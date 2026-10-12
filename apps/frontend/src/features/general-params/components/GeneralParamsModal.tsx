@@ -8,6 +8,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 import { useGeneralParams } from '../hooks/useGeneralParams'
 
 /**
@@ -75,7 +76,7 @@ export function GeneralParamsModal({ open, onClose, onSaved }: GeneralParamsModa
                   step={p.key.includes('hours') ? 0.5 : 1}
                   value={draft[p.key] ?? p.value}
                   onChange={(e) => setDraft((prev) => ({ ...prev, [p.key]: e.target.value }))}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="tabular w-full rounded-sm border border-border bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 />
                 <span className="shrink-0 text-sm text-muted-foreground">
                   {p.key.includes('hours') ? 'hour(s)' : 'day(s)'}
@@ -86,21 +87,12 @@ export function GeneralParamsModal({ open, onClose, onSaved }: GeneralParamsModa
         </div>
 
         <DialogFooter className="flex gap-1">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-border px-4 py-2 text-sm text-foreground transition hover:bg-muted"
-          >
+          <Button type="button" variant="outline" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
-          >
+          </Button>
+          <Button type="button" onClick={handleSave} disabled={saving}>
             {saving ? 'Saving…' : 'Save'}
-          </button>
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

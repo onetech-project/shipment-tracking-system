@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Plane, Ship } from 'lucide-react'
 import { apiClient } from '@/shared/api/client'
 import { PageHeader } from '@/components/shared/page-header'
 import {
@@ -14,7 +15,7 @@ import { useGeneralParams } from '@/features/general-params/hooks/useGeneralPara
 import { useSyncNotification } from '@/features/air-shipments/hooks/useSyncNotification'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
-import { cn } from '@/lib/utils'
+import { ModeTabs } from '@/components/ui/segmented'
 
 const DASHBOARD_MODES: SlaMode[] = [AIR_SLA_MODE, SEA_SLA_MODE]
 
@@ -109,7 +110,7 @@ export default function DashboardPage() {
       <PageHeader title="Dashboard" />
 
       <section className="space-y-6">
-        <div className="rounded-3xl border border-border bg-panel p-6 shadow-sm">
+        <div className="rounded-lg border border-border bg-card p-6 shadow-sm">
           <div className="text-xl font-semibold text-foreground">
             Welcome back, {user?.username}
           </div>
@@ -117,27 +118,16 @@ export default function DashboardPage() {
 
         {canReadSla && (
           <>
-            <nav className="flex gap-1 border-b border-border">
-              {DASHBOARD_MODES.map((m) => {
-                const isActive = m.key === mode.key
-                return (
-                  <button
-                    key={m.key}
-                    type="button"
-                    onClick={() => setMode(m)}
-                    className={cn(
-                      'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
-                      isActive
-                        ? 'border-primary text-foreground'
-                        : 'border-transparent text-muted-foreground hover:text-foreground'
-                    )}
-                    aria-current={isActive ? 'page' : undefined}
-                  >
-                    {m.key === 'air' ? 'Air' : 'Sea'}
-                  </button>
-                )
-              })}
-            </nav>
+            <ModeTabs
+              value={mode.key}
+              onValueChange={(key) => setMode(DASHBOARD_MODES.find((m) => m.key === key) ?? AIR_SLA_MODE)}
+              items={DASHBOARD_MODES.map((m) => ({
+                value: m.key,
+                label: m.key === 'air' ? 'Air' : 'Sea',
+                icon: m.key === 'air' ? Plane : Ship,
+              }))}
+              aria-label="Shipment mode"
+            />
             <DashboardAlertCards
               summary={summary}
               activeAlert={null}
