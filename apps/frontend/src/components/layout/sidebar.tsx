@@ -101,7 +101,8 @@ export function Sidebar({ onNavClick, collapsed = false, onToggleCollapse }: Sid
         )}
       </div>
 
-      <div className="flex flex-1 flex-col gap-1 overflow-y-auto">
+      {/* Bleeds to the nav edge so the active rail (-left-3.5 on NavLink) is not clipped: overflow-y:auto forces overflow-x to clip too. */}
+      <div className="-mx-3.5 flex flex-1 flex-col gap-1 overflow-y-auto px-3.5">
         <NavLink
           href="/dashboard"
           icon={<LayoutDashboard size={16} />}
