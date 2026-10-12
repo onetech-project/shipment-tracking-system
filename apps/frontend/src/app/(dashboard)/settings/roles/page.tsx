@@ -88,52 +88,53 @@ export default function RolesSettingsPage() {
       />
       {error && <Banner tone="danger">{error}</Banner>}
 
-      <TableWrap>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Permissions</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Created</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {roles.map((role) => (
-              <TableRow key={role.id}>
-                <TableCell><code className="text-xs">{role.name}</code></TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {role.permissions?.slice(0, 5).map((p) => (
-                      <Badge key={p.id} variant="info">{p.name}</Badge>
-                    ))}
-                    {role.permissions?.length > 5 && (
-                      <span className="text-xs text-muted-foreground">+{role.permissions.length - 5} more</span>
-                    )}
-                    {role.permissions?.length === 0 && <span className="text-xs text-muted-foreground">None</span>}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  {role.isSystem
-                    ? <Badge variant="neutral">System</Badge>
-                    : <span className="text-xs text-muted-foreground">Custom</span>}
-                </TableCell>
-                <TableCell className="tabular text-xs text-muted-foreground">{new Date(role.createdAt).toLocaleDateString()}</TableCell>
-                <TableCell>
-                  <div className="flex gap-1">
-                    <Button size="sm" variant="outline" onClick={() => setModal({ type: 'edit-perms', role })}>Permissions</Button>
-                    {!role.isSystem && (
-                      <Button size="sm" variant="destructive" onClick={() => handleDelete(role.id, role.name)}>Delete</Button>
-                    )}
-                  </div>
-                </TableCell>
+      {roles.length === 0 ? (
+        <EmptyState title="No roles found." />
+      ) : (
+        <TableWrap>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Permissions</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {roles.length === 0 && <EmptyState title="No roles found." />}
-      </TableWrap>
+            </TableHeader>
+            <TableBody>
+              {roles.map((role) => (
+                <TableRow key={role.id}>
+                  <TableCell><code className="text-xs">{role.name}</code></TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      {role.permissions?.slice(0, 5).map((p) => (
+                        <Badge key={p.id} variant="info">{p.name}</Badge>
+                      ))}
+                      {role.permissions?.length > 5 && (
+                        <span className="text-xs text-muted-foreground">+{role.permissions.length - 5} more</span>
+                      )}
+                      {role.permissions?.length === 0 && <span className="text-xs text-muted-foreground">None</span>}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="neutral">{role.isSystem ? 'System' : 'Custom'}</Badge>
+                  </TableCell>
+                  <TableCell className="tabular text-xs text-muted-foreground">{new Date(role.createdAt).toLocaleDateString()}</TableCell>
+                  <TableCell>
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="outline" onClick={() => setModal({ type: 'edit-perms', role })}>Permissions</Button>
+                      {!role.isSystem && (
+                        <Button size="sm" variant="destructive" onClick={() => handleDelete(role.id, role.name)}>Delete</Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableWrap>
+      )}
 
       {modal?.type === 'create' && (
         <Dialog open onOpenChange={(open) => { if (!open) setModal(null); }}>

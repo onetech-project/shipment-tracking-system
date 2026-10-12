@@ -70,42 +70,45 @@ export default function OrganizationsSettingsPage() {
       />
       {error && <Banner tone="danger">Error: {error}</Banner>}
 
-      <TableWrap>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Slug</TableHead>
-              <TableHead>Address</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Created</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {orgs.map((org) => (
-              <TableRow key={org.id}>
-                <TableCell className="font-medium">{org.name}</TableCell>
-                <TableCell><code className="text-xs text-muted-foreground">{org.slug}</code></TableCell>
-                <TableCell>{org.address ?? '—'}</TableCell>
-                <TableCell>
-                  <StatusBadge variant={org.isActive ? 'active' : 'inactive'} />
-                </TableCell>
-                <TableCell className="tabular text-xs text-muted-foreground">{new Date(org.createdAt).toLocaleDateString()}</TableCell>
-                <TableCell>
-                  <div className="flex gap-1">
-                    <Button size="sm" variant="outline" onClick={() => setModal({ type: 'edit', org })}>Edit</Button>
-                    {org.isActive && (
-                      <Button size="sm" variant="destructive" onClick={() => setModal({ type: 'deactivate', org })}>Deactivate</Button>
-                    )}
-                  </div>
-                </TableCell>
+      {orgs.length === 0 ? (
+        <EmptyState title="No organizations found." />
+      ) : (
+        <TableWrap>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Slug</TableHead>
+                <TableHead>Address</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {orgs.length === 0 && <EmptyState title="No organizations found." />}
-      </TableWrap>
+            </TableHeader>
+            <TableBody>
+              {orgs.map((org) => (
+                <TableRow key={org.id}>
+                  <TableCell className="font-medium">{org.name}</TableCell>
+                  <TableCell><code className="text-xs text-muted-foreground">{org.slug}</code></TableCell>
+                  <TableCell>{org.address ?? '—'}</TableCell>
+                  <TableCell>
+                    <StatusBadge variant={org.isActive ? 'active' : 'inactive'} />
+                  </TableCell>
+                  <TableCell className="tabular text-xs text-muted-foreground">{new Date(org.createdAt).toLocaleDateString()}</TableCell>
+                  <TableCell>
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="outline" onClick={() => setModal({ type: 'edit', org })}>Edit</Button>
+                      {org.isActive && (
+                        <Button size="sm" variant="destructive" onClick={() => setModal({ type: 'deactivate', org })}>Deactivate</Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableWrap>
+      )}
 
       {modal?.type === 'create' && (
         <Dialog open onOpenChange={(open) => { if (!open) setModal(null); }}>

@@ -56,37 +56,40 @@ export default function AuditPage() {
         <p className="text-muted-foreground">Loading...</p>
       ) : (
         <>
-          <TableWrap>
-            <Table className="min-w-[700px]">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Timestamp</TableHead>
-                  <TableHead>Action</TableHead>
-                  <TableHead>Resource</TableHead>
-                  <TableHead>Actor ID</TableHead>
-                  <TableHead>IP Address</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {logs.map((log) => (
-                  <TableRow key={log.id}>
-                    <TableCell className="tabular whitespace-nowrap text-xs text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</TableCell>
-                    <TableCell>
-                      <code className="rounded bg-surface-2 px-1.5 py-0.5 text-xs">{log.action}</code>
-                    </TableCell>
-                    <TableCell>
-                      {log.resourceType
-                        ? <span><strong>{log.resourceType}</strong>{log.resourceId ? ` · ${log.resourceId.slice(0, 8)}...` : ''}</span>
-                        : '—'}
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{log.actorId ? log.actorId.slice(0, 8) + '...' : '—'}</TableCell>
-                    <TableCell className="text-xs">{log.ipAddress ?? '—'}</TableCell>
+          {logs.length === 0 ? (
+            <EmptyState title="No audit logs found." />
+          ) : (
+            <TableWrap>
+              <Table className="min-w-[700px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Timestamp</TableHead>
+                    <TableHead>Action</TableHead>
+                    <TableHead>Resource</TableHead>
+                    <TableHead>Actor ID</TableHead>
+                    <TableHead>IP Address</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            {logs.length === 0 && <EmptyState title="No audit logs found." />}
-          </TableWrap>
+                </TableHeader>
+                <TableBody>
+                  {logs.map((log) => (
+                    <TableRow key={log.id}>
+                      <TableCell className="tabular whitespace-nowrap text-xs text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</TableCell>
+                      <TableCell>
+                        <code className="rounded bg-surface-2 px-1.5 py-0.5 text-xs">{log.action}</code>
+                      </TableCell>
+                      <TableCell>
+                        {log.resourceType
+                          ? <span><strong>{log.resourceType}</strong>{log.resourceId ? ` · ${log.resourceId.slice(0, 8)}...` : ''}</span>
+                          : '—'}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{log.actorId ? log.actorId.slice(0, 8) + '...' : '—'}</TableCell>
+                      <TableCell className="text-xs">{log.ipAddress ?? '—'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableWrap>
+          )}
 
           {totalPages > 1 && (
             <div className="mt-4 flex items-center gap-3">

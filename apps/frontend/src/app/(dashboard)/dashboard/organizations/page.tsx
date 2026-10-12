@@ -52,29 +52,32 @@ export default function OrganizationsPage() {
     <div>
       <PageHeader title="Organizations" action={<Button onClick={() => setShowModal(true)}>+ New Organization</Button>} />
       {error && <Banner tone="danger">Error: {error}</Banner>}
-      <TableWrap>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Slug</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Created</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {orgs.map((o) => (
-              <TableRow key={o.id}>
-                <TableCell>{o.name}</TableCell>
-                <TableCell><code className="text-xs">{o.slug}</code></TableCell>
-                <TableCell><StatusBadge variant={o.isActive ? 'active' : 'inactive'} /></TableCell>
-                <TableCell className="tabular text-xs text-muted-foreground">{new Date(o.createdAt).toLocaleDateString()}</TableCell>
+      {orgs.length === 0 ? (
+        <EmptyState title="No organizations found." />
+      ) : (
+        <TableWrap>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Slug</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Created</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {orgs.length === 0 && <EmptyState title="No organizations found." />}
-      </TableWrap>
+            </TableHeader>
+            <TableBody>
+              {orgs.map((o) => (
+                <TableRow key={o.id}>
+                  <TableCell>{o.name}</TableCell>
+                  <TableCell><code className="text-xs">{o.slug}</code></TableCell>
+                  <TableCell><StatusBadge variant={o.isActive ? 'active' : 'inactive'} /></TableCell>
+                  <TableCell className="tabular text-xs text-muted-foreground">{new Date(o.createdAt).toLocaleDateString()}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableWrap>
+      )}
 
       {showModal && (
         <Dialog open onOpenChange={(open) => { if (!open) setShowModal(false); }}>

@@ -66,39 +66,42 @@ export default function UsersPage() {
         action={<Button onClick={() => setShowModal(true)}>+ New User</Button>}
       />
       {error && <Banner tone="danger">Error: {error}</Banner>}
-      <TableWrap>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>User</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Locked</TableHead>
-              <TableHead>Last Login</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {users.map((u) => (
-              <TableRow key={u.id}>
-                <TableCell>
-                  <div className="flex items-center gap-2.5">
-                    <span
-                      aria-hidden="true"
-                      className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-2 text-xs font-bold text-white"
-                    >
-                      {initials(u.username)}
-                    </span>
-                    <span className="truncate text-[13px] font-semibold text-foreground">{u.username}</span>
-                  </div>
-                </TableCell>
-                <TableCell><StatusBadge variant={u.isActive ? 'active' : 'inactive'} /></TableCell>
-                <TableCell>{u.isLocked ? <StatusBadge variant="locked" /> : <span className="text-faint">—</span>}</TableCell>
-                <TableCell className="tabular text-xs text-muted-foreground">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '—'}</TableCell>
+      {users.length === 0 ? (
+        <EmptyState title="No users found." />
+      ) : (
+        <TableWrap>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>User</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Locked</TableHead>
+                <TableHead>Last Login</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {users.length === 0 && <EmptyState title="No users found." />}
-      </TableWrap>
+            </TableHeader>
+            <TableBody>
+              {users.map((u) => (
+                <TableRow key={u.id}>
+                  <TableCell>
+                    <div className="flex items-center gap-2.5">
+                      <span
+                        aria-hidden="true"
+                        className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-2 text-xs font-bold text-white"
+                      >
+                        {initials(u.username)}
+                      </span>
+                      <span className="truncate text-[13px] font-semibold text-foreground">{u.username}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell><StatusBadge variant={u.isActive ? 'active' : 'inactive'} /></TableCell>
+                  <TableCell>{u.isLocked ? <StatusBadge variant="locked" /> : <span className="text-faint">—</span>}</TableCell>
+                  <TableCell className="tabular text-xs text-muted-foreground">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '—'}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableWrap>
+      )}
 
       {showModal && (
         <Dialog open onOpenChange={(open) => { if (!open) setShowModal(false); }}>

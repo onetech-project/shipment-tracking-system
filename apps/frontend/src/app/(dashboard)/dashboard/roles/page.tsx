@@ -51,27 +51,30 @@ export default function RolesPage() {
     <div>
       <PageHeader title="Roles" action={<Button onClick={() => setShowModal(true)}>+ New Role</Button>} />
       {error && <Banner tone="danger">{error}</Banner>}
-      <TableWrap>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead>System</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {roles.map((r) => (
-              <TableRow key={r.id}>
-                <TableCell>{r.name}</TableCell>
-                <TableCell>{r.description ?? '—'}</TableCell>
-                <TableCell>{r.isSystem ? 'Yes' : 'No'}</TableCell>
+      {roles.length === 0 ? (
+        <EmptyState title="No roles found." />
+      ) : (
+        <TableWrap>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>System</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {roles.length === 0 && <EmptyState title="No roles found." />}
-      </TableWrap>
+            </TableHeader>
+            <TableBody>
+              {roles.map((r) => (
+                <TableRow key={r.id}>
+                  <TableCell>{r.name}</TableCell>
+                  <TableCell>{r.description ?? '—'}</TableCell>
+                  <TableCell>{r.isSystem ? 'Yes' : 'No'}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableWrap>
+      )}
 
       {showModal && (
         <Dialog open onOpenChange={(open) => { if (!open) setShowModal(false); }}>

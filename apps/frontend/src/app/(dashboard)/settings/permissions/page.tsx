@@ -6,6 +6,7 @@ import { usePermissions } from '@/shared/hooks/use-permissions';
 import { PageHeader } from '@/components/shared/page-header';
 import { Banner } from '@/components/shared/banner';
 import { EmptyState } from '@/components/shared/empty-state';
+import { FilterBar } from '@/components/shared/filter-bar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -57,38 +58,41 @@ export default function PermissionsSettingsPage() {
       />
       {error && <Banner tone="danger">Error: {error}</Banner>}
 
-      <div className="mb-4">
+      <FilterBar>
         <Input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="Filter by name..."
           className="max-w-xs"
         />
-      </div>
+      </FilterBar>
 
-      <TableWrap>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead>Created</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.map((p) => (
-              <TableRow key={p.id}>
-                <TableCell>
-                  <code className="rounded bg-surface-2 px-1.5 py-0.5 text-xs">{p.name}</code>
-                </TableCell>
-                <TableCell className="text-muted-foreground">{p.description ?? '—'}</TableCell>
-                <TableCell className="tabular text-xs text-muted-foreground">{new Date(p.createdAt).toLocaleDateString()}</TableCell>
+      {filtered.length === 0 ? (
+        <EmptyState title="No permissions found." />
+      ) : (
+        <TableWrap>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Created</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {filtered.length === 0 && <EmptyState title="No permissions found." />}
-      </TableWrap>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((p) => (
+                <TableRow key={p.id}>
+                  <TableCell>
+                    <code className="rounded bg-surface-2 px-1.5 py-0.5 text-xs">{p.name}</code>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{p.description ?? '—'}</TableCell>
+                  <TableCell className="tabular text-xs text-muted-foreground">{new Date(p.createdAt).toLocaleDateString()}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableWrap>
+      )}
 
       {showModal && (
         <Dialog open onOpenChange={(open) => { if (!open) setShowModal(false); }}>

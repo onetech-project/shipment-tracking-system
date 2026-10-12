@@ -8,6 +8,7 @@ import { StatusBadge } from '@/components/shared/status-badge';
 import type { StatusVariant } from '@/components/shared/status-badge';
 import { Banner } from '@/components/shared/banner';
 import { EmptyState } from '@/components/shared/empty-state';
+import { FilterBar } from '@/components/shared/filter-bar';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { TableWrap, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
@@ -30,7 +31,9 @@ const STATUS_VARIANT: Record<string, StatusVariant> = {
   revoked: 'error',
 };
 
-const selectCls = 'flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2';
+// Matches Input's own styling (see BarhalFilters.tsx:18 / VehicleFilters.tsx), so this select
+// reads as the same field as every other filter control in the app.
+const selectCls = 'h-8 w-full rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium text-foreground outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40';
 
 export default function InvitationsSettingsPage() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -87,51 +90,56 @@ export default function InvitationsSettingsPage() {
       />
       {error && <Banner tone="danger">Error: {error}</Banner>}
 
-      <div className="mb-4">
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className={selectCls}
-        >
-          <option value="">All statuses</option>
-          <option value="pending">Pending</option>
-          <option value="accepted">Accepted</option>
-          <option value="expired">Expired</option>
-          <option value="revoked">Revoked</option>
-        </select>
-      </div>
+      <FilterBar>
+        <div className="min-w-[160px]">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className={selectCls}
+          >
+            <option value="">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="accepted">Accepted</option>
+            <option value="expired">Expired</option>
+            <option value="revoked">Revoked</option>
+          </select>
+        </div>
+      </FilterBar>
 
-      <TableWrap>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Email</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Expires</TableHead>
-              <TableHead>Sent</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {invitations.map((inv) => (
-              <TableRow key={inv.id}>
-                <TableCell className="font-mono">{inv.email}</TableCell>
-                <TableCell>
-                  <StatusBadge variant={STATUS_VARIANT[inv.status] ?? 'inactive'} label={inv.status} />
-                </TableCell>
-                <TableCell className="tabular text-xs text-muted-foreground">{new Date(inv.expiresAt).toLocaleDateString()}</TableCell>
-                <TableCell className="tabular text-xs text-muted-foreground">{new Date(inv.createdAt).toLocaleDateString()}</TableCell>
-                <TableCell>
-                  {inv.status === 'pending' && (
-                    <Button size="sm" variant="destructive" onClick={() => handleCancel(inv.id)}>Cancel</Button>
-                  )}
-                </TableCell>
+      {invitations.length === 0 ? (
+        <EmptyState title="No invitations found." />
+      ) : (
+        <TableWrap>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Email</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Expires</TableHead>
+                <TableHead>Sent</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {invitations.length === 0 && <EmptyState title="No invitations found." />}
-      </TableWrap>
+            </TableHeader>
+            <TableBody>
+              {invitations.map((inv) => (
+                <TableRow key={inv.id}>
+                  <TableCell className="font-mono">{inv.email}</TableCell>
+                  <TableCell>
+                    <StatusBadge variant={STATUS_VARIANT[inv.status] ?? 'inactive'} label={inv.status} />
+                  </TableCell>
+                  <TableCell className="tabular text-xs text-muted-foreground">{new Date(inv.expiresAt).toLocaleDateString()}</TableCell>
+                  <TableCell className="tabular text-xs text-muted-foreground">{new Date(inv.createdAt).toLocaleDateString()}</TableCell>
+                  <TableCell>
+                    {inv.status === 'pending' && (
+                      <Button size="sm" variant="destructive" onClick={() => handleCancel(inv.id)}>Cancel</Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableWrap>
+      )}
 
       {showModal && (
         <Dialog open onOpenChange={(open) => { if (!open) setShowModal(false); }}>

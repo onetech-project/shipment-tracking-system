@@ -102,47 +102,50 @@ export default function UsersSettingsPage() {
       <PageHeader title="Users" />
       {error && <Banner tone="danger">Error: {error}</Banner>}
 
-      <TableWrap>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>User</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Locked</TableHead>
-              <TableHead>Last Login</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {users.map((u) => (
-              <TableRow key={u.id}>
-                <TableCell><UserCell user={u} /></TableCell>
-                <TableCell>
-                  <StatusBadge variant={u.isActive ? 'active' : 'inactive'} />
-                </TableCell>
-                <TableCell>
-                  {u.isLocked ? <StatusBadge variant="locked" /> : <span className="text-faint">—</span>}
-                </TableCell>
-                <TableCell className="tabular text-xs text-muted-foreground">
-                  {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '—'}
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    <Button size="sm" variant="outline" onClick={() => setModal({ type: 'edit', user: u })}>Edit</Button>
-                    {u.isActive && u.id !== currentUser?.id && (
-                      <Button size="sm" variant="destructive" onClick={() => setModal({ type: 'inactivate', user: u })}>Inactivate</Button>
-                    )}
-                    {u.isLocked && (
-                      <Button size="sm" onClick={() => setModal({ type: 'unlock', user: u })}>Unlock</Button>
-                    )}
-                  </div>
-                </TableCell>
+      {users.length === 0 ? (
+        <EmptyState title="No users found." />
+      ) : (
+        <TableWrap>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>User</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Locked</TableHead>
+                <TableHead>Last Login</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {users.length === 0 && <EmptyState title="No users found." />}
-      </TableWrap>
+            </TableHeader>
+            <TableBody>
+              {users.map((u) => (
+                <TableRow key={u.id}>
+                  <TableCell><UserCell user={u} /></TableCell>
+                  <TableCell>
+                    <StatusBadge variant={u.isActive ? 'active' : 'inactive'} />
+                  </TableCell>
+                  <TableCell>
+                    {u.isLocked ? <StatusBadge variant="locked" /> : <span className="text-faint">—</span>}
+                  </TableCell>
+                  <TableCell className="tabular text-xs text-muted-foreground">
+                    {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '—'}
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap gap-1">
+                      <Button size="sm" variant="outline" onClick={() => setModal({ type: 'edit', user: u })}>Edit</Button>
+                      {u.isActive && u.id !== currentUser?.id && (
+                        <Button size="sm" variant="destructive" onClick={() => setModal({ type: 'inactivate', user: u })}>Inactivate</Button>
+                      )}
+                      {u.isLocked && (
+                        <Button size="sm" onClick={() => setModal({ type: 'unlock', user: u })}>Unlock</Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableWrap>
+      )}
 
       {modal?.type === 'edit' && (
         <Dialog open onOpenChange={(open) => { if (!open) setModal(null); }}>

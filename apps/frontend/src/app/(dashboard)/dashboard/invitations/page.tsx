@@ -73,35 +73,38 @@ export default function InvitationsPage() {
         <Button type="submit" disabled={sending}>{sending ? 'Sending...' : 'Invite'}</Button>
       </form>
 
-      <TableWrap>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Email</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Expires</TableHead>
-              <TableHead>Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {invitations.map((inv) => (
-              <TableRow key={inv.id}>
-                <TableCell>{inv.email}</TableCell>
-                <TableCell>
-                  <StatusBadge variant={STATUS_VARIANT[inv.status] ?? 'inactive'} label={inv.status} />
-                </TableCell>
-                <TableCell className="tabular text-xs text-muted-foreground">{new Date(inv.expiresAt).toLocaleDateString()}</TableCell>
-                <TableCell>
-                  {inv.status === 'pending' && (
-                    <Button size="sm" variant="destructive" onClick={() => cancel(inv.id)}>Cancel</Button>
-                  )}
-                </TableCell>
+      {invitations.length === 0 ? (
+        <EmptyState title="No invitations found." />
+      ) : (
+        <TableWrap>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Email</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Expires</TableHead>
+                <TableHead>Actions</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {invitations.length === 0 && <EmptyState title="No invitations found." />}
-      </TableWrap>
+            </TableHeader>
+            <TableBody>
+              {invitations.map((inv) => (
+                <TableRow key={inv.id}>
+                  <TableCell>{inv.email}</TableCell>
+                  <TableCell>
+                    <StatusBadge variant={STATUS_VARIANT[inv.status] ?? 'inactive'} label={inv.status} />
+                  </TableCell>
+                  <TableCell className="tabular text-xs text-muted-foreground">{new Date(inv.expiresAt).toLocaleDateString()}</TableCell>
+                  <TableCell>
+                    {inv.status === 'pending' && (
+                      <Button size="sm" variant="destructive" onClick={() => cancel(inv.id)}>Cancel</Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableWrap>
+      )}
     </div>
   );
 }
