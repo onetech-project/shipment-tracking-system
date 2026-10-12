@@ -1,29 +1,25 @@
 'use client'
 
 import { useState } from 'react'
+import {
+  FileText,
+  Wallet,
+  TrendingUp,
+  TrendingDown,
+  Percent,
+  CreditCard,
+  ArrowLeftRight,
+} from 'lucide-react'
 import { PnlFilter } from '@/features/pnl/hooks/usePnl'
 import { fmt, num, pct } from '@/features/pnl/utils/format'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Card, CardContent, CardHead } from '@/components/ui/card'
+import { KpiCard, KpiGrid } from '@/components/shared/kpi-card'
+import { SubTabs } from '@/components/ui/segmented'
 import { usePermissions } from '@/shared/hooks/use-permissions'
 import { useSettlementSummary, useToComparison, SettledFilter } from '../hooks/useSettlement'
 import { SettlementUploadDialog } from './SettlementUploadDialog'
-
-function Kpi({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: 'pos' | 'neg' }) {
-  return (
-    <div className="min-w-0 rounded-lg border bg-card p-3 sm:p-4">
-      <p className="truncate text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p
-        className={[
-          'mt-1 text-xl font-bold leading-tight sm:text-2xl xl:text-base',
-          tone === 'pos' ? 'text-green-600' : tone === 'neg' ? 'text-destructive' : '',
-        ].filter(Boolean).join(' ')}
-      >
-        {value}
-      </p>
-      {sub && <p className="mt-0.5 truncate text-xs text-muted-foreground">{sub}</p>}
-    </div>
-  )
-}
 
 function varTone(v: number | null | undefined): 'pos' | 'neg' | undefined {
   if (v == null || v === 0) return undefined
@@ -60,107 +56,129 @@ export function SettlementView({ filter }: { filter: PnlFilter | undefined }) {
 
       {/* Coverage */}
       {summary && (
-        <div className="rounded-lg border bg-card p-4">
-          <div className="flex items-center justify-between text-sm">
-            <span className="font-medium">Settlement coverage</span>
-            <span className="text-muted-foreground">
-              {num(summary.settledTos)} / {num(summary.totalTos)} TO ({pct(summary.coveragePct)})
-            </span>
-          </div>
-          <div className="mt-2 h-2 w-full overflow-hidden rounded bg-muted">
-            <div className="h-full rounded bg-primary" style={{ width: `${Math.min(100, summary.coveragePct)}%` }} />
-          </div>
-        </div>
+        <Card>
+          <CardContent className="pt-4">
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-medium">Settlement coverage</span>
+              <span className="text-muted-foreground">
+                {num(summary.settledTos)} / {num(summary.totalTos)} TO ({pct(summary.coveragePct)})
+              </span>
+            </div>
+            <div className="mt-2 h-2 w-full overflow-hidden rounded bg-muted">
+              <div className="h-full rounded bg-primary" style={{ width: `${Math.min(100, summary.coveragePct)}%` }} />
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* KPIs: est vs actual vs variance (revenue) */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-5">
-        <Kpi
+      <KpiGrid cols={5}>
+        <KpiCard
           label="Est. Revenue (settled)"
           value={summary ? fmt.format(summary.estRevenueSettled) : '—'}
-          sub="TO yang sudah di-settle"
+          hint="TO yang sudah di-settle"
+          icon={FileText}
+          tone="brand"
         />
-        <Kpi
+        <KpiCard
           label="Actual Revenue"
           value={summary ? fmt.format(summary.actRevenue) : '—'}
-          sub="dari invoice"
+          hint="dari invoice"
+          icon={Wallet}
+          tone="brand"
         />
-        <Kpi
+        <KpiCard
           label="Variance"
-          value={summary ? fmt.format(summary.varRevenue) : '—'}
-          sub="actual − estimasi"
-          tone={varTone(summary?.varRevenue)}
+          value={
+            <span className={varTone(summary?.varRevenue) === 'pos' ? 'text-good' : varTone(summary?.varRevenue) === 'neg' ? 'text-destructive' : undefined}>
+              {summary ? fmt.format(summary.varRevenue) : '—'}
+            </span>
+          }
+          hint="actual − estimasi"
+          icon={varTone(summary?.varRevenue) === 'neg' ? TrendingDown : TrendingUp}
+          tone={varTone(summary?.varRevenue) === 'neg' ? 'danger' : 'info'}
         />
-        <Kpi
+        <KpiCard
           label="Variance %"
-          value={summary ? pct(summary.varRevenuePct) : '—'}
-          tone={varTone(summary?.varRevenue)}
+          value={
+            <span className={varTone(summary?.varRevenue) === 'pos' ? 'text-good' : varTone(summary?.varRevenue) === 'neg' ? 'text-destructive' : undefined}>
+              {summary ? pct(summary.varRevenuePct) : '—'}
+            </span>
+          }
+          icon={Percent}
+          tone={varTone(summary?.varRevenue) === 'neg' ? 'danger' : 'info'}
         />
-        <Kpi
+        <KpiCard
           label="Actual Cost"
           value="—"
-          sub="menunggu invoice vendor"
+          hint="menunggu invoice vendor"
+          icon={CreditCard}
+          tone="dark"
+          muted
         />
-      </div>
+      </KpiGrid>
 
       {/* Per-TO comparison table */}
-      <div className="rounded-lg border bg-card">
-        <div className="flex items-center justify-between border-b p-3">
-          <h3 className="text-sm font-semibold">Per-TO: Estimasi vs Actual</h3>
-          <div className="flex overflow-hidden rounded-md border text-xs">
-            {(['all', 'settled', 'unsettled'] as SettledFilter[]).map((s) => (
-              <button
-                key={s}
-                onClick={() => changeSettled(s)}
-                className={`px-3 py-1 ${settled === s ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-              >
-                {s === 'all' ? 'Semua' : s === 'settled' ? 'Settled' : 'Unsettled'}
-              </button>
-            ))}
-          </div>
-        </div>
+      <Card>
+        <CardHead
+          icon={ArrowLeftRight}
+          tone="info"
+          title="Per-TO: Estimasi vs Actual"
+          actions={
+            <SubTabs
+              aria-label="Filter settlement status"
+              value={settled}
+              onValueChange={changeSettled}
+              items={[
+                { value: 'all', label: 'Semua' },
+                { value: 'settled', label: 'Settled' },
+                { value: 'unsettled', label: 'Unsettled' },
+              ]}
+            />
+          }
+        />
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b text-left text-xs text-muted-foreground">
-                <th className="p-2 font-medium">TO Number</th>
-                <th className="p-2 font-medium">LT Number</th>
-                <th className="p-2 font-medium">Route</th>
-                <th className="p-2 font-medium">Invoice Periode</th>
-                <th className="p-2 text-right font-medium">Est. Revenue</th>
-                <th className="p-2 text-right font-medium">Actual</th>
-                <th className="p-2 text-right font-medium">Variance</th>
-                <th className="p-2 text-right font-medium">Var %</th>
-                <th className="p-2 text-center font-medium">Status</th>
+              <tr className="border-b bg-table-head">
+                <th className="px-2 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">TO Number</th>
+                <th className="px-2 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">LT Number</th>
+                <th className="px-2 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">Route</th>
+                <th className="px-2 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">Invoice Periode</th>
+                <th className="px-2 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">Est. Revenue</th>
+                <th className="px-2 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">Actual</th>
+                <th className="px-2 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">Variance</th>
+                <th className="px-2 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">Var %</th>
+                <th className="px-2 py-2.5 text-center text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">Status</th>
               </tr>
             </thead>
             <tbody>
               {rowsLoading ? (
-                <tr><td colSpan={9} className="p-6 text-center text-muted-foreground">Memuat…</td></tr>
+                <tr><td colSpan={9} className="p-6 text-center text-xs text-muted-foreground">Memuat…</td></tr>
               ) : !rows || rows.data.length === 0 ? (
-                <tr><td colSpan={9} className="p-6 text-center text-muted-foreground">Tidak ada data.</td></tr>
+                <tr><td colSpan={9} className="p-6 text-center text-xs text-muted-foreground">Tidak ada data.</td></tr>
               ) : (
                 rows.data.map((r) => (
-                  <tr key={r.toNumber} className="border-b last:border-0 hover:bg-muted/40">
+                  <tr key={r.toNumber} className="border-b last:border-0 hover:bg-row-hover">
                     <td className="p-2 font-mono text-xs">{r.toNumber}</td>
                     <td className="p-2 font-mono text-xs text-muted-foreground">{r.ltNumber ?? '—'}</td>
                     <td className="p-2 text-xs text-muted-foreground">
                       {r.originStation && r.destStation ? `${r.originStation} → ${r.destStation}` : '—'}
                     </td>
                     <td className="p-2 font-mono text-xs text-muted-foreground">{r.invoicePeriod ?? '—'}</td>
-                    <td className="p-2 text-right">{r.estRevenue == null ? '—' : fmt.format(r.estRevenue)}</td>
-                    <td className="p-2 text-right">{r.actRevenue == null ? '—' : fmt.format(r.actRevenue)}</td>
-                    <td className={`p-2 text-right ${r.varRevenue == null ? '' : r.varRevenue >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                    <td className="p-2 text-right text-xs tabular-nums">{r.estRevenue == null ? '—' : fmt.format(r.estRevenue)}</td>
+                    <td className="p-2 text-right text-xs tabular-nums">{r.actRevenue == null ? '—' : fmt.format(r.actRevenue)}</td>
+                    <td className={`p-2 text-right text-xs tabular-nums ${r.varRevenue == null ? '' : r.varRevenue >= 0 ? 'text-good' : 'text-destructive'}`}>
                       {r.varRevenue == null ? '—' : fmt.format(r.varRevenue)}
                     </td>
-                    <td className={`p-2 text-right ${r.varRevenue == null ? '' : r.varRevenue >= 0 ? 'text-green-600' : 'text-destructive'}`}>
+                    <td className={`p-2 text-right text-xs tabular-nums ${r.varRevenue == null ? '' : r.varRevenue >= 0 ? 'text-good' : 'text-destructive'}`}>
                       {pct(r.varRevenuePct)}
                     </td>
                     <td className="p-2 text-center">
-                      <span className={`rounded px-2 py-0.5 text-xs ${r.isSettled ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'}`}>
+                      <Badge variant={r.isSettled ? 'active' : 'neutral'}>
                         {r.isSettled ? 'Settled' : 'Unsettled'}
-                      </span>
+                      </Badge>
                     </td>
                   </tr>
                 ))
@@ -184,7 +202,7 @@ export function SettlementView({ filter }: { filter: PnlFilter | undefined }) {
             </div>
           </div>
         )}
-      </div>
+      </Card>
 
       <SettlementUploadDialog open={uploadOpen} onClose={() => setUploadOpen(false)} />
     </div>

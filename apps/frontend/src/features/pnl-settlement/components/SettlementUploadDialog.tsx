@@ -10,6 +10,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Banner } from '@/components/shared/banner'
 import {
   useSettlementPreview,
   useSettlementCommit,
@@ -143,7 +144,7 @@ export function SettlementUploadDialog({ open, onClose }: Props) {
                 </div>
               )}
               {isCustom && customStart && customEnd && customStart > customEnd && (
-                <p className="text-sm text-destructive">Tanggal awal tidak boleh setelah tanggal akhir.</p>
+                <Banner tone="danger">Tanggal awal tidak boleh setelah tanggal akhir.</Banner>
               )}
             </div>
 
@@ -157,9 +158,9 @@ export function SettlementUploadDialog({ open, onClose }: Props) {
             {!selectedPeriod && (
               <p className="text-xs text-muted-foreground">Pilih Periode Invoice terlebih dahulu.</p>
             )}
-            {clientError && <p className="text-sm text-destructive">{clientError}</p>}
+            {clientError && <Banner tone="danger">{clientError}</Banner>}
             {previewMut.isError && (
-              <p className="text-sm text-destructive">Gagal mem-preview file. Coba lagi.</p>
+              <Banner tone="danger">Gagal mem-preview file. Coba lagi.</Banner>
             )}
 
             {preview && (
@@ -168,9 +169,9 @@ export function SettlementUploadDialog({ open, onClose }: Props) {
                   <span className="text-muted-foreground">Baris ter-parse</span>
                   <span className="text-right font-medium">{num(preview.totalParsed)}</span>
                   <span className="text-muted-foreground">Cocok di sistem</span>
-                  <span className="text-right font-medium text-green-600">{num(preview.matched)}</span>
+                  <span className="text-right font-medium text-good">{num(preview.matched)}</span>
                   <span className="text-muted-foreground">Tidak cocok</span>
-                  <span className="text-right font-medium text-amber-600">{num(preview.unmatched)}</span>
+                  <span className="text-right font-medium text-warn">{num(preview.unmatched)}</span>
                   <span className="text-muted-foreground">Baris error</span>
                   <span className="text-right font-medium text-destructive">{num(preview.errorRows)}</span>
                   <span className="text-muted-foreground">Duplikat</span>
@@ -182,26 +183,31 @@ export function SettlementUploadDialog({ open, onClose }: Props) {
                     {preview.unmatched > 5 ? '…' : ''}
                   </p>
                 )}
-                {preview.warnings.map((w, i) => (
-                  <p key={i} className="text-xs text-amber-600">{w}</p>
-                ))}
+                {preview.warnings.length > 0 && (
+                  <Banner tone="warn">
+                    {preview.warnings.map((w, i) => (
+                      <p key={i}>{w}</p>
+                    ))}
+                  </Banner>
+                )}
                 {preview.matched === 0 && (
-                  <p className="text-xs text-destructive">
+                  <Banner tone="danger">
                     Tidak ada baris yang cocok — periksa kolom LT/TO Number pada file.
-                  </p>
+                  </Banner>
                 )}
               </div>
             )}
           </div>
         ) : (
-          <div className="rounded-md border bg-card p-4 text-sm space-y-1">
-            <p className="font-medium text-green-600">Settle berhasil.</p>
-            <p>{num(committed.updated)} TO ter-update dengan actual revenue.</p>
+          <div className="space-y-2">
+            <Banner tone="success" title="Settle berhasil.">
+              {num(committed.updated)} TO ter-update dengan actual revenue.
+            </Banner>
             {committed.unmatched > 0 && (
-              <p className="text-amber-600">{num(committed.unmatched)} baris tidak cocok (dilewati).</p>
+              <Banner tone="warn">{num(committed.unmatched)} baris tidak cocok (dilewati).</Banner>
             )}
             {committed.errorRows > 0 && (
-              <p className="text-destructive">{num(committed.errorRows)} baris error (dilewati).</p>
+              <Banner tone="danger">{num(committed.errorRows)} baris error (dilewati).</Banner>
             )}
           </div>
         )}
