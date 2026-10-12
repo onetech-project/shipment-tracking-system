@@ -11,11 +11,10 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { LiveBadge } from '@/components/shared/header-badges'
 import { FilterBar } from '@/components/shared/filter-bar'
 import { Banner } from '@/components/shared/banner'
 import { IconSquare, type IconTone } from '@/components/shared/icon-square'
+import { SyncStatusBadge } from '@/features/air-shipments/components/SyncStatusBadge'
 import {
   TableWrap,
   Table,
@@ -83,17 +82,6 @@ function alertTone(key: string): IconTone {
   return 'danger'
 }
 
-function formatRelativeSync(isoDate: string | null | undefined): string {
-  if (!isoDate) return 'Never'
-  const diffMs = Date.now() - new Date(isoDate).getTime()
-  const diffSeconds = Math.floor(diffMs / 1000)
-  if (diffSeconds < 60) return `${diffSeconds}s ago`
-  const diffMinutes = Math.floor(diffSeconds / 60)
-  if (diffMinutes < 60) return `${diffMinutes}m ago`
-  const diffHours = Math.floor(diffMinutes / 60)
-  return `${diffHours}h ago`
-}
-
 export function DashboardAlertCards({
   summary,
   activeAlert,
@@ -156,13 +144,8 @@ export function DashboardAlertCards({
               </Button>
             )}
             {isConnected !== undefined && (
-              <div className="flex items-center gap-2 self-end">
-                {isConnected ? <LiveBadge /> : <Badge variant="neutral">Offline</Badge>}
-                {lastSyncAt && (
-                  <span className="text-xs text-muted-foreground">
-                    Last sync: {formatRelativeSync(lastSyncAt)}
-                  </span>
-                )}
+              <div className="self-end">
+                <SyncStatusBadge isConnected={isConnected} lastSyncAt={lastSyncAt ?? null} />
               </div>
             )}
           </div>
