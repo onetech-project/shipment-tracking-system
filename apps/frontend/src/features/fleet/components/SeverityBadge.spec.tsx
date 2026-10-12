@@ -35,7 +35,7 @@ describe('SeverityBadge', () => {
     ['ok', 'bg-good-soft text-brand-ink ring-good/20', 'bg-good'],
     // Grey, never green: no dated document is an absence of information, not a clean bill of
     // health.
-    ['none', 'bg-surface-2 text-faint border border-dashed border-border ring-0', 'bg-faint'],
+    ['none', 'bg-surface-2 text-faint border border-dashed border-border ring-transparent', 'bg-faint'],
   ] as const)('paints %s with its own tone and dot', (severity, tone, dot) => {
     render(<SeverityBadge severity={severity} />)
     const badge = screen.getByRole('img')

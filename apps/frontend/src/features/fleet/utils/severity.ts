@@ -31,7 +31,8 @@ const META: Record<FleetSeverity, SeverityMeta> = {
   // three share.
   none: {
     label: 'Belum ada',
-    tone: 'bg-surface-2 text-faint border border-dashed border-border ring-0',
+    // ring-transparent, not ring-0: SeverityBadge always adds ring-1, and ring-1 wins the cascade over ring-0.
+    tone: 'bg-surface-2 text-faint border border-dashed border-border ring-transparent',
     dot: 'bg-faint',
   },
 }

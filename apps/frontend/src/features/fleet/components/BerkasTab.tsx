@@ -133,7 +133,7 @@ function BerkasVehicleCard({
     ada >= wajib
       ? 'bg-good/10 text-brand-ink'
       : ada === 0
-        ? 'bg-destructive/10 text-destructive'
+        ? 'bg-bad/10 text-bad'
         : 'bg-warn/10 text-warn-ink'
 
   return (
