@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
+import { PageHeader } from '@/components/shared/page-header'
+import { PeriodChip } from '@/components/shared/period-chip'
 import {
   usePnlCycles,
   usePnlSummary,
@@ -192,130 +194,128 @@ function PnlPageContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">P&amp;L Analysis</h1>
-          <p className="text-muted-foreground text-sm">{VIEW_SUBTITLE[view]}</p>
-          {/* A gapped pill row, not a segmented control. Five tabs no longer fit on one line at
-              narrow widths, and merely adding flex-wrap to the old segmented control leaves the
-              first button of the wrapped row drawing a border-l against nothing, with no border-t
-              separating the rows. Each button owns its whole border instead. */}
-          <div data-testid="pnl-view-tabs" className="mt-2 flex flex-wrap gap-2 text-sm">
-            <button
-              className={`rounded-md border px-3 py-1.5 ${view === 'estimate' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-              onClick={() => setView('estimate')}
-            >
-              Estimated
-            </button>
-            <button
-              className={`rounded-md border px-3 py-1.5 ${view === 'actual' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-              onClick={() => setView('actual')}
-            >
-              Actual vs Estimate
-            </button>
-            <button
-              className={`rounded-md border px-3 py-1.5 ${view === 'daily' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-              onClick={() => setView('daily')}
-            >
-              Daily Report
-            </button>
-            {hasPermission('read.route_group') && (
+      <PageHeader
+        title="P&L Analysis"
+        subtitle={VIEW_SUBTITLE[view]}
+        action={
+          <div className="flex flex-col items-end gap-2">
+            <div className="flex rounded-md border text-sm overflow-hidden">
               <button
-                className={`rounded-md border px-3 py-1.5 ${view === 'routes' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-                onClick={() => setView('routes')}
+                className={`px-3 py-1.5 ${mode === 'cycle' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+                onClick={() => setMode('cycle')}
               >
-                {ROUTE_COMPARISON_LABEL}
+                Billing Cycle
               </button>
-            )}
-            {hasPermission('read.vendor_group') && (
               <button
-                className={`rounded-md border px-3 py-1.5 ${view === 'vendors' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-                onClick={() => setView('vendors')}
+                className={`px-3 py-1.5 border-l ${mode === 'range' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+                onClick={() => setMode('range')}
               >
-                {VENDOR_COMPARISON_LABEL}
+                Custom Range
               </button>
-            )}
-            <button
-              className={`rounded-md border px-3 py-1.5 ${view === 'analytics' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-              onClick={() => setView('analytics')}
-            >
-              {ANALYTICS_LABEL}
-            </button>
-          </div>
-        </div>
+            </div>
 
-        <div className="flex flex-col items-end gap-2">
-          <div className="flex rounded-md border text-sm overflow-hidden">
-            <button
-              className={`px-3 py-1.5 ${mode === 'cycle' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-              onClick={() => setMode('cycle')}
-            >
-              Billing Cycle
-            </button>
-            <button
-              className={`px-3 py-1.5 border-l ${mode === 'range' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-              onClick={() => setMode('range')}
-            >
-              Custom Range
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <select
-              className="rounded-md border bg-background px-3 py-1.5 text-sm"
-              value={dateBasis}
-              onChange={(e) => handleBasisChange(e.target.value as DateBasis)}
-              title="Date field used to assign the billing cycle / filter the range"
-            >
-              {BASIS_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-
-            {mode === 'cycle' && (
+            <div className="flex items-center gap-2">
               <select
                 className="rounded-md border bg-background px-3 py-1.5 text-sm"
-                value={cycle ?? ''}
-                onChange={(e) => setCycle(e.target.value)}
+                value={dateBasis}
+                onChange={(e) => handleBasisChange(e.target.value as DateBasis)}
+                title="Date field used to assign the billing cycle / filter the range"
               >
-                {Object.entries(
-                  (cycles ?? []).reduce<Record<string, string[]>>((acc, c) => {
-                    const year = c.slice(0, 4)
-                    ;(acc[year] ??= []).push(c)
-                    return acc
-                  }, {})
-                ).map(([year, items]) => (
-                  <optgroup key={year} label={year}>
-                    {items.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </optgroup>
+                {BASIS_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
-            )}
 
-            {mode === 'range' && (
-              <div className="flex items-center gap-2">
-                <input
-                  type="date"
-                  className="rounded-md border bg-background px-2 py-1.5 text-sm"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                />
-                <span className="text-xs text-muted-foreground">to</span>
-                <input
-                  type="date"
-                  className="rounded-md border bg-background px-2 py-1.5 text-sm"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                />
-              </div>
-            )}
+              {mode === 'cycle' && (
+                <select
+                  className="rounded-md border bg-background px-3 py-1.5 text-sm"
+                  value={cycle ?? ''}
+                  onChange={(e) => setCycle(e.target.value)}
+                >
+                  {Object.entries(
+                    (cycles ?? []).reduce<Record<string, string[]>>((acc, c) => {
+                      const year = c.slice(0, 4)
+                      ;(acc[year] ??= []).push(c)
+                      return acc
+                    }, {})
+                  ).map(([year, items]) => (
+                    <optgroup key={year} label={year}>
+                      {items.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              )}
+
+              {mode === 'range' && (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    className="rounded-md border bg-background px-2 py-1.5 text-sm"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                  />
+                  <span className="text-xs text-muted-foreground">to</span>
+                  <input
+                    type="date"
+                    className="rounded-md border bg-background px-2 py-1.5 text-sm"
+                    value={endDate}
+                    onChange={(e) => setEndDate(e.target.value)}
+                  />
+                </div>
+              )}
+            </div>
+            {mode === 'cycle' && cycleDateHint && <PeriodChip>{cycleDateHint}</PeriodChip>}
           </div>
-          {mode === 'cycle' && cycleDateHint && (
-            <p className="text-xs text-muted-foreground">{cycleDateHint}</p>
-          )}
-        </div>
+        }
+      />
+
+      {/* A gapped pill row, not a segmented control. Five tabs no longer fit on one line at
+          narrow widths, and merely adding flex-wrap to the old segmented control leaves the
+          first button of the wrapped row drawing a border-l against nothing, with no border-t
+          separating the rows. Each button owns its whole border instead. */}
+      <div data-testid="pnl-view-tabs" className="flex flex-wrap gap-2 text-sm">
+        <button
+          className={`rounded-md border px-3 py-1.5 ${view === 'estimate' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+          onClick={() => setView('estimate')}
+        >
+          Estimated
+        </button>
+        <button
+          className={`rounded-md border px-3 py-1.5 ${view === 'actual' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+          onClick={() => setView('actual')}
+        >
+          Actual vs Estimate
+        </button>
+        <button
+          className={`rounded-md border px-3 py-1.5 ${view === 'daily' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+          onClick={() => setView('daily')}
+        >
+          Daily Report
+        </button>
+        {hasPermission('read.route_group') && (
+          <button
+            className={`rounded-md border px-3 py-1.5 ${view === 'routes' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+            onClick={() => setView('routes')}
+          >
+            {ROUTE_COMPARISON_LABEL}
+          </button>
+        )}
+        {hasPermission('read.vendor_group') && (
+          <button
+            className={`rounded-md border px-3 py-1.5 ${view === 'vendors' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+            onClick={() => setView('vendors')}
+          >
+            {VENDOR_COMPARISON_LABEL}
+          </button>
+        )}
+        <button
+          className={`rounded-md border px-3 py-1.5 ${view === 'analytics' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
+          onClick={() => setView('analytics')}
+        >
+          {ANALYTICS_LABEL}
+        </button>
       </div>
 
       {isPageError ? (

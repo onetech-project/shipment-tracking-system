@@ -5,7 +5,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 
 function Sheet({ name }: { name: string }) {
   return (
-    <span className="inline-block rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+    <span className="inline-block rounded bg-info-soft px-1.5 py-0.5 text-[10px] font-medium text-info-ink">
       {name}
     </span>
   )
@@ -49,9 +49,9 @@ export function PnlFormulaPanel() {
         <div className="border-t px-4 pb-5 pt-4 space-y-5 text-xs">
 
           {/* ── IMPORTANT CAVEAT ── */}
-          <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+          <div className="rounded border border-warn/30 bg-warn-soft px-3 py-2 text-warn-ink">
             <p className="font-medium mb-0.5">Estimated figures — not actual billing</p>
-            <p className="text-amber-700 dark:text-amber-300">
+            <p className="text-warn-ink">
               The billing cycle is assigned by the <em>selected date basis</em> (default arrival,{' '}
               <Col name="ata_vendor_wh_destination" />), which reflects shipment movement — not when the
               customer was invoiced or paid.
@@ -145,17 +145,17 @@ export function PnlFormulaPanel() {
               chargeable weight is missing.
             </p>
 
-            <div className="mb-3 rounded border border-sky-200 bg-sky-50 px-3 py-2 text-sky-800 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-200">
+            <div className="mb-3 rounded border border-info/25 bg-[#ecfeff] px-3 py-2 text-info-ink">
               <p className="font-medium mb-0.5">
                 Route fallback — cost without waiting for the reservation
               </p>
-              <p className="text-sky-700 dark:text-sky-300">
+              <p className="text-info-ink">
                 When an AWB has no booking row (or its vendor/airline pair has no{' '}
                 <Sheet name="SMU" /> rate), cost is estimated from the route instead. The TO&apos;s origin
                 and destination DC resolve through <Col name="air_shipments_data" /> to{' '}
                 <Col name="3lc_origin" /> / <Col name="3lc_destination" />, and every cost below is
                 computed on those airport codes. Such rows are marked{' '}
-                <span className="rounded bg-sky-100 px-1 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-900/50 dark:text-sky-300">
+                <span className="rounded bg-info-soft px-1 py-0.5 text-[10px] font-medium text-info-ink">
                   Estimated
                 </span>{' '}
                 in the AWB table and switch to real booking figures as soon as the reservation exists.
@@ -209,7 +209,7 @@ export function PnlFormulaPanel() {
                   surcharges + admin; komisi (commission rebate) is deducted on the freight portion only.{' '}
                   <Col name="ppn" /> and <Col name="komisi" /> are percentages (11 = 11%, 2.94 = 2.94%).
                 </p>
-                <p className="text-sky-700 dark:text-sky-300">
+                <p className="text-info-ink">
                   <strong>Fallback:</strong> with no booking, the same formula runs on the{' '}
                   <Sheet name="SMU" /> row for the 3LC route with the <strong>highest all-in cost per kg</strong>{' '}
                   — ranked on the full expression above per kg, not on <Col name="freight_rate" /> alone, so the
@@ -232,7 +232,7 @@ export function PnlFormulaPanel() {
                   NULL when the booking names an RA with no matching row in <Sheet name="RA" />.
                   <Col name="ppn" /> is stored as a percentage (e.g. 11 = 11% VAT).
                 </p>
-                <p className="text-sky-700 dark:text-sky-300">
+                <p className="text-info-ink">
                   <strong>Fallback:</strong> when there is no booking, or the booking&apos;s{' '}
                   <Col name="ra" /> is blank, the estimate uses the <strong>highest rate</strong> in{' '}
                   <Sheet name="RA" /> (ignoring &quot;include&quot; rows).
@@ -254,7 +254,7 @@ export function PnlFormulaPanel() {
                   NULL when no matching row in <Sheet name="SG Outgoing" />.
                   <Col name="ppn" /> is stored as a percentage.
                 </p>
-                <p className="text-sky-700 dark:text-sky-300">
+                <p className="text-info-ink">
                   <strong>Fallback:</strong> same join and formula, keyed off the{' '}
                   <Col name="sg_out" /> of the SMU row the route fallback picked. An unmatched name
                   costs 0 rather than NULL, so a missing SG Outgoing entry cannot nullify the whole estimate.
@@ -277,7 +277,7 @@ export function PnlFormulaPanel() {
                   route has no matching row in <Sheet name="SG Incoming" />, but Total Cost treats a missing route
                   as 0 so it is not nullified.
                 </p>
-                <p className="text-sky-700 dark:text-sky-300">
+                <p className="text-info-ink">
                   <strong>Fallback:</strong> unchanged — this cost is keyed on the resolved route, so it no
                   longer waits on a booking. Without one it uses gross weight in place of chargeable weight.
                 </p>

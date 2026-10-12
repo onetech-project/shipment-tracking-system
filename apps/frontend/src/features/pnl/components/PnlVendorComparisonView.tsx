@@ -2,7 +2,9 @@
 
 import { useEffect } from 'react'
 import Link from 'next/link'
+import { Tag } from 'lucide-react'
 import { MultiVendorFilter } from '@/components/shared/multi-vendor-filter'
+import { EmptyState } from '@/components/shared/empty-state'
 import {
   useAvailableVendors,
   useVendorGroups,
@@ -115,10 +117,11 @@ export function PnlVendorComparisonView({
   // when there is genuinely nothing to pick from.
   if ((groups ?? []).length === 0 && (availableVendors ?? []).length === 0) {
     return (
-      <div className="rounded-lg border bg-card p-8 text-center">
+      <div className="rounded-lg border border-dashed border-border-strong bg-card px-6 py-14 text-center">
+        <Tag className="mx-auto mb-2.5 h-11 w-11 text-muted-foreground opacity-40" aria-hidden="true" />
         {/* Each sentence is its own node so the surrounding <p> never mixes text with the link —
             a mixed parent makes getByText unable to match either half. */}
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm font-semibold text-muted-foreground">
           <span>Belum ada Vendor Group maupun vendor yang bisa dibandingkan.</span>{' '}
           <Link href="/vendor-groups" className="text-primary underline">
             Buat satu dulu
@@ -154,18 +157,22 @@ export function PnlVendorComparisonView({
       <div className="rounded-lg border bg-card p-4">
         {(groups ?? []).length > 0 && (
           <>
-            <p className="mb-2 text-sm font-medium">Vendor Group</p>
-            <div className="flex flex-wrap gap-x-6 gap-y-2">
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground">Vendor Group</p>
+            <div className="flex flex-wrap gap-3.5">
               {(groups ?? []).map((group) => (
-                <label key={group.id} className="flex items-center gap-2 text-sm">
+                <label
+                  key={group.id}
+                  className="inline-flex items-center gap-1.5 rounded-sm border bg-surface-2 px-3 py-1.5 text-[12.5px] font-medium motion-safe:transition-colors hover:border-brand hover:bg-[#ecf7ef]"
+                >
                   <input
                     type="checkbox"
                     aria-label={`${group.name} (${group.vendors.length} vendor)`}
                     checked={picks.some((p) => p.kind === 'group' && p.id === group.id)}
                     onChange={() => toggleGroup(group.id)}
+                    className="accent-brand-2"
                   />
                   <span>{group.name}</span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-[11px] font-medium text-faint">
                     {group.vendors.length} vendor
                   </span>
                 </label>
@@ -174,7 +181,7 @@ export function PnlVendorComparisonView({
           </>
         )}
 
-        <p className="mb-2 mt-4 text-sm font-medium">Vendor</p>
+        <p className="mb-2 mt-4 text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground">Vendor</p>
         <MultiVendorFilter
           className="w-[260px]"
           vendors={(availableVendors ?? []).map((v) => v.vendor)}
@@ -183,13 +190,13 @@ export function PnlVendorComparisonView({
         />
 
         {atLimit && (
-          <p className="mt-2 text-xs text-amber-600">
+          <p className="mt-2 text-xs text-warn-ink">
             {`Maksimum ${MAX_VENDOR_COLUMNS} kolom. Lepas satu pilihan dulu untuk menambah yang lain.`}
           </p>
         )}
 
         {overlaps.length > 0 && (
-          <div className="mt-3 rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+          <div className="mt-3 rounded-md bg-warn-soft p-2 text-xs text-warn-ink">
             {/* Built as one interpolated string rather than mixed JSX children, so the whole
                 sentence lands in a single text node the tests can match on. */}
             {overlaps.map((o) => (
@@ -202,11 +209,10 @@ export function PnlVendorComparisonView({
       </div>
 
       {picks.length === 0 ? (
-        <div className="rounded-lg border bg-card p-8 text-center">
-          <p className="text-sm text-muted-foreground">
-            Pilih minimal satu vendor group atau vendor untuk melihat perbandingan.
-          </p>
-        </div>
+        <EmptyState
+          icon={Tag}
+          title="Pilih minimal satu vendor group atau vendor untuk melihat perbandingan."
+        />
       ) : isLoading ? (
         <div className="h-[420px] animate-pulse rounded-lg border bg-card" />
       ) : isError ? (
@@ -221,7 +227,7 @@ export function PnlVendorComparisonView({
           {/* Permanent, not conditional on a threshold. Only about a third of TOs carry a vendor,
               so without this the table reads as a decomposition of period revenue and quietly
               loses the rest. */}
-          <div className="rounded-md bg-blue-50 p-2 text-xs text-blue-900 dark:bg-blue-950/40 dark:text-blue-200">
+          <div className="rounded-md bg-info-soft p-2 text-xs text-info-ink">
             {coveragePct != null
               ? `Kolom di bawah mencakup ${coveragePct}% revenue periode ini. Sisanya berasal dari TO di luar kolom-kolom ini — lihat catatan di bawah.`
               : 'Kolom di bawah hanya mencakup TO yang punya vendor. Porsinya belum bisa dihitung dari response ini.'}

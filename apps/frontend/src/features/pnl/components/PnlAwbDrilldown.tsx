@@ -15,7 +15,21 @@ import { periodBounds } from '../utils/periodBounds'
 import { fmt, num, pct } from '../utils/format'
 import { issueLabel } from '../utils/issueLabels'
 import { MultiRouteFilter } from '@/components/shared/multi-route-filter'
+import { FilterBar } from '@/components/shared/filter-bar'
 import { buildRouteLabelIndex, labelsForRoutes, routesForLabels } from '../utils/routeLabels'
+
+// Positive/negative margin and GP cells read as the mockup's `.margin-cell`/`.gp-pos`/`.gp-neg`:
+// bold green/red for margin, a slightly lighter semibold green/red for GP. null stays unstyled —
+// it already renders as an em-dash, not a number to colour.
+function marginClass(value: number | null): string {
+  if (value == null) return ''
+  return value < 0 ? 'text-bad font-bold' : 'text-good font-bold'
+}
+
+function gpClass(value: number | null): string {
+  if (value == null) return ''
+  return value < 0 ? 'text-bad font-semibold' : 'text-good font-semibold'
+}
 
 interface ToSubTableProps {
   awb: string
@@ -28,7 +42,7 @@ function ToSubTable({ awb, filter }: ToSubTableProps) {
   return (
     <tr>
       <td colSpan={18} className="p-0">
-        <div className="border-t border-b bg-muted/20 px-4 py-2">
+        <div className="border-t border-b bg-surface-2/60 px-4 py-2">
           {isLoading && <p className="py-2 text-xs text-muted-foreground">Loading TOs…</p>}
           {data && data.length === 0 && (
             <p className="py-2 text-xs text-muted-foreground">No TOs found.</p>
@@ -58,29 +72,29 @@ function ToSubTable({ awb, filter }: ToSubTableProps) {
               </thead>
               <tbody>
                 {data.map((to: PnlToRow, idx: number) => (
-                  <tr key={to.toNumber} className={idx % 2 === 0 ? '' : 'bg-muted/30'}>
-                    <td className="py-1 pr-3 font-mono">
+                  <tr key={to.toNumber} className={idx % 2 === 0 ? '' : 'bg-surface-2'}>
+                    <td className="py-1 pr-3 font-mono tabular">
                       {to.toNumber}
                       {to.isCostEstimated && (
                         <span
-                          className="ml-1.5 rounded bg-sky-100 px-1 py-0.5 text-[9px] font-normal text-sky-700 dark:bg-sky-900/50 dark:text-sky-300"
+                          className="ml-1.5 rounded bg-info-soft px-1 py-0.5 text-[9px] font-normal text-info-ink"
                           title="No reservation yet — cost estimated from the route's dearest SMU and RA rates"
                         >
                           Est
                         </span>
                       )}
                     </td>
-                    <td className="py-1 pr-3 text-right">{num(to.grossWeight)}</td>
-                    <td className="py-1 pr-3 text-right">{to.chwt != null ? num(to.chwt) : '—'}</td>
-                    <td className="py-1 pr-3 text-right">{fmt.format(to.revenue)}</td>
-                    <td className="py-1 pr-3 text-right">{to.costSmu != null ? fmt.format(to.costSmu) : <span className="text-amber-600">NULL</span>}</td>
-                    <td className="py-1 pr-3 text-right">{to.costRa != null ? fmt.format(to.costRa) : <span className="text-amber-600">NULL</span>}</td>
-                    <td className="py-1 pr-3 text-right">{to.costSg != null ? fmt.format(to.costSg) : <span className="text-amber-600">NULL</span>}</td>
-                    <td className="py-1 pr-3 text-right">{to.costSgIn != null ? fmt.format(to.costSgIn) : <span className="text-amber-600">NULL</span>}</td>
-                    <td className="py-1 pr-3 text-right">{to.totalCost != null ? fmt.format(to.totalCost) : <span className="text-amber-600">NULL</span>}</td>
-                    <td className="py-1 pr-3 text-right">{to.grossProfit != null ? fmt.format(to.grossProfit) : '—'}</td>
-                    <td className="py-1 pr-3 text-right font-medium">{pct(to.marginPct)}</td>
-                    <td className="py-1 text-left text-amber-600">{to.issue ? issueLabel(to.issue) : ''}</td>
+                    <td className="py-1 pr-3 text-right tabular">{num(to.grossWeight)}</td>
+                    <td className="py-1 pr-3 text-right tabular">{to.chwt != null ? num(to.chwt) : '—'}</td>
+                    <td className="py-1 pr-3 text-right tabular">{fmt.format(to.revenue)}</td>
+                    <td className="py-1 pr-3 text-right tabular">{to.costSmu != null ? fmt.format(to.costSmu) : <span className="text-warn-ink">NULL</span>}</td>
+                    <td className="py-1 pr-3 text-right tabular">{to.costRa != null ? fmt.format(to.costRa) : <span className="text-warn-ink">NULL</span>}</td>
+                    <td className="py-1 pr-3 text-right tabular">{to.costSg != null ? fmt.format(to.costSg) : <span className="text-warn-ink">NULL</span>}</td>
+                    <td className="py-1 pr-3 text-right tabular">{to.costSgIn != null ? fmt.format(to.costSgIn) : <span className="text-warn-ink">NULL</span>}</td>
+                    <td className="py-1 pr-3 text-right tabular">{to.totalCost != null ? fmt.format(to.totalCost) : <span className="text-warn-ink">NULL</span>}</td>
+                    <td className={`py-1 pr-3 text-right tabular ${gpClass(to.grossProfit)}`}>{to.grossProfit != null ? fmt.format(to.grossProfit) : '—'}</td>
+                    <td className={`py-1 pr-3 text-right tabular ${marginClass(to.marginPct)}`}>{pct(to.marginPct)}</td>
+                    <td className="py-1 text-left text-warn-ink">{to.issue ? issueLabel(to.issue) : ''}</td>
                   </tr>
                 ))}
               </tbody>
@@ -100,7 +114,7 @@ function VariesMark({ when }: { when: boolean }) {
     <span
       data-testid="varies-mark"
       title="TO dalam AWB ini punya nilai berbeda — yang tampil adalah nilai terbanyak, dan angka di baris ini menjumlahkan seluruh TO AWB ini, termasuk yang berada di luar filter rute/tanggal"
-      className="ml-1 text-amber-600"
+      className="ml-1 text-warn-ink"
     >
       +
     </span>
@@ -175,22 +189,25 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
         <p className="text-sm font-medium">AWB Drilldown — {title}</p>
         {data && <p className="text-xs text-muted-foreground">{data.total} AWBs</p>}
         {hasRoute && overhangCount > 0 && (
-          <p className="mt-1 text-xs text-amber-600">
+          <p className="mt-1 text-xs text-warn-ink">
             {overhangCount} AWB di halaman ini punya TO di luar filter — umumnya tanggal ATA yang
             berbeda. Angka barisnya mencakup seluruh TO milik AWB itu, jadi totalnya bisa lebih
             besar dari cell yang diklik.
           </p>
         )}
         {vendors.length > 0 && (
-          <p data-testid="vendor-scope-note" className="mt-1 text-xs text-amber-600">
+          <p data-testid="vendor-scope-note" className="mt-1 text-xs text-warn-ink">
             Angka di sini menjumlahkan seluruh TO milik AWB yang cocok dan memakai biaya per-AWB,
             sedangkan sel Vendor Comparison memakai prorata weight_share yang dibatasi satu rute.
             Kedua angka memang tidak akan sama.
           </p>
         )}
       </div>
-      <div className="flex flex-wrap items-end gap-3 border-b px-4 py-3">
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+      <FilterBar className="mb-0 rounded-none border-x-0 border-t-0 border-b">
+        {/* MultiRouteFilter has no id/aria-labelledby prop to target from a sibling label, so this
+            keeps the native nested-<label> association (label wraps the control) instead of
+            FormField. */}
+        <label className="flex flex-col gap-1 text-[10.5px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
           Rute
           <MultiRouteFilter
             className="w-[260px]"
@@ -200,12 +217,12 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
           />
         </label>
 
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        <label className="flex flex-col gap-1 text-[10.5px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
           Dari
           <input
             type="date"
             aria-label="Dari"
-            className="rounded-md border bg-background px-2 py-1.5 text-sm text-foreground"
+            className="rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium text-foreground outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40"
             min={bounds.min}
             max={route.dateTo || bounds.max}
             value={route.dateFrom ?? ''}
@@ -213,12 +230,12 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
           />
         </label>
 
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        <label className="flex flex-col gap-1 text-[10.5px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
           Sampai
           <input
             type="date"
             aria-label="Sampai"
-            className="rounded-md border bg-background px-2 py-1.5 text-sm text-foreground"
+            className="rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium text-foreground outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40"
             min={route.dateFrom || bounds.min}
             max={bounds.max}
             value={route.dateTo ?? ''}
@@ -227,14 +244,14 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
         </label>
 
         {vendors.length > 0 && (
-          <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+          <div className="flex flex-col gap-1 text-[10.5px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
             Vendor
             <div className="flex flex-wrap items-center gap-1 pb-0.5">
               {vendors.map((vendor) => (
                 <span
                   key={vendor}
                   data-testid={`vendor-chip-${vendor}`}
-                  className="flex items-center gap-1 rounded-full border bg-muted px-2 py-1 text-xs text-foreground"
+                  className="flex items-center gap-1 rounded-full border bg-surface-2 px-2 py-1 text-xs font-medium normal-case tracking-normal text-foreground"
                 >
                   {vendor}
                   <button
@@ -260,29 +277,29 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
             Reset
           </button>
         )}
-      </div>
+      </FilterBar>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-xs text-muted-foreground">
-              <th className="w-6 px-2 py-2" />
-              <th className="px-3 py-2 text-left">AWB</th>
-              <th className="px-3 py-2 text-left">Origin</th>
-              <th className="px-3 py-2 text-left">Destination</th>
-              <th className="px-3 py-2 text-left">{BASIS_LABELS[filter.basis]}</th>
-              <th className="px-3 py-2 text-left">Vendor</th>
-              <th className="px-3 py-2 text-left">Airline</th>
-              <th className="px-3 py-2 text-right">TOs</th>
-              <th className="px-3 py-2 text-right">GW</th>
-              <th className="px-3 py-2 text-right">ChWt</th>
-              <th className="px-3 py-2 text-right">Revenue</th>
-              <th className="px-3 py-2 text-right">Cost SMU</th>
-              <th className="px-3 py-2 text-right">Cost RA</th>
-              <th className="px-3 py-2 text-right">Cost SG Out</th>
-              <th className="px-3 py-2 text-right">Cost SG In</th>
-              <th className="px-3 py-2 text-right">Total Cost</th>
-              <th className="px-3 py-2 text-right">GP</th>
-              <th className="px-3 py-2 text-right">Margin</th>
+              <th className="w-6 bg-table-head px-2 py-2.5" />
+              <th className="bg-table-head px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.06em]">AWB</th>
+              <th className="bg-table-head px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.06em]">Origin</th>
+              <th className="bg-table-head px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.06em]">Destination</th>
+              <th className="bg-table-head px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.06em]">{BASIS_LABELS[filter.basis]}</th>
+              <th className="bg-table-head px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.06em]">Vendor</th>
+              <th className="bg-table-head px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.06em]">Airline</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">TOs</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">GW</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">ChWt</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">Revenue</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">Cost SMU</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">Cost RA</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">Cost SG Out</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">Cost SG In</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">Total Cost</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">GP</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">Margin</th>
             </tr>
           </thead>
           <tbody>
@@ -291,15 +308,11 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
             )}
             {data?.data.map((row, idx) => {
               const isExpanded = expandedAwb === row.awb
-              const rowBg = row.hasNullCost
-                ? 'bg-amber-50 dark:bg-amber-950/20'
-                : idx % 2 === 1
-                  ? 'bg-muted/70'
-                  : ''
+              const rowBg = row.hasNullCost ? 'bg-warn-soft' : idx % 2 === 1 ? 'bg-surface-2' : ''
               return (
                 <Fragment key={row.awb}>
                   <tr
-                    className={`border-b cursor-pointer hover:bg-muted/50 ${rowBg}`}
+                    className={`border-b cursor-pointer hover:bg-row-hover ${rowBg}`}
                     onClick={() => toggleAwb(row.awb)}
                   >
                     <td className="px-2 py-2 text-muted-foreground">
@@ -309,7 +322,7 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
                       {row.awb}
                       {row.issue && (
                         <span
-                          className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-normal text-amber-700 dark:bg-amber-900/50 dark:text-amber-300"
+                          className="ml-2 rounded bg-warn-soft px-1.5 py-0.5 text-[10px] font-normal text-warn-ink"
                           title="Fix in source Google Sheet, then re-sync"
                         >
                           {issueLabel(row.issue)}
@@ -317,7 +330,7 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
                       )}
                       {row.isCostEstimated && (
                         <span
-                          className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-normal text-sky-700 dark:bg-sky-900/50 dark:text-sky-300"
+                          className="ml-2 rounded bg-info-soft px-1.5 py-0.5 text-[10px] font-normal text-info-ink"
                           title="No reservation yet — cost estimated from the route's dearest SMU and RA rates. Replaced by actuals once the booking is entered."
                         >
                           Estimated
@@ -338,17 +351,17 @@ export function PnlAwbDrilldown({ filter, route, onRouteChange }: PnlAwbDrilldow
                     </td>
                     <td className="px-3 py-2">{row.vendor ?? '—'}</td>
                     <td className="px-3 py-2">{row.airline ?? '—'}</td>
-                    <td className="px-3 py-2 text-right">{row.toCount}</td>
-                    <td className="px-3 py-2 text-right">{num(row.sumGw)}</td>
-                    <td className="px-3 py-2 text-right">{row.chwt != null ? num(row.chwt) : '—'}</td>
-                    <td className="px-3 py-2 text-right">{fmt.format(row.totalRevenue)}</td>
-                    <td className="px-3 py-2 text-right">{row.costSmu != null ? fmt.format(row.costSmu) : <span className="text-amber-600">NULL</span>}</td>
-                    <td className="px-3 py-2 text-right">{row.costRa != null ? fmt.format(row.costRa) : <span className="text-amber-600">NULL</span>}</td>
-                    <td className="px-3 py-2 text-right">{row.costSgOut != null ? fmt.format(row.costSgOut) : <span className="text-amber-600">NULL</span>}</td>
-                    <td className="px-3 py-2 text-right">{row.costSgIn != null ? fmt.format(row.costSgIn) : <span className="text-amber-600">NULL</span>}</td>
-                    <td className="px-3 py-2 text-right">{row.totalCost != null ? fmt.format(row.totalCost) : <span className="text-amber-600">NULL</span>}</td>
-                    <td className="px-3 py-2 text-right">{row.grossProfit != null ? fmt.format(row.grossProfit) : '—'}</td>
-                    <td className="px-3 py-2 text-right font-medium">{pct(row.grossMarginPct)}</td>
+                    <td className="px-3 py-2 text-right tabular">{row.toCount}</td>
+                    <td className="px-3 py-2 text-right tabular">{num(row.sumGw)}</td>
+                    <td className="px-3 py-2 text-right tabular">{row.chwt != null ? num(row.chwt) : '—'}</td>
+                    <td className="px-3 py-2 text-right tabular">{fmt.format(row.totalRevenue)}</td>
+                    <td className="px-3 py-2 text-right tabular">{row.costSmu != null ? fmt.format(row.costSmu) : <span className="text-warn-ink">NULL</span>}</td>
+                    <td className="px-3 py-2 text-right tabular">{row.costRa != null ? fmt.format(row.costRa) : <span className="text-warn-ink">NULL</span>}</td>
+                    <td className="px-3 py-2 text-right tabular">{row.costSgOut != null ? fmt.format(row.costSgOut) : <span className="text-warn-ink">NULL</span>}</td>
+                    <td className="px-3 py-2 text-right tabular">{row.costSgIn != null ? fmt.format(row.costSgIn) : <span className="text-warn-ink">NULL</span>}</td>
+                    <td className="px-3 py-2 text-right tabular">{row.totalCost != null ? fmt.format(row.totalCost) : <span className="text-warn-ink">NULL</span>}</td>
+                    <td className={`px-3 py-2 text-right tabular ${gpClass(row.grossProfit)}`}>{row.grossProfit != null ? fmt.format(row.grossProfit) : '—'}</td>
+                    <td className={`px-3 py-2 text-right tabular font-medium ${marginClass(row.grossMarginPct)}`}>{pct(row.grossMarginPct)}</td>
                   </tr>
                   {isExpanded && <ToSubTable awb={row.awb} filter={filter} />}
                 </Fragment>

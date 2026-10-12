@@ -18,10 +18,7 @@ interface PnlMatrixTableProps {
 }
 
 // Alternating group tints mirror the spreadsheet: the first origin block green, the next blue.
-const GROUP_TINTS = [
-  'bg-green-100 dark:bg-green-950/40',
-  'bg-blue-100 dark:bg-blue-950/40',
-]
+const GROUP_TINTS = ['bg-good-soft', 'bg-info-soft']
 
 // A missing value is marked, not left blank: an empty cell and a real 0 read the same at a glance,
 // and every clickable cell needs something to aim at. Matches num()/pct() and the AWB drilldown,
@@ -43,8 +40,8 @@ function cellButtonTitle(warning: CellWarning | undefined): string {
 // A negative value keeps its red text so a warned loss never reads as a warned profit.
 function cellClass(value: number | null, highlightNegative: boolean, warned: boolean): string {
   const negative = value != null && value < 0 && highlightNegative
-  if (warned) return `${WARNING_TINT} ${negative ? 'text-red-700 dark:text-red-400 font-semibold' : ''}`
-  return negative ? 'text-red-700 bg-red-50 dark:text-red-400 dark:bg-red-950/40' : ''
+  if (warned) return `${WARNING_TINT} ${negative ? 'text-bad font-bold' : ''}`
+  return negative ? 'text-bad font-bold bg-bad-soft' : ''
 }
 
 export function PnlMatrixTable({ title, model, defaultOpen = true, onCellClick }: PnlMatrixTableProps) {
@@ -72,7 +69,7 @@ export function PnlMatrixTable({ title, model, defaultOpen = true, onCellClick }
               <tr>
                 <th
                   rowSpan={2}
-                  className="sticky left-0 z-20 border-b border-r bg-card px-3 py-2 text-left font-medium"
+                  className="sticky left-0 z-20 border-b border-r bg-table-head px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground"
                 >
                   Tanggal
                 </th>
@@ -80,7 +77,7 @@ export function PnlMatrixTable({ title, model, defaultOpen = true, onCellClick }
                   <th
                     key={`${group.label}-${i}`}
                     colSpan={group.span}
-                    className={`border-b border-l px-3 py-1.5 text-center font-semibold ${GROUP_TINTS[i % GROUP_TINTS.length]}`}
+                    className={`border-b border-l px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-[0.04em] ${GROUP_TINTS[i % GROUP_TINTS.length]}`}
                   >
                     {group.label}
                   </th>
@@ -90,7 +87,7 @@ export function PnlMatrixTable({ title, model, defaultOpen = true, onCellClick }
                 {model.columns.map((column) => (
                   <th
                     key={`${column.origin}-${column.dest}`}
-                    className="whitespace-nowrap border-b border-l px-3 py-2 text-right font-medium text-muted-foreground"
+                    className="whitespace-nowrap border-b border-l bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground"
                   >
                     {column.dest}
                   </th>
@@ -100,7 +97,7 @@ export function PnlMatrixTable({ title, model, defaultOpen = true, onCellClick }
 
             <tbody>
               {model.dates.map((date, rowIndex) => (
-                <tr key={date} className={rowIndex % 2 ? 'bg-muted/30' : ''}>
+                <tr key={date} className={`hover:bg-row-hover ${rowIndex % 2 ? 'bg-surface-2' : ''}`}>
                   <td
                     className={`sticky left-0 z-10 whitespace-nowrap border-b border-r px-3 py-1.5 ${frozenCell(rowIndex % 2 === 1)}`}
                   >
@@ -142,8 +139,11 @@ export function PnlMatrixTable({ title, model, defaultOpen = true, onCellClick }
 
             <tfoot>
               {model.footerRows.map((row, i) => (
-                <tr key={row.label} className={i === 0 ? 'border-t-2 font-semibold' : 'font-semibold'}>
-                  <td className="sticky left-0 z-10 whitespace-nowrap border-b border-r bg-card px-3 py-1.5 text-right">
+                <tr
+                  key={row.label}
+                  className={`bg-table-head font-semibold ${i === 0 ? 'border-t-2' : ''}`}
+                >
+                  <td className="sticky left-0 z-10 whitespace-nowrap border-b border-r bg-table-head px-3 py-1.5 text-right">
                     {row.label}
                   </td>
                   {row.values.map((value, colIndex) => {

@@ -2,7 +2,9 @@
 
 import { useEffect } from 'react'
 import Link from 'next/link'
+import { Map } from 'lucide-react'
 import { MultiRouteFilter } from '@/components/shared/multi-route-filter'
+import { EmptyState } from '@/components/shared/empty-state'
 import { useAvailableRoutes, useRouteGroups } from '@/features/route-groups/hooks/useRouteGroups'
 import { PnlColumnPick, PnlFilter, PnlRouteFilter, usePnlRouteComparison } from '../hooks/usePnl'
 import { buildRouteLabelIndex, labelsForRoutes, routesForLabels } from '../utils/routeLabels'
@@ -88,10 +90,11 @@ export function PnlRouteComparisonView({ filter, picks, onPicksChange, onCellCli
   // when there is genuinely nothing to pick from.
   if ((groups ?? []).length === 0 && (availableRoutes ?? []).length === 0) {
     return (
-      <div className="rounded-lg border bg-card p-8 text-center">
+      <div className="rounded-lg border border-dashed border-border-strong bg-card px-6 py-14 text-center">
+        <Map className="mx-auto mb-2.5 h-11 w-11 text-muted-foreground opacity-40" aria-hidden="true" />
         {/* Each sentence is its own node so the surrounding <p> never mixes text with the link —
             a mixed parent makes getByText unable to match either half. */}
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm font-semibold text-muted-foreground">
           <span>Belum ada Route Group maupun rute yang bisa dibandingkan.</span>{' '}
           <Link href="/route-groups" className="text-primary underline">
             Buat satu dulu
@@ -107,25 +110,29 @@ export function PnlRouteComparisonView({ filter, picks, onPicksChange, onCellCli
       <div className="rounded-lg border bg-card p-4">
         {(groups ?? []).length > 0 && (
           <>
-            <p className="mb-2 text-sm font-medium">Route Group</p>
-            <div className="flex flex-wrap gap-x-6 gap-y-2">
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground">Route Group</p>
+            <div className="flex flex-wrap gap-3.5">
               {(groups ?? []).map((group) => (
-                <label key={group.id} className="flex items-center gap-2 text-sm">
+                <label
+                  key={group.id}
+                  className="inline-flex items-center gap-1.5 rounded-sm border bg-surface-2 px-3 py-1.5 text-[12.5px] font-medium motion-safe:transition-colors hover:border-brand hover:bg-[#ecf7ef]"
+                >
                   <input
                     type="checkbox"
                     aria-label={`${group.name} (${group.routes.length} rute)`}
                     checked={picks.some((p) => p.kind === 'group' && p.id === group.id)}
                     onChange={() => toggleGroup(group.id)}
+                    className="accent-brand-2"
                   />
                   <span>{group.name}</span>
-                  <span className="text-xs text-muted-foreground">{group.routes.length} rute</span>
+                  <span className="text-[11px] font-medium text-faint">{group.routes.length} rute</span>
                 </label>
               ))}
             </div>
           </>
         )}
 
-        <p className="mb-2 mt-4 text-sm font-medium">Rute</p>
+        <p className="mb-2 mt-4 text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground">Rute</p>
         <MultiRouteFilter
           className="w-[260px]"
           routes={routeIndex.labels}
@@ -134,7 +141,7 @@ export function PnlRouteComparisonView({ filter, picks, onPicksChange, onCellCli
         />
 
         {overlaps.length > 0 && (
-          <div className="mt-3 rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+          <div className="mt-3 rounded-md bg-warn-soft p-2 text-xs text-warn-ink">
             {/* Built as one interpolated string rather than mixed JSX children, so the whole
                 sentence lands in a single text node the tests can match on. */}
             {overlaps.map((o) => (
@@ -147,11 +154,10 @@ export function PnlRouteComparisonView({ filter, picks, onPicksChange, onCellCli
       </div>
 
       {picks.length === 0 ? (
-        <div className="rounded-lg border bg-card p-8 text-center">
-          <p className="text-sm text-muted-foreground">
-            Pilih minimal satu Route Group atau rute untuk melihat perbandingan.
-          </p>
-        </div>
+        <EmptyState
+          icon={Map}
+          title="Pilih minimal satu Route Group atau rute untuk melihat perbandingan."
+        />
       ) : isLoading ? (
         <div className="h-[420px] animate-pulse rounded-lg border bg-card" />
       ) : isError ? (

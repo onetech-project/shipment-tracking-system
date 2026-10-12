@@ -45,9 +45,9 @@ function RevenueByRouteSection({ filter }: { filter: PnlFilter }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-xs text-muted-foreground">
-              <th className="px-3 py-2 text-left">Route</th>
-              <th className="px-3 py-2 text-right">Total Weight (kg)</th>
-              <th className="px-3 py-2 text-right">Total Est. Revenue</th>
+              <th className="bg-table-head px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.06em]">Route</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">Total Weight (kg)</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">Total Est. Revenue</th>
             </tr>
           </thead>
           <tbody>
@@ -59,10 +59,10 @@ function RevenueByRouteSection({ filter }: { filter: PnlFilter }) {
               </tr>
             )}
             {data?.map((r, idx) => (
-              <tr key={r.route} className={`border-b ${idx % 2 ? 'bg-muted/30' : ''}`}>
+              <tr key={r.route} className={`border-b hover:bg-row-hover ${idx % 2 ? 'bg-surface-2' : ''}`}>
                 <td className="px-3 py-2 font-mono text-xs">{r.route}</td>
-                <td className="px-3 py-2 text-right">{num(r.totalWeight)}</td>
-                <td className="px-3 py-2 text-right">{fmt.format(r.totalRevenue)}</td>
+                <td className="px-3 py-2 text-right tabular">{num(r.totalWeight)}</td>
+                <td className="px-3 py-2 text-right tabular">{fmt.format(r.totalRevenue)}</td>
               </tr>
             ))}
             {data && data.length === 0 && (
@@ -146,10 +146,10 @@ function SmuVendorTable({ filter }: { filter: PnlFilter }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-xs text-muted-foreground">
-              <th className="w-6 px-2 py-2" />
-              <th className="px-3 py-2 text-left">Vendor</th>
-              <th className="px-3 py-2 text-right">Total Weight (kg)</th>
-              <th className="px-3 py-2 text-right">Total Cost</th>
+              <th className="w-6 bg-table-head px-2 py-2.5" />
+              <th className="bg-table-head px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.06em]">Vendor</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">Total Weight (kg)</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">Total Cost</th>
             </tr>
           </thead>
           <tbody>
@@ -168,18 +168,18 @@ function SmuVendorTable({ filter }: { filter: PnlFilter }) {
                     onClick={() =>
                       setExpanded((prev) => (prev === vendor.vendor ? null : vendor.vendor))
                     }
-                    className={`border-b cursor-pointer hover:bg-muted/50 ${idx % 2 ? 'bg-muted/30' : ''}`}
+                    className={`border-b cursor-pointer hover:bg-row-hover ${idx % 2 ? 'bg-surface-2' : ''}`}
                   >
                     <td className="px-2 py-2 text-muted-foreground">
                       {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
                     </td>
                     <td className="px-3 py-2">{vendor.vendor}</td>
-                    <td className="px-3 py-2 text-right">{num(vendor.totalWeight)}</td>
-                    <td className="px-3 py-2 text-right">{fmt.format(vendor.totalCost)}</td>
+                    <td className="px-3 py-2 text-right tabular">{num(vendor.totalWeight)}</td>
+                    <td className="px-3 py-2 text-right tabular">{fmt.format(vendor.totalCost)}</td>
                   </tr>
                   {isExpanded && (
                     <tr>
-                      <td colSpan={4} className="border-b bg-muted/20 p-0">
+                      <td colSpan={4} className="border-b bg-surface-2 p-0">
                         <div className="px-6 py-2">
                           <table className="w-full text-xs">
                             <thead>
@@ -193,11 +193,11 @@ function SmuVendorTable({ filter }: { filter: PnlFilter }) {
                               {vendor.airlines.map((a, ai) => (
                                 <tr
                                   key={`${vendor.vendor}-${a.airline}`}
-                                  className={ai % 2 ? 'bg-muted/30' : ''}
+                                  className={ai % 2 ? 'bg-surface-2' : ''}
                                 >
                                   <td className="py-1">{a.airline}</td>
-                                  <td className="py-1 text-right">{num(a.totalWeight)}</td>
-                                  <td className="py-1 text-right">{fmt.format(a.totalCost)}</td>
+                                  <td className="py-1 text-right tabular">{num(a.totalWeight)}</td>
+                                  <td className="py-1 text-right tabular">{fmt.format(a.totalCost)}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -238,9 +238,9 @@ function NamedCostTable({ filter, kind }: { filter: PnlFilter; kind: 'ra' | 'sgO
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-xs text-muted-foreground">
-              <th className="px-3 py-2 text-left">Name</th>
-              <th className="px-3 py-2 text-right">Total Weight (kg)</th>
-              <th className="px-3 py-2 text-right">Total Cost</th>
+              <th className="bg-table-head px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.06em]">Name</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">Total Weight (kg)</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">Total Cost</th>
             </tr>
           </thead>
           <tbody>
@@ -252,10 +252,10 @@ function NamedCostTable({ filter, kind }: { filter: PnlFilter; kind: 'ra' | 'sgO
               </tr>
             )}
             {data?.map((r, idx) => (
-              <tr key={r.name} className={`border-b ${idx % 2 ? 'bg-muted/30' : ''}`}>
+              <tr key={r.name} className={`border-b hover:bg-row-hover ${idx % 2 ? 'bg-surface-2' : ''}`}>
                 <td className="px-3 py-2">{r.name}</td>
-                <td className="px-3 py-2 text-right">{num(r.totalWeight)}</td>
-                <td className="px-3 py-2 text-right">{fmt.format(r.totalCost)}</td>
+                <td className="px-3 py-2 text-right tabular">{num(r.totalWeight)}</td>
+                <td className="px-3 py-2 text-right tabular">{fmt.format(r.totalCost)}</td>
               </tr>
             ))}
             {data && data.length === 0 && (
@@ -283,9 +283,9 @@ function SgInRouteTable({ filter }: { filter: PnlFilter }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-xs text-muted-foreground">
-              <th className="px-3 py-2 text-left">Route</th>
-              <th className="px-3 py-2 text-right">Total Weight (kg)</th>
-              <th className="px-3 py-2 text-right">Total Cost</th>
+              <th className="bg-table-head px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.06em]">Route</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">Total Weight (kg)</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">Total Cost</th>
             </tr>
           </thead>
           <tbody>
@@ -297,10 +297,10 @@ function SgInRouteTable({ filter }: { filter: PnlFilter }) {
               </tr>
             )}
             {data?.map((r, idx) => (
-              <tr key={r.route} className={`border-b ${idx % 2 ? 'bg-muted/30' : ''}`}>
+              <tr key={r.route} className={`border-b hover:bg-row-hover ${idx % 2 ? 'bg-surface-2' : ''}`}>
                 <td className="px-3 py-2 font-mono text-xs">{r.route}</td>
-                <td className="px-3 py-2 text-right">{num(r.totalWeight)}</td>
-                <td className="px-3 py-2 text-right">{fmt.format(r.totalCost)}</td>
+                <td className="px-3 py-2 text-right tabular">{num(r.totalWeight)}</td>
+                <td className="px-3 py-2 text-right tabular">{fmt.format(r.totalCost)}</td>
               </tr>
             ))}
             {data && data.length === 0 && (
@@ -331,13 +331,13 @@ function ProfitByRouteSection({ filter }: { filter: PnlFilter }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-xs text-muted-foreground">
-              <th className="px-3 py-2 text-left">Route</th>
-              <th className="px-3 py-2 text-right">Total Est. Revenue</th>
-              <th className="px-3 py-2 text-right">Total Margin</th>
-              <th className="px-3 py-2 text-right">Avg Weight/Day</th>
-              <th className="px-3 py-2 text-right">Avg Cost/kg</th>
-              <th className="px-3 py-2 text-right">Avg Margin/kg</th>
-              <th className="px-3 py-2 text-right">Avg Margin/Day</th>
+              <th className="bg-table-head px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.06em]">Route</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">Total Est. Revenue</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">Total Margin</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">Avg Weight/Day</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">Avg Cost/kg</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">Avg Margin/kg</th>
+              <th className="bg-table-head px-3 py-2.5 text-right text-[10px] font-bold uppercase tracking-[0.06em]">Avg Margin/Day</th>
             </tr>
           </thead>
           <tbody>
@@ -349,18 +349,18 @@ function ProfitByRouteSection({ filter }: { filter: PnlFilter }) {
               </tr>
             )}
             {data?.map((r, idx) => (
-              <tr key={r.route} className={`border-b ${idx % 2 ? 'bg-muted/30' : ''}`}>
-                <td className="px-3 py-2 font-mono text-xs">{r.route}</td>
-                <td className="px-3 py-2 text-right">{fmt.format(r.totalRevenue)}</td>
+              <tr key={r.route} className={`border-b hover:bg-row-hover ${idx % 2 ? 'bg-surface-2' : ''}`}>
+                <td className="px-3 py-2 font-mono text-xs tabular">{r.route}</td>
+                <td className="px-3 py-2 text-right tabular">{fmt.format(r.totalRevenue)}</td>
                 <td
-                  className={`px-3 py-2 text-right font-medium ${r.totalMargin < 0 ? 'text-red-600' : ''}`}
+                  className={`px-3 py-2 text-right tabular font-bold ${r.totalMargin < 0 ? 'text-bad' : 'text-good'}`}
                 >
                   {fmt.format(r.totalMargin)}
                 </td>
-                <td className="px-3 py-2 text-right">{num(Math.round(r.avgWeightPerDay))}</td>
-                <td className="px-3 py-2 text-right">{fmt.format(r.avgCostPerKg)}</td>
-                <td className="px-3 py-2 text-right">{fmt.format(r.avgMarginPerKg)}</td>
-                <td className="px-3 py-2 text-right">{fmt.format(r.avgMarginPerDay)}</td>
+                <td className="px-3 py-2 text-right tabular">{num(Math.round(r.avgWeightPerDay))}</td>
+                <td className="px-3 py-2 text-right tabular">{fmt.format(r.avgCostPerKg)}</td>
+                <td className="px-3 py-2 text-right tabular">{fmt.format(r.avgMarginPerKg)}</td>
+                <td className="px-3 py-2 text-right tabular">{fmt.format(r.avgMarginPerDay)}</td>
               </tr>
             ))}
             {data && data.length === 0 && (

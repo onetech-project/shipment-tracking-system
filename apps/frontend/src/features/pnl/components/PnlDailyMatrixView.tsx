@@ -33,7 +33,7 @@ export function PnlDailyMatrixView({ filter, picks, onPicksChange, onCellClick }
   // errors, or comes back empty — otherwise a too-narrow pick would hide the control that undoes it.
   const routeFilter = (
     <div className="rounded-lg border bg-card p-4">
-      <p className="mb-2 text-sm font-medium">Rute</p>
+      <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground">Rute</p>
       <MultiRouteFilter
         className="w-[260px]"
         routes={routeIndex.labels}
