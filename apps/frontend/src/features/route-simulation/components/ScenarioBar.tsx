@@ -3,13 +3,15 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
+import { FilterBar } from '@/components/shared/filter-bar'
+import { cn } from '@/lib/utils'
 import { usePermissions } from '@/shared/hooks/use-permissions'
 import { fromPayload, isScenarioPayload, toPayloadWithSource } from '../engine'
 import { ReducerState, SimAction } from '../state/reducer'
 import {
   useCreateScenario, useDeleteScenario, useScenario, useScenarios, useUpdateScenario,
 } from '../hooks/useRouteSimulation'
-import { Tag } from './ui'
+import { FIELD, Tag } from './ui'
 
 // Must match useScenario's queryKey in hooks/useRouteSimulation.ts.
 const scenarioDetailKey = (id: string | null) => ['route-simulation', 'scenarios', id] as const
@@ -136,10 +138,10 @@ export function ScenarioBar({ state, dispatch, onFlash }: { state: ReducerState;
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-md border bg-card p-3">
+    <FilterBar className="items-center">
       <label className="flex items-center gap-2 text-sm">
-        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Skenario</span>
-        <select aria-label="Skenario" className="h-8 min-w-48 rounded border border-input bg-background px-2 text-sm" value={openId ?? ''} disabled={busy} onChange={(e) => pick(e.target.value)}>
+        <span className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Skenario</span>
+        <select aria-label="Skenario" className={cn(FIELD, 'min-w-48')} value={openId ?? ''} disabled={busy} onChange={(e) => pick(e.target.value)}>
           <option value="">Baru (belum disimpan)</option>
           {list.data?.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
@@ -154,9 +156,9 @@ export function ScenarioBar({ state, dispatch, onFlash }: { state: ReducerState;
           <Button size="sm" variant="outline" onClick={saveAs} disabled={busy || loading}>Simpan sebagai…</Button>
         )}
         {openId && hasPermission('delete.route_simulation') && (
-          <Button size="sm" variant="outline" className="text-red-700 dark:text-red-400" onClick={del} disabled={busy || loading}>Hapus</Button>
+          <Button size="sm" variant="danger-soft" onClick={del} disabled={busy || loading}>Hapus</Button>
         )}
       </div>
-    </div>
+    </FilterBar>
   )
 }

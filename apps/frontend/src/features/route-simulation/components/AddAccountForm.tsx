@@ -3,7 +3,7 @@
 import React, { useId, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { newId } from '../utils/id'
-import { TabProps } from './ui'
+import { FIELD, TabProps } from './ui'
 
 // Any name may become an account; vendors seen in the data that are not accounts yet are offered
 // as suggestions. Used by tab 1 and tab 9. The reducer refuses an empty or duplicate name.
@@ -23,7 +23,7 @@ export function AddAccountForm({ source, sim, dispatch }: TabProps) {
         list={listId}
         placeholder="Pilih atau ketik vendor"
         autoComplete="off"
-        className="h-8 rounded border border-input bg-background px-2 text-sm"
+        className={FIELD}
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') add() }}

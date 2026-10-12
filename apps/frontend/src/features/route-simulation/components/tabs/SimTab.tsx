@@ -1,7 +1,10 @@
 'use client'
 
 import React, { useMemo, useState } from 'react'
+import { FlaskConical, UserPlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHead } from '@/components/ui/card'
+import { Banner } from '@/components/shared/banner'
 import {
   DAYS_PER_MONTH, RouteResult, TrancheUse, Violation, accountOf, actualDistribution, cycleDays, evaluatePlan,
   groupNames, hasOverride, histDays, laneMargin, optimizePlan, routeHistTon, routeLabel, routeOf, simOpts, simPlan, sumRow,
@@ -10,7 +13,7 @@ import { Account, Lane, SimState } from '../../types'
 import { fmtIdr, fmtNum } from '../../utils/format'
 import { AddAccountForm } from '../AddAccountForm'
 import { ReasonTag } from '../Reason'
-import { EspTag, Hint, Kpi, NumInput, RouteChip, RouteFilter, RouteFilterBar, Signed, Tag, TabProps, TD, TDN, TH, THN, visibleRoutes } from '../ui'
+import { EspTag, Hint, Kpi, NumInput, RouteChip, RouteFilter, RouteFilterBar, Signed, Tag, TabProps, TD, TDN, TH, THN, ROW, visibleRoutes } from '../ui'
 import { SlotEditor } from './RoutesTab'
 
 const runoutText = (day: number) => (day < 1 ? 'tidak cukup untuk sehari' : `habis hari ke-${day}`)
@@ -35,8 +38,8 @@ function MoneyStatus({ x, days }: { x: TrancheUse; days: number | null }) {
   if (x.cash < 1) return <Hint>Tidak ada duit</Hint>
   if (x.runoutDay != null) return <><Tag tone="warn">{x.runoutDay < 1 ? 'Tidak cukup untuk sehari' : `Habis hari ke-${x.runoutDay}`}</Tag> <span className="text-xs text-muted-foreground">uang balik hari ke-{x.refillDay}</span></>
   if (x.spendDay < 1) return <Tag tone="warn">Menganggur</Tag>
-  if (days && days < x.refillDay) return <><span className="text-emerald-700 dark:text-emerald-400">Cukup untuk {days} hari</span> <span className="text-xs text-muted-foreground">sisa {fmtIdr(x.idle)}</span></>
-  return <span className="text-emerald-700 dark:text-emerald-400">Aman, berputar tiap {x.refillDay} hari</span>
+  if (days && days < x.refillDay) return <><span className="font-medium text-brand-ink">Cukup untuk {days} hari</span> <span className="text-xs text-muted-foreground">sisa {fmtIdr(x.idle)}</span></>
+  return <span className="font-medium text-brand-ink">Aman, berputar tiap {x.refillDay} hari</span>
 }
 
 export function SimTab({ source, sim, dispatch, onRun }: TabProps & { onRun: () => void }) {
@@ -130,7 +133,7 @@ export function SimTab({ source, sim, dispatch, onRun }: TabProps & { onRun: () 
                     const r = recKg[l.id] ?? 0
                     const first = i === 0 || lanes[i - 1].lane.vendor !== l.vendor
                     return (
-                      <tr key={l.id}>
+                      <tr key={l.id} className={ROW}>
                         <td className={`${TD} whitespace-nowrap`}>{first && <>{x.account?.name ?? l.vendor}<EspTag account={x.account} /></>}</td>
                         <td className={`${TD} whitespace-nowrap`}>{l.airline}</td>
                         <td className={TDN} title={`Rincian: SG Out ${fmtIdr(l.costSgOut)} + SG In ${fmtIdr(l.costSgIn)} + RA ${fmtIdr(l.costRa)} + SMU ${fmtIdr(l.costSmu)}`}>
@@ -163,25 +166,28 @@ export function SimTab({ source, sim, dispatch, onRun }: TabProps & { onRun: () 
   const warnings = res.violations
   return (
     <>
-      <div>
-        <h2 className="text-base font-semibold">Coba-coba</h2>
-        <Hint>Satu menu untuk mencoba. Di atas: hal yang bukan per rute, yaitu duit sisa tiap modal, siklus bayar, COF, dan jangka hari. Di bawah: tiap rute dengan rate, tonase, slot, serta vendor dan airlines-nya. Rate, tonase, load, siklus bayar, dan COF yang diubah di sini adalah data yang sama dengan tab 1, 2, 3, dan 5.</Hint>
-      </div>
+      <Card>
+        <CardHead icon={FlaskConical} title="Coba-coba" />
+        <CardContent className="pt-4">
+          <Hint>Satu menu untuk mencoba. Di atas: hal yang bukan per rute, yaitu duit sisa tiap modal, siklus bayar, COF, dan jangka hari. Di bawah: tiap rute dengan rate, tonase, slot, serta vendor dan airlines-nya. Rate, tonase, load, siklus bayar, dan COF yang diubah di sini adalah data yang sama dengan tab 1, 2, 3, dan 5.</Hint>
+        </CardContent>
+      </Card>
 
-      <div className="rounded-md border bg-card p-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h3 className="mb-1 text-sm font-semibold">Tambah vendor</h3>
-            <Hint>Tambah akun vendor langsung dari sini — vendor akan langsung muncul di tab 1 dan ikut dihitung di simulasi. Isi modal dan COF-nya setelah ditambahkan.</Hint>
-          </div>
-          <AddAccountForm source={source} sim={sim} dispatch={dispatch} />
-        </div>
-      </div>
+      <Card>
+        <CardHead
+          icon={UserPlus}
+          title="Tambah vendor"
+          actions={<AddAccountForm source={source} sim={sim} dispatch={dispatch} />}
+        />
+        <CardContent className="pt-4">
+          <Hint>Tambah akun vendor langsung dari sini — vendor akan langsung muncul di tab 1 dan ikut dihitung di simulasi. Isi modal dan COF-nya setelah ditambahkan.</Hint>
+        </CardContent>
+      </Card>
 
-      <div className="rounded-md border bg-card">
-        <div className="flex flex-wrap items-end gap-x-6 gap-y-3 border-b p-4">
+      <div className="overflow-hidden rounded-lg border bg-card">
+        <div className="flex flex-wrap items-end gap-x-6 gap-y-3 border-b bg-surface-3 p-4">
           <label className="block">
-            <span className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">Untuk berapa hari ke depan</span>
+            <span className="mb-1 block text-[10.5px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Untuk berapa hari ke depan</span>
             <NumInput ariaLabel="Untuk berapa hari ke depan" className="w-28" min={1} placeholder="terus" value={days} onCommit={(v) => dispatch({ type: 'simDays', value: v })} />
             <Hint>Kosongkan bila jalan terus</Hint>
           </label>
@@ -199,7 +205,7 @@ export function SimTab({ source, sim, dispatch, onRun }: TabProps & { onRun: () 
                 const first = i === 0 || res.perTranche[i - 1].account.id !== x.account.id
                 const tr = x.tranche
                 return (
-                  <tr key={tr.id}>
+                  <tr key={tr.id} className={ROW}>
                     <td className={`${TD} whitespace-nowrap`}>{first && <>{x.account.name}<EspTag account={x.account} /></>}</td>
                     <td className={`${TD} whitespace-nowrap`}>{tr.label}</td>
                     <td className={TDN}>
@@ -223,20 +229,20 @@ export function SimTab({ source, sim, dispatch, onRun }: TabProps & { onRun: () 
         <Hint className="px-4 py-2">Duit sisa hanya dipakai di tab ini dan tidak mengubah modal di tab 1. Boleh dipakai per hari = duit sisa dibagi jangka hari, atau dibagi siklus bayar bila jangkanya lebih panjang dari siklus. Siklus bayar dan COF di sini sama dengan tab 1.</Hint>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4">
         <Hint>Setelah mengubah field vendor di atas (duit sisa, siklus bayar, COF) atau menambah vendor baru, klik <b>Run</b> untuk melihat hasil estimasi di tab 8.</Hint>
         <Button size="sm" onClick={onRun}>Run estimasi →</Button>
       </div>
 
-      <div className="rounded-md border bg-card">
-        <div className="border-b p-4">
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{days ? `Duit ${fmtIdr(t.cash)} untuk ${days} hari ke depan` : `Duit ${fmtIdr(t.cash)}, dipakai terus-menerus`}</div>
-          <div className="text-base font-semibold">Jalankan {run.length} dari {res.perRoute.length} rute, net {fmtIdr(t.net * span)} dalam {span} hari</div>
+      <div className="overflow-hidden rounded-lg border bg-card">
+        <div className="border-b bg-surface-3 p-4">
+          <div className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-muted-foreground">{days ? `Duit ${fmtIdr(t.cash)} untuk ${days} hari ke depan` : `Duit ${fmtIdr(t.cash)}, dipakai terus-menerus`}</div>
+          <div className="font-display text-base font-bold">Jalankan {run.length} dari {res.perRoute.length} rute, net {fmtIdr(t.net * span)} dalam {span} hari</div>
           <p className="mt-1 text-xs text-muted-foreground">
             {manual
               ? (warnings.length
-                ? <span className="text-red-700 dark:text-red-400">Isian manual ini melanggar batas, jadi angka di bawah tidak bisa dicapai. Lihat peringatan.</span>
-                : <>Ini isian manual. Selisih dari rekomendasi: <span className={diff < 0 ? 'text-red-700 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'}>{fmtIdr(diff)}</span> per hari.</>)
+                ? <span className="font-medium text-bad">Isian manual ini melanggar batas, jadi angka di bawah tidak bisa dicapai. Lihat peringatan.</span>
+                : <>Ini isian manual. Selisih dari rekomendasi: <span className={diff < 0 ? 'font-medium text-bad' : 'font-medium text-brand-ink'}>{fmtIdr(diff)}</span> per hari.</>)
               : 'Ini rekomendasi: pembagian dengan margin harian terbesar untuk duit dan jangka di atas. Ubah kg per hari di rute mana pun untuk mencoba sendiri.'}
             {skipped.length > 0 && ` Tidak dijalankan: ${skipped.map((x) => routeLabel(x.route)).join(', ')}.`}
           </p>
@@ -251,15 +257,16 @@ export function SimTab({ source, sim, dispatch, onRun }: TabProps & { onRun: () 
         </div>
         {warnings.length > 0 && (
           <div className="px-4 pb-4">
-            <div className="mb-1 text-[11px] uppercase tracking-wide text-muted-foreground">Peringatan</div>
-            <ul className="list-disc pl-5 text-red-700 dark:text-red-400">{warnings.map((v, i) => <li key={i}>{violationText(v, sim)}</li>)}</ul>
+            <Banner tone="danger" title="Peringatan">
+              <ul className="list-disc pl-5">{warnings.map((v, i) => <li key={i}>{violationText(v, sim)}</li>)}</ul>
+            </Banner>
           </div>
         )}
       </div>
 
-      <div className="rounded-md border bg-card">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3">
-          <h3 className="text-sm font-semibold">Per rute <span className="text-xs font-normal text-muted-foreground">klik rute untuk melihat dan mengubah detailnya</span></h3>
+      <div className="overflow-hidden rounded-lg border bg-card">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-surface-3 px-4 py-3">
+          <h3 className="font-display text-sm font-bold">Per rute <span className="text-xs font-normal text-muted-foreground">klik rute untuk melihat dan mengubah detailnya</span></h3>
           <div className="flex flex-wrap gap-2">
             <RouteFilterBar source={source} value={filter} onChange={setFilter} />
             <Button variant="outline" size="sm" onClick={() => setOpen(new Set(visible))}>Buka semua</Button>
