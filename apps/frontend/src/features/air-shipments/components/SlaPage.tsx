@@ -880,16 +880,18 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
         {activeTab === 'active' && (
           <>
             <FilterBar>
-              <FormField label="Search" className="min-w-[260px] flex-1">
+              <FormField label="Search" htmlFor="sla-filter-search" className="min-w-[260px] flex-1">
                 <Input
+                  id="sla-filter-search"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   placeholder="Search shipments..."
                 />
               </FormField>
 
-              <FormField label="Alert" className="min-w-[180px]">
+              <FormField label="Alert" htmlFor="sla-filter-alert" className="min-w-[180px]">
                 <select
+                  id="sla-filter-alert"
                   value={activeAlert ?? 'null'}
                   onChange={(e) => handleAlertDropdownChange(e.target.value)}
                   className="w-full rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40"
@@ -902,13 +904,18 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
                 </select>
               </FormField>
 
-              <FormField label="Route" className="min-w-[180px]">
+              {/* MultiRouteFilter has no id/aria-labelledby prop to target from a sibling
+                  FormField label, so keep the original nested-<label> association instead. */}
+              <label className="flex min-w-[180px] flex-col gap-1.5">
+                <span className="text-[10.5px] font-bold uppercase leading-none tracking-[0.06em] text-muted-foreground">
+                  Route
+                </span>
                 <MultiRouteFilter
                   routes={routeLabels}
                   selected={activeRoutes}
                   onChange={handleRoutesChange}
                 />
-              </FormField>
+              </label>
             </FilterBar>
 
             <div className="flex flex-wrap items-center justify-between gap-2">

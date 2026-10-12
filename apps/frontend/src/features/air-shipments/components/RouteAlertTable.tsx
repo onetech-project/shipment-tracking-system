@@ -41,7 +41,7 @@ function otpClass(pct: number): string {
 export function RouteAlertTable({ data, isLoading, onAlertClick, cols }: RouteAlertTableProps) {
   return (
     <Card>
-      <CardHead icon={MapPin} tone="alt" title="Alerts by Route" />
+      <CardHead icon={MapPin} tone="danger" title="Alerts by Route" />
       <CardContent className="pt-4">
       {isLoading ? (
         <p className="py-4 text-center text-sm text-muted-foreground">Loading route data…</p>

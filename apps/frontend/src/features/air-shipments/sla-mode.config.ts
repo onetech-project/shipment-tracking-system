@@ -22,6 +22,11 @@ const DARK = CHART_COLORS[3]
 const BRAND_DARK = CHART_COLORS[4]
 const WARN = CHART_COLORS[6]
 const BAD = CHART_COLORS[7]
+// The SLA/TJPH alert pairs need distinguishable hues within the same warn/bad family (matching
+// the mockup's own `.alert-kpi.pot`/`.pot-t`/`.bre`/`.tjph` choices) — not in CHART_COLORS, so
+// kept as literal hex, one shade lighter/darker than WARN/BAD on each side of the pair.
+const WARN_TJPH = '#eab308'
+const BAD_TJPH = '#b91c1c'
 
 /** One alert type as displayed by the SLA page (cards, dropdown, route table, badges). */
 export interface SlaAlertDef {
@@ -61,8 +66,8 @@ export const AIR_SLA_MODE: SlaMode = {
     { key: 'flightTracking', label: 'Flight Tracking', shortLabel: 'Flight Track.', color: BRAND_ALT, icon: Plane },
     { key: 'potensiMelebihiSla', label: 'Potential SLA Breach', shortLabel: 'Pot. SLA', color: WARN, icon: Hourglass },
     { key: 'melewatiSla', label: 'SLA Breach', shortLabel: 'SLA Breach', color: BAD, icon: AlertTriangle },
-    { key: 'potensiMelebihiTjph', label: 'Potential TJPH Breach', shortLabel: 'Pot. TJPH', color: WARN, icon: PlaneLanding },
-    { key: 'melewatiTjph', label: 'TJPH Breach', shortLabel: 'TJPH Breach', color: BAD, icon: ShieldAlert },
+    { key: 'potensiMelebihiTjph', label: 'Potential TJPH Breach', shortLabel: 'Pot. TJPH', color: WARN_TJPH, icon: PlaneLanding },
+    { key: 'melewatiTjph', label: 'TJPH Breach', shortLabel: 'TJPH Breach', color: BAD_TJPH, icon: ShieldAlert },
     { key: 'spxTjphAlert', label: 'SPX TJPH Alert', shortLabel: 'SPX TJPH', color: DARK, icon: Timer },
     { key: 'spxSlaAlert', label: 'SPX SLA Alert', shortLabel: 'SPX SLA', color: BRAND_DARK, icon: ShieldAlert },
   ],
@@ -82,8 +87,8 @@ export const SEA_SLA_MODE: SlaMode = {
     { key: 'reservasiKapal', label: 'Sea Reservation', shortLabel: 'Sea Res.', color: GOOD, icon: Ship },
     { key: 'potensiMelebihiSla', label: 'Potential SLA Breach', shortLabel: 'Pot. SLA', color: WARN, icon: Hourglass },
     { key: 'melewatiSla', label: 'SLA Breach', shortLabel: 'SLA Breach', color: BAD, icon: AlertTriangle },
-    { key: 'potensiMelebihiTjph', label: 'Potential TJPH Breach', shortLabel: 'Pot. TJPH', color: WARN, icon: Anchor },
-    { key: 'melewatiTjph', label: 'TJPH Breach', shortLabel: 'TJPH Breach', color: BAD, icon: ShieldAlert },
+    { key: 'potensiMelebihiTjph', label: 'Potential TJPH Breach', shortLabel: 'Pot. TJPH', color: WARN_TJPH, icon: Anchor },
+    { key: 'melewatiTjph', label: 'TJPH Breach', shortLabel: 'TJPH Breach', color: BAD_TJPH, icon: ShieldAlert },
     { key: 'spxSlaAlert', label: 'SPX SLA Alert', shortLabel: 'SPX SLA', color: BRAND_DARK, icon: ShieldAlert },
     { key: 'spxTjphAlert', label: 'SPX TJPH Alert', shortLabel: 'SPX TJPH', color: DARK, icon: Timer },
   ],
