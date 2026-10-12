@@ -3,36 +3,32 @@
  * margin chart, so the scale is copied from `PnlDailyMarginChart.tsx` rather than reinvented.
  */
 
-export const MARGIN_GREY = '#94A3B8'
+import { CHART_COLORS, CHART_STATUS } from '@/lib/chart-colors'
+
+export const MARGIN_GREY = CHART_STATUS.neutral
 
 export function colorForMargin(marginPct: number | null, incomplete = false): string {
-  if (incomplete) return MARGIN_GREY
-  if (marginPct == null) return MARGIN_GREY
-  if (marginPct < 0) return '#EF4444'
-  if (marginPct < 10) return '#F59E0B'
-  return '#22C55E'
+  if (incomplete) return CHART_STATUS.neutral
+  if (marginPct == null) return CHART_STATUS.neutral
+  if (marginPct < 0) return CHART_STATUS.bad
+  if (marginPct < 10) return CHART_STATUS.warn
+  return CHART_STATUS.good
 }
 
 /** Categorical series (airlines, vendors, weekdays) where no value judgement is implied. */
-export const SERIES_COLORS = [
-  '#2563EB',
-  '#0EA5E9',
-  '#14B8A6',
-  '#8B5CF6',
-  '#F59E0B',
-  '#EC4899',
-  '#64748B',
-]
+export const SERIES_COLORS: readonly string[] = CHART_COLORS
 
 /**
  * Fixed per cost component so a stack keeps its colours across periods. Keyed by the `key` field
  * of `COST_COMPONENTS` ('smu' | 'ra' | 'sgOut' | 'sgIn'), NOT by the SeriesDay field name.
+ * Picked from CHART_COLORS avoiding the indices `colorForMargin` uses for its value judgements
+ * (good/warn/bad/neutral), so a cost-component swatch never reads as a margin signal.
  */
 export const COMPONENT_COLORS: Record<string, string> = {
-  smu: '#2563EB',
-  ra: '#14B8A6',
-  sgOut: '#F59E0B',
-  sgIn: '#8B5CF6',
+  smu: CHART_COLORS[1],
+  ra: CHART_COLORS[2],
+  sgOut: CHART_COLORS[3],
+  sgIn: CHART_COLORS[5],
 }
 
 export function formatDateLabel(iso: string): string {

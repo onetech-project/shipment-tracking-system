@@ -1,5 +1,6 @@
 'use client'
 
+import { Map as MapIcon } from 'lucide-react'
 import { fmt, num, pct } from '@/features/pnl/utils/format'
 import { AnalyticsDailySeries } from '../types'
 import { RouteContributionRow, concentration, marginStability, routeContribution } from '../utils/routes'
@@ -25,6 +26,8 @@ export function AnalyticsRoutes({ series, routeKeys }: AnalyticsRoutesProps) {
       id="routes"
       title="Routes & Groups"
       subtitle="Where the margin comes from, and how steady it is"
+      icon={MapIcon}
+      tone="info"
     >
       <p data-testid="analytics-concentration" className="text-sm">
         Top route holds {pct(conc.top1Pct)} of margin, top three {pct(conc.top3Pct)}; HHI{' '}
@@ -47,7 +50,7 @@ export function AnalyticsRoutes({ series, routeKeys }: AnalyticsRoutesProps) {
               <span className="flex items-center gap-1">
                 {r.label}
                 {!r.costComplete && (
-                  <span title="Cost incomplete on this route" className="text-amber-600">
+                  <span title="Cost incomplete on this route" className="text-warn">
                     ⚠
                   </span>
                 )}
@@ -75,7 +78,7 @@ export function AnalyticsRoutes({ series, routeKeys }: AnalyticsRoutesProps) {
         rows={rows}
         rowKey={(r) => r.routeKey}
         rowTestId={(r) => `route-${r.routeKey}`}
-        rowClassName={(r) => (r.costComplete ? undefined : 'bg-amber-50/60')}
+        rowClassName={(r) => (r.costComplete ? undefined : 'bg-warn-soft/60')}
         empty="No routes in this scope."
       />
 

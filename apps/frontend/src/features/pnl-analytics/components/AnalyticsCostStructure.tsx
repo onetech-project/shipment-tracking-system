@@ -10,7 +10,9 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { PieChart as PieChartIcon } from 'lucide-react'
 import { fmt, pct } from '@/features/pnl/utils/format'
+import { CHART_STATUS } from '@/lib/chart-colors'
 import { SeriesDay } from '../types'
 import { COST_COMPONENTS, costComposition } from '../utils/series'
 import { COMPONENT_COLORS, formatDateLabel } from '../utils/theme'
@@ -35,6 +37,8 @@ export function AnalyticsCostStructure({ series }: AnalyticsCostStructureProps) 
       id="cost-structure"
       title="Cost Structure"
       subtitle={`Total ${fmt.format(comp.total)} — ${fmt.format(comp.totalPerKg)} / kg`}
+      icon={PieChartIcon}
+      tone="dark"
     >
       {comp.total === 0 ? (
         <p data-testid="analytics-cost-empty" className="text-sm text-muted-foreground">
@@ -67,9 +71,9 @@ export function AnalyticsCostStructure({ series }: AnalyticsCostStructureProps) 
           <div className="h-[280px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_STATUS.grid} />
+                <XAxis dataKey="label" tick={{ fontSize: 10.5, fill: CHART_STATUS.axis }} />
+                <YAxis tick={{ fontSize: 10.5, fill: CHART_STATUS.axis }} />
                 <Tooltip formatter={(v: number) => fmt.format(v)} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 {/* dataKey is the SeriesDay FIELD (costSmu…); the colour map is keyed by the

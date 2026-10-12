@@ -1,5 +1,6 @@
 'use client'
 
+import { Table2 } from 'lucide-react'
 import { fmt, num, pct } from '@/features/pnl/utils/format'
 import { PnlAwbRow } from '@/features/pnl/hooks/usePnl'
 import { AnalyticsSection } from './AnalyticsSection'
@@ -32,6 +33,8 @@ export function AnalyticsAppendix({
       id="appendix"
       title="Appendix"
       subtitle="The raw per-AWB rows every figure above is built from"
+      icon={Table2}
+      tone="muted"
     >
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Loading…</p>
@@ -80,7 +83,7 @@ export function AnalyticsAppendix({
             rowKey={(r) => r.awb}
             // A row with missing cost is shaded rather than dropped: the appendix exists to show
             // exactly what the aggregates were built from, gaps included.
-            rowClassName={(r) => (r.hasNullCost ? 'bg-amber-50/60' : undefined)}
+            rowClassName={(r) => (r.hasNullCost ? 'bg-warn-soft/60' : undefined)}
             empty="No AWB in this period."
           />
           <div className="flex items-center justify-between text-xs text-muted-foreground">

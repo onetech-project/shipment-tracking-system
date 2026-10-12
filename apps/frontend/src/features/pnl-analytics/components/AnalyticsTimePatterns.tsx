@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { CalendarClock } from 'lucide-react'
 import { fmt, num, pct } from '@/features/pnl/utils/format'
 import { Campaign, SeriesDay } from '../types'
 import {
@@ -58,6 +59,8 @@ export function AnalyticsTimePatterns({
       id="time-patterns"
       title="Time Patterns"
       subtitle="Which weekdays carry the tonnage, and what campaigns do to it"
+      icon={CalendarClock}
+      tone="info"
       action={
         <button
           className="rounded-md border px-2.5 py-1 text-xs hover:bg-accent"
@@ -83,7 +86,7 @@ export function AnalyticsTimePatterns({
             that day of every month.
           </p>
           {error && (
-            <p data-testid="analytics-campaign-error" className="mt-1 text-xs text-red-600">
+            <p data-testid="analytics-campaign-error" className="mt-1 text-xs text-bad-strong">
               {error}
             </p>
           )}
@@ -151,7 +154,7 @@ export function AnalyticsTimePatterns({
                 {row.byOffset.map((o) => (
                   <span
                     key={o.offset}
-                    className={`rounded border px-1.5 py-0.5 text-xs tabular-nums ${o.avgLift >= 0 ? 'text-emerald-700' : 'text-red-700'}`}
+                    className={`rounded border px-1.5 py-0.5 text-xs tabular-nums ${o.avgLift >= 0 ? 'text-brand-ink' : 'text-bad'}`}
                   >
                     D{o.offset >= 0 ? '+' : ''}
                     {o.offset}: {signed(o.avgLift)}

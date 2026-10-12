@@ -1,5 +1,6 @@
 'use client'
 
+import { ArrowLeftRight } from 'lucide-react'
 import { PnlNamedCostItem, PnlSgInRouteCostItem } from '@/features/pnl/hooks/usePnl'
 import { shareTable } from '../utils/share'
 import { AnalyticsSection } from './AnalyticsSection'
@@ -28,6 +29,8 @@ export function AnalyticsSg({
       id="sg"
       title="Incoming & Outgoing"
       subtitle="Ground handling either side of the main leg"
+      icon={ArrowLeftRight}
+      tone="dark"
     >
       {scoped && <ScopeFallbackNote />}
       {ranged && <RangeFallbackNote />}

@@ -1,5 +1,6 @@
 'use client'
 
+import { Users } from 'lucide-react'
 import { fmt, num } from '@/features/pnl/utils/format'
 import { PnlVendorCostItem } from '@/features/pnl/hooks/usePnl'
 import { SelfOperateRow, selfOperateGap, vendorExecution } from '../utils/share'
@@ -30,6 +31,8 @@ export function AnalyticsVendor({
       id="vendor"
       title="Vendor Execution"
       subtitle="What third-party vendors cost against ESP's own cost on the same airline"
+      icon={Users}
+      tone="dark"
     >
       {scoped && <ScopeFallbackNote />}
       {ranged && <RangeFallbackNote />}
@@ -90,7 +93,7 @@ export function AnalyticsVendor({
             rowKey={(r) => `${r.vendor}|${r.airline}`}
             // A negative gap means the vendor is cheaper than ESP on that airline — worth seeing,
             // not worth hiding.
-            rowClassName={(r) => (r.gapPerKg < 0 ? 'text-emerald-700' : undefined)}
+            rowClassName={(r) => (r.gapPerKg < 0 ? 'text-brand-ink' : undefined)}
           />
         </div>
       )}

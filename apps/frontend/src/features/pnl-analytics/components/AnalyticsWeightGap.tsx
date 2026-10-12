@@ -1,5 +1,6 @@
 'use client'
 
+import { Scale } from 'lucide-react'
 import { fmt, num } from '@/features/pnl/utils/format'
 import { AnalyticsGwChwRow } from '../types'
 import { routeLabel } from '../utils/cycle'
@@ -30,6 +31,8 @@ export function AnalyticsWeightGap({
       id="weight-gap"
       title="Weight Gap"
       subtitle="Gross weight against chargeable weight, and what the difference is worth"
+      icon={Scale}
+      tone="info"
     >
       {scoped && <ScopeFallbackNote />}
       {ranged && <RangeFallbackNote />}
@@ -66,7 +69,7 @@ export function AnalyticsWeightGap({
             ]}
             rows={rows}
             rowKey={(r) => `${r.origin}|${r.dest}`}
-            rowClassName={(r) => (r.impact < 0 ? 'text-emerald-700' : undefined)}
+            rowClassName={(r) => (r.impact < 0 ? 'text-brand-ink' : undefined)}
           />
           <p className="text-xs text-muted-foreground">
             Chargeable weight is an AWB attribute, so it is taken once per AWB and then summed —

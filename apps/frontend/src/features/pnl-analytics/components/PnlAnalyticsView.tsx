@@ -1,6 +1,7 @@
 'use client'
 
 import { ReactNode, useEffect, useMemo, useState } from 'react'
+import { Banner } from '@/components/shared/banner'
 import {
   PnlFilter,
   usePnlAwbDrilldown,
@@ -195,15 +196,12 @@ export function PnlAnalyticsView({ filter, scope, onScopeChange }: PnlAnalyticsV
 
   if (seriesQ.isError || !seriesQ.data) {
     return frame(
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+      <Banner tone="danger">
         <p>The analytics series could not be loaded.</p>
-        <button
-          className="mt-2 rounded-md border border-red-300 px-3 py-1 text-xs"
-          onClick={() => seriesQ.refetch()}
-        >
+        <button className="mt-2 text-xs font-semibold underline" onClick={() => seriesQ.refetch()}>
           Retry
         </button>
-      </div>,
+      </Banner>,
     )
   }
 

@@ -6,7 +6,12 @@
  *
  * Both branch points are therefore probed with a fixture sitting EXACTLY on the boundary — a
  * `<` → `<=` slip is invisible to any fixture that merely straddles it.
+ *
+ * The colours themselves come from the green design system's chart palette (`CHART_COLORS` /
+ * `CHART_STATUS`), not the ad-hoc hexes this file used before the redesign — see
+ * `src/lib/chart-colors.ts`, which `PnlDailyMarginChart.tsx` also reads from.
  */
+import { CHART_COLORS, CHART_STATUS } from '@/lib/chart-colors'
 import {
   COMPONENT_COLORS,
   MARGIN_GREY,
@@ -15,9 +20,9 @@ import {
   formatDateLabel,
 } from './theme'
 
-const RED = '#EF4444'
-const AMBER = '#F59E0B'
-const GREEN = '#22C55E'
+const RED = CHART_STATUS.bad
+const AMBER = CHART_STATUS.warn
+const GREEN = CHART_STATUS.good
 
 describe('colorForMargin', () => {
   it('paints a loss red', () => {
@@ -64,7 +69,7 @@ describe('colorForMargin', () => {
   })
 
   it('is the exact scale used by the Daily Report margin chart', () => {
-    expect(MARGIN_GREY).toBe('#94A3B8')
+    expect(MARGIN_GREY).toBe(CHART_STATUS.neutral)
     expect([colorForMargin(-1), colorForMargin(5), colorForMargin(20)]).toEqual([RED, AMBER, GREEN])
   })
 })
@@ -72,16 +77,8 @@ describe('colorForMargin', () => {
 describe('SERIES_COLORS', () => {
   // Order is load-bearing: series are coloured by index, so a reordered palette silently recolours
   // every categorical chart on the tab between releases.
-  it('is a fixed, ordered categorical palette', () => {
-    expect(SERIES_COLORS).toEqual([
-      '#2563EB',
-      '#0EA5E9',
-      '#14B8A6',
-      '#8B5CF6',
-      '#F59E0B',
-      '#EC4899',
-      '#64748B',
-    ])
+  it('is the fixed, ordered chart palette', () => {
+    expect(SERIES_COLORS).toEqual(CHART_COLORS)
   })
 
   it('carries no duplicate, so two adjacent series cannot share a colour', () => {
@@ -92,13 +89,27 @@ describe('SERIES_COLORS', () => {
 describe('COMPONENT_COLORS', () => {
   // Keyed by the COST_COMPONENTS `key`, not the SeriesDay field name — a stack that re-keys itself
   // swaps two cost components' colours between periods and invites the wrong conclusion.
-  it('fixes one colour per cost component key', () => {
+  it('fixes one colour per cost component key, from the chart palette', () => {
     expect(COMPONENT_COLORS).toEqual({
-      smu: '#2563EB',
-      ra: '#14B8A6',
-      sgOut: '#F59E0B',
-      sgIn: '#8B5CF6',
+      smu: CHART_COLORS[1],
+      ra: CHART_COLORS[2],
+      sgOut: CHART_COLORS[3],
+      sgIn: CHART_COLORS[5],
     })
+  })
+
+  // None of the four may reuse a colour `colorForMargin` uses for a value judgement (good/warn/
+  // bad/neutral), or a cost-component swatch would misread as a margin signal.
+  it('never reuses one of colorForMargin\'s value-judgement colours', () => {
+    const marginColors = new Set<string>([
+      CHART_STATUS.good,
+      CHART_STATUS.warn,
+      CHART_STATUS.bad,
+      CHART_STATUS.neutral,
+    ])
+    for (const c of Object.values(COMPONENT_COLORS)) {
+      expect(marginColors.has(c)).toBe(false)
+    }
   })
 
   it('gives each component a distinct colour', () => {
