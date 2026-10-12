@@ -2,6 +2,17 @@
 
 import { FileText, RotateCcw, Pencil } from 'lucide-react'
 import { OffloadedAwbRow } from '@/features/air-shipments/types'
+import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/shared/empty-state'
+import {
+  TableWrap,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '@/components/ui/table'
 
 export interface OffloadedAwbTableProps {
   data: OffloadedAwbRow[]
@@ -72,8 +83,8 @@ function SourceBadge({ row }: { row: OffloadedAwbRow }) {
   return (
     <span
       title={title}
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-        isApi ? 'bg-blue-100 text-blue-700' : 'bg-muted text-muted-foreground'
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-[0.04em] ${
+        isApi ? 'bg-info-soft text-info-ink' : 'bg-surface-2 text-faint'
       }`}
     >
       {label}
@@ -92,113 +103,100 @@ export function OffloadedAwbTable({
 }: OffloadedAwbTableProps) {
   if (data.length === 0) {
     return (
-      <div className="rounded-2xl border border-border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
-        {mode === 'active' ? 'No offloaded AWBs awaiting evidence' : 'No AWBs with evidence'}
-      </div>
+      <EmptyState
+        title={mode === 'active' ? 'No offloaded AWBs awaiting evidence' : 'No AWBs with evidence'}
+      />
     )
   }
 
   return (
     <div className="space-y-3">
-      <div className="rounded-3xl border border-border bg-panel p-4 shadow-sm overflow-auto">
-        <table className="min-w-full divide-y divide-border text-sm">
-          <thead className="bg-muted">
-            <tr>
+      <TableWrap className="max-h-[70vh]">
+        <Table>
+          <TableHeader>
+            <TableRow>
               {HEADERS.map((h) => (
-                <th
-                  key={h}
-                  className="whitespace-nowrap px-3 py-2 text-left font-medium text-muted-foreground"
-                >
+                <TableHead key={h} className="whitespace-nowrap">
                   {h}
-                </th>
+                </TableHead>
               ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {data.map((row, idx) => (
-              <tr key={row.id ?? row.awb} className={idx % 2 === 1 ? 'bg-muted/70' : ''}>
-                <td className="whitespace-nowrap px-3 py-2 font-medium">{String(row.awb ?? '—')}</td>
-                <td className="whitespace-nowrap px-3 py-2"><SourceBadge row={row} /></td>
-                <td className="whitespace-nowrap px-3 py-2">{String(row.airline ?? '—')}</td>
-                <td className="whitespace-nowrap px-3 py-2">
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {data.map((row) => (
+              <TableRow key={row.id ?? row.awb}>
+                <TableCell className="whitespace-nowrap font-medium">{String(row.awb ?? '—')}</TableCell>
+                <TableCell className="whitespace-nowrap"><SourceBadge row={row} /></TableCell>
+                <TableCell className="whitespace-nowrap">{String(row.airline ?? '—')}</TableCell>
+                <TableCell className="whitespace-nowrap">
                   <Leg value={row.std_booking} flightNo={row.std_flight_no} />
-                </td>
-                <td className="whitespace-nowrap px-3 py-2">
+                </TableCell>
+                <TableCell className="whitespace-nowrap">
                   <Leg value={row.actual_flight_dep} flightNo={row.dep_flight_no} />
-                </td>
-                <td className="whitespace-nowrap px-3 py-2">
+                </TableCell>
+                <TableCell className="whitespace-nowrap">
                   <Leg value={row.dep2} flightNo={row.dep2_flight_no} />
-                </td>
-                <td className="whitespace-nowrap px-3 py-2">
+                </TableCell>
+                <TableCell className="whitespace-nowrap">
                   <Leg value={row.dep3} flightNo={row.dep3_flight_no} />
-                </td>
-                <td className="whitespace-nowrap px-3 py-2">
+                </TableCell>
+                <TableCell className="whitespace-nowrap">
                   <Leg value={row.dep4} flightNo={row.dep4_flight_no} />
-                </td>
-                <td className="whitespace-nowrap px-3 py-2">
+                </TableCell>
+                <TableCell className="whitespace-nowrap">
                   <Leg value={row.dep5} flightNo={row.dep5_flight_no} />
-                </td>
-                <td className="whitespace-nowrap px-3 py-2">{String(row.remarks_offload ?? '—')}</td>
-                <td className="px-3 py-2 max-w-[260px]">
+                </TableCell>
+                <TableCell className="whitespace-nowrap">{String(row.remarks_offload ?? '—')}</TableCell>
+                <TableCell className="max-w-[260px]">
                   <EvidenceCell value={row.evidence} />
-                </td>
-                <td className="whitespace-nowrap px-3 py-2">
+                </TableCell>
+                <TableCell className="whitespace-nowrap">
                   {mode === 'active' ? (
-                    <button
-                      type="button"
-                      onClick={() => onAddEvidence?.(row)}
-                      className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs hover:bg-muted transition-colors focus:outline-none focus:ring-2 focus:ring-ring"
-                    >
+                    <Button type="button" variant="outline" size="sm" onClick={() => onAddEvidence?.(row)}>
                       <FileText size={12} />
                       Add Evidence
-                    </button>
+                    </Button>
                   ) : (
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => onEditEvidence?.(row)}
-                        className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs hover:bg-muted transition-colors focus:outline-none focus:ring-2 focus:ring-ring"
-                      >
+                    <div className="flex items-center gap-1.5">
+                      <Button type="button" variant="outline" size="sm" onClick={() => onEditEvidence?.(row)}>
                         <Pencil size={12} />
                         Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onRestore?.(row)}
-                        className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs hover:bg-muted transition-colors focus:outline-none focus:ring-2 focus:ring-ring"
-                      >
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => onRestore?.(row)}>
                         <RotateCcw size={12} />
                         Restore
-                      </button>
+                      </Button>
                     </div>
                   )}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </TableBody>
+        </Table>
+      </TableWrap>
 
       {meta.total > meta.limit && (
-        <div className="flex items-center justify-between text-sm">
-          <span>
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span className="tabular">
             {`${(meta.page - 1) * meta.limit + 1}–${Math.min(meta.page * meta.limit, meta.total)} of ${meta.total}`}
           </span>
-          <div className="flex gap-2">
-            <button
+          <div className="flex gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => onPageChange(Math.max(1, meta.page - 1))}
               disabled={meta.page <= 1}
-              className="rounded border px-3 py-1 disabled:opacity-40 hover:bg-muted"
             >
               Previous
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => onPageChange(meta.page + 1)}
               disabled={meta.page * meta.limit >= meta.total}
-              className="rounded border px-3 py-1 disabled:opacity-40 hover:bg-muted"
             >
               Next
-            </button>
+            </Button>
           </div>
         </div>
       )}

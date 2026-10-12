@@ -10,6 +10,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import Spinner from '@/components/ui/spinner'
 
 export interface ExcludeByLtModalProps {
@@ -138,7 +139,7 @@ export function ExcludeByLtModal({
 
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
-            <label htmlFor="lt-alert-type" className="text-sm font-medium text-foreground">
+            <label htmlFor="lt-alert-type" className="text-[10.5px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
               Alert Type{' '}
               <span className="text-destructive" aria-hidden="true">
                 *
@@ -149,7 +150,7 @@ export function ExcludeByLtModal({
               value={alertType}
               onChange={(e) => setAlertType(e.target.value)}
               disabled={loading}
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+              className="w-full rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <option value="" disabled>
                 Select alert type…
@@ -163,7 +164,7 @@ export function ExcludeByLtModal({
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-medium text-foreground">
+            <label className="text-[10.5px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
               LT Number(s){' '}
               <span className="text-destructive" aria-hidden="true">
                 *
@@ -177,7 +178,7 @@ export function ExcludeByLtModal({
                 disabled={loading}
                 aria-haspopup="true"
                 aria-expanded={ltDropdownOpen}
-                className="flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-ring disabled:opacity-50"
+                className="flex w-full items-center justify-between gap-2 rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <span className="truncate text-left text-muted-foreground">
                   {ltNumbers.length === 0
@@ -189,18 +190,17 @@ export function ExcludeByLtModal({
 
               {ltDropdownOpen && (
                 <div
-                  className="absolute top-full z-[100] mt-2 max-h-80 w-full overflow-hidden rounded-lg border border-border bg-popover shadow-lg ring-1 ring-black/10"
-                  style={{ boxShadow: '0 8px 32px 0 rgba(0,0,0,0.18)' }}
+                  className="absolute top-full z-[100] mt-2 max-h-80 w-full overflow-hidden rounded-md border bg-popover shadow-soft-md"
                 >
-                  <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-border bg-muted px-3 py-2">
-                    <span className="text-xs font-semibold text-muted-foreground">LT Numbers</span>
+                  <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b bg-table-head px-3 py-2">
+                    <span className="text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">LT Numbers</span>
                     <div className="flex gap-1">
                       <button
                         type="button"
                         onClick={() =>
                           setLtNumbers((prev) => Array.from(new Set([...prev, ...filteredLtOptions])))
                         }
-                        className="rounded border border-border px-2 py-0.5 text-xs transition-colors hover:bg-accent"
+                        className="rounded-sm border px-2 py-0.5 text-xs motion-safe:transition-colors hover:bg-surface-2"
                       >
                         All
                       </button>
@@ -209,20 +209,20 @@ export function ExcludeByLtModal({
                         onClick={() =>
                           setLtNumbers((prev) => prev.filter((lt) => !filteredLtOptions.includes(lt)))
                         }
-                        className="rounded border border-border px-2 py-0.5 text-xs transition-colors hover:bg-accent"
+                        className="rounded-sm border px-2 py-0.5 text-xs motion-safe:transition-colors hover:bg-surface-2"
                       >
                         None
                       </button>
                     </div>
                   </div>
 
-                  <div className="border-b border-border px-2 py-2">
+                  <div className="border-b px-2 py-2">
                     <input
                       autoFocus
                       value={ltSearch}
                       onChange={(e) => setLtSearch(e.target.value)}
                       placeholder="Search LT numbers…"
-                      className="w-full rounded-md border border-border bg-background px-2 py-1 text-xs outline-none focus:border-primary focus:ring-1 focus:ring-primary/20"
+                      className="w-full rounded-[7px] border border-input bg-card px-2 py-1 text-xs outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40"
                     />
                   </div>
                   <div className="max-h-52 overflow-auto px-2 py-1">
@@ -239,13 +239,13 @@ export function ExcludeByLtModal({
                       filteredLtOptions.map((lt) => (
                         <label
                           key={lt}
-                          className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-xs transition-colors hover:bg-accent/30"
+                          className="flex cursor-pointer items-center gap-2 rounded-sm px-1 py-1 text-xs motion-safe:transition-colors hover:bg-surface-2"
                         >
                           <input
                             type="checkbox"
                             checked={ltNumberSet.has(lt)}
                             onChange={() => toggleLtNumber(lt)}
-                            className="h-3 w-3 rounded border border-border accent-accent focus:ring-1 focus:ring-accent"
+                            className="h-3 w-3 rounded-sm border border-border accent-brand-2 focus:ring-1 focus:ring-brand/40"
                           />
                           <span className="truncate" title={lt}>
                             {lt}
@@ -282,7 +282,7 @@ export function ExcludeByLtModal({
                   <button
                     type="button"
                     onClick={() => setChipsExpanded(true)}
-                    className="rounded-full border border-border px-2.5 py-0.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-accent"
+                    className="rounded-full border px-2.5 py-0.5 text-xs font-semibold text-muted-foreground motion-safe:transition-colors hover:bg-surface-2"
                   >
                     {ltNumbers.length - CHIP_LIMIT}+ more
                   </button>
@@ -291,7 +291,7 @@ export function ExcludeByLtModal({
                   <button
                     type="button"
                     onClick={() => setChipsExpanded(false)}
-                    className="rounded-full border border-border px-2.5 py-0.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-accent"
+                    className="rounded-full border px-2.5 py-0.5 text-xs font-semibold text-muted-foreground motion-safe:transition-colors hover:bg-surface-2"
                   >
                     Show less
                   </button>
@@ -302,7 +302,7 @@ export function ExcludeByLtModal({
 
           {isExclude && (
             <div className="space-y-1.5">
-              <label htmlFor="lt-reason" className="text-sm font-medium text-foreground">
+              <label htmlFor="lt-reason" className="text-[10.5px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
                 Evidence / Reason{' '}
                 <span className="text-destructive" aria-hidden="true">
                   *
@@ -315,27 +315,17 @@ export function ExcludeByLtModal({
                 disabled={loading}
                 rows={3}
                 placeholder="Describe the reason or provide evidence…"
-                className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                className="w-full resize-none rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-50"
               />
             </div>
           )}
         </div>
 
         <DialogFooter className="flex gap-1">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={loading}
-            className="rounded-lg border border-border px-4 py-2 text-sm text-foreground transition hover:bg-muted disabled:opacity-50"
-          >
+          <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
             Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirm}
-            disabled={isConfirmDisabled}
-            className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
-          >
+          </Button>
+          <Button type="button" onClick={handleConfirm} disabled={isConfirmDisabled}>
             {loading ? (
               <>
                 <Spinner size="h-4 w-4" ariaLabel="Submitting" />
@@ -346,7 +336,7 @@ export function ExcludeByLtModal({
             ) : (
               'Restore'
             )}
-          </button>
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

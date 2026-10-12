@@ -3,6 +3,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { apiClient } from '@/shared/api/client'
 import { PageHeader } from '@/components/shared/page-header'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Banner } from '@/components/shared/banner'
+import { EmptyState } from '@/components/shared/empty-state'
+import { FilterBar } from '@/components/shared/filter-bar'
+import { FormField } from '@/components/shared/form-field'
+import { ModeTabs, SubTabs } from '@/components/ui/segmented'
+import {
+  TableWrap,
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '@/components/ui/table'
 import { AirShipmentTable } from '@/features/air-shipments/components/AirShipmentTable'
 import {
   DashboardAlertCards,
@@ -45,7 +61,7 @@ import {
   OffloadedAwbRow,
   SortOrder,
 } from '@/features/air-shipments/types'
-import { Lock, Trash2, RotateCcw, Ban, GripVertical, Pin, PinOff, Download } from 'lucide-react'
+import { Lock, Trash2, RotateCcw, Ban, GripVertical, Pin, PinOff, Download, ChevronDown } from 'lucide-react'
 import { AxiosError } from 'axios'
 
 /** One column's persisted layout: position (array order), visibility, and frozen/pinned state. */
@@ -827,72 +843,56 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
 
       <section ref={tableRef} className="space-y-4">
         {/* ── Tab Bar ── */}
-        <div className="flex items-center justify-between border-b border-border mb-4">
-          <div className="flex gap-1">
-            <button
-              onClick={() => setActiveTab('active')}
-              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                activeTab === 'active'
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              Active Alerts
-            </button>
-            <button
-              onClick={() => setActiveTab('excluded')}
-              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                activeTab === 'excluded'
-                  ? 'border-primary text-primary'
-                  : 'border-transparent text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              Excluded
-              {(() => {
-                const excludedCount = isFlightTracking
-                  ? excludedOffloaded?.meta.total ?? 0
-                  : excludedMeta?.total ?? 0
-                return excludedCount > 0 ? (
-                  <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-                    {excludedCount}
-                  </span>
-                ) : null
-              })()}
-            </button>
-          </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <ModeTabs
+            aria-label="Alerts view"
+            value={activeTab}
+            onValueChange={setActiveTab}
+            items={[
+              { value: 'active', label: 'Active Alerts' },
+              {
+                value: 'excluded',
+                label: 'Excluded',
+                count: (() => {
+                  const excludedCount = isFlightTracking
+                    ? excludedOffloaded?.meta.total ?? 0
+                    : excludedMeta?.total ?? 0
+                  return excludedCount > 0 ? excludedCount : undefined
+                })(),
+              },
+            ]}
+          />
 
           {/* Exports BOTH tables (Active Alert + Exclude) to one .xlsx, honoring current filters. */}
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={() => void handleExport()}
             disabled={isExporting || !!dateError}
             title="Export Active Alert & Exclude tables to Excel"
-            className="mb-1 inline-flex items-center gap-1 rounded border border-border bg-background px-3 py-1.5 text-xs shadow-sm hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Download size={14} /> {isExporting ? 'Exporting…' : 'Export Excel'}
-          </button>
+          </Button>
         </div>
 
         {/* ── Active Alerts Tab ── */}
         {activeTab === 'active' && (
           <>
-            <div className="grid gap-4 lg:grid-cols-[1.8fr_1fr_1fr]">
-              <label className="block">
-                <span className="text-sm font-medium text-slate-700">Search</span>
-                <input
+            <FilterBar>
+              <FormField label="Search" className="min-w-[260px] flex-1">
+                <Input
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   placeholder="Search shipments..."
-                  className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
                 />
-              </label>
+              </FormField>
 
-              <label className="block">
-                <span className="text-sm font-medium text-slate-700">Alert</span>
+              <FormField label="Alert" className="min-w-[180px]">
                 <select
                   value={activeAlert ?? 'null'}
                   onChange={(e) => handleAlertDropdownChange(e.target.value)}
-                  className="mt-1 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  className="w-full rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40"
                 >
                   {ALERT_OPTIONS.map((option) => (
                     <option key={option.label} value={option.value ?? 'null'}>
@@ -900,62 +900,50 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
                     </option>
                   ))}
                 </select>
-              </label>
+              </FormField>
 
-              <label className="block">
-                <span className="text-sm font-medium text-slate-700">Route</span>
-                <div className="mt-1">
-                  <MultiRouteFilter
-                    routes={routeLabels}
-                    selected={activeRoutes}
-                    onChange={handleRoutesChange}
-                  />
-                </div>
-              </label>
-            </div>
+              <FormField label="Route" className="min-w-[180px]">
+                <MultiRouteFilter
+                  routes={routeLabels}
+                  selected={activeRoutes}
+                  onChange={handleRoutesChange}
+                />
+              </FormField>
+            </FilterBar>
 
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="relative ml-auto flex items-center gap-2" ref={dropdownRef}>
                 {/* Column config doesn't apply to the AWB-based Flight Tracking table. */}
                 {!isFlightTracking && (
                 <>
-                <button
+                <Button
                   type="button"
-                  className="border rounded px-2 py-1 text-xs bg-background hover:bg-accent flex items-center gap-1 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
+                  variant="outline"
+                  size="sm"
                   onClick={() => setDropdownOpen((open) => !open)}
                   aria-haspopup="true"
                   aria-expanded={dropdownOpen}
                 >
-                  <span className="font-medium">Columns</span>
-                  <svg width="14" height="14" viewBox="0 0 20 20" fill="none" className="ml-1">
-                    <path
-                      d="M5 8L10 13L15 8"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                </button>
+                  Columns
+                  <ChevronDown size={14} aria-hidden="true" />
+                </Button>
 
                 {dropdownOpen && (
-                  <div
-                    className="absolute right-0 top-full mt-2 min-w-[180px] max-h-72 overflow-auto rounded-lg border border-border bg-popover shadow-lg ring-1 ring-black/10 z-[100]"
-                    style={{ boxShadow: '0 8px 32px 0 rgba(0,0,0,0.18)' }}
-                  >
-                    <div className="px-3 py-2 border-b border-border bg-muted rounded-t-lg sticky top-0 z-10 flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold text-muted-foreground">Columns · drag to reorder</span>
+                  <div className="absolute right-0 top-full z-[100] mt-2 max-h-72 min-w-[180px] overflow-auto rounded-md border bg-popover shadow-soft-md">
+                    <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b bg-table-head px-3 py-2">
+                      <span className="text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">Columns · drag to reorder</span>
                       <div className="flex gap-1">
                         <button
                           type="button"
                           onClick={() => handleToggleAllColumns(true)}
-                          className="text-xs px-2 py-0.5 rounded border border-border hover:bg-accent transition-colors"
+                          className="rounded-sm border px-2 py-0.5 text-xs motion-safe:transition-colors hover:bg-surface-2"
                         >
                           All
                         </button>
                         <button
                           type="button"
                           onClick={() => handleToggleAllColumns(false)}
-                          className="text-xs px-2 py-0.5 rounded border border-border hover:bg-accent transition-colors"
+                          className="rounded-sm border px-2 py-0.5 text-xs motion-safe:transition-colors hover:bg-surface-2"
                         >
                           None
                         </button>
@@ -971,7 +959,7 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
                           }}
                           onDragOver={(e) => e.preventDefault()}
                           onDrop={() => handleColumnDrop(item.key)}
-                          className="flex items-center gap-2 text-xs rounded px-1 py-1 hover:bg-accent/30 transition-colors"
+                          className="flex items-center gap-2 rounded-sm px-1 py-1 text-xs motion-safe:transition-colors hover:bg-surface-2"
                         >
                           <span className="cursor-grab text-muted-foreground active:cursor-grabbing" title="Drag to reorder">
                             <GripVertical size={13} />
@@ -980,7 +968,7 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
                             type="checkbox"
                             checked={item.visible}
                             onChange={() => handleColumnToggle(item.key)}
-                            className="accent-accent h-3 w-3 rounded border border-border focus:ring-1 focus:ring-accent"
+                            className="h-3 w-3 rounded-sm border border-border accent-brand-2 focus:ring-1 focus:ring-brand/40"
                           />
                           <span className="flex-1 truncate" title={colLabel(item.key)}>
                             {colLabel(item.key)}
@@ -989,7 +977,7 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
                             type="button"
                             onClick={() => handleColumnToggleFrozen(item.key)}
                             title={item.frozen ? 'Unpin column' : 'Pin column (freeze on scroll)'}
-                            className={`rounded p-0.5 transition-colors hover:bg-accent ${
+                            className={`rounded-sm p-0.5 motion-safe:transition-colors hover:bg-surface-2 ${
                               item.frozen ? 'text-primary' : 'text-muted-foreground'
                             }`}
                           >
@@ -1003,68 +991,51 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
                 </>
                 )}
 
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setLtModal('exclude')}
-                    className="border border-destructive rounded px-2 py-1 text-xs bg-background hover:bg-accent text-destructive flex items-center gap-1"
-                  >
+                <div className="flex items-center gap-1.5">
+                  <Button type="button" variant="danger-soft" size="sm" onClick={() => setLtModal('exclude')}>
                     <Ban size={14} /> Exclude LT
-                  </button>
+                  </Button>
                   {/* Batch lock/delete operate on the per-TO table, not the AWB Flight Tracking view. */}
                   {!isFlightTracking && (
                     <>
-                      <button
-                        type="button"
-                        onClick={() => openBatch('lock')}
-                        className="border rounded px-2 py-1 text-xs bg-background hover:bg-accent flex items-center gap-1"
-                      >
+                      <Button type="button" variant="outline" size="sm" onClick={() => openBatch('lock')}>
                         <Lock size={14} /> Batch Lock
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openBatch('delete')}
-                        className="border border-destructive rounded px-2 py-1 text-xs bg-background hover:bg-accent text-destructive flex items-center gap-1"
-                      >
+                      </Button>
+                      <Button type="button" variant="danger-soft" size="sm" onClick={() => openBatch('delete')}>
                         <Trash2 size={14} /> Batch Delete
-                      </button>
+                      </Button>
                     </>
                   )}
                 </div>
 
                 {batchDialog.op && (
-                  <div className="absolute right-0 top-full mt-2 w-[300px] p-3 rounded-lg border border-border bg-popover shadow-lg z-50">
-                    <div className="text-sm font-medium mb-2">
+                  <div className="absolute right-0 top-full z-50 mt-2 w-[300px] rounded-md border bg-popover p-3 shadow-soft-md">
+                    <div className="mb-2 font-display text-sm font-bold">
                       {batchDialog.op === 'lock' ? 'Batch Lock Rows' : 'Batch Delete Rows'}
                     </div>
-                    <label className="text-xs block mb-1">Start</label>
+                    <label className="mb-1 block text-[10.5px] font-bold uppercase tracking-[0.06em] text-muted-foreground">Start</label>
                     <input
                       type="date"
                       value={batchDialog.start}
                       onChange={(e) => setBatchDialog((s) => ({ ...s, start: e.target.value }))}
-                      className="w-full border rounded px-2 py-1 mb-2"
+                      className="mb-2 w-full rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40"
                     />
-                    <label className="text-xs block mb-1">End</label>
+                    <label className="mb-1 block text-[10.5px] font-bold uppercase tracking-[0.06em] text-muted-foreground">End</label>
                     <input
                       type="date"
                       value={batchDialog.end}
                       onChange={(e) => setBatchDialog((s) => ({ ...s, end: e.target.value }))}
-                      className="w-full border rounded px-2 py-1 mb-3"
+                      className="mb-3 w-full rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40"
                     />
                     <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={closeBatch}
-                        disabled={batchDialog.loading}
-                        className="rounded border px-3 py-1 text-sm"
-                      >
+                      <Button type="button" variant="outline" size="sm" onClick={closeBatch} disabled={batchDialog.loading}>
                         Cancel
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         type="button"
+                        size="sm"
                         onClick={handleConfirmBatch}
                         disabled={batchDialog.loading || !batchDialog.start || !batchDialog.end}
-                        className="rounded border px-3 py-1 text-sm flex items-center gap-1"
                       >
                         {batchDialog.loading ? (
                           'Working...'
@@ -1077,7 +1048,7 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
                             <Trash2 size={14} /> Delete
                           </>
                         )}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 )}
@@ -1085,9 +1056,7 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
             </div>
 
             {error ? (
-              <div className="rounded-2xl border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                {error}
-              </div>
+              <Banner tone="danger">{error}</Banner>
             ) : isFlightTracking ? (
               <OffloadedAwbTable
                 data={offloadedData?.data ?? []}
@@ -1099,7 +1068,7 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
                 onPageChange={setOffloadedPage}
               />
             ) : (
-              <div className="rounded-3xl border border-border bg-panel p-4 shadow-sm">
+              <div className="rounded-lg border bg-card p-4">
                 <AirShipmentTable
                   data={
                     data?.data.map((row) =>
@@ -1131,7 +1100,7 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
             )}
 
             {isLoading && (
-              <div className="rounded-2xl border border-border bg-background px-4 py-3 text-sm text-muted-foreground">
+              <div className="rounded-md border bg-card px-4 py-3 text-sm text-muted-foreground">
                 Loading table data…
               </div>
             )}
@@ -1171,120 +1140,100 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
             {/* Alert type filter chips + Restore LT */}
             {expandedExcludedRows.length > 0 && (
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => { setExcludedAlertTypeFilter('all'); setExcludedPage(1) }}
-                    className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
-                      excludedAlertTypeFilter === 'all'
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'bg-background text-foreground border-border hover:bg-muted'
-                    }`}
-                  >
-                    All
-                  </button>
-                  {uniqueAlertTypes.map((at) => (
-                    <button
-                      key={at}
-                      type="button"
-                      onClick={() => { setExcludedAlertTypeFilter(at); setExcludedPage(1) }}
-                      className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
-                        excludedAlertTypeFilter === at
-                          ? 'bg-primary text-primary-foreground border-primary'
-                          : 'bg-background text-foreground border-border hover:bg-muted'
-                      }`}
-                    >
-                      {ALERT_TYPE_LABELS[at] ?? at}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setLtModal('restore')}
-                  className="border rounded px-2 py-1 text-xs bg-background hover:bg-accent flex items-center gap-1"
-                >
+                <SubTabs
+                  aria-label="Filter excluded alerts by type"
+                  value={excludedAlertTypeFilter}
+                  onValueChange={(v) => { setExcludedAlertTypeFilter(v); setExcludedPage(1) }}
+                  items={[
+                    { value: 'all', label: 'All' },
+                    ...uniqueAlertTypes.map((at) => ({ value: at, label: ALERT_TYPE_LABELS[at] ?? at })),
+                  ]}
+                />
+                <Button type="button" variant="outline" size="sm" onClick={() => setLtModal('restore')}>
                   <RotateCcw size={14} /> Restore LT
-                </button>
+                </Button>
               </div>
             )}
 
             {expandedExcludedRows.length === 0 ? (
-              <div className="rounded-2xl border border-border bg-background px-4 py-8 text-center text-sm text-muted-foreground">
-                No excluded alerts
-              </div>
+              <EmptyState title="No excluded alerts" />
             ) : (
-              <div className="rounded-3xl border border-border bg-panel p-4 shadow-sm overflow-auto">
-                <table className="min-w-full divide-y divide-border text-sm">
-                  <thead className="bg-muted">
-                    <tr>
-                      <th className="whitespace-nowrap px-4 py-2 text-left font-medium text-muted-foreground">TO Number</th>
-                      <th className="whitespace-nowrap px-4 py-2 text-left font-medium text-muted-foreground">LT Number</th>
-                      <th className="whitespace-nowrap px-4 py-2 text-left font-medium text-muted-foreground">Alert Type</th>
-                      <th className="whitespace-nowrap px-4 py-2 text-left font-medium text-muted-foreground">Evidence</th>
-                      <th className="whitespace-nowrap px-4 py-2 text-left font-medium text-muted-foreground">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border">
+              <TableWrap>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>TO Number</TableHead>
+                      <TableHead>LT Number</TableHead>
+                      <TableHead>Alert Type</TableHead>
+                      <TableHead>Evidence</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {expandedExcludedRows
                       .filter(({ alertType }) => excludedAlertTypeFilter === 'all' || alertType === excludedAlertTypeFilter)
                       .map(({ row, alertType, reason }, idx) => {
-                        const badgeColor = ALERT_BADGE_COLORS[alertType] ?? '#6B7280'
+                        // Categorical color sourced from sla-mode.config (CHART_COLORS); faint token as fallback.
+                        const badgeColor = ALERT_BADGE_COLORS[alertType] ?? '#8a9a8a'
                         return (
-                          <tr key={`${row.id}-${alertType}-${idx}`} className={idx % 2 === 1 ? 'bg-muted/70' : ''}>
-                            <td className="whitespace-nowrap px-4 py-2">{String(row['to_number'] ?? '—')}</td>
-                            <td className="whitespace-nowrap px-4 py-2">{String(row['lt_number'] ?? '—')}</td>
-                            <td className="whitespace-nowrap px-4 py-2">
+                          <TableRow key={`${row.id}-${alertType}-${idx}`}>
+                            <TableCell className="whitespace-nowrap">{String(row['to_number'] ?? '—')}</TableCell>
+                            <TableCell className="whitespace-nowrap">{String(row['lt_number'] ?? '—')}</TableCell>
+                            <TableCell className="whitespace-nowrap">
                               <span
-                                className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
+                                className="inline-flex items-center rounded-full px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-[0.04em]"
                                 style={{ backgroundColor: `${badgeColor}22`, color: badgeColor }}
                               >
                                 {ALERT_TYPE_LABELS[alertType] ?? alertType}
                               </span>
-                            </td>
-                            <td className="px-4 py-2 max-w-[280px]">
+                            </TableCell>
+                            <TableCell className="max-w-[280px]">
                               <span className="block truncate text-muted-foreground" title={reason}>
                                 {reason.length > 60 ? reason.slice(0, 60) + '…' : reason}
                               </span>
-                            </td>
-                            <td className="whitespace-nowrap px-4 py-2">
-                              <button
+                            </TableCell>
+                            <TableCell className="whitespace-nowrap">
+                              <Button
                                 type="button"
+                                variant="outline"
+                                size="sm"
                                 onClick={() => void handleRestoreRow(row, alertType)}
-                                className="inline-flex items-center gap-1 rounded border border-border px-2 py-1 text-xs hover:bg-muted transition-colors focus:outline-none focus:ring-2 focus:ring-ring"
                               >
                                 <RotateCcw size={12} />
                                 Restore
-                              </button>
-                            </td>
-                          </tr>
+                              </Button>
+                            </TableCell>
+                          </TableRow>
                         )
                       })}
-                  </tbody>
-                </table>
-              </div>
+                  </TableBody>
+                </Table>
+              </TableWrap>
             )}
 
             {/* Excluded pagination */}
             {excludedMeta && excludedMeta.total > excludedMeta.limit && (
-              <div className="flex items-center justify-between text-sm">
-                <span>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span className="tabular">
                   {`${(excludedMeta.page - 1) * excludedMeta.limit + 1}–${Math.min(excludedMeta.page * excludedMeta.limit, excludedMeta.total)} of ${excludedMeta.total}`}
                 </span>
-                <div className="flex gap-2">
-                  <button
+                <div className="flex gap-1.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => setExcludedPage((p) => Math.max(1, p - 1))}
                     disabled={excludedMeta.page <= 1}
-                    className="rounded border px-3 py-1 disabled:opacity-40 hover:bg-muted"
                   >
                     Previous
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => setExcludedPage((p) => p + 1)}
                     disabled={excludedMeta.page * excludedMeta.limit >= excludedMeta.total}
-                    className="rounded border px-3 py-1 disabled:opacity-40 hover:bg-muted"
                   >
                     Next
-                  </button>
+                  </Button>
                 </div>
               </div>
             )}
