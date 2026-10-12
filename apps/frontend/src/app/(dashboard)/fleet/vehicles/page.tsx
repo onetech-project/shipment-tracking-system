@@ -1,8 +1,11 @@
 'use client'
 
 import { useState } from 'react'
+import { CloudOff } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import { Banner } from '@/components/shared/banner'
+import { EmptyState } from '@/components/shared/empty-state'
 import { Button } from '@/components/ui/button'
 import { usePermissions } from '@/shared/hooks/use-permissions'
 import { VehicleFilters } from '@/features/fleet/components/VehicleFilters'
@@ -260,21 +263,17 @@ export default function FleetVehiclesPage() {
         }
       />
 
-      {actionError && (
-        <p className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {actionError}
-        </p>
-      )}
+      {actionError && <Banner tone="danger">{actionError}</Banner>}
 
       <FleetSummaryCards summary={summary} isLoading={summaryLoading} />
 
       <VehiclesTabs value={tab} onChange={setTab} />
 
       {!canReadMaster && (
-        <p className="mb-4 text-sm text-muted-foreground">
+        <Banner tone="info">
           Daftar jenis armada, kepemilikan, leasing, pool, status dan jenis dokumen tidak tersedia
           — butuh izin akses master data. Filter dan pilihan terkait dikosongkan.
-        </p>
+        </Banner>
       )}
 
       {tab === 'armada' && (
@@ -298,12 +297,15 @@ export default function FleetVehiclesPage() {
             // The empty-state copy is an affirmative claim that no unit matches. During an outage
             // that claim is false, and an operator who believes it starts re-registering units
             // that already exist.
-            <div className="rounded-lg border bg-card p-8 text-center">
-              <p className="text-sm text-muted-foreground">Gagal memuat data armada.</p>
-              <button onClick={() => refetch()} className="mt-2 text-sm text-primary underline">
-                Coba lagi
-              </button>
-            </div>
+            <EmptyState
+              icon={CloudOff}
+              title="Gagal memuat data armada."
+              action={
+                <Button variant="outline" size="sm" onClick={() => refetch()}>
+                  Coba lagi
+                </Button>
+              }
+            />
           ) : (
             <>
               <VehicleTable

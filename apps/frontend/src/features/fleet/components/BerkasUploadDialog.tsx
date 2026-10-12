@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Banner } from '@/components/shared/banner'
 import { FleetMasterRow, FleetVehicle } from '../types'
 import { uploadErrorMessage } from '../utils/api-error'
 
@@ -79,9 +80,9 @@ export function BerkasUploadDialog({ open, vehicle, slot, onUpload, onSetUrl, on
         <p className="mt-1 text-sm text-muted-foreground">{vehicle.nopol}</p>
 
         {error && (
-          <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          <Banner tone="danger" className="mt-3">
             {error}
-          </p>
+          </Banner>
         )}
 
         <div className="mt-4">

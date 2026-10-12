@@ -4,9 +4,10 @@ import { useState } from 'react'
 import { PageHeader } from '@/components/shared/page-header'
 import { DataTable } from '@/components/shared/data-table'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import { Banner } from '@/components/shared/banner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { cn } from '@/lib/utils'
+import { SubTabs } from '@/components/ui/segmented'
 import { usePermissions } from '@/shared/hooks/use-permissions'
 import { MasterDataFormDialog } from '@/features/fleet/components/MasterDataFormDialog'
 import {
@@ -84,34 +85,19 @@ export default function FleetMasterDataPage() {
         }
       />
 
-      <div className="mb-4 flex flex-wrap gap-1 border-b" role="tablist">
-        {FLEET_MASTER_CATEGORIES.map((c) => (
-          <button
-            key={c}
-            role="tab"
-            aria-selected={c === category}
-            onClick={() => {
-              setCategory(c)
-              // The banner names a row in the category being left behind.
-              setDeleteError(null)
-            }}
-            className={cn(
-              '-mb-px border-b-2 px-3 py-2 text-sm font-medium motion-safe:transition-colors',
-              c === category
-                ? 'border-primary text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {FLEET_CATEGORY_LABELS[c]}
-          </button>
-        ))}
-      </div>
+      <SubTabs
+        value={category}
+        onValueChange={(c) => {
+          setCategory(c)
+          // The banner names a row in the category being left behind.
+          setDeleteError(null)
+        }}
+        items={FLEET_MASTER_CATEGORIES.map((c) => ({ value: c, label: FLEET_CATEGORY_LABELS[c] }))}
+        aria-label="Kategori master data"
+        className="mb-4"
+      />
 
-      {deleteError && (
-        <p className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {deleteError}
-        </p>
-      )}
+      {deleteError && <Banner tone="danger">{deleteError}</Banner>}
 
       <DataTable
         rows={rows ?? []}
