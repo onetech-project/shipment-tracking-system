@@ -140,6 +140,22 @@ P&L Analytics · P&L Settlement · Barhal · Fleet · Route Simulation · Route 
 Vendor Groups · Settings (roles/users/invitations/organizations/permissions/general
 params) · Audit · Auth (login/invite).
 
+## Contrast deviation from the mockup (decided 2026-10-13)
+
+The mockup's text-bearing colours fail WCAG AA (white on `#3dae68` is 2.8:1; `#8a9a8a` hint text
+~2.9:1; `#3dae68`/`#ca8a04` status text ~2.9:1). Darkened, keeping the hue:
+
+| Token | Mockup | Shipped | Contrast |
+|---|---|---|---|
+| `--primary` (buttons, active pills) | `#3dae68` | `#267d4a` | 5.1:1 white label |
+| `brand.hover` | `#2d8f54` | `#1f6a3e` | 6.6:1 |
+| `faint` | `#8a9a8a` | `#647364` | ≥4.6:1 on white/bg/surface-2 |
+| `good` | `#3dae68` | `#267d4a` | 5.1:1 on white, 4.5:1 on good-soft |
+| `warn` | `#ca8a04` | `#a16207` | 4.9:1 on white, 4.6:1 on warn-soft |
+
+`brand`/`brand-2`/`brand-light` stay bright for fills, dots, icon squares and charts
+(`CHART_COLORS` is unchanged).
+
 ## Non-goals
 
 - No new data, endpoints, or page sections that the app does not already have.

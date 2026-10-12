@@ -62,7 +62,7 @@ const config: Config = {
         brand: {
           DEFAULT: '#4fc87b',
           2: '#3dae68',
-          hover: '#2d8f54',
+          hover: '#1f6a3e',
           ink: '#1f5a35',
           soft: '#e2f5e9',
           light: '#7ddba0',
@@ -73,9 +73,13 @@ const config: Config = {
         'table-head': '#f5f8f5',
         'row-hover': '#f8fcf9',
         'border-strong': '#cdd9cd',
-        faint: '#8a9a8a',
-        good: { DEFAULT: '#3dae68', soft: '#e2f5e9' },
-        warn: { DEFAULT: '#ca8a04', soft: '#fef9c3', ink: '#713f12' },
+        // Darker than the mockup's #8a9a8a so hint text clears WCAG AA (4.5:1) on every surface.
+        faint: '#647364',
+        // good/warn are text colours far more often than fills; darkened from the mockup
+        // (#3dae68 / #ca8a04) to clear AA on white and on their -soft backgrounds. Charts keep the
+        // bright hues via CHART_COLORS.
+        good: { DEFAULT: '#267d4a', soft: '#e2f5e9' },
+        warn: { DEFAULT: '#a16207', soft: '#fef9c3', ink: '#713f12' },
         bad: { DEFAULT: '#b91c1c', soft: '#fee2e2', ink: '#7f1d1d', strong: '#dc2626' },
         info: { DEFAULT: '#0e7490', soft: '#cffafe', ink: '#0c4a6e' },
       },

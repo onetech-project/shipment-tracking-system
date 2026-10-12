@@ -49,7 +49,7 @@ function UserCell({ user }: { user: User }) {
     <div className="flex items-center gap-2.5">
       <span
         aria-hidden="true"
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-2 text-xs font-bold text-white"
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-xs font-bold text-white"
       >
         {initials(name)}
       </span>
