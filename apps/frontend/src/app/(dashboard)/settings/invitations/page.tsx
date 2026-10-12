@@ -6,8 +6,11 @@ import { usePermissions } from '@/shared/hooks/use-permissions';
 import { PageHeader } from '@/components/shared/page-header';
 import { StatusBadge } from '@/components/shared/status-badge';
 import type { StatusVariant } from '@/components/shared/status-badge';
+import { Banner } from '@/components/shared/banner';
+import { EmptyState } from '@/components/shared/empty-state';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { TableWrap, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 
 interface Invitation {
   id: string;
@@ -82,7 +85,7 @@ export default function InvitationsSettingsPage() {
         title="Invitations"
         action={<Button onClick={() => setShowModal(true)}>+ Send Invitation</Button>}
       />
-      {error && <p className="mb-4 text-sm text-destructive">Error: {error}</p>}
+      {error && <Banner tone="danger">Error: {error}</Banner>}
 
       <div className="mb-4">
         <select
@@ -98,39 +101,37 @@ export default function InvitationsSettingsPage() {
         </select>
       </div>
 
-      <div className="overflow-x-auto rounded-md border">
-        <table className="w-full border-collapse text-sm">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Email</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Expires</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Sent</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {invitations.map((inv, idx) => (
-              <tr key={inv.id} className={`border-t hover:bg-muted/30 motion-safe:transition-colors ${idx % 2 === 1 ? 'bg-muted/70' : ''}`}>
-                <td className="px-4 py-3">{inv.email}</td>
-                <td className="px-4 py-3">
+      <TableWrap>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Email</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Expires</TableHead>
+              <TableHead>Sent</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {invitations.map((inv) => (
+              <TableRow key={inv.id}>
+                <TableCell className="font-mono">{inv.email}</TableCell>
+                <TableCell>
                   <StatusBadge variant={STATUS_VARIANT[inv.status] ?? 'inactive'} label={inv.status} />
-                </td>
-                <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(inv.expiresAt).toLocaleDateString()}</td>
-                <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(inv.createdAt).toLocaleDateString()}</td>
-                <td className="px-4 py-3">
+                </TableCell>
+                <TableCell className="tabular text-xs text-muted-foreground">{new Date(inv.expiresAt).toLocaleDateString()}</TableCell>
+                <TableCell className="tabular text-xs text-muted-foreground">{new Date(inv.createdAt).toLocaleDateString()}</TableCell>
+                <TableCell>
                   {inv.status === 'pending' && (
                     <Button size="sm" variant="destructive" onClick={() => handleCancel(inv.id)}>Cancel</Button>
                   )}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
-            {invitations.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No invitations found.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+          </TableBody>
+        </Table>
+        {invitations.length === 0 && <EmptyState title="No invitations found." />}
+      </TableWrap>
 
       {showModal && (
         <Dialog open onOpenChange={(open) => { if (!open) setShowModal(false); }}>

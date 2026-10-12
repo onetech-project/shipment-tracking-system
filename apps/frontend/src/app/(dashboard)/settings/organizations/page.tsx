@@ -5,8 +5,11 @@ import OrganizationForm from '@/features/organizations/components/organization-f
 import DeactivateOrgDialog from '@/features/organizations/components/deactivate-org-dialog';
 import { PageHeader } from '@/components/shared/page-header';
 import { StatusBadge } from '@/components/shared/status-badge';
+import { Banner } from '@/components/shared/banner';
+import { EmptyState } from '@/components/shared/empty-state';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { TableWrap, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 
 interface Organization {
   id: string;
@@ -65,46 +68,44 @@ export default function OrganizationsSettingsPage() {
         title="Organizations"
         action={<Button onClick={() => setModal({ type: 'create' })}>+ New Organization</Button>}
       />
-      {error && <p className="mb-4 text-sm text-destructive">Error: {error}</p>}
+      {error && <Banner tone="danger">Error: {error}</Banner>}
 
-      <div className="overflow-x-auto rounded-md border">
-        <table className="w-full border-collapse text-sm">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Name</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Slug</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Address</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Status</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Created</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {orgs.map((org, idx) => (
-              <tr key={org.id} className={`border-t hover:bg-muted/30 motion-safe:transition-colors ${idx % 2 === 1 ? 'bg-muted/70' : ''}`}>
-                <td className="px-4 py-3 font-medium">{org.name}</td>
-                <td className="px-4 py-3"><code className="text-xs text-muted-foreground">{org.slug}</code></td>
-                <td className="px-4 py-3">{org.address ?? '—'}</td>
-                <td className="px-4 py-3">
+      <TableWrap>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Slug</TableHead>
+              <TableHead>Address</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Created</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {orgs.map((org) => (
+              <TableRow key={org.id}>
+                <TableCell className="font-medium">{org.name}</TableCell>
+                <TableCell><code className="text-xs text-muted-foreground">{org.slug}</code></TableCell>
+                <TableCell>{org.address ?? '—'}</TableCell>
+                <TableCell>
                   <StatusBadge variant={org.isActive ? 'active' : 'inactive'} />
-                </td>
-                <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(org.createdAt).toLocaleDateString()}</td>
-                <td className="px-4 py-3">
+                </TableCell>
+                <TableCell className="tabular text-xs text-muted-foreground">{new Date(org.createdAt).toLocaleDateString()}</TableCell>
+                <TableCell>
                   <div className="flex gap-1">
                     <Button size="sm" variant="outline" onClick={() => setModal({ type: 'edit', org })}>Edit</Button>
                     {org.isActive && (
                       <Button size="sm" variant="destructive" onClick={() => setModal({ type: 'deactivate', org })}>Deactivate</Button>
                     )}
                   </div>
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
-            {orgs.length === 0 && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No organizations found.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+          </TableBody>
+        </Table>
+        {orgs.length === 0 && <EmptyState title="No organizations found." />}
+      </TableWrap>
 
       {modal?.type === 'create' && (
         <Dialog open onOpenChange={(open) => { if (!open) setModal(null); }}>

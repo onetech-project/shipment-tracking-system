@@ -3,10 +3,13 @@ import { useEffect, useState } from 'react';
 import { apiClient } from '@/shared/api/client';
 import { PageHeader } from '@/components/shared/page-header';
 import { StatusBadge } from '@/components/shared/status-badge';
+import { Banner } from '@/components/shared/banner';
+import { EmptyState } from '@/components/shared/empty-state';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FormField } from '@/components/shared/form-field';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { TableWrap, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 
 interface Organization { id: string; name: string; slug: string; isActive: boolean; createdAt: string; }
 
@@ -48,29 +51,30 @@ export default function OrganizationsPage() {
   return (
     <div>
       <PageHeader title="Organizations" action={<Button onClick={() => setShowModal(true)}>+ New Organization</Button>} />
-      {error && <p className="mb-4 text-sm text-destructive">Error: {error}</p>}
-      <div className="overflow-x-auto rounded-md border">
-        <table className="w-full border-collapse text-sm">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Name</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Slug</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Created</th>
-            </tr>
-          </thead>
-          <tbody>
+      {error && <Banner tone="danger">Error: {error}</Banner>}
+      <TableWrap>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead>Slug</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Created</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {orgs.map((o) => (
-              <tr key={o.id} className="border-t hover:bg-muted/30 motion-safe:transition-colors">
-                <td className="px-4 py-3">{o.name}</td>
-                <td className="px-4 py-3"><code className="text-xs">{o.slug}</code></td>
-                <td className="px-4 py-3"><StatusBadge variant={o.isActive ? 'active' : 'inactive'} /></td>
-                <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(o.createdAt).toLocaleDateString()}</td>
-              </tr>
+              <TableRow key={o.id}>
+                <TableCell>{o.name}</TableCell>
+                <TableCell><code className="text-xs">{o.slug}</code></TableCell>
+                <TableCell><StatusBadge variant={o.isActive ? 'active' : 'inactive'} /></TableCell>
+                <TableCell className="tabular text-xs text-muted-foreground">{new Date(o.createdAt).toLocaleDateString()}</TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </TableBody>
+        </Table>
+        {orgs.length === 0 && <EmptyState title="No organizations found." />}
+      </TableWrap>
 
       {showModal && (
         <Dialog open onOpenChange={(open) => { if (!open) setShowModal(false); }}>
