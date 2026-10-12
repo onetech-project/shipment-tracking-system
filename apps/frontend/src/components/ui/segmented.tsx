@@ -22,8 +22,27 @@ export interface SegmentedProps<T extends string> {
 
 function makeTabs(styles: { list: string; tab: string; active: string; idle: string }) {
   return function Tabs<T extends string>({ value, onValueChange, items, className, 'aria-label': ariaLabel }: SegmentedProps<T>) {
+    const tabRefs = React.useRef(new Map<T, HTMLButtonElement>());
+
+    // WAI-ARIA tabs: one tab stop for the whole list, arrows/Home/End move and select.
+    const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+      const enabled = items.filter((i) => !i.disabled);
+      const at = enabled.findIndex((i) => i.value === value);
+      if (enabled.length === 0) return;
+      let next: number;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (at + 1) % enabled.length;
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = (at - 1 + enabled.length) % enabled.length;
+      else if (e.key === 'Home') next = 0;
+      else if (e.key === 'End') next = enabled.length - 1;
+      else return;
+      e.preventDefault();
+      const target = enabled[next].value;
+      onValueChange(target);
+      tabRefs.current.get(target)?.focus();
+    };
+
     return (
-      <div role="tablist" aria-label={ariaLabel} className={cn(styles.list, className)}>
+      <div role="tablist" aria-label={ariaLabel} onKeyDown={onKeyDown} className={cn(styles.list, className)}>
         {items.map((item) => {
           const active = item.value === value;
           const Icon = item.icon;
@@ -33,6 +52,8 @@ function makeTabs(styles: { list: string; tab: string; active: string; idle: str
               type="button"
               role="tab"
               aria-selected={active}
+              tabIndex={active ? 0 : -1}
+              ref={(el) => { if (el) tabRefs.current.set(item.value, el); else tabRefs.current.delete(item.value); }}
               disabled={item.disabled}
               data-testid={item['data-testid']}
               onClick={() => onValueChange(item.value)}

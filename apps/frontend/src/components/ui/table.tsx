@@ -36,6 +36,8 @@ TableRow.displayName = 'TableRow';
 
 interface CellProps { num?: boolean }
 
+// `sticky top-0` pins the header only while its own scroller scrolls: give the TableWrap a
+// max height (e.g. `max-h-[70vh]`) for long tables, otherwise the header scrolls with the page.
 const TableHead = React.forwardRef<HTMLTableCellElement, React.ThHTMLAttributes<HTMLTableCellElement> & CellProps>(
   ({ className, num, ...props }, ref) => (
     <th

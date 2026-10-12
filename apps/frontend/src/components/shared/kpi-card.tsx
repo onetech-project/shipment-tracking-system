@@ -1,5 +1,6 @@
+'use client';
 import * as React from 'react';
-import type { LucideIcon } from 'lucide-react';
+import { ArrowDown, ArrowUp, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { IconSquare, type IconTone } from './icon-square';
 
@@ -52,7 +53,8 @@ export function KpiCard({ label, value, hint, delta, icon, tone = 'brand', muted
         <div className="text-[11.5px] font-medium text-faint">
           {delta && (
             <span className={cn('mr-1 inline-flex items-center gap-0.5 rounded-full px-1.5 py-px text-[10.5px] font-bold', delta.dir === 'up' ? 'bg-good-soft text-good' : 'bg-bad-soft text-bad')}>
-              {delta.dir === 'up' ? '▲' : '▼'} {delta.text}
+              {delta.dir === 'up' ? <ArrowUp className="h-2.5 w-2.5" aria-hidden="true" /> : <ArrowDown className="h-2.5 w-2.5" aria-hidden="true" />}
+              {delta.text}
             </span>
           )}
           {hint}

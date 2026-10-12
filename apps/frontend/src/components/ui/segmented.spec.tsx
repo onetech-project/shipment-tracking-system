@@ -18,3 +18,16 @@ it('SubTabs uses the brand-ink active chip', () => {
   render(<SubTabs value="sea" onValueChange={() => {}} items={[...items]} />);
   expect(screen.getByRole('tab', { name: 'Sea' })).toHaveClass('bg-brand-ink');
 });
+
+it('moves selection and focus with arrow keys, one tab stop for the list', async () => {
+  const onChange = jest.fn();
+  render(<ModeTabs aria-label="Mode" value="air" onValueChange={onChange} items={[...items]} />);
+  expect(screen.getByRole('tab', { name: 'Air' })).toHaveAttribute('tabindex', '0');
+  expect(screen.getByRole('tab', { name: 'Sea' })).toHaveAttribute('tabindex', '-1');
+  screen.getByRole('tab', { name: 'Air' }).focus();
+  await userEvent.keyboard('{ArrowRight}');
+  expect(onChange).toHaveBeenLastCalledWith('sea');
+  expect(screen.getByRole('tab', { name: 'Sea' })).toHaveFocus();
+  await userEvent.keyboard('{End}');
+  expect(onChange).toHaveBeenLastCalledWith('sea');
+});
