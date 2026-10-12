@@ -1,6 +1,8 @@
 import type { Config } from 'tailwindcss';
 
 const config: Config = {
+  // Kept so leftover `dark:` utilities stay inert; the app is light-only and never sets .dark.
+  darkMode: ['class'],
   content: [
     './src/pages/**/*.{ts,tsx}',
     './src/components/**/*.{ts,tsx}',
