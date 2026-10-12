@@ -56,10 +56,8 @@ export default function AuditPage() {
         <p className="text-muted-foreground">Loading...</p>
       ) : (
         <>
-          {logs.length === 0 ? (
-            <EmptyState title="No audit logs found." />
-          ) : (
-            <TableWrap>
+          {/* The header stays even when empty: e2e/audit asserts the Timestamp column on a fresh DB. */}
+          <TableWrap>
               <Table className="min-w-[700px]">
                 <TableHeader>
                   <TableRow>
@@ -71,6 +69,13 @@ export default function AuditPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
+                  {logs.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="p-0">
+                        <EmptyState title="No audit logs found." className="rounded-none border-0" />
+                      </td>
+                    </tr>
+                  )}
                   {logs.map((log) => (
                     <TableRow key={log.id}>
                       <TableCell className="tabular whitespace-nowrap text-xs text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</TableCell>
@@ -89,7 +94,6 @@ export default function AuditPage() {
                 </TableBody>
               </Table>
             </TableWrap>
-          )}
 
           {totalPages > 1 && (
             <div className="mt-4 flex items-center gap-3">
