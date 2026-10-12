@@ -23,12 +23,16 @@ import { buildRouteLabelIndex, labelsForRoutes, routesForLabels } from '../utils
 // it already renders as an em-dash, not a number to colour.
 function marginClass(value: number | null): string {
   if (value == null) return ''
-  return value < 0 ? 'text-bad font-bold' : 'text-good font-bold'
+  if (value < 0) return 'text-bad font-bold'
+  if (value > 0) return 'text-good font-bold'
+  return 'text-foreground font-bold'
 }
 
 function gpClass(value: number | null): string {
   if (value == null) return ''
-  return value < 0 ? 'text-bad font-semibold' : 'text-good font-semibold'
+  if (value < 0) return 'text-bad font-semibold'
+  if (value > 0) return 'text-good font-semibold'
+  return 'text-foreground font-semibold'
 }
 
 interface ToSubTableProps {

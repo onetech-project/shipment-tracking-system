@@ -332,6 +332,19 @@ it('renders a Margin block and keeps every row 1 + 3N cells wide', async () => {
   expect(detail.querySelectorAll('td')).toHaveLength(7)
 })
 
+it('colours a zero margin neutral, not green', () => {
+  const model = baseModel()
+  // g1 on 2026-05-01 carries no warning, so the neutral colour should show cleanly.
+  model.rows[0].margin = [0, null]
+
+  render(<PnlComparisonTable model={model} firstColumnHeader={firstColumnHeader} cellHint={cellHint} />)
+
+  const cell = screen.getByTestId('margin-2026-05-01-g1')
+  expect(cell.className).toContain('text-foreground')
+  expect(cell.className).not.toContain('text-good')
+  expect(cell.className).not.toContain('text-bad')
+})
+
 it('colours a negative margin red and lets a warning tint win over it', () => {
   const model = baseModel()
   // g1 on 2026-05-01 carries no warning (issues: [], incompleteTos: 0), so red should show cleanly.

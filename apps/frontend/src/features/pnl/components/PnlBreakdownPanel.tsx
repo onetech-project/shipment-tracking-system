@@ -353,7 +353,7 @@ function ProfitByRouteSection({ filter }: { filter: PnlFilter }) {
                 <td className="px-3 py-2 font-mono text-xs tabular">{r.route}</td>
                 <td className="px-3 py-2 text-right tabular">{fmt.format(r.totalRevenue)}</td>
                 <td
-                  className={`px-3 py-2 text-right tabular font-bold ${r.totalMargin < 0 ? 'text-bad' : 'text-good'}`}
+                  className={`px-3 py-2 text-right tabular font-bold ${r.totalMargin < 0 ? 'text-bad' : r.totalMargin > 0 ? 'text-good' : 'text-foreground'}`}
                 >
                   {fmt.format(r.totalMargin)}
                 </td>

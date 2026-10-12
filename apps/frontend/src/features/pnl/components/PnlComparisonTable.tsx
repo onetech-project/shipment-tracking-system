@@ -31,7 +31,9 @@ type Field = (typeof FIELDS)[number]
 function valueClass(field: Field, value: number | null): string {
   // Only the margin block is ever coloured — revenue and cost are sums of non-negative amounts.
   if (field !== 'margin' || value == null) return ''
-  return value < 0 ? 'text-bad font-bold' : 'text-good font-bold'
+  if (value < 0) return 'text-bad font-bold'
+  if (value > 0) return 'text-good font-bold'
+  return 'text-foreground font-bold'
 }
 
 // A missing value is marked, not left blank: an empty cell and a real 0 read the same at a glance,
