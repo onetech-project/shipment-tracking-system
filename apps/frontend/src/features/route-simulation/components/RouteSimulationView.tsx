@@ -79,9 +79,11 @@ export function RouteSimulationView({ source }: { source: SimulationSource }) {
       />
       <ScenarioBar state={state} dispatch={dispatch} onFlash={show} />
       {/* Kept as plain buttons (not ModeTabs): the spec drives this nav by button role + aria-current,
-          styled here to match ModeTabs' own look (see components/ui/segmented.tsx). */}
-      <nav aria-label="Tab simulasi" className="sticky top-0 z-20 -mx-1 overflow-x-auto bg-background px-1 py-2">
-        <div className="inline-flex gap-0.5 whitespace-nowrap rounded-md bg-surface-2 p-1">
+          styled here to match ModeTabs' own look (see components/ui/segmented.tsx). A 9-column grid
+          rather than an overflow-x-auto row: at 1440px a nowrap row clips the 9th tab off-screen, so
+          every tab instead shares an equal column and its label wraps to two lines when it needs to. */}
+      <nav aria-label="Tab simulasi" className="sticky top-0 z-20 bg-background py-2">
+        <div className="grid grid-cols-9 gap-0.5 rounded-md bg-surface-2 p-1">
           {TAB_IDS.map((id) => (
             <button
               key={id}
@@ -89,7 +91,7 @@ export function RouteSimulationView({ source }: { source: SimulationSource }) {
               aria-current={tab === id ? 'page' : undefined}
               onClick={() => { setTab(id); window.scrollTo(0, 0) }}
               className={cn(
-                'whitespace-nowrap rounded-[7px] px-3 py-[7px] text-[12.5px] font-medium motion-safe:transition-all',
+                'whitespace-normal rounded-[7px] px-1.5 py-[7px] text-center text-[11px] leading-[1.25] font-medium motion-safe:transition-all',
                 tab === id ? 'bg-card font-semibold text-foreground shadow-soft-sm' : 'text-muted-foreground hover:text-foreground',
               )}
             >
