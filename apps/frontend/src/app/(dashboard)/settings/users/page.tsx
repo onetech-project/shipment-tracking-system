@@ -11,9 +11,11 @@ import { isStaging } from '@/lib/env';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { Banner } from '@/components/shared/banner';
 import { EmptyState } from '@/components/shared/empty-state';
+import { KpiCard, KpiGrid } from '@/components/shared/kpi-card';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { TableWrap, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
+import { UserCheck, UserX, Users as UsersIcon } from 'lucide-react';
 
 interface UserProfile {
   name?: string;
@@ -45,13 +47,23 @@ function initials(label: string) {
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
+// The mockup varies avatar colour per user rather than one flat brand tone. A hash of the
+// username (stable across reloads — no random/useState needed) picks one of five tones, so the
+// same person always lands on the same colour.
+const AVATAR_TONES = ['bg-brand-2', 'bg-warn', 'bg-info', 'bg-[#7c3aed]', 'bg-muted-foreground'];
+function avatarTone(key: string): string {
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + (key.codePointAt(i) ?? 0)) >>> 0;
+  return AVATAR_TONES[hash % AVATAR_TONES.length];
+}
+
 function UserCell({ user }: { user: User }) {
   const name = user.profile?.name ?? user.username;
   return (
     <div className="flex items-center gap-2.5">
       <span
         aria-hidden="true"
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-xs font-bold text-white"
+        className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-xs font-bold text-white ${avatarTone(user.username)}`}
       >
         {initials(name)}
       </span>
@@ -108,6 +120,32 @@ export default function UsersSettingsPage() {
       />
       {error && <Banner tone="danger">Error: {error}</Banner>}
 
+      {users.length > 0 && (
+        <KpiGrid cols={3}>
+          <KpiCard
+            label="total users"
+            value={String(users.length)}
+            hint="terdaftar"
+            icon={UsersIcon}
+            tone="brand"
+          />
+          <KpiCard
+            label="active"
+            value={String(users.filter((u) => u.isActive).length)}
+            hint="aktif"
+            icon={UserCheck}
+            tone="brand"
+          />
+          <KpiCard
+            label="inactive"
+            value={String(users.filter((u) => !u.isActive).length)}
+            hint="nonaktif"
+            icon={UserX}
+            tone="warn"
+          />
+        </KpiGrid>
+      )}
+
       {users.length === 0 ? (
         <EmptyState title="No users found." />
       ) : (
@@ -137,7 +175,7 @@ export default function UsersSettingsPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
-                      <Button size="sm" variant="outline" onClick={() => setModal({ type: 'edit', user: u })}>Edit</Button>
+                      <Button size="sm" variant="subtle" onClick={() => setModal({ type: 'edit', user: u })}>Edit</Button>
                       {u.isActive && u.id !== currentUser?.id && (
                         <Button size="sm" variant="destructive" onClick={() => setModal({ type: 'inactivate', user: u })}>Inactivate</Button>
                       )}

@@ -10,9 +10,11 @@ import { EmptyState } from '@/components/shared/empty-state';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHead } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { TableWrap, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { FormField } from '@/components/shared/form-field';
+import { Shield } from 'lucide-react';
 
 interface RolePermission {
   id: string;
@@ -95,49 +97,58 @@ export default function RolesSettingsPage() {
       {roles.length === 0 ? (
         <EmptyState title="No roles found." />
       ) : (
-        <TableWrap>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Permissions</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {roles.map((role) => (
-                <TableRow key={role.id}>
-                  <TableCell><code className="text-xs">{role.name}</code></TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {role.permissions?.slice(0, 5).map((p) => (
-                        <Badge key={p.id} variant="info" className="normal-case font-mono">{p.name}</Badge>
-                      ))}
-                      {role.permissions?.length > 5 && (
-                        <span className="text-xs text-muted-foreground">+{role.permissions.length - 5} more</span>
-                      )}
-                      {role.permissions?.length === 0 && <span className="text-xs text-muted-foreground">None</span>}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="neutral">{role.isSystem ? 'System' : 'Custom'}</Badge>
-                  </TableCell>
-                  <TableCell className="tabular text-xs text-muted-foreground">{new Date(role.createdAt).toLocaleDateString()}</TableCell>
-                  <TableCell>
-                    <div className="flex gap-1">
-                      <Button size="sm" variant="outline" onClick={() => setModal({ type: 'edit-perms', role })}>Permissions</Button>
-                      {!role.isSystem && (
-                        <Button size="sm" variant="destructive" onClick={() => handleDelete(role.id, role.name)}>Delete</Button>
-                      )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableWrap>
+        <Card>
+          {/* "Daftar Role" (singular), not the mockup's "Daftar Roles": the plural collides with
+              e2e's unanchored /roles/i heading check (settings-nav.spec.ts), which would then
+              match both this card's h2 and the page's own "Roles" h1 and fail Playwright's
+              strict-mode single-match requirement. */}
+          <CardHead icon={Shield} title="Daftar Role" subtitle="Role dan permission matrix" />
+          <CardContent className="p-0">
+            <TableWrap className="rounded-none border-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Permissions</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {roles.map((role) => (
+                    <TableRow key={role.id}>
+                      <TableCell><code className="text-xs">{role.name}</code></TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {role.permissions?.slice(0, 5).map((p) => (
+                            <Badge key={p.id} variant="info" className="normal-case font-mono">{p.name}</Badge>
+                          ))}
+                          {role.permissions?.length > 5 && (
+                            <span className="text-xs text-muted-foreground">+{role.permissions.length - 5} more</span>
+                          )}
+                          {role.permissions?.length === 0 && <span className="text-xs text-muted-foreground">None</span>}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="neutral">{role.isSystem ? 'System' : 'Custom'}</Badge>
+                      </TableCell>
+                      <TableCell className="tabular text-xs text-muted-foreground">{new Date(role.createdAt).toLocaleDateString()}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-1">
+                          <Button size="sm" variant="subtle" onClick={() => setModal({ type: 'edit-perms', role })}>Permissions</Button>
+                          {!role.isSystem && (
+                            <Button size="sm" variant="destructive" onClick={() => handleDelete(role.id, role.name)}>Delete</Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableWrap>
+          </CardContent>
+        </Card>
       )}
 
       {modal?.type === 'create' && (

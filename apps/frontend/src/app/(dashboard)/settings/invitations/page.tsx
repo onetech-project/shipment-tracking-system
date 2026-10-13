@@ -11,10 +11,13 @@ import type { StatusVariant } from '@/components/shared/status-badge';
 import { Banner } from '@/components/shared/banner';
 import { EmptyState } from '@/components/shared/empty-state';
 import { FilterBar } from '@/components/shared/filter-bar';
+import { KpiCard, KpiGrid } from '@/components/shared/kpi-card';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHead } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { TableWrap, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { fieldClass } from '@/components/ui/input';
+import { Hourglass, Mail, MailCheck, MailX } from 'lucide-react';
 
 interface Invitation {
   id: string;
@@ -95,6 +98,39 @@ export default function InvitationsSettingsPage() {
       />
       {error && <Banner tone="danger">Error: {error}</Banner>}
 
+      {invitations.length > 0 && (
+        <KpiGrid cols={4}>
+          <KpiCard
+            label="total sent"
+            value={String(invitations.length)}
+            hint="all time"
+            icon={Mail}
+            tone="brand"
+          />
+          <KpiCard
+            label="accepted"
+            value={String(invitations.filter((i) => i.status === 'accepted').length)}
+            hint={`${((invitations.filter((i) => i.status === 'accepted').length / invitations.length) * 100).toFixed(1)}%`}
+            icon={MailCheck}
+            tone="brand"
+          />
+          <KpiCard
+            label="pending"
+            value={String(invitations.filter((i) => i.status === 'pending').length)}
+            hint="menunggu"
+            icon={Hourglass}
+            tone="warn"
+          />
+          <KpiCard
+            label="expired"
+            value={String(invitations.filter((i) => i.status === 'expired').length)}
+            hint="kadaluarsa"
+            icon={MailX}
+            tone="danger"
+          />
+        </KpiGrid>
+      )}
+
       <FilterBar>
         <div className="min-w-[160px]">
           <select
@@ -114,36 +150,41 @@ export default function InvitationsSettingsPage() {
       {invitations.length === 0 ? (
         <EmptyState title="No invitations found." />
       ) : (
-        <TableWrap>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Email</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Expires</TableHead>
-                <TableHead>Sent</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {invitations.map((inv) => (
-                <TableRow key={inv.id}>
-                  <TableCell className="font-mono">{inv.email}</TableCell>
-                  <TableCell>
-                    <StatusBadge variant={STATUS_VARIANT[inv.status] ?? 'inactive'} label={inv.status} />
-                  </TableCell>
-                  <TableCell className="tabular text-xs text-muted-foreground">{new Date(inv.expiresAt).toLocaleDateString()}</TableCell>
-                  <TableCell className="tabular text-xs text-muted-foreground">{new Date(inv.createdAt).toLocaleDateString()}</TableCell>
-                  <TableCell>
-                    {inv.status === 'pending' && (
-                      <Button size="sm" variant="destructive" onClick={() => handleCancel(inv.id)}>Cancel</Button>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableWrap>
+        <Card>
+          <CardHead icon={Mail} title="Daftar Undangan" subtitle="Status undangan pengguna" />
+          <CardContent className="p-0">
+            <TableWrap className="rounded-none border-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Expires</TableHead>
+                    <TableHead>Sent</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {invitations.map((inv) => (
+                    <TableRow key={inv.id}>
+                      <TableCell className="font-mono">{inv.email}</TableCell>
+                      <TableCell>
+                        <StatusBadge variant={STATUS_VARIANT[inv.status] ?? 'inactive'} label={inv.status} />
+                      </TableCell>
+                      <TableCell className="tabular text-xs text-muted-foreground">{new Date(inv.expiresAt).toLocaleDateString()}</TableCell>
+                      <TableCell className="tabular text-xs text-muted-foreground">{new Date(inv.createdAt).toLocaleDateString()}</TableCell>
+                      <TableCell>
+                        {inv.status === 'pending' && (
+                          <Button size="sm" variant="danger-soft" onClick={() => handleCancel(inv.id)}>Cancel</Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableWrap>
+          </CardContent>
+        </Card>
       )}
 
       {showModal && (
