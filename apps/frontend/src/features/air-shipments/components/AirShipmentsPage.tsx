@@ -18,7 +18,7 @@ import {
   batchCountAirShipments,
 } from '@/features/air-shipments/hooks/useAirShipments'
 import { DEFAULT_HIDDEN, FROZEN_KEYS, colLabel } from '../columns.config'
-import { Lock, Trash2, ChevronDown } from 'lucide-react'
+import { Lock, Trash2, ChevronDown, Search } from 'lucide-react'
 import { AxiosError } from 'axios'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -229,19 +229,26 @@ export function AirShipmentsPage({
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-surface-2 p-2.5">
         <div className="flex flex-wrap items-center gap-3">
           {/* Search input (hidden for Rate and Routes menu) */}
-          <Input
-            type="text"
-            className="min-w-[200px]"
-            placeholder="Search shipments..."
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-          />
+          <div className="relative">
+            <Search
+              size={14}
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-faint"
+              aria-hidden="true"
+            />
+            <Input
+              type="text"
+              className="min-w-[200px] pl-8"
+              placeholder="Search shipments..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+            />
+          </div>
         </div>
         {/* Column visibility controls in dropdown, right-aligned */}
         <div className="relative flex items-center gap-2" ref={dropdownRef}>
           <Button
             type="button"
-            variant="outline"
+            variant="subtle"
             size="sm"
             onClick={() => setDropdownOpen((open) => !open)}
             aria-haspopup="true"
@@ -278,7 +285,7 @@ export function AirShipmentsPage({
             </div>
           )}
           <div className="flex items-center gap-1.5">
-            <Button type="button" variant="outline" size="sm" onClick={() => openBatch('lock')}>
+            <Button type="button" variant="subtle" size="sm" onClick={() => openBatch('lock')}>
               <Lock size={14} /> Batch Lock
             </Button>
             <Button type="button" variant="danger-soft" size="sm" onClick={() => openBatch('delete')}>
