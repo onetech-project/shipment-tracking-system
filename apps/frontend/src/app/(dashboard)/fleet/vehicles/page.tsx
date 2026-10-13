@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { CloudOff } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
+import { StagingBadge } from '@/components/shared/header-badges'
+import { isStaging } from '@/lib/env'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { Banner } from '@/components/shared/banner'
 import { EmptyState } from '@/components/shared/empty-state'
@@ -247,15 +249,16 @@ export default function FleetVehiclesPage() {
     <div>
       {/* Eyebrow, title and description follow the prototype's masthead verbatim, so the operator
           meets the same words here as in the document they signed off. */}
-      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <p className="mb-1.5 text-[10.5px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
         Buku induk kendaraan · angkutan barang
       </p>
       <PageHeader
         title="Registrasi Armada"
         subtitle="Data kendaraan, masa berlaku KIR & STNK, softcopy dokumen, status kepemilikan, dan angsuran leasing dalam satu tempat. Peringatan muncul otomatis 30 hari sebelum jatuh tempo."
+        badge={isStaging() ? <StagingBadge /> : undefined}
         action={
           <div className="flex gap-2">
-            <Button variant="outline" onClick={handleExport} disabled={exportCsv.isPending}>
+            <Button variant="subtle" onClick={handleExport} disabled={exportCsv.isPending}>
               {exportCsv.isPending ? 'Menyiapkan…' : 'Ekspor CSV'}
             </Button>
             {canCreate && <Button onClick={() => setModal({ type: 'create' })}>+ Tambah armada</Button>}

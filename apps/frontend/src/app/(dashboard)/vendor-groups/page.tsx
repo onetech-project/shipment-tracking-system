@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/shared/page-header'
+import { StagingBadge } from '@/components/shared/header-badges'
+import { isStaging } from '@/lib/env'
 import { EmptyState } from '@/components/shared/empty-state'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -79,6 +81,8 @@ export default function VendorGroupsPage() {
     <div>
       <PageHeader
         title="Vendor Group"
+        subtitle="Kelola grup vendor untuk analisis performa dan negotiation benchmarking."
+        badge={isStaging() ? <StagingBadge /> : undefined}
         action={
           hasPermission('create.vendor_group') ? (
             <Button onClick={() => setModal({ type: 'create' })} disabled={isVendorsLoading}>

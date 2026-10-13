@@ -234,6 +234,7 @@ export function GoogleSheetConfigPanel() {
         <PageHeader
           as="h2"
           title="Google Sheet Configs"
+          subtitle="Konfigurasi sumber data Google Sheets, mapping kolom, dan sync schedule."
           action={!editMode ? <Button onClick={handleAdd}>+ Add Config</Button> : undefined}
         />
         {configs.length === 0 && !editMode && (

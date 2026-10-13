@@ -3,6 +3,8 @@
 import React, { useEffect, useReducer, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { PageHeader } from '@/components/shared/page-header'
+import { StagingBadge } from '@/components/shared/header-badges'
+import { isStaging } from '@/lib/env'
 import { SimulationSource } from '../types'
 import { initReducer, simReducer } from '../state/reducer'
 import { periodShort } from '../engine'
@@ -67,6 +69,7 @@ export function RouteSimulationView({ source }: { source: SimulationSource }) {
       <PageHeader
         title="Simulasi Rekomendasi Rute"
         subtitle="Distribusi modal vendor ke rute dan airlines, dihitung per hari."
+        badge={isStaging() ? <StagingBadge /> : undefined}
         action={
           <p className="text-right text-xs font-medium text-muted-foreground">
             Histori {periodShort(sim.histStart)} s.d. {periodShort(sim.histEnd)}

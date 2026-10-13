@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { apiClient } from '@/shared/api/client';
 import RolePermissionsPanel from '@/features/roles/components/role-permissions-panel';
 import { PageHeader } from '@/components/shared/page-header';
+import { StagingBadge } from '@/components/shared/header-badges';
+import { isStaging } from '@/lib/env';
 import { Banner } from '@/components/shared/banner';
 import { EmptyState } from '@/components/shared/empty-state';
 import { Button } from '@/components/ui/button';
@@ -84,6 +86,8 @@ export default function RolesSettingsPage() {
     <div>
       <PageHeader
         title="Roles"
+        subtitle="Manajemen role dan permission untuk pengguna aplikasi."
+        badge={isStaging() ? <StagingBadge /> : undefined}
         action={<Button onClick={() => setModal({ type: 'create' })}>+ New Role</Button>}
       />
       {error && <Banner tone="danger">{error}</Banner>}

@@ -5,6 +5,9 @@ import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
+import { PageHeader } from '@/components/shared/page-header'
+import { StagingBadge } from '@/components/shared/header-badges'
+import { isStaging } from '@/lib/env'
 
 const TABS = [
   { href: '/sla/air', label: 'Air' },
@@ -28,6 +31,11 @@ export default function SlaLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex flex-col gap-4">
+      <PageHeader
+        title="SLA Monitoring"
+        subtitle="Monitor alert pengiriman real-time: reservations, tracking, SLA & TJPH breach, serta OTP."
+        badge={isStaging() ? <StagingBadge /> : undefined}
+      />
       {/* Route-based Air/Sea switch — styled like the mockup's mode-tabs, kept as <Link>s
           (not ModeTabs) since it navigates between pages rather than toggling local state. */}
       <nav className="inline-flex flex-wrap gap-0.5 rounded-md bg-surface-2 p-1" aria-label="SLA mode">

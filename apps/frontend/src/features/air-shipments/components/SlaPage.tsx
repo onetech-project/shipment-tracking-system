@@ -2,7 +2,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { apiClient } from '@/shared/api/client'
-import { PageHeader } from '@/components/shared/page-header'
 import { Button } from '@/components/ui/button'
 import { Input, fieldClass } from '@/components/ui/input'
 import { Banner } from '@/components/shared/banner'
@@ -796,8 +795,6 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
 
   return (
     <div className="space-y-8">
-      <PageHeader title={mode.pageTitle} />
-
       <section className="space-y-6">
         <DashboardAlertCards
           summary={summary}

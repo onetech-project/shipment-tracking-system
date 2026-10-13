@@ -4,6 +4,8 @@ import { apiClient } from '@/shared/api/client';
 import PermissionForm from '@/features/permissions/components/permission-form';
 import { usePermissions } from '@/shared/hooks/use-permissions';
 import { PageHeader } from '@/components/shared/page-header';
+import { StagingBadge } from '@/components/shared/header-badges';
+import { isStaging } from '@/lib/env';
 import { Banner } from '@/components/shared/banner';
 import { EmptyState } from '@/components/shared/empty-state';
 import { FilterBar } from '@/components/shared/filter-bar';
@@ -54,6 +56,7 @@ export default function PermissionsSettingsPage() {
     <div>
       <PageHeader
         title="Permissions"
+        badge={isStaging() ? <StagingBadge /> : undefined}
         action={isSuperAdmin ? <Button onClick={() => setShowModal(true)}>+ New Permission</Button> : undefined}
       />
       {error && <Banner tone="danger">Error: {error}</Banner>}

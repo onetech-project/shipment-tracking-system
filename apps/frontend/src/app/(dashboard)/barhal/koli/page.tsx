@@ -6,6 +6,8 @@ import { Plus } from 'lucide-react'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
 import { PageHeader } from '@/components/shared/page-header'
+import { StagingBadge } from '@/components/shared/header-badges'
+import { isStaging } from '@/lib/env'
 import { Button } from '@/components/ui/button'
 import { useBarhalList, useBarhalStations } from '@/features/barhal/hooks/useBarhal'
 import { BarhalListTable } from '@/features/barhal/components/BarhalListTable'
@@ -52,6 +54,7 @@ function BarhalKoliPageContent() {
       <PageHeader
         title="Barhal"
         subtitle="Pencatatan dan pemantauan TO yang telah di packing kayu"
+        badge={isStaging() ? <StagingBadge /> : undefined}
         action={
           <Button type="button" onClick={() => openWizardFor(undefined)}>
             <Plus size={14} />

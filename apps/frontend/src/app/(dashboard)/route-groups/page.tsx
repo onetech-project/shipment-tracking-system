@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { PageHeader } from '@/components/shared/page-header'
+import { StagingBadge } from '@/components/shared/header-badges'
+import { isStaging } from '@/lib/env'
 import { EmptyState } from '@/components/shared/empty-state'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -75,6 +77,7 @@ export default function RouteGroupsPage() {
     <div>
       <PageHeader
         title="Route Group"
+        badge={isStaging() ? <StagingBadge /> : undefined}
         action={
           hasPermission('create.route_group') ? (
             <Button onClick={() => setModal({ type: 'create' })} disabled={isRoutesLoading}>

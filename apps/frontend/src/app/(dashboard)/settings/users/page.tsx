@@ -6,6 +6,8 @@ import InactivateUserDialog from '@/features/users/components/inactivate-user-di
 import UnlockUserDialog from '@/features/users/components/unlock-user-dialog';
 import { useAuth } from '@/features/auth/auth.context';
 import { PageHeader } from '@/components/shared/page-header';
+import { StagingBadge } from '@/components/shared/header-badges';
+import { isStaging } from '@/lib/env';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { Banner } from '@/components/shared/banner';
 import { EmptyState } from '@/components/shared/empty-state';
@@ -99,7 +101,11 @@ export default function UsersSettingsPage() {
 
   return (
     <div>
-      <PageHeader title="Users" />
+      <PageHeader
+        title="Users"
+        subtitle="Manajemen akun pengguna aplikasi."
+        badge={isStaging() ? <StagingBadge /> : undefined}
+      />
       {error && <Banner tone="danger">Error: {error}</Banner>}
 
       {users.length === 0 ? (

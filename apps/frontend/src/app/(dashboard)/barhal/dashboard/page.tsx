@@ -6,6 +6,8 @@ import { Download, TreePine, CalendarDays, Route as RouteIcon, FileText } from '
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
 import { PageHeader } from '@/components/shared/page-header'
+import { StagingBadge } from '@/components/shared/header-badges'
+import { isStaging } from '@/lib/env'
 import { Button } from '@/components/ui/button'
 import { Card, CardHead, CardContent } from '@/components/ui/card'
 import { FilterBar } from '@/components/shared/filter-bar'
@@ -76,6 +78,7 @@ function BarhalDashboardContent() {
       <PageHeader
         title="Barhal Dashboard"
         subtitle="Statistik packing kayu & Koli"
+        badge={isStaging() ? <StagingBadge /> : undefined}
         action={
           <Button type="button" variant="outline" onClick={handleExport} disabled={isExporting}>
             <Download size={14} />

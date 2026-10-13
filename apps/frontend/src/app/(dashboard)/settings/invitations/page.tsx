@@ -4,6 +4,8 @@ import { apiClient } from '@/shared/api/client';
 import InvitationForm from '@/features/invitations/components/invitation-form';
 import { usePermissions } from '@/shared/hooks/use-permissions';
 import { PageHeader } from '@/components/shared/page-header';
+import { StagingBadge } from '@/components/shared/header-badges';
+import { isStaging } from '@/lib/env';
 import { StatusBadge } from '@/components/shared/status-badge';
 import type { StatusVariant } from '@/components/shared/status-badge';
 import { Banner } from '@/components/shared/banner';
@@ -87,6 +89,8 @@ export default function InvitationsSettingsPage() {
     <div>
       <PageHeader
         title="Invitations"
+        subtitle="Kirim undangan ke calon pengguna aplikasi."
+        badge={isStaging() ? <StagingBadge /> : undefined}
         action={<Button onClick={() => setShowModal(true)}>+ Send Invitation</Button>}
       />
       {error && <Banner tone="danger">Error: {error}</Banner>}

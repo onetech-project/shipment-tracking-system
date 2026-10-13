@@ -6,6 +6,8 @@ import { ListChecks } from 'lucide-react'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
 import { PageHeader } from '@/components/shared/page-header'
+import { StagingBadge } from '@/components/shared/header-badges'
+import { isStaging } from '@/lib/env'
 import { Card, CardHead, CardContent } from '@/components/ui/card'
 import { FilterBar } from '@/components/shared/filter-bar'
 import { useBarhalList, useBarhalStations, useSmuList } from '@/features/barhal/hooks/useBarhal'
@@ -37,7 +39,11 @@ function BarhalSmuPageContent() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Barhal" subtitle="Input dan pemantauan data SMU" />
+      <PageHeader
+        title="Barhal"
+        subtitle="Input dan pemantauan data SMU"
+        badge={isStaging() ? <StagingBadge /> : undefined}
+      />
 
       <BarhalTabNav active="smu" />
 

@@ -4,6 +4,8 @@ import { apiClient } from '@/shared/api/client';
 import OrganizationForm from '@/features/organizations/components/organization-form';
 import DeactivateOrgDialog from '@/features/organizations/components/deactivate-org-dialog';
 import { PageHeader } from '@/components/shared/page-header';
+import { StagingBadge } from '@/components/shared/header-badges';
+import { isStaging } from '@/lib/env';
 import { StatusBadge } from '@/components/shared/status-badge';
 import { Banner } from '@/components/shared/banner';
 import { EmptyState } from '@/components/shared/empty-state';
@@ -66,6 +68,7 @@ export default function OrganizationsSettingsPage() {
     <div>
       <PageHeader
         title="Organizations"
+        badge={isStaging() ? <StagingBadge /> : undefined}
         action={<Button onClick={() => setModal({ type: 'create' })}>+ New Organization</Button>}
       />
       {error && <Banner tone="danger">Error: {error}</Banner>}

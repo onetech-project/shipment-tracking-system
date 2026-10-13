@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
 import { PageHeader } from '@/components/shared/page-header'
+import { StagingBadge } from '@/components/shared/header-badges'
+import { isStaging } from '@/lib/env'
 import { PeriodChip } from '@/components/shared/period-chip'
 import { fieldClass } from '@/components/ui/input'
 import {
@@ -198,6 +200,7 @@ function PnlPageContent() {
       <PageHeader
         title="P&L Analysis"
         subtitle={VIEW_SUBTITLE[view]}
+        badge={isStaging() ? <StagingBadge /> : undefined}
         action={
           <div className="flex flex-col items-end gap-2">
             <div className="flex rounded-md border text-sm overflow-hidden">

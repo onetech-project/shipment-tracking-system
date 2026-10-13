@@ -9,7 +9,9 @@ import Spinner from '@/components/ui/spinner'
 import { useRouter } from 'next/navigation'
 import { getAirShipmentsTabName } from '../../../features/air-shipments/utils/normalizeTableName'
 import { PageHeader } from '@/components/shared/page-header'
+import { StagingBadge } from '@/components/shared/header-badges'
 import { Banner } from '@/components/shared/banner'
+import { isStaging } from '@/lib/env'
 
 // Module-level flag to avoid duplicate fetches in development (React Strict Mode)
 let _airShipmentsSublinksFetched = false
@@ -74,7 +76,11 @@ export default function AirShipmentsLayout({ children }: { children: React.React
   if (error) return <Banner tone="danger">Error: {error}</Banner>
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader title="Air Shipments" />
+      <PageHeader
+        title="Air Shipments"
+        subtitle="Monitor data pengiriman per-TO dari semua sumber sheet. Pilih tab untuk melihat dataset tertentu."
+        badge={isStaging() ? <StagingBadge /> : undefined}
+      />
       {/* Route-based navigation between sheet sources — styled like the mockup's mode-tabs,
           but kept as <Link>s (not ModeTabs) since it navigates rather than toggling local state. */}
       <nav className="inline-flex flex-wrap gap-0.5 rounded-md bg-surface-2 p-1" aria-label="Sheet sources">

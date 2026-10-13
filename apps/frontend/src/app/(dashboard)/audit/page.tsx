@@ -2,6 +2,8 @@
 import { useEffect, useState } from 'react';
 import { apiClient } from '@/shared/api/client';
 import { PageHeader } from '@/components/shared/page-header';
+import { StagingBadge } from '@/components/shared/header-badges';
+import { isStaging } from '@/lib/env';
 import { Banner } from '@/components/shared/banner';
 import { EmptyState } from '@/components/shared/empty-state';
 import { Button } from '@/components/ui/button';
@@ -49,6 +51,7 @@ export default function AuditPage() {
       <PageHeader
         title="Audit Logs"
         subtitle={`${total} total events`}
+        badge={isStaging() ? <StagingBadge /> : undefined}
       />
       {error && <Banner tone="danger">Error: {error}</Banner>}
 
