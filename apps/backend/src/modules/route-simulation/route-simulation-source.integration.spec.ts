@@ -67,7 +67,7 @@ describe('RouteSimulationSourceService (integration)', () => {
     expect(src.cycles.length).toBeGreaterThan(0)
     expect(src.routes.some((r) => r.hasData && r.rateSpx != null)).toBe(true)
     expect(src.history.some((h) => h.vendor === null)).toBe(true) // unbooked TOs are kept
-    expect(src.history.some((h) => h.vendor !== null && h.laneWeightSmu > 0)).toBe(true)
+    expect(src.history.some((h) => h.vendor !== null && h.laneWeight > 0)).toBe(true)
   })
 
   it('reconciles weight-independent totals with /pnl/summary per cycle', async () => {
@@ -87,8 +87,18 @@ describe('RouteSimulationSourceService (integration)', () => {
   it('never reports lane weight above total weight', async () => {
     const src = await service.getSource()
     for (const h of src.history) {
-      expect(h.laneWeightAll).toBeLessThanOrEqual(h.weight + 1e-6)
-      expect(h.laneWeightSmu).toBeLessThanOrEqual(h.weight + 1e-6)
+      expect(h.laneWeight).toBeLessThanOrEqual(h.weight + 1e-6)
     }
+  })
+
+  it('splits lane cost into four components that add back up to cost_to', async () => {
+    const src = await service.getSource()
+    const [{ total }] = await dataSource.query(`
+      SELECT COALESCE(SUM(cost_to) FILTER (WHERE NOT is_cost_estimated AND cost_to IS NOT NULL), 0) AS total
+      FROM v_pnl_to
+      WHERE cycle_date IS NOT NULL AND origin_station IS NOT NULL AND dest_station IS NOT NULL
+    `)
+    const parts = src.history.reduce((s, h) => s + h.laneCostSgOut + h.laneCostSgIn + h.laneCostRa + h.laneCostSmu, 0)
+    expect(parts).toBeCloseTo(Number(total), -2)
   })
 })

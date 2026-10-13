@@ -43,10 +43,10 @@ const seedRoute = (origin: string, dest: string) => {
   return { origin: r[0], originLabel: r[1], dest: r[2] }
 }
 
-// Rows match the prototype's buildHistory() 1:1 (weight, revenue, cost) and fill every lane-cost
-// field from `cost`, so on this fixture the SMU and all-in bases agree and both reproduce the
-// prototype's cost/kg exactly. rateSpx carries the prototype's rate with pph2 = disc15 = 0, so the
-// engine's net default rate equals the prototype's rate.
+// Rows match the prototype's buildHistory() 1:1 (weight, revenue, cost). The prototype has a single
+// cost/kg, so it goes entirely into the SMU lane-cost component with the other three at zero: each
+// lane's total cost/kg then reproduces the prototype's exactly. rateSpx carries the prototype's rate
+// with pph2 = disc15 = 0, so the engine's net default rate equals the prototype's rate.
 export function fixtureSource(): SimulationSource {
   const history: SimulationHistoryRow[] = []
   for (const [origin, , dest, rate, lanes] of SEED_ROUTES) {
@@ -60,8 +60,8 @@ export function fixtureSource(): SimulationSource {
         const cost = Math.round(weight * costPerKg * (0.97 + 0.06 * r2))
         history.push({
           cycle, origin, dest, vendor, airline, awbCount: 1, weight, revenue,
-          costAll: cost, costSmu: cost,
-          laneWeightAll: weight, laneCostAll: cost, laneWeightSmu: weight, laneCostSmu: cost,
+          costAll: cost,
+          laneWeight: weight, laneCostSgOut: 0, laneCostSgIn: 0, laneCostRa: 0, laneCostSmu: cost,
         })
       }
     }

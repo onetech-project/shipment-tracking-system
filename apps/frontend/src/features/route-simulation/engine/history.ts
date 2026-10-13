@@ -18,7 +18,7 @@ export interface HistFilter {
 export const vendorLabel = (h: Pick<SimulationHistoryRow, 'vendor'>) => h.vendor ?? UNBOOKED_LABEL
 
 // Historical PnL is all-in by definition — it reports what the period actually cost — so it reads
-// costAll regardless of the scenario's cost basis, which only steers lane pricing.
+// costAll, never the lane-cost components that price lanes.
 export function sumRow(rows: { weight: number; revenue: number; cost?: number; costAll?: number }[]): Sum {
   const o = { weight: 0, revenue: 0, cost: 0, margin: 0 }
   for (const r of rows) {

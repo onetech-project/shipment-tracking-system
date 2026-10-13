@@ -1,11 +1,14 @@
-import { DAYS_PER_PERIOD } from './constants'
-import { periodsBetween } from './period'
+import { COST_FIELDS, DAYS_PER_PERIOD, DEFAULT_HORIZON_PERIODS, MAX_HORIZON_PERIODS } from './constants'
+import { nextPeriod, periodKey, periodParts, periodsBetween, periodsForward } from './period'
 import {
   Account,
+  CostField,
   Lane,
+  LaneCosts,
   ScenarioPayload,
   SimRoute,
   SimState,
+  SimulationHistoryRow,
   SimulationRoute,
   SimulationSource,
   Tranche,
@@ -18,6 +21,24 @@ export const laneId = (vendor: string, route: string, airline: string) => `${ven
 export const histPeriodsOf = (s: Pick<SimState, 'histStart' | 'histEnd'>) => periodsBetween(s.histStart, s.histEnd)
 export const histDays = (s: Pick<SimState, 'histStart' | 'histEnd'>) => histPeriodsOf(s).length * DAYS_PER_PERIOD
 export const cycleDays = (t: Pick<Tranche, 'cycleDays'>) => Math.max(1, Math.round(Number(t.cycleDays) || 1))
+
+export const sumCosts = (c: LaneCosts) => COST_FIELDS.reduce((s, f) => s + (Number(c[f]) || 0), 0)
+
+export const clampHorizon = (v: unknown) =>
+  Math.min(MAX_HORIZON_PERIODS, Math.max(1, Math.round(Number(v) || DEFAULT_HORIZON_PERIODS)))
+export const horizonDays = (s: Pick<SimState, 'horizonPeriods'>) => clampHorizon(s.horizonPeriods) * DAYS_PER_PERIOD
+
+// Tab 8's start choices: the 12 periods right after the last cycle that has data.
+export function simStartOptions(source: Pick<SimulationSource, 'cycles'>): string[] {
+  const last = periodParts(source.cycles[source.cycles.length - 1] ?? '')
+  if (!last) return []
+  return periodsForward(periodKey(...nextPeriod(last.year, last.month, last.half)), 12)
+}
+
+const defaultHistRange = (source: SimulationSource) => ({
+  histStart: source.cycles[Math.max(0, source.cycles.length - 6)] ?? '',
+  histEnd: source.cycles[source.cycles.length - 1] ?? '',
+})
 
 export const accountOf = (s: Pick<SimState, 'accounts'>, id: string) => s.accounts.find((a) => a.id === id)
 export const routeOf = (s: Pick<SimState, 'routes'>, key: string) => s.routes.find((r) => r.key === key)
@@ -52,11 +73,10 @@ export const emptyTranche = (id: string, label: string): Tranche => ({
 // A new page starts with one empty account per vendor that has flown, so lanes are immediately
 // usable and the planner only has to type capital. ESP is flagged by name, as in the prototype.
 export function createState(source: SimulationSource): SimState {
-  const cycles = source.cycles
   const s: SimState = {
-    histStart: cycles[Math.max(0, cycles.length - 6)] ?? '',
-    histEnd: cycles[cycles.length - 1] ?? '',
-    costBasis: 'smu',
+    ...defaultHistRange(source),
+    simStart: simStartOptions(source)[0] ?? '',
+    horizonPeriods: DEFAULT_HORIZON_PERIODS,
     accounts: source.vendors
       .filter((v) => v.hasData)
       .map((v) => ({
@@ -75,24 +95,36 @@ export function createState(source: SimulationSource): SimState {
   return s
 }
 
+type CostSum = LaneCosts & { weight: number } // weight = booked, non-estimated (costed) weight
+
 interface LaneAcc {
   id: string
   route: string
   vendor: string
   airline: string
-  all: { weight: number; cost: number }
-  range: { weight: number; cost: number; laneWeight: number }
+  all: CostSum
+  range: CostSum
+  rangeWeight: number // every kg in the range, costed or not
   byCycle: Record<string, number>
+}
+
+const emptyCost = (): CostSum => ({ weight: 0, costSgOut: 0, costSgIn: 0, costRa: 0, costSmu: 0 })
+
+function addCost(o: CostSum, h: SimulationHistoryRow) {
+  o.weight += h.laneWeight
+  o.costSgOut += h.laneCostSgOut
+  o.costSgIn += h.laneCostSgIn
+  o.costRa += h.laneCostRa
+  o.costSmu += h.laneCostSmu
 }
 
 // Lane = route + vendor + airline seen in booked history. Unbooked rows (vendor null) are route
 // tonnage, not lanes: nobody can be allocated to "no vendor". Cost/kg reads only the lane-cost
-// fields (booked, non-estimated), on the scenario's cost basis.
+// fields (booked, non-estimated), one per cost component; the lane's total is their sum.
 export function buildLanes(source: SimulationSource, s: Omit<SimState, 'lanes'> & { lanes?: Lane[] }): Lane[] {
   const periods = new Set(histPeriodsOf(s))
   const days = histDays(s)
   const routeKeys = new Set(s.routes.map((r) => r.key))
-  const smu = s.costBasis === 'smu'
   const map: Record<string, LaneAcc> = {}
   for (const h of source.history) {
     if (!h.vendor) continue
@@ -101,41 +133,43 @@ export function buildLanes(source: SimulationSource, s: Omit<SimState, 'lanes'> 
     const airline = h.airline ?? '—'
     const id = laneId(h.vendor, route, airline)
     const o = (map[id] ??= {
-      id, route, vendor: h.vendor, airline,
-      all: { weight: 0, cost: 0 }, range: { weight: 0, cost: 0, laneWeight: 0 }, byCycle: {},
+      id, route, vendor: h.vendor, airline, all: emptyCost(), range: emptyCost(), rangeWeight: 0, byCycle: {},
     })
-    const lw = smu ? h.laneWeightSmu : h.laneWeightAll
-    const lc = smu ? h.laneCostSmu : h.laneCostAll
-    o.all.weight += lw
-    o.all.cost += lc
+    addCost(o.all, h)
     if (!periods.has(h.cycle)) continue
-    o.range.weight += h.weight
-    o.range.laneWeight += lw
-    o.range.cost += lc
+    o.rangeWeight += h.weight
+    addCost(o.range, h)
     o.byCycle[h.cycle] = (o.byCycle[h.cycle] ?? 0) + h.weight
   }
   const routeIdx = (key: string) => s.routes.findIndex((r) => r.key === key)
+  const byField = <T,>(fn: (f: CostField) => T) => Object.fromEntries(COST_FIELDS.map((f) => [f, fn(f)])) as Record<CostField, T>
   return Object.values(map)
     .map((o): Lane => {
-      const hasData = o.range.weight > 0
+      const hasData = o.rangeWeight > 0
       // Cost from the range when the range has costed weight, otherwise from all history — the
       // prototype's fallback, so a lane idle this range still carries a usable price.
-      const costSrc = o.range.laneWeight > 0 ? { w: o.range.laneWeight, c: o.range.cost } : { w: o.all.weight, c: o.all.cost }
+      const src = o.range.weight > 0 ? o.range : o.all
+      const dbCosts = byField((f) => (src.weight > 0 ? Math.round(src[f] / src.weight) : 0))
       const db = {
-        costPerKg: costSrc.w > 0 ? Math.round(costSrc.c / costSrc.w) : 0,
+        ...dbCosts,
+        costPerKg: sumCosts(dbCosts),
         loadKg: hasData ? Math.round(Math.max(...Object.values(o.byCycle)) / DAYS_PER_PERIOD) : 0,
       }
       const edit = s.laneEdits[o.id] ?? {}
+      const costs = byField((f) => edit[f] ?? db[f])
+      const edited = byField((f) => edit[f] != null)
+      const costEdited = COST_FIELDS.some((f) => edited[f])
       return {
         id: o.id, route: o.route, vendor: o.vendor, airline: o.airline,
-        costPerKg: edit.costPerKg ?? db.costPerKg,
+        ...costs,
+        costPerKg: sumCosts(costs),
         loadKg: edit.loadKg ?? db.loadKg,
         enabled: edit.enabled !== false,
         hasData,
-        costKnown: costSrc.w > 0 || edit.costPerKg != null,
-        actualKgDay: days ? o.range.weight / days : 0,
+        costKnown: src.weight > 0 || costEdited,
+        actualKgDay: days ? o.rangeWeight / days : 0,
         db,
-        edited: { costPerKg: edit.costPerKg != null, loadKg: edit.loadKg != null },
+        edited: { ...edited, costPerKg: costEdited, loadKg: edit.loadKg != null },
       }
     })
     .sort((a, b) => routeIdx(a.route) - routeIdx(b.route) || a.vendor.localeCompare(b.vendor) || a.airline.localeCompare(b.airline))
@@ -148,10 +182,9 @@ export function toPayload(s: SimState): ScenarioPayload {
     routeEdits[r.key] = { rateSpx: r.rateSpx, overrideTon: r.overrideTon, slots: r.slots }
   }
   return {
-    version: 1,
-    histStart: s.histStart,
-    histEnd: s.histEnd,
-    costBasis: s.costBasis,
+    version: 2,
+    simStart: s.simStart,
+    horizonPeriods: s.horizonPeriods,
     accounts: s.accounts,
     routeEdits,
     customRoutes: s.routes.filter((r) => r.custom),
@@ -172,7 +205,7 @@ export function toPayloadWithSource(source: SimulationSource, s: SimState): Scen
 // payload fails this (wrong shape, wrong version, or not an object at all — e.g. a future format,
 // or corrupted storage) must not be loaded at all, rather than crash on a missing/renamed key.
 export function isScenarioPayload(x: unknown): x is ScenarioPayload {
-  return typeof x === 'object' && x !== null && !Array.isArray(x) && (x as { version?: unknown }).version === 1
+  return typeof x === 'object' && x !== null && !Array.isArray(x) && (x as { version?: unknown }).version === 2
 }
 
 // Routes the master gained since the scenario was saved are included with defaults; routes it
@@ -181,10 +214,6 @@ export function isScenarioPayload(x: unknown): x is ScenarioPayload {
 // (routeEdits, sim, accounts, …) still produces a usable state instead of throwing, falling back
 // to the same defaults createState() would pick for a brand-new scenario.
 export function fromPayload(source: SimulationSource, p: ScenarioPayload): SimState {
-  const cycles = source.cycles
-  const histStart = p.histStart ?? cycles[Math.max(0, cycles.length - 6)] ?? ''
-  const histEnd = p.histEnd ?? cycles[cycles.length - 1] ?? ''
-  const costBasis = p.costBasis ?? 'smu'
   const accounts = p.accounts ?? []
   const routeEdits = p.routeEdits ?? {}
   const customRoutes = p.customRoutes ?? []
@@ -199,9 +228,9 @@ export function fromPayload(source: SimulationSource, p: ScenarioPayload): SimSt
       return e ? { ...base, ...e, overrideTon: e.overrideTon ?? null, slots: e.slots ?? base.slots } : base
     })
   const s: SimState = {
-    histStart,
-    histEnd,
-    costBasis,
+    ...defaultHistRange(source),
+    simStart: p.simStart ?? simStartOptions(source)[0] ?? '',
+    horizonPeriods: clampHorizon(p.horizonPeriods),
     accounts,
     routes: [...sourceRoutes, ...customRoutes.filter((r) => !sourceRoutes.some((x) => x.key === r.key))],
     laneEdits,

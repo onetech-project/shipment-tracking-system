@@ -1,14 +1,13 @@
 'use client'
 
-import React, { useState } from 'react'
+import React from 'react'
 import { Button } from '@/components/ui/button'
-import { DAYS_PER_MONTH, cycleDays, histDays, periodShort, trancheBudget, trancheCofPerDay } from '../../engine'
+import { DAYS_PER_MONTH, cycleDays, trancheBudget, trancheCofPerDay } from '../../engine'
 import { Account } from '../../types'
 import { fmtIdr, fmtShort } from '../../utils/format'
+import { newId } from '../../utils/id'
+import { AddAccountForm } from '../AddAccountForm'
 import { Hint, NumInput, Tag, TabProps, TD, TDN, TH, THN, ROW_SUBTOTAL } from '../ui'
-
-let seq = 0
-const newId = (prefix: string) => `${prefix}-${Date.now().toString(36)}${(seq++).toString(36)}`
 
 function AccountCard({ account: a, dispatch }: { account: Account } & Pick<TabProps, 'dispatch'>) {
   const totalModal = a.tranches.reduce((s, t) => s + (Number(t.amount) || 0), 0)
@@ -95,38 +94,14 @@ function AccountCard({ account: a, dispatch }: { account: Account } & Pick<TabPr
 }
 
 export function SetupTab({ source, sim, dispatch }: TabProps) {
-  const unused = source.vendors.filter((v) => !sim.accounts.some((a) => a.id === v.vendor))
-  const [pick, setPick] = useState(unused[0]?.vendor ?? '')
-  const vendor = unused.some((v) => v.vendor === pick) ? pick : unused[0]?.vendor ?? ''
   return (
     <>
-      <div className="rounded-md border bg-card p-4">
-        <h2 className="text-base font-semibold">Rentang histori</h2>
-        <Hint className="mb-3">
-          Histori dipakai untuk rata-rata tonase rute per hari (tab 5), cost/kg dan load lane (tab 2), dan distribusi aktual (tab 7). Rentang sekarang {histDays(sim)} hari. Semua hasil dihitung per hari dan modal berputar mengikuti siklus bayarnya; jangka hari hanya diatur di tab 9 Coba-coba.
-        </Hint>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          {(['histStart', 'histEnd'] as const).map((field) => (
-            <label key={field} className="block">
-              <span className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">{field === 'histStart' ? 'Histori mulai' : 'Histori akhir'}</span>
-              <select className="h-8 w-full rounded border border-input bg-background px-2 text-sm" value={sim[field]} onChange={(e) => dispatch({ type: 'setPeriod', field, value: e.target.value })}>
-                {source.cycles.map((c) => <option key={c} value={c}>{periodShort(c)}</option>)}
-              </select>
-            </label>
-          ))}
-        </div>
-      </div>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold">Akun & Modal</h2>
           <Hint>Satu akun bisa punya banyak modal, masing-masing dengan COF dan siklus bayar sendiri. Siklus bayar = berapa hari sampai uang yang dipakai kembali. Modal yang boleh dipakai per hari = modal dibagi siklus bayar. Cashback akun ESP tetap 2% dari revenue.</Hint>
         </div>
-        <div className="flex gap-2">
-          <select aria-label="Vendor untuk akun baru" className="h-8 rounded border border-input bg-background px-2 text-sm" disabled={!unused.length} value={vendor} onChange={(e) => setPick(e.target.value)}>
-            {unused.length ? unused.map((v) => <option key={v.vendor} value={v.vendor}>{v.vendor}</option>) : <option>Semua vendor sudah jadi akun</option>}
-          </select>
-          <Button size="sm" disabled={!unused.length} onClick={() => dispatch({ type: 'acctAdd', vendor, trancheId: newId(vendor) })}>+ Tambah Akun</Button>
-        </div>
+        <AddAccountForm source={source} sim={sim} dispatch={dispatch} />
       </div>
       {sim.accounts.length
         ? sim.accounts.map((a) => <AccountCard key={a.id} account={a} dispatch={dispatch} />)

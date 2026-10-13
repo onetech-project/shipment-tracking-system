@@ -93,3 +93,49 @@ export function compareRoutes(source: SimulationSource, s: SimState): RouteCompa
     return { route, demand, bestKg, vendors, lanes }
   })
 }
+
+export interface LaneEconomics {
+  lane: Lane
+  account: Account
+  m: LaneMargin
+}
+
+export interface EspVsPartner {
+  esp: LaneEconomics | null // ESP's best lane on the route
+  partners: LaneEconomics[] // each partner vendor's best lane, best first
+  bestPartner: LaneEconomics | null
+  winner: 'esp' | 'partner' | 'tie' | null
+  gap: number // esp - bestPartner margin/kg; 0 unless both exist
+}
+
+// Pure lane economics on one route: ESP's own best lane (cashback included) against each partner
+// vendor's best lane. Capital and load are ignored on purpose — the plan above it in tab 8 answers
+// "who runs it", this answers "whose lane earns more per kg". Within Rp 0,5/kg is a tie. Lanes
+// without a known cost are left out, as in the optimizer (see planCandidates in budget.ts) — a
+// lane with no costed history would otherwise read as free and win by default.
+export function espVsPartner(s: Pick<SimState, 'lanes' | 'routes' | 'accounts'>, routeKey: string): EspVsPartner {
+  const lanes = s.lanes
+    .filter((l) => l.route === routeKey && l.enabled)
+    .map((lane) => ({ lane, account: accountOf(s, lane.vendor), m: laneMargin(s, lane) }))
+    .filter((x): x is LaneEconomics =>
+      !!x.account && x.account.enabled && x.account.tranches.length > 0 && x.m.netPerKg > 0 &&
+      x.lane.costKnown && x.m.costPerKg > 0)
+  const byNet = (a: LaneEconomics, b: LaneEconomics) => b.m.netPerKg - a.m.netPerKg
+  const esp = lanes.filter((x) => x.account.isEsp).sort(byNet)[0] ?? null
+  const best: Record<string, LaneEconomics> = {}
+  for (const x of lanes) {
+    if (x.account.isEsp) continue
+    const prev = best[x.account.id]
+    if (!prev || prev.m.netPerKg < x.m.netPerKg) best[x.account.id] = x
+  }
+  const partners = Object.values(best).sort(byNet)
+  const bestPartner = partners[0] ?? null
+  const gap = esp && bestPartner ? esp.m.netPerKg - bestPartner.m.netPerKg : 0
+  const winner = !esp && !bestPartner ? null
+    : !esp ? 'partner'
+    : !bestPartner ? 'esp'
+    : gap > 0.5 ? 'esp'
+    : gap < -0.5 ? 'partner'
+    : 'tie'
+  return { esp, partners, bestPartner, winner, gap }
+}

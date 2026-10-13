@@ -8,6 +8,7 @@ import {
 } from '../../engine'
 import { Account, Lane, SimState } from '../../types'
 import { fmtIdr, fmtNum } from '../../utils/format'
+import { AddAccountForm } from '../AddAccountForm'
 import { ReasonTag } from '../Reason'
 import { EspTag, Hint, Kpi, NumInput, RouteChip, RouteFilter, RouteFilterBar, Signed, Tag, TabProps, TD, TDN, TH, THN, visibleRoutes } from '../ui'
 import { SlotEditor } from './RoutesTab'
@@ -38,7 +39,7 @@ function MoneyStatus({ x, days }: { x: TrancheUse; days: number | null }) {
   return <span className="text-emerald-700 dark:text-emerald-400">Aman, berputar tiap {x.refillDay} hari</span>
 }
 
-export function SimTab({ source, sim, dispatch }: TabProps) {
+export function SimTab({ source, sim, dispatch, onRun }: TabProps & { onRun: () => void }) {
   const [filter, setFilter] = useState<RouteFilter>({ group: 'all', q: '' })
   const [open, setOpen] = useState<Set<string>>(new Set())
   const opts = simOpts(sim)
@@ -132,7 +133,10 @@ export function SimTab({ source, sim, dispatch }: TabProps) {
                       <tr key={l.id}>
                         <td className={`${TD} whitespace-nowrap`}>{first && <>{x.account?.name ?? l.vendor}<EspTag account={x.account} /></>}</td>
                         <td className={`${TD} whitespace-nowrap`}>{l.airline}</td>
-                        <td className={TDN}><NumInput ariaLabel={`Cost per kg ${l.vendor} ${l.airline}`} className="w-24" step={100} edited={l.edited.costPerKg} value={l.costPerKg} onCommit={(v) => dispatch({ type: 'laneSet', id: l.id, field: 'costPerKg', value: v })} /></td>
+                        <td className={TDN} title={`Rincian: SG Out ${fmtIdr(l.costSgOut)} + SG In ${fmtIdr(l.costSgIn)} + RA ${fmtIdr(l.costRa)} + SMU ${fmtIdr(l.costSmu)}`}>
+                          {fmtIdr(l.costPerKg)}{l.edited.costPerKg && <span className="text-xs text-muted-foreground"> (edited)</span>}
+                          <div className="text-xs text-muted-foreground">data {fmtIdr(l.db.costPerKg)}</div>
+                        </td>
                         <td className={TDN}><NumInput ariaLabel={`Load per hari ${l.vendor} ${l.airline}`} className="w-20" step={10} edited={l.edited.loadKg} value={l.loadKg} onCommit={(v) => dispatch({ type: 'laneSet', id: l.id, field: 'loadKg', value: v })} /></td>
                         <td className={TDN}><Signed value={x.m.netPerKg} /></td>
                         <td className={TDN}>
@@ -161,7 +165,17 @@ export function SimTab({ source, sim, dispatch }: TabProps) {
     <>
       <div>
         <h2 className="text-base font-semibold">Coba-coba</h2>
-        <Hint>Satu menu untuk mencoba. Di atas: hal yang bukan per rute, yaitu duit sisa tiap modal, siklus bayar, COF, dan jangka hari. Di bawah: tiap rute dengan rate, tonase, slot, serta vendor dan airlines-nya. Rate, tonase, cost, load, siklus bayar, dan COF yang diubah di sini adalah data yang sama dengan tab 1, 2, 3, dan 5.</Hint>
+        <Hint>Satu menu untuk mencoba. Di atas: hal yang bukan per rute, yaitu duit sisa tiap modal, siklus bayar, COF, dan jangka hari. Di bawah: tiap rute dengan rate, tonase, slot, serta vendor dan airlines-nya. Rate, tonase, load, siklus bayar, dan COF yang diubah di sini adalah data yang sama dengan tab 1, 2, 3, dan 5.</Hint>
+      </div>
+
+      <div className="rounded-md border bg-card p-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h3 className="mb-1 text-sm font-semibold">Tambah vendor</h3>
+            <Hint>Tambah akun vendor langsung dari sini — vendor akan langsung muncul di tab 1 dan ikut dihitung di simulasi. Isi modal dan COF-nya setelah ditambahkan.</Hint>
+          </div>
+          <AddAccountForm source={source} sim={sim} dispatch={dispatch} />
+        </div>
       </div>
 
       <div className="rounded-md border bg-card">
@@ -207,6 +221,11 @@ export function SimTab({ source, sim, dispatch }: TabProps) {
           </table>
         </div>
         <Hint className="px-4 py-2">Duit sisa hanya dipakai di tab ini dan tidak mengubah modal di tab 1. Boleh dipakai per hari = duit sisa dibagi jangka hari, atau dibagi siklus bayar bila jangkanya lebih panjang dari siklus. Siklus bayar dan COF di sini sama dengan tab 1.</Hint>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card p-4">
+        <Hint>Setelah mengubah field vendor di atas (duit sisa, siklus bayar, COF) atau menambah vendor baru, klik <b>Run</b> untuk melihat hasil estimasi di tab 8.</Hint>
+        <Button size="sm" onClick={onRun}>Run estimasi →</Button>
       </div>
 
       <div className="rounded-md border bg-card">

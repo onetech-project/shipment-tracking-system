@@ -1,4 +1,4 @@
-import { nextPeriod, periodParts, periodShort, periodsBetween } from './period'
+import { nextPeriod, periodParts, periodShort, periodsBetween, periodsForward } from './period'
 
 describe('period helpers', () => {
   it('parses and labels a half-month cycle', () => {
@@ -15,5 +15,10 @@ describe('period helpers', () => {
   it('lists every half-month inclusive and is empty when start is after end', () => {
     expect(periodsBetween('2026-11-2H', '2027-01-1H')).toEqual(['2026-11-2H', '2026-12-1H', '2026-12-2H', '2027-01-1H'])
     expect(periodsBetween('2026-06-1H', '2026-05-1H')).toEqual([])
+  })
+
+  it('lists periods forward from a start, crossing the year', () => {
+    expect(periodsForward('2026-11-2H', 4)).toEqual(['2026-11-2H', '2026-12-1H', '2026-12-2H', '2027-01-1H'])
+    expect(periodsForward('nope', 3)).toEqual([])
   })
 })

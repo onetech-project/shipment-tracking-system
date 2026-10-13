@@ -34,10 +34,10 @@ export interface SimulationHistoryRow {
   weight: number
   revenue: number
   costAll: number
-  costSmu: number
-  laneWeightAll: number
-  laneCostAll: number
-  laneWeightSmu: number
+  laneWeight: number
+  laneCostSgOut: number
+  laneCostSgIn: number
+  laneCostRa: number
   laneCostSmu: number
 }
 
@@ -64,7 +64,9 @@ export interface ScenarioDetail extends ScenarioSummary {
 }
 
 // ── Simulation state ───────────────────────────────────────────────────────────────────────────
-export type CostBasis = 'smu' | 'all'
+// The four parts of v_pnl_to.cost_to, per kg. A lane's cost/kg is their sum.
+export type CostField = 'costSgOut' | 'costSgIn' | 'costRa' | 'costSmu'
+export type LaneCosts = Record<CostField, number>
 
 export interface Tranche {
   id: string
@@ -100,25 +102,24 @@ export interface SimRoute {
   custom: boolean // added by the user, not in the source
 }
 
-export interface LaneEdit {
-  costPerKg?: number
+export interface LaneEdit extends Partial<LaneCosts> {
   loadKg?: number
   enabled?: false
 }
 
-export interface Lane {
+export interface Lane extends LaneCosts {
   id: string // vendor~origin|dest~airline
   route: string
   vendor: string
   airline: string
-  costPerKg: number
+  costPerKg: number // costSgOut + costSgIn + costRa + costSmu
   loadKg: number
   enabled: boolean
   hasData: boolean // has lane weight in the history range
-  costKnown: boolean // some booked, non-estimated weight exists on the active cost basis
+  costKnown: boolean // some booked, non-estimated weight exists, or a cost component was edited
   actualKgDay: number
-  db: { costPerKg: number; loadKg: number }
-  edited: { costPerKg: boolean; loadKg: boolean }
+  db: LaneCosts & { costPerKg: number; loadKg: number }
+  edited: Record<CostField | 'costPerKg' | 'loadKg', boolean> // costPerKg = any component edited
 }
 
 export interface SimSettings {
@@ -130,7 +131,8 @@ export interface SimSettings {
 export interface SimState {
   histStart: string
   histEnd: string
-  costBasis: CostBasis
+  simStart: string // first half-month period of the estimate (tab 8)
+  horizonPeriods: number // 1..72 half-month periods; scales tab 8's totals
   accounts: Account[]
   routes: SimRoute[]
   laneEdits: Record<string, LaneEdit>
@@ -139,12 +141,12 @@ export interface SimState {
 }
 
 // What is saved to route_simulation_scenarios.payload. Routes are stored as overrides keyed by
-// route key so a scenario survives the master gaining or losing routes.
+// route key so a scenario survives the master gaining or losing routes. The history range is not
+// stored: it is always the last six cycles of the data the scenario is opened against.
 export interface ScenarioPayload {
-  version: 1
-  histStart: string
-  histEnd: string
-  costBasis: CostBasis
+  version: 2
+  simStart: string
+  horizonPeriods: number
   accounts: Account[]
   routeEdits: Record<string, { rateSpx?: number; overrideTon?: number | null; slots?: Slot[] }>
   customRoutes: SimRoute[]

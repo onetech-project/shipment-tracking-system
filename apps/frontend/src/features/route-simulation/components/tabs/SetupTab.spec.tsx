@@ -16,18 +16,21 @@ it('edits a tranche amount through the reducer on blur', () => {
   expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'trSet', field: 'amount', value: 5000000 }))
 })
 
-it('offers only vendors that are not accounts yet', () => {
-  const sim = createState(src)
-  render(<SetupTab source={src} sim={sim} dispatch={jest.fn()} />)
-  const options = Array.from((screen.getByLabelText('Vendor untuk akun baru') as HTMLSelectElement).options).map((o) => o.value)
-  expect(options).toEqual(['AURI'])
+it('suggests vendors that are not accounts yet but accepts any name', () => {
+  const dispatch = jest.fn()
+  const { container } = render(<SetupTab source={src} sim={createState(src)} dispatch={dispatch} />)
+  expect(Array.from(container.querySelectorAll('datalist option')).map((o) => o.getAttribute('value'))).toEqual(['AURI'])
+  const input = screen.getByLabelText('Nama vendor untuk akun baru')
+  fireEvent.change(input, { target: { value: '  Garuda Cargo  ' } })
+  fireEvent.click(screen.getByRole('button', { name: '+ Tambah Akun' }))
+  expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: 'acctAdd', vendor: 'Garuda Cargo' }))
+  expect(input).toHaveValue('')
 })
 
-it('explains that history also feeds lane cost/load (tab 2) and that the horizon lives in tab 9', () => {
-  const sim = createState(src)
-  render(<SetupTab source={src} sim={sim} dispatch={jest.fn()} />)
-  expect(screen.getByText(/cost\/kg dan load lane \(tab 2\)/)).toBeInTheDocument()
-  expect(screen.getByText(/jangka hari hanya diatur di tab 9 Coba-coba/)).toBeInTheDocument()
+it('has no history range picker', () => {
+  render(<SetupTab source={src} sim={createState(src)} dispatch={jest.fn()} />)
+  expect(screen.queryByText('Rentang histori')).not.toBeInTheDocument()
+  expect(screen.queryByText('Histori mulai')).not.toBeInTheDocument()
 })
 
 it('shows the daily allowance hint per tranche', () => {

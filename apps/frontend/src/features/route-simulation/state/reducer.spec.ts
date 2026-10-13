@@ -15,22 +15,33 @@ it('starts clean and marks dirty on any edit', () => {
   expect(s1.sim.routes.find((r) => r.key === 'Jabo|Aceh')!.rateSpx).toBe(1)
 })
 
-it('refuses a history range whose start is after its end', () => {
-  const s = simReducer(base(), { type: 'setPeriod', field: 'histStart', value: '2026-08-2H' })
-  const bad = simReducer(s, { type: 'setPeriod', field: 'histEnd', value: '2026-06-1H' })
-  expect(bad.sim.histEnd).toBe(s.sim.histEnd)
-  expect(bad.error).toMatch(/Histori mulai/)
+it('adds an account under any trimmed name, flags ESP case-insensitively, and confirms', () => {
+  let s = simReducer(base(), { type: 'acctDel', id: 'ESP' })
+  s = simReducer(s, { type: 'acctAdd', vendor: ' esp ', trancheId: 't1' })
+  expect(s.sim.accounts.at(-1)).toMatchObject({ id: 'esp', name: 'esp', isEsp: true })
+  expect(s.flash).toBe('Akun esp ditambahkan. Isi modal, COF, dan siklus bayar sesuai kebutuhan.')
+  s = simReducer(s, { type: 'acctAdd', vendor: 'Garuda Cargo', trancheId: 't2' })
+  expect(s.sim.accounts.at(-1)).toMatchObject({ id: 'Garuda Cargo', isEsp: false })
 })
 
-it('rebuilds lanes when the cost basis or a lane edit changes', () => {
+it('refuses an empty or duplicate account name', () => {
+  const empty = simReducer(base(), { type: 'acctAdd', vendor: '   ', trancheId: 't' })
+  expect(empty.flash).toBe('Nama vendor tidak boleh kosong')
+  expect(empty.sim.accounts).toHaveLength(4)
+  const dup = simReducer(base(), { type: 'acctAdd', vendor: 'SILI', trancheId: 't' })
+  expect(dup.flash).toBe('Akun SILI sudah ada')
+})
+
+it('re-totals a lane when one cost component is edited, and reset restores the data', () => {
   const s = base()
-  const id = s.sim.lanes[0].id
-  const edited = simReducer(s, { type: 'laneSet', id, field: 'costPerKg', value: 1 })
-  expect(edited.sim.lanes.find((l) => l.id === id)!.costPerKg).toBe(1)
-  const reset = simReducer(edited, { type: 'laneReset', id })
-  expect(reset.sim.lanes.find((l) => l.id === id)!.costPerKg).toBe(s.sim.lanes[0].costPerKg)
-  const basis = simReducer(s, { type: 'setCostBasis', value: 'all' })
-  expect(basis.sim.costBasis).toBe('all')
+  const lane = s.sim.lanes[0]
+  const edited = simReducer(s, { type: 'laneSet', id: lane.id, field: 'costRa', value: lane.costRa + 500 })
+  const after = edited.sim.lanes.find((l) => l.id === lane.id)!
+  expect(after.costRa).toBe(lane.costRa + 500)
+  expect(after.costPerKg).toBe(lane.costPerKg + 500)
+  const reset = simReducer(edited, { type: 'laneReset', id: lane.id })
+  expect(reset.sim.laneEdits[lane.id]).toBeUndefined()
+  expect(reset.sim.lanes.find((l) => l.id === lane.id)!.costPerKg).toBe(lane.costPerKg)
 })
 
 it('treats typing the data value back as clearing the edit', () => {
@@ -55,7 +66,7 @@ it('adds a custom route and rejects a duplicate', () => {
   const s = simReducer(base(), { type: 'routeAdd', route: { origin: 'Jabo', originLabel: 'CGK', dest: 'Manado', rateSpx: 40000, overrideTon: 100 } })
   expect(s.sim.routes.at(-1)).toMatchObject({ key: 'Jabo|Manado', custom: true, overrideTon: 100 })
   const dup = simReducer(s, { type: 'routeAdd', route: { origin: 'Jabo', originLabel: 'CGK', dest: 'Manado', rateSpx: 1, overrideTon: 1 } })
-  expect(dup.error).toMatch(/sudah ada/)
+  expect(dup.flash).toMatch(/sudah ada/)
 })
 
 it('seeds manual kg from the recommendation on the first edit and reverts with simAuto', () => {
@@ -73,4 +84,18 @@ it('loads a scenario clean and marks saved clean', () => {
   const loaded = simReducer(s, { type: 'load', sim: initReducer(src).sim })
   expect(loaded.dirty).toBe(false)
   expect(simReducer(s, { type: 'markSaved' }).dirty).toBe(false)
+})
+
+it('applies the simulation range with a confirmation and clamps the horizon', () => {
+  const s = simReducer(base(), { type: 'setSimRange', simStart: '2026-10-1H', horizonPeriods: 500 })
+  expect(s.sim.simStart).toBe('2026-10-1H')
+  expect(s.sim.horizonPeriods).toBe(72)
+  expect(s.dirty).toBe(true)
+  expect(s.flash).toBe('Estimasi dijalankan: mulai Okt 2026 H1, 72 periode')
+})
+
+it('confirms a re-run of the same range without marking the state dirty', () => {
+  const s = simReducer(base(), { type: 'setSimRange', simStart: '2026-09-1H', horizonPeriods: 12 })
+  expect(s.dirty).toBe(false)
+  expect(s.flash).toBe('Estimasi dijalankan: mulai Sep 2026 H1, 12 periode')
 })

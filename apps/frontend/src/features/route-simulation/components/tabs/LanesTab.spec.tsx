@@ -7,11 +7,18 @@ import { LanesTab } from './LanesTab'
 
 const src = fixtureSource()
 
-it('toggles the cost basis between SMU and all-in', () => {
+it('edits one cost component and shows a column for each part plus the total', () => {
   const dispatch = jest.fn()
-  render(<LanesTab source={src} sim={createState(src)} dispatch={dispatch} />)
-  fireEvent.click(screen.getByRole('radio', { name: /All-in/ }))
-  expect(dispatch).toHaveBeenCalledWith({ type: 'setCostBasis', value: 'all' })
+  const sim = createState(src)
+  const lane = sim.lanes[0]
+  render(<LanesTab source={src} sim={sim} dispatch={dispatch} />)
+  expect(screen.queryByRole('radio')).not.toBeInTheDocument()
+  const headers = screen.getAllByRole('columnheader').map((h) => h.textContent)
+  expect(headers).toEqual(expect.arrayContaining(['Cost SG Outgoing', 'Cost SG Incoming', 'Cost RA', 'Cost SMU', 'Total Cost / kg']))
+  const ra = screen.getAllByLabelText(`Cost RA per kg ${lane.vendor} ${lane.airline}`)[0]
+  fireEvent.change(ra, { target: { value: '900' } })
+  fireEvent.blur(ra)
+  expect(dispatch).toHaveBeenCalledWith({ type: 'laneSet', id: lane.id, field: 'costRa', value: 900 })
 })
 
 it('warns on a lane whose vendor has no account', () => {
@@ -26,9 +33,9 @@ it('shows the data value under each editable cost', () => {
   expect(screen.getAllByText(/^data Rp /).length).toBeGreaterThan(0)
 })
 
-it('describes vendor/airline lists as all-history, while cost, load and the data tag use tab 1\'s range', () => {
+it('describes the lane list as all-history and the total as the sum of four components', () => {
   render(<LanesTab source={src} sim={createState(src)} dispatch={jest.fn()} />)
   expect(screen.getByText(/diambil dari seluruh histori AWB/)).toBeInTheDocument()
-  expect(screen.getByText(/cost\/kg, load, dan tag "tidak ada data" memakai rentang histori tab 1/)).toBeInTheDocument()
+  expect(screen.getByText(/Total Cost = Cost SG Outgoing \+ Cost SG Incoming \+ Cost RA \+ Cost SMU \(otomatis\)/)).toBeInTheDocument()
   expect(screen.getByText(/kg per hari tertinggi dalam satu periode pada rentang histori/)).toBeInTheDocument()
 })

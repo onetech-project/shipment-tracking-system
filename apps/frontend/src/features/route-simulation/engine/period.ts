@@ -44,3 +44,15 @@ export function periodsBetween(start: string, end: string): string[] {
   }
   return out
 }
+
+export function periodsForward(start: string, count: number): string[] {
+  const out: string[] = []
+  const s = periodParts(start)
+  if (!s) return out
+  let [y, m, h] = [s.year, s.month, s.half]
+  for (let i = 0; i < count; i++) {
+    out.push(periodKey(y, m, h))
+    ;[y, m, h] = nextPeriod(y, m, h)
+  }
+  return out
+}

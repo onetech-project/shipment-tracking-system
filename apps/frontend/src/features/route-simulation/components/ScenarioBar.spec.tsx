@@ -35,7 +35,7 @@ it('saves a new scenario with the full payload and marks the state clean', async
   expect(screen.getByText('Belum disimpan')).toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Simpan sebagai…' }))
   await waitFor(() => expect(create).toHaveBeenCalled())
-  expect(create.mock.calls[0][0]).toMatchObject({ name: 'Baru', payload: { version: 1, costBasis: 'smu' } })
+  expect(create.mock.calls[0][0]).toMatchObject({ name: 'Baru', payload: { version: 2, simStart: '2026-09-1H', horizonPeriods: 12 } })
   await waitFor(() => expect(dispatch).toHaveBeenCalledWith({ type: 'markSaved' }))
 })
 

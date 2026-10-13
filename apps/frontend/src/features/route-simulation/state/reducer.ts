@@ -1,37 +1,40 @@
 import {
   buildLanes,
+  clampHorizon,
   createState,
   emptyTranche,
-  histPeriodsOf,
   laneOf,
   optimizePlan,
+  periodShort,
   routeKey,
   simOpts,
   trancheOf,
 } from '../engine'
-import { CostBasis, LaneEdit, SimRoute, SimState, SimulationSource, Slot, Tranche } from '../types'
+import { CostField, LaneEdit, SimRoute, SimState, SimulationSource, Slot, Tranche } from '../types'
 
 export interface ReducerState {
   source: SimulationSource
   sim: SimState
   dirty: boolean
-  error: string | null // one-shot message for the flash toast; cleared by the next action
+  flash: string | null // one-shot toast (a refusal or a confirmation); cleared by the next action
 }
+
+// A refusal is a bare message; a confirmation carries the new state with it.
+type Outcome = SimState | string | { sim: SimState; flash: string }
 
 type TrancheField = 'label' | 'amount' | 'cofType' | 'cofValue' | 'cofUnit' | 'cycleDays'
 
 export type SimAction =
   | { type: 'load'; sim: SimState }
   | { type: 'markSaved' }
-  | { type: 'setPeriod'; field: 'histStart' | 'histEnd'; value: string }
-  | { type: 'setCostBasis'; value: CostBasis }
+  | { type: 'setSimRange'; simStart: string; horizonPeriods: number }
   | { type: 'acctAdd'; vendor: string; trancheId: string }
   | { type: 'acctSet'; id: string; field: 'enabled' | 'isEsp'; value: boolean }
   | { type: 'acctDel'; id: string }
   | { type: 'trAdd'; accountId: string; trancheId: string }
   | { type: 'trSet'; trancheId: string; field: TrancheField; value: string | number }
   | { type: 'trDel'; trancheId: string }
-  | { type: 'laneSet'; id: string; field: 'costPerKg' | 'loadKg'; value: number | null }
+  | { type: 'laneSet'; id: string; field: CostField | 'loadKg'; value: number | null }
   | { type: 'laneReset'; id: string }
   | { type: 'laneToggle'; id: string; enabled: boolean }
   | { type: 'rateSet'; key: string; value: number }
@@ -49,7 +52,7 @@ export type SimAction =
   | { type: 'simAuto' }
 
 export function initReducer(source: SimulationSource, sim?: SimState): ReducerState {
-  return { source, sim: sim ?? createState(source), dirty: false, error: null }
+  return { source, sim: sim ?? createState(source), dirty: false, flash: null }
 }
 
 // Mirrors the prototype's rebuildLanes(): lanes are derived from history + edits, and Coba-coba
@@ -84,21 +87,26 @@ function setLaneEdit(source: SimulationSource, sim: SimState, id: string, patch:
   return rebuild(source, { ...sim, laneEdits })
 }
 
-function apply(source: SimulationSource, sim: SimState, a: SimAction): SimState | string {
+function apply(source: SimulationSource, sim: SimState, a: SimAction): Outcome {
   switch (a.type) {
-    case 'setPeriod': {
-      const next = { ...sim, [a.field]: a.value }
-      if (!histPeriodsOf(next).length) return 'Histori mulai harus sebelum atau sama dengan histori akhir'
-      return rebuild(source, next)
+    case 'setSimRange': {
+      const horizonPeriods = clampHorizon(a.horizonPeriods)
+      const flash = `Estimasi dijalankan: mulai ${periodShort(a.simStart)}, ${horizonPeriods} periode`
+      if (a.simStart === sim.simStart && horizonPeriods === sim.horizonPeriods) return { sim, flash }
+      return { sim: { ...sim, simStart: a.simStart, horizonPeriods }, flash }
     }
-    case 'setCostBasis':
-      return rebuild(source, { ...sim, costBasis: a.value })
-    case 'acctAdd':
-      if (sim.accounts.some((x) => x.id === a.vendor)) return sim
+    case 'acctAdd': {
+      const name = a.vendor.trim()
+      if (!name) return 'Nama vendor tidak boleh kosong'
+      if (sim.accounts.some((x) => x.id === name)) return `Akun ${name} sudah ada`
       return {
-        ...sim,
-        accounts: [...sim.accounts, { id: a.vendor, name: a.vendor, isEsp: a.vendor === 'ESP', enabled: true, tranches: [emptyTranche(a.trancheId, 'Modal 1')] }],
+        sim: {
+          ...sim,
+          accounts: [...sim.accounts, { id: name, name, isEsp: name.toUpperCase() === 'ESP', enabled: true, tranches: [emptyTranche(a.trancheId, 'Modal 1')] }],
+        },
+        flash: `Akun ${name} ditambahkan. Isi modal, COF, dan siklus bayar sesuai kebutuhan.`,
       }
+    }
     case 'acctSet':
       return { ...sim, accounts: sim.accounts.map((x) => (x.id === a.id ? { ...x, [a.field]: a.value } : x)) }
     case 'acctDel':
@@ -123,7 +131,7 @@ function apply(source: SimulationSource, sim: SimState, a: SimAction): SimState 
       return setLaneEdit(source, sim, a.id, { [a.field]: v === null || v === lane.db[a.field] ? null : v })
     }
     case 'laneReset':
-      return setLaneEdit(source, sim, a.id, { costPerKg: null, loadKg: null })
+      return setLaneEdit(source, sim, a.id, { costSgOut: null, costSgIn: null, costRa: null, costSmu: null, loadKg: null })
     case 'laneToggle':
       return setLaneEdit(source, sim, a.id, { enabled: a.enabled ? null : false })
     case 'rateSet':
@@ -176,9 +184,10 @@ function apply(source: SimulationSource, sim: SimState, a: SimAction): SimState 
 }
 
 export function simReducer(state: ReducerState, action: SimAction): ReducerState {
-  if (action.type === 'load') return { ...state, sim: action.sim, dirty: false, error: null }
-  if (action.type === 'markSaved') return { ...state, dirty: false, error: null }
+  if (action.type === 'load') return { ...state, sim: action.sim, dirty: false, flash: null }
+  if (action.type === 'markSaved') return { ...state, dirty: false, flash: null }
   const out = apply(state.source, state.sim, action)
-  if (typeof out === 'string') return { ...state, error: out }
-  return { ...state, sim: out, dirty: out !== state.sim || state.dirty, error: null }
+  if (typeof out === 'string') return { ...state, flash: out }
+  const [sim, flash] = 'flash' in out ? [out.sim, out.flash] : [out, null]
+  return { ...state, sim, dirty: sim !== state.sim || state.dirty, flash }
 }

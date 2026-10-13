@@ -45,20 +45,22 @@ describe('RouteSimulationSourceService', () => {
   it('keeps unbooked history rows with a null vendor and derives ascending cycles', async () => {
     arrange([], [], [
       { cycle: '2026-05-2H', origin: 'Jabo', dest: 'Aceh', vendor: null, airline: null, awb_count: 36,
-        weight: '6428', revenue: '198000000', cost_all: '120000000', cost_smu: '110000000',
-        lane_weight_all: '0', lane_cost_all: '0', lane_weight_smu: '0', lane_cost_smu: '0' },
+        weight: '6428', revenue: '198000000', cost_all: '120000000',
+        lane_weight: '0', lane_cost_sg_out: '0', lane_cost_sg_in: '0', lane_cost_ra: '0', lane_cost_smu: '0' },
       { cycle: '2026-05-1H', origin: 'Jabo', dest: 'Aceh', vendor: 'PRIME', airline: 'Garuda Air CGK', awb_count: 8,
-        weight: '1889', revenue: '58000000', cost_all: '41700000', cost_smu: '38500000',
-        lane_weight_all: '1889', lane_cost_all: '41700000', lane_weight_smu: '1889', lane_cost_smu: '38500000' },
+        weight: '1889', revenue: '58000000', cost_all: '41700000',
+        lane_weight: '1889', lane_cost_sg_out: '1200000', lane_cost_sg_in: '1000000', lane_cost_ra: '1000000', lane_cost_smu: '38500000' },
     ])
     const src = await service.getSource()
     expect(src.cycles).toEqual(['2026-05-1H', '2026-05-2H'])
     expect(src.history[0]).toEqual({
       cycle: '2026-05-2H', origin: 'Jabo', dest: 'Aceh', vendor: null, airline: null, awbCount: 36,
-      weight: 6428, revenue: 198000000, costAll: 120000000, costSmu: 110000000,
-      laneWeightAll: 0, laneCostAll: 0, laneWeightSmu: 0, laneCostSmu: 0,
+      weight: 6428, revenue: 198000000, costAll: 120000000,
+      laneWeight: 0, laneCostSgOut: 0, laneCostSgIn: 0, laneCostRa: 0, laneCostSmu: 0,
     })
-    expect(src.history[1].vendor).toBe('PRIME')
+    expect(src.history[1]).toMatchObject({
+      vendor: 'PRIME', laneWeight: 1889, laneCostSgOut: 1200000, laneCostSgIn: 1000000, laneCostRa: 1000000, laneCostSmu: 38500000,
+    })
   })
 
   it('maps vendors and embeds route groups', async () => {
@@ -81,12 +83,16 @@ describe('RouteSimulationSourceService', () => {
     expect(dataSource.query.mock.calls[5][0]).toContain('cycle_atd')
   })
 
-  it('prorates AWB-grain SMU cost by weight_share and excludes estimated cost from lane cost', async () => {
+  it('splits known, booked lane cost into the four cost_to components, prorated by weight_share', async () => {
     arrange([], [], [])
     await service.getSource()
     const sql: string = dataSource.query.mock.calls[2][0]
+    expect(sql).toContain('cost_sg_out_awb * weight_share')
+    expect(sql).toContain('COALESCE(cost_sg_in_to, 0)')
+    expect(sql).toContain('cost_ra_awb * weight_share')
     expect(sql).toContain('cost_smu_awb * weight_share')
-    expect(sql).toContain('NOT is_cost_estimated')
-    expect(sql).not.toMatch(/SUM\(cost_smu_awb\)/)
+    expect(sql).toContain('NOT is_cost_estimated AND cost_to IS NOT NULL')
+    expect(sql).not.toMatch(/SUM\(cost_(smu|ra|sg_out)_awb\)/)
+    expect(sql).not.toContain('lane_weight_smu')
   })
 })
