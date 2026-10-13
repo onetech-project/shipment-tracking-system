@@ -74,6 +74,7 @@ pipeline {
                     env.FRONTEND_SERVICE_NAME = params.TARGET_ENV == 'staging' ? 'stg-frontend' : 'prod-frontend'
                     env.NEXT_PUBLIC_API_URL = params.TARGET_ENV == 'staging' ? 'https://staging.ekasatyapuspita.com/api' : 'https://ekasatyapuspita.com/api'
                     env.NEXT_PUBLIC_WS_URL = params.TARGET_ENV == 'staging' ? 'https://staging.ekasatyapuspita.com' : 'https://ekasatyapuspita.com'
+                    env.NEXT_PUBLIC_APP_ENV = params.TARGET_ENV == 'staging' ? 'staging' : 'production'
 
                     echo """
                     ====================================
@@ -88,6 +89,7 @@ pipeline {
                     Frontend Service Name: ${env.FRONTEND_SERVICE_NAME}
                     Public API URL: ${env.NEXT_PUBLIC_API_URL}
                     WS URL: ${env.NEXT_PUBLIC_WS_URL}
+                    App Environment: ${env.NEXT_PUBLIC_APP_ENV}
                     ====================================
                     """
                 }
@@ -268,7 +270,8 @@ pipeline {
                                 -t ${env.FRONTEND_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG} \
                                 -f apps/frontend/Dockerfile \
                                 --build-arg NEXT_PUBLIC_API_URL='${env.NEXT_PUBLIC_API_URL}' \
-                                --build-arg NEXT_PUBLIC_WS_URL='${env.NEXT_PUBLIC_WS_URL}' .
+                                --build-arg NEXT_PUBLIC_WS_URL='${env.NEXT_PUBLIC_WS_URL}' \
+                                --build-arg NEXT_PUBLIC_APP_ENV='${env.NEXT_PUBLIC_APP_ENV}' .
                                 
                                 # Verify image was created
                                 docker images ${env.FRONTEND_IMAGE_NAME}:${env.DOCKER_IMAGE_TAG}
