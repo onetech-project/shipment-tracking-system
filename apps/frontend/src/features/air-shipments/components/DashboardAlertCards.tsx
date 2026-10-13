@@ -13,6 +13,8 @@ import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { FilterBar } from '@/components/shared/filter-bar'
 import { Banner } from '@/components/shared/banner'
+import { FormField } from '@/components/shared/form-field'
+import { fieldClass } from '@/components/ui/input'
 import { IconSquare, type IconTone } from '@/components/shared/icon-square'
 import { SyncStatusBadge } from '@/features/air-shipments/components/SyncStatusBadge'
 import {
@@ -124,12 +126,6 @@ export function DashboardAlertCards({
             <h2 id="dashboard-alert-cards-heading" className="font-display text-lg font-bold text-foreground">
               Shipment Alerts
             </h2>
-            {lastUpdated !== undefined && (
-              <p className="text-sm text-muted-foreground" aria-live="polite">
-                {lastUpdated ? `Last updated: ${lastUpdated}` : 'Waiting for data...'}
-              </p>
-            )}
-            {syncNote && <p className="text-sm text-muted-foreground">{syncNote}</p>}
             <p className="text-sm text-muted-foreground">
               {isLoading ? 'Loading alert data…' : error ?? ''}
             </p>
@@ -151,32 +147,39 @@ export function DashboardAlertCards({
           </div>
         </div>
 
+        {syncNote && <Banner tone="success">{syncNote}</Banner>}
+
         {showDatePickers && (
           <FilterBar>
-            <label className="flex flex-col gap-0.5">
-              <span className="text-xs font-medium text-foreground">Start Date</span>
+            <FormField label="Dari" htmlFor="alert-cards-start-date">
               <input
+                id="alert-cards-start-date"
                 type="date"
                 value={startDate}
                 max={endDate}
                 onChange={(e) => onStartDateChange!(e.target.value)}
-                className="rounded-sm border border-border bg-card px-2 py-1.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                className={fieldClass}
               />
-            </label>
-            <label className="flex flex-col gap-0.5">
-              <span className="text-xs font-medium text-foreground">End Date</span>
+            </FormField>
+            <FormField label="Sampai" htmlFor="alert-cards-end-date">
               <input
+                id="alert-cards-end-date"
                 type="date"
                 value={endDate}
                 min={startDate}
                 max={today}
                 onChange={(e) => onEndDateChange!(e.target.value)}
-                className="rounded-sm border border-border bg-card px-2 py-1.5 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                className={fieldClass}
               />
-            </label>
-            {summary && !isLoading && (
-              <span className="self-end pb-1.5 text-xs text-muted-foreground">
-                n={summary.nHours}h · m={summary.mHours}h
+            </FormField>
+            <FormField label="Threshold">
+              <div className={cn(fieldClass, 'flex items-center text-muted-foreground')}>
+                {summary && !isLoading ? `n=${summary.nHours}h · m=${summary.mHours}h` : '—'}
+              </div>
+            </FormField>
+            {lastUpdated !== undefined && (
+              <span className="ml-auto self-end pb-1.5 text-xs font-medium text-muted-foreground" aria-live="polite">
+                {lastUpdated ? `Last updated: ${lastUpdated}` : 'Waiting for data...'}
               </span>
             )}
           </FilterBar>
@@ -186,7 +189,7 @@ export function DashboardAlertCards({
       </div>
 
       {/* ── Alert Cards Grid ── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-9">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         {alertCards.map((card) => {
           const item = summary?.alerts[card.key]
           const routes = item?.routes ?? 0
@@ -217,9 +220,9 @@ export function DashboardAlertCards({
                   <div className="flex shrink-0 items-center gap-1.5">
                     <IconSquare icon={Icon} tone={tone} size="sm" />
                     {isExpanded ? (
-                      <ChevronUp size={14} className="text-muted-foreground" />
+                      <ChevronUp className="h-3.5 w-3.5 text-faint" aria-hidden="true" />
                     ) : (
-                      <ChevronDown size={14} className="text-muted-foreground" />
+                      <ChevronDown className="h-3.5 w-3.5 text-faint" aria-hidden="true" />
                     )}
                   </div>
                 </div>
@@ -235,10 +238,10 @@ export function DashboardAlertCards({
 
                 <div className="mt-1.5 flex items-center justify-between gap-2 border-t border-dashed border-border pt-1.5 text-[10.5px] text-muted-foreground">
                   <span>
-                    impacted routes <strong className="tabular font-bold text-foreground">{isLoading ? '—' : routes}</strong>
+                    Routes <strong className="tabular font-bold text-foreground">{isLoading ? '—' : routes}</strong>
                   </span>
                   <span>
-                    kg total{' '}
+                    Kg{' '}
                     <strong className="tabular font-bold text-foreground">
                       {isLoading ? '—' : tonnage.toLocaleString('id-ID', { maximumFractionDigits: 2 })}
                     </strong>
@@ -300,9 +303,9 @@ export function DashboardAlertCards({
               <div className="flex shrink-0 items-center gap-1.5">
                 <IconSquare icon={CheckCircle} tone="brand" size="sm" />
                 {otpExpanded ? (
-                  <ChevronUp size={14} className="text-muted-foreground" />
+                  <ChevronUp className="h-3.5 w-3.5 text-faint" aria-hidden="true" />
                 ) : (
-                  <ChevronDown size={14} className="text-muted-foreground" />
+                  <ChevronDown className="h-3.5 w-3.5 text-faint" aria-hidden="true" />
                 )}
               </div>
             </div>
@@ -326,13 +329,13 @@ export function DashboardAlertCards({
 
             <div className="mt-1.5 flex items-center justify-between gap-2 border-t border-dashed border-border pt-1.5 text-[10.5px] text-muted-foreground">
               <span>
-                on time kg{' '}
+                On{' '}
                 <strong className="tabular font-bold text-good">
                   {isLoading ? '—' : (summary?.otp?.onTimeWeight ?? 0).toLocaleString('id-ID', { maximumFractionDigits: 2 })}
                 </strong>
               </span>
               <span>
-                late kg{' '}
+                Late{' '}
                 <strong className="tabular font-bold text-bad-strong">
                   {isLoading ? '—' : (summary?.otp?.lateWeight ?? 0).toLocaleString('id-ID', { maximumFractionDigits: 2 })}
                 </strong>
