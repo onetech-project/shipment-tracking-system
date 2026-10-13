@@ -15,14 +15,14 @@ export interface PageHeaderProps {
 export function PageHeader({ title, subtitle, action, badge, className, as: Heading = 'h1' }: PageHeaderProps) {
   return (
     <div className={cn('mb-4 flex flex-wrap items-start justify-between gap-4', className)}>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <Heading className="mb-1 flex flex-wrap items-center gap-2.5 font-display text-2xl font-bold tracking-[-0.02em] text-foreground">
           {title}
           {badge}
         </Heading>
         {subtitle && <p className="text-[13px] text-muted-foreground">{subtitle}</p>}
       </div>
-      {action && <div className="flex flex-wrap items-center gap-2.5">{action}</div>}
+      {action && <div className="flex shrink-0 flex-wrap items-center gap-2.5">{action}</div>}
     </div>
   );
 }

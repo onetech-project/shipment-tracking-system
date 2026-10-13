@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { CloudOff } from 'lucide-react'
+import { CloudOff, Truck } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
 import { StagingBadge } from '@/components/shared/header-badges'
 import { isStaging } from '@/lib/env'
@@ -9,6 +9,7 @@ import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { Banner } from '@/components/shared/banner'
 import { EmptyState } from '@/components/shared/empty-state'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHead } from '@/components/ui/card'
 import { usePermissions } from '@/shared/hooks/use-permissions'
 import { VehicleFilters } from '@/features/fleet/components/VehicleFilters'
 import { VehicleTable } from '@/features/fleet/components/VehicleTable'
@@ -310,22 +311,31 @@ export default function FleetVehiclesPage() {
               }
             />
           ) : (
-            <>
-              <VehicleTable
-                rows={rows}
-                docTypes={docTypes ?? []}
-                isLoading={isLoading}
-                sort={filters.sort ?? 'nopol'}
-                onSortChange={(sort: FleetVehicleSort) => setFilters({ ...filters, sort, page: 1 })}
-                onEdit={canUpdate ? (v) => setModal({ type: 'edit', vehicle: v }) : () => {}}
-                onDocuments={canUpdate ? (v) => setModal({ type: 'documents', vehicle: v }) : () => {}}
-                onArchive={canDelete ? (v) => setModal({ type: 'archive', vehicle: v }) : () => {}}
-                onRestore={canDelete ? handleRestore : () => {}}
-                onBerkas={canUpdate ? handleFocusBerkas : undefined}
-                showActions={{ edit: canUpdate, documents: canUpdate, archive: canDelete }}
+            <Card>
+              <CardHead
+                icon={Truck}
+                title="Daftar Armada"
+                subtitle={`${total} armada · masa berlaku dokumen per kendaraan`}
               />
+              <CardContent className="p-0">
+                <VehicleTable
+                  rows={rows}
+                  docTypes={docTypes ?? []}
+                  isLoading={isLoading}
+                  sort={filters.sort ?? 'nopol'}
+                  onSortChange={(sort: FleetVehicleSort) => setFilters({ ...filters, sort, page: 1 })}
+                  onEdit={canUpdate ? (v) => setModal({ type: 'edit', vehicle: v }) : () => {}}
+                  onDocuments={
+                    canUpdate ? (v) => setModal({ type: 'documents', vehicle: v }) : () => {}
+                  }
+                  onArchive={canDelete ? (v) => setModal({ type: 'archive', vehicle: v }) : () => {}}
+                  onRestore={canDelete ? handleRestore : () => {}}
+                  onBerkas={canUpdate ? handleFocusBerkas : undefined}
+                  showActions={{ edit: canUpdate, documents: canUpdate, archive: canDelete }}
+                />
+              </CardContent>
 
-              <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+              <div className="flex items-center justify-between border-t px-[18px] py-3 text-[11.5px] text-muted-foreground">
                 <span>{total} armada</span>
                 <div className="flex items-center gap-2">
                   <Button
@@ -334,7 +344,7 @@ export default function FleetVehiclesPage() {
                     disabled={page <= 1}
                     onClick={() => setFilters({ ...filters, page: page - 1 })}
                   >
-                    Sebelumnya
+                    ← Sebelumnya
                   </Button>
                   <span>
                     Halaman {page} dari {totalPages}
@@ -345,11 +355,11 @@ export default function FleetVehiclesPage() {
                     disabled={page >= totalPages}
                     onClick={() => setFilters({ ...filters, page: page + 1 })}
                   >
-                    Berikutnya
+                    Berikutnya →
                   </Button>
                 </div>
               </div>
-            </>
+            </Card>
           )}
         </>
       )}

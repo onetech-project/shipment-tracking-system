@@ -1,10 +1,14 @@
 'use client'
 
+import { Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input, fieldClass } from '@/components/ui/input'
 import { FilterBar } from '@/components/shared/filter-bar'
 import { FleetMasterRow, FleetSeverity, FleetVehicleFilters } from '../types'
 import { SEVERITY_FILTER_OPTIONS } from '../utils/severity'
+
+// `.field .lbl` in the mockup: a tiny bold uppercase caption above every filter control.
+const LABEL_CLASS = 'text-[10.5px] font-bold uppercase tracking-[0.06em] text-muted-foreground'
 
 interface VehicleFiltersProps {
   value: FleetVehicleFilters
@@ -36,20 +40,28 @@ export function VehicleFilters({
 
   return (
     <FilterBar>
-      <div className="flex min-w-[220px] flex-1 flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="vehicle-q">
+      <div className="flex min-w-[220px] max-w-[320px] flex-1 flex-col gap-1">
+        <label className={LABEL_CLASS} htmlFor="vehicle-q">
           Cari armada
         </label>
-        <Input
-          id="vehicle-q"
-          value={value.q ?? ''}
-          placeholder="Nopol, merk, no. rangka, sopir…"
-          onChange={(e) => patch({ q: e.target.value })}
-        />
+        <div className="relative">
+          <Search
+            size={13}
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-faint"
+            aria-hidden="true"
+          />
+          <Input
+            id="vehicle-q"
+            value={value.q ?? ''}
+            placeholder="Nopol, merk, no. rangka, sopir…"
+            onChange={(e) => patch({ q: e.target.value })}
+            className="pl-7"
+          />
+        </div>
       </div>
 
-      <div className="flex min-w-[160px] flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="vehicle-severity">
+      <div className="flex min-w-[160px] flex-col gap-1">
+        <label className={LABEL_CLASS} htmlFor="vehicle-severity">
           Status dokumen
         </label>
         <select
@@ -70,8 +82,8 @@ export function VehicleFilters({
         </select>
       </div>
 
-      <div className="flex min-w-[160px] flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="vehicle-kepemilikan">
+      <div className="flex min-w-[160px] flex-col gap-1">
+        <label className={LABEL_CLASS} htmlFor="vehicle-kepemilikan">
           Kepemilikan
         </label>
         <select
@@ -89,8 +101,8 @@ export function VehicleFilters({
         </select>
       </div>
 
-      <div className="flex min-w-[160px] flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="vehicle-pool">
+      <div className="flex min-w-[160px] flex-col gap-1">
+        <label className={LABEL_CLASS} htmlFor="vehicle-pool">
           Pool
         </label>
         <select
@@ -108,8 +120,8 @@ export function VehicleFilters({
         </select>
       </div>
 
-      <div className="flex min-w-[160px] flex-col gap-1.5">
-        <label className="text-sm font-medium" htmlFor="vehicle-status">
+      <div className="flex min-w-[160px] flex-col gap-1">
+        <label className={LABEL_CLASS} htmlFor="vehicle-status">
           Status unit
         </label>
         <select
@@ -127,11 +139,14 @@ export function VehicleFilters({
         </select>
       </div>
 
-      <label className="flex items-center gap-2 pb-2 text-sm" htmlFor="vehicle-archived">
+      <label
+        className="mb-0 inline-flex cursor-pointer items-center gap-1.5 self-center rounded-md border bg-surface-2 px-3 py-1.5 text-xs font-medium motion-safe:transition-colors hover:border-brand hover:bg-good-soft"
+        htmlFor="vehicle-archived"
+      >
         <input
           id="vehicle-archived"
           type="checkbox"
-          className="h-4 w-4 accent-brand-2"
+          className="h-3.5 w-3.5 accent-brand-2"
           checked={value.includeArchived ?? false}
           onChange={(e) => patch({ includeArchived: e.target.checked || undefined })}
         />
