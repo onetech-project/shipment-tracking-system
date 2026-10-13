@@ -1,14 +1,49 @@
 import React from 'react'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { fixtureSource, PROTOTYPE_ACCOUNTS } from '../../engine/__fixtures__/source'
-import { buildLanes, createState, evaluatePlan, optimizePlan } from '../../engine'
+import { buildLanes, createState, EspVsPartner, espVsPartner, evaluatePlan, optimizePlan } from '../../engine'
 import { fmtIdr } from '../../utils/format'
 import { OptimalTab } from './OptimalTab'
 
 const src = fixtureSource()
 const sim0 = { ...createState(src), accounts: PROTOTYPE_ACCOUNTS }
 const sim = { ...sim0, lanes: buildLanes(src, sim0) }
+
+// The route band row (RouteChip, e.g. 'CGK → Aceh') plus every row below it up to (not including)
+// the next band row, found by its route chip (span.font-mono). This scopes assertions to the one
+// route they claim to describe, instead of the whole page.
+function routeRows(label: string): HTMLElement[] {
+  const chip = screen.getByText(label, { selector: 'span.font-mono' })
+  const band = chip.closest('tr')
+  if (!band) throw new Error(`no <tr> around route chip ${label}`)
+  const rows: HTMLElement[] = [band]
+  let el = band.nextElementSibling
+  while (el && !el.querySelector('span.font-mono')) {
+    rows.push(el as HTMLElement)
+    el = el.nextElementSibling
+  }
+  return rows
+}
+
+function hasTextIn(rows: HTMLElement[], text: string | RegExp): boolean {
+  return rows.some((r) => within(r).queryAllByText(text).length > 0)
+}
+
+function countTextIn(rows: HTMLElement[], text: string): number {
+  return rows.reduce((n, r) => n + within(r).queryAllByText(text).length, 0)
+}
+
+// Mirrors OptimalTab's Verdict component exactly, so the expectation is computed from the engine
+// rather than a number pinned by hand.
+function verdictText(c: EspVsPartner): string {
+  if (c.winner === 'esp' && !c.bestPartner) return 'Pakai ESP sendiri: vendor lain belum punya lane layak'
+  if (c.winner === 'partner' && !c.esp) return `Pakai ${c.bestPartner!.account.name}: ESP belum punya lane layak`
+  if (c.winner === 'esp') return `Pakai ESP sendiri unggul ${fmtIdr(c.gap)}/kg vs ${c.bestPartner!.account.name}`
+  if (c.winner === 'partner') return `Pakai ${c.bestPartner!.account.name} unggul ${fmtIdr(-c.gap)}/kg vs ESP`
+  if (c.winner === 'tie') return 'ESP dan vendor lain seimbang'
+  return 'Belum cukup data untuk membandingkan'
+}
 
 it('summarises why each route runs the way it does', () => {
   render(<OptimalTab source={src} sim={sim} dispatch={jest.fn()} onOpenSim={jest.fn()} />)
@@ -65,15 +100,28 @@ it('scales the totals to the horizon, 15 days per period', () => {
 
 it('compares the best ESP lane with each partner vendor on every route', () => {
   render(<OptimalTab source={src} sim={sim} dispatch={jest.fn()} onOpenSim={jest.fn()} />)
-  expect(screen.getAllByText('Perbandingan ESP vs vendor lain').length).toBeGreaterThan(0)
-  expect(screen.getAllByText('ESP sendiri').length).toBeGreaterThan(0)
-  expect(screen.getAllByText('Vendor lain').length).toBeGreaterThan(0)
+  // Jabo|Aceh has SILI, PRIME and ESP lanes, so both sides of the comparison exist.
+  const c = espVsPartner(sim, 'Jabo|Aceh')
+  expect(c.esp).not.toBeNull()
+  expect(c.bestPartner).not.toBeNull()
+  const rows = routeRows('CGK → Aceh')
+  expect(hasTextIn(rows, verdictText(c))).toBe(true)
+  expect(countTextIn(rows, 'ESP sendiri')).toBe(1)
+  expect(countTextIn(rows, 'Vendor lain')).toBe(c.partners.length)
+  expect(hasTextIn(rows, 'Perbandingan ESP vs vendor lain')).toBe(true)
 })
 
 it('says when ESP has no workable lane on a route', () => {
-  // Jabo|Ambon has only SILI and PRIME lanes.
   render(<OptimalTab source={src} sim={sim} dispatch={jest.fn()} onOpenSim={jest.fn()} />)
-  expect(screen.getAllByText('ESP belum punya lane layak di rute ini (cek centang Ikut dan cost di tab 2).').length).toBeGreaterThan(0)
+  // Jabo|Ambon has only SILI and PRIME lanes: ESP has nothing to compare.
+  const c = espVsPartner(sim, 'Jabo|Ambon')
+  expect(c.esp).toBeNull()
+  expect(c.bestPartner).not.toBeNull()
+  const ambonRows = routeRows('CGK → Ambon')
+  expect(hasTextIn(ambonRows, 'ESP belum punya lane layak di rute ini (cek centang Ikut dan cost di tab 2).')).toBe(true)
+  expect(hasTextIn(ambonRows, /^Pakai .*: ESP belum punya lane layak$/)).toBe(true)
+  const acehRows = routeRows('CGK → Aceh')
+  expect(hasTextIn(acehRows, /ESP belum punya lane layak di rute ini/)).toBe(false)
 })
 
 it('shows the daily load the active lanes offer next to the route tonnage', () => {
