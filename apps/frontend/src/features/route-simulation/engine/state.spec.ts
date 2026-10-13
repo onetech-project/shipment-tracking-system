@@ -1,5 +1,5 @@
 import { fixtureSource } from './__fixtures__/source'
-import { buildLanes, createState, fromPayload, histDays, isScenarioPayload, laneId, toPayloadWithSource } from './state'
+import { buildLanes, clampHorizon, createState, fromPayload, histDays, horizonDays, isScenarioPayload, laneId, simStartOptions, toPayloadWithSource } from './state'
 import { SimulationSource } from '../types'
 
 describe('createState', () => {
@@ -22,6 +22,23 @@ describe('createState', () => {
   it('uses the net SPX rate and drops nothing from routes', () => {
     const custom: SimulationSource = { ...src, routes: [{ ...src.routes[0], rateSpx: 32000, pph2: 640, disc15: 480 }] }
     expect(createState(custom).routes[0].rateSpx).toBe(30880)
+  })
+
+  it('starts the simulation right after the last cycle, 12 periods long', () => {
+    const s = createState(src)
+    expect(s.simStart).toBe('2026-09-1H')
+    expect(s.horizonPeriods).toBe(12)
+    expect(horizonDays(s)).toBe(180)
+    expect(simStartOptions(src)).toHaveLength(12)
+    expect(simStartOptions(src)[0]).toBe('2026-09-1H')
+    expect(simStartOptions({ cycles: [] })).toEqual([])
+  })
+
+  it('clamps the horizon to 1..72 periods, defaulting an empty value to 12', () => {
+    expect(clampHorizon(500)).toBe(72)
+    expect(clampHorizon(-3)).toBe(1)
+    expect(clampHorizon(null)).toBe(12)
+    expect(clampHorizon('4')).toBe(4)
   })
 })
 
@@ -86,6 +103,7 @@ describe('payload round trip', () => {
         ...s0.routes.filter((r) => r.key !== 'Jabo|Ambon').map((r) => (r.key === 'Jabo|Aceh' ? { ...r, rateSpx: 1, overrideTon: 50 } : r)),
         { origin: 'Jabo', originLabel: 'CGK', dest: 'Manado', key: 'Jabo|Manado', rateSpx: 40000, slots: [], overrideTon: 100, custom: true },
       ],
+      simStart: '2026-10-2H', horizonPeriods: 6, histStart: '2026-03-1H',
       sim: { days: 10, cash: { 'ESP-x': 5 }, kg: { a: 1 } },
     }
     const back = fromPayload(src, toPayloadWithSource(src, edited))
@@ -93,6 +111,9 @@ describe('payload round trip', () => {
     expect(back.routes.find((r) => r.key === 'Jabo|Ambon')).toBeUndefined()
     expect(back.routes.find((r) => r.key === 'Jabo|Manado')).toMatchObject({ custom: true })
     expect(back.sim).toEqual(edited.sim)
+    expect(back.simStart).toBe('2026-10-2H')
+    expect(back.horizonPeriods).toBe(6)
+    expect(back.histStart).toBe(s0.histStart) // the history range is not a scenario setting
   })
 
   it('keeps routes that appeared in the source after the scenario was saved', () => {
@@ -104,7 +125,7 @@ describe('payload round trip', () => {
 
   it('tolerates a payload missing every optional key and still returns a usable state', () => {
     const src = fixtureSource()
-    const s = fromPayload(src, { version: 1 } as never)
+    const s = fromPayload(src, { version: 2 } as never)
     expect(s.accounts).toEqual([])
     expect(s.laneEdits).toEqual({})
     expect(s.sim).toEqual({ days: 30, cash: {}, kg: null })
@@ -112,17 +133,19 @@ describe('payload round trip', () => {
     const defaults = createState(src)
     expect(s.histStart).toBe(defaults.histStart)
     expect(s.histEnd).toBe(defaults.histEnd)
+    expect(s.simStart).toBe(defaults.simStart)
+    expect(s.horizonPeriods).toBe(12)
   })
 })
 
 describe('isScenarioPayload', () => {
-  it('is true only for an object carrying version 1', () => {
-    expect(isScenarioPayload({ version: 1 })).toBe(true)
-    expect(isScenarioPayload({ version: 2 })).toBe(false)
+  it('is true only for an object carrying version 2', () => {
+    expect(isScenarioPayload({ version: 2 })).toBe(true)
+    expect(isScenarioPayload({ version: 1 })).toBe(false)
     expect(isScenarioPayload({})).toBe(false)
     expect(isScenarioPayload(null)).toBe(false)
     expect(isScenarioPayload(undefined)).toBe(false)
-    expect(isScenarioPayload('version 1')).toBe(false)
+    expect(isScenarioPayload('version 2')).toBe(false)
     expect(isScenarioPayload([])).toBe(false)
   })
 })

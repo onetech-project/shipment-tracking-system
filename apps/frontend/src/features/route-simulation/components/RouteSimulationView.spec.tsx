@@ -17,8 +17,8 @@ it('opens on Setup and switches tabs', () => {
   expect(screen.getByRole('button', { name: '8 · Distribusi Optimal' })).toHaveAttribute('aria-current', 'page')
 })
 
-it('shows the history range in the header', () => {
+it('shows the history range and the simulation range in the header', () => {
   render(<RouteSimulationView source={fixtureSource()} />)
   expect(screen.getByText(/Histori Jun 2026 H1 s.d. Agu 2026 H2/)).toBeInTheDocument()
-  expect(screen.getByText(/Rata-rata tonase dari 90 hari histori/)).toBeInTheDocument()
+  expect(screen.getByText(/Simulasi mulai Sep 2026 H1, horizon 12 periode/)).toBeInTheDocument()
 })

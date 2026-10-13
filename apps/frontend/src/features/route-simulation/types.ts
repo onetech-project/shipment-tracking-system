@@ -131,6 +131,8 @@ export interface SimSettings {
 export interface SimState {
   histStart: string
   histEnd: string
+  simStart: string // first half-month period of the estimate (tab 8)
+  horizonPeriods: number // 1..72 half-month periods; scales tab 8's totals
   accounts: Account[]
   routes: SimRoute[]
   laneEdits: Record<string, LaneEdit>
@@ -139,11 +141,12 @@ export interface SimState {
 }
 
 // What is saved to route_simulation_scenarios.payload. Routes are stored as overrides keyed by
-// route key so a scenario survives the master gaining or losing routes.
+// route key so a scenario survives the master gaining or losing routes. The history range is not
+// stored: it is always the last six cycles of the data the scenario is opened against.
 export interface ScenarioPayload {
-  version: 1
-  histStart: string
-  histEnd: string
+  version: 2
+  simStart: string
+  horizonPeriods: number
   accounts: Account[]
   routeEdits: Record<string, { rateSpx?: number; overrideTon?: number | null; slots?: Slot[] }>
   customRoutes: SimRoute[]

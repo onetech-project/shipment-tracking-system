@@ -2,7 +2,8 @@ import React from 'react'
 import { fireEvent, render, screen } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { fixtureSource, PROTOTYPE_ACCOUNTS } from '../../engine/__fixtures__/source'
-import { buildLanes, createState } from '../../engine'
+import { buildLanes, createState, evaluatePlan, optimizePlan } from '../../engine'
+import { fmtIdr } from '../../utils/format'
 import { OptimalTab } from './OptimalTab'
 
 const src = fixtureSource()
@@ -13,7 +14,7 @@ it('summarises why each route runs the way it does', () => {
   render(<OptimalTab source={src} sim={sim} dispatch={jest.fn()} onOpenSim={jest.fn()} />)
   expect(screen.getByText(/rute cukup 1 vendor 1 airlines/)).toBeInTheDocument()
   expect(screen.getByText('Pemakaian modal')).toBeInTheDocument()
-  expect(screen.getByText(/Net margin \/ 30 hari/)).toBeInTheDocument()
+  expect(screen.getByText(/Net margin \/ 12 periode/)).toBeInTheDocument()
 })
 
 it('flags capital that no lane can use', () => {
@@ -38,4 +39,26 @@ it('explains that there is no capital yet instead of blaming routes and tranches
   expect(screen.queryByText('Menganggur')).not.toBeInTheDocument()
   expect(screen.queryByText(/lebih menguntungkan/)).not.toBeInTheDocument()
   expect(screen.getAllByText('Belum ada modal untuk dialokasikan. Isi modal di tab 1.').length).toBeGreaterThan(0)
+})
+
+it('applies a new start and horizon only when Run is pressed', () => {
+  const dispatch = jest.fn()
+  render(<OptimalTab source={src} sim={sim} dispatch={dispatch} onOpenSim={jest.fn()} />)
+  expect(screen.getByText('Sep 2026 H1 s.d. Feb 2027 H2')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Run ulang' })).toBeInTheDocument()
+  fireEvent.change(screen.getByLabelText('Simulasi mulai'), { target: { value: '2026-10-1H' } })
+  const horizon = screen.getByLabelText('Horizon simulasi (periode)')
+  fireEvent.change(horizon, { target: { value: '4' } })
+  fireEvent.blur(horizon)
+  expect(dispatch).not.toHaveBeenCalled()
+  expect(screen.getByText('belum diterapkan')).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Run perubahan' }))
+  expect(dispatch).toHaveBeenCalledWith({ type: 'setSimRange', simStart: '2026-10-1H', horizonPeriods: 4 })
+})
+
+it('scales the totals to the horizon, 15 days per period', () => {
+  const two = { ...sim, horizonPeriods: 2 }
+  render(<OptimalTab source={src} sim={two} dispatch={jest.fn()} onOpenSim={jest.fn()} />)
+  const net = evaluatePlan(src, two, optimizePlan(src, two)).totals.net
+  expect(screen.getByText('Net margin / 2 periode').nextSibling).toHaveTextContent(fmtIdr(net * 30))
 })

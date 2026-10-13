@@ -4,7 +4,7 @@ import React, { useEffect, useReducer, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { SimulationSource } from '../types'
 import { initReducer, simReducer } from '../state/reducer'
-import { histDays, periodShort } from '../engine'
+import { periodShort } from '../engine'
 import { TAB_IDS, TabId } from './ui'
 import { ScenarioBar } from './ScenarioBar'
 import { SetupTab } from './tabs/SetupTab'
@@ -35,12 +35,18 @@ export function RouteSimulationView({ source }: { source: SimulationSource }) {
   const [flash, setFlash] = useState<string | null>(null)
   const { sim } = state
 
+  // Keyed on the whole state, not state.flash: pressing Run twice yields the same message twice,
+  // and the second toast must still show. flash is cleared by every other action, so a non-null
+  // flash here always belongs to the dispatch that produced this state.
   useEffect(() => {
-    if (!state.error) return
-    setFlash(state.error)
+    if (state.flash) setFlash(state.flash)
+  }, [state])
+
+  useEffect(() => {
+    if (!flash) return
     const t = setTimeout(() => setFlash(null), 4500)
     return () => clearTimeout(t)
-  }, [state.error])
+  }, [flash])
 
   useEffect(() => {
     if (!state.dirty) return
@@ -59,7 +65,7 @@ export function RouteSimulationView({ source }: { source: SimulationSource }) {
         </div>
         <p className="text-right text-xs text-muted-foreground">
           Histori {periodShort(sim.histStart)} s.d. {periodShort(sim.histEnd)}
-          <br />Rata-rata tonase dari {histDays(sim)} hari histori
+          <br />Simulasi mulai {periodShort(sim.simStart)}, horizon {sim.horizonPeriods} periode
         </p>
       </div>
       <ScenarioBar state={state} dispatch={dispatch} onFlash={setFlash} />

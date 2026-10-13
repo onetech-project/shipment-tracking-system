@@ -19,7 +19,7 @@ it('refuses a history range whose start is after its end', () => {
   const s = simReducer(base(), { type: 'setPeriod', field: 'histStart', value: '2026-08-2H' })
   const bad = simReducer(s, { type: 'setPeriod', field: 'histEnd', value: '2026-06-1H' })
   expect(bad.sim.histEnd).toBe(s.sim.histEnd)
-  expect(bad.error).toMatch(/Histori mulai/)
+  expect(bad.flash).toMatch(/Histori mulai/)
 })
 
 it('re-totals a lane when one cost component is edited, and reset restores the data', () => {
@@ -56,7 +56,7 @@ it('adds a custom route and rejects a duplicate', () => {
   const s = simReducer(base(), { type: 'routeAdd', route: { origin: 'Jabo', originLabel: 'CGK', dest: 'Manado', rateSpx: 40000, overrideTon: 100 } })
   expect(s.sim.routes.at(-1)).toMatchObject({ key: 'Jabo|Manado', custom: true, overrideTon: 100 })
   const dup = simReducer(s, { type: 'routeAdd', route: { origin: 'Jabo', originLabel: 'CGK', dest: 'Manado', rateSpx: 1, overrideTon: 1 } })
-  expect(dup.error).toMatch(/sudah ada/)
+  expect(dup.flash).toMatch(/sudah ada/)
 })
 
 it('seeds manual kg from the recommendation on the first edit and reverts with simAuto', () => {
@@ -74,4 +74,18 @@ it('loads a scenario clean and marks saved clean', () => {
   const loaded = simReducer(s, { type: 'load', sim: initReducer(src).sim })
   expect(loaded.dirty).toBe(false)
   expect(simReducer(s, { type: 'markSaved' }).dirty).toBe(false)
+})
+
+it('applies the simulation range with a confirmation and clamps the horizon', () => {
+  const s = simReducer(base(), { type: 'setSimRange', simStart: '2026-10-1H', horizonPeriods: 500 })
+  expect(s.sim.simStart).toBe('2026-10-1H')
+  expect(s.sim.horizonPeriods).toBe(72)
+  expect(s.dirty).toBe(true)
+  expect(s.flash).toBe('Estimasi dijalankan: mulai Okt 2026 H1, 72 periode')
+})
+
+it('confirms a re-run of the same range without marking the state dirty', () => {
+  const s = simReducer(base(), { type: 'setSimRange', simStart: '2026-09-1H', horizonPeriods: 12 })
+  expect(s.dirty).toBe(false)
+  expect(s.flash).toBe('Estimasi dijalankan: mulai Sep 2026 H1, 12 periode')
 })

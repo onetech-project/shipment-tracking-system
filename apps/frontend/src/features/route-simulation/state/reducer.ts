@@ -1,10 +1,12 @@
 import {
   buildLanes,
+  clampHorizon,
   createState,
   emptyTranche,
   histPeriodsOf,
   laneOf,
   optimizePlan,
+  periodShort,
   routeKey,
   simOpts,
   trancheOf,
@@ -15,14 +17,18 @@ export interface ReducerState {
   source: SimulationSource
   sim: SimState
   dirty: boolean
-  error: string | null // one-shot message for the flash toast; cleared by the next action
+  flash: string | null // one-shot toast (a refusal or a confirmation); cleared by the next action
 }
+
+// A refusal is a bare message; a confirmation carries the new state with it.
+type Outcome = SimState | string | { sim: SimState; flash: string }
 
 type TrancheField = 'label' | 'amount' | 'cofType' | 'cofValue' | 'cofUnit' | 'cycleDays'
 
 export type SimAction =
   | { type: 'load'; sim: SimState }
   | { type: 'markSaved' }
+  | { type: 'setSimRange'; simStart: string; horizonPeriods: number }
   | { type: 'setPeriod'; field: 'histStart' | 'histEnd'; value: string }
   | { type: 'acctAdd'; vendor: string; trancheId: string }
   | { type: 'acctSet'; id: string; field: 'enabled' | 'isEsp'; value: boolean }
@@ -48,7 +54,7 @@ export type SimAction =
   | { type: 'simAuto' }
 
 export function initReducer(source: SimulationSource, sim?: SimState): ReducerState {
-  return { source, sim: sim ?? createState(source), dirty: false, error: null }
+  return { source, sim: sim ?? createState(source), dirty: false, flash: null }
 }
 
 // Mirrors the prototype's rebuildLanes(): lanes are derived from history + edits, and Coba-coba
@@ -83,8 +89,14 @@ function setLaneEdit(source: SimulationSource, sim: SimState, id: string, patch:
   return rebuild(source, { ...sim, laneEdits })
 }
 
-function apply(source: SimulationSource, sim: SimState, a: SimAction): SimState | string {
+function apply(source: SimulationSource, sim: SimState, a: SimAction): Outcome {
   switch (a.type) {
+    case 'setSimRange': {
+      const horizonPeriods = clampHorizon(a.horizonPeriods)
+      const flash = `Estimasi dijalankan: mulai ${periodShort(a.simStart)}, ${horizonPeriods} periode`
+      if (a.simStart === sim.simStart && horizonPeriods === sim.horizonPeriods) return { sim, flash }
+      return { sim: { ...sim, simStart: a.simStart, horizonPeriods }, flash }
+    }
     case 'setPeriod': {
       const next = { ...sim, [a.field]: a.value }
       if (!histPeriodsOf(next).length) return 'Histori mulai harus sebelum atau sama dengan histori akhir'
@@ -173,9 +185,10 @@ function apply(source: SimulationSource, sim: SimState, a: SimAction): SimState 
 }
 
 export function simReducer(state: ReducerState, action: SimAction): ReducerState {
-  if (action.type === 'load') return { ...state, sim: action.sim, dirty: false, error: null }
-  if (action.type === 'markSaved') return { ...state, dirty: false, error: null }
+  if (action.type === 'load') return { ...state, sim: action.sim, dirty: false, flash: null }
+  if (action.type === 'markSaved') return { ...state, dirty: false, flash: null }
   const out = apply(state.source, state.sim, action)
-  if (typeof out === 'string') return { ...state, error: out }
-  return { ...state, sim: out, dirty: out !== state.sim || state.dirty, error: null }
+  if (typeof out === 'string') return { ...state, flash: out }
+  const [sim, flash] = 'flash' in out ? [out.sim, out.flash] : [out, null]
+  return { ...state, sim, dirty: sim !== state.sim || state.dirty, flash }
 }

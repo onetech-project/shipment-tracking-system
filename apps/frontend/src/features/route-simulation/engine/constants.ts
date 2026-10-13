@@ -11,3 +11,6 @@ export const UNBOOKED_LABEL = 'Tanpa booking'
 // v_pnl_to adds cost_to up in this order; tab 2 shows the columns in it.
 export const COST_FIELDS: CostField[] = ['costSgOut', 'costSgIn', 'costRa', 'costSmu']
 export const COST_LABELS: Record<CostField, string> = { costSgOut: 'SG Outgoing', costSgIn: 'SG Incoming', costRa: 'RA', costSmu: 'SMU' }
+
+export const DEFAULT_HORIZON_PERIODS = 12
+export const MAX_HORIZON_PERIODS = 72

@@ -1,5 +1,5 @@
-import { COST_FIELDS, DAYS_PER_PERIOD } from './constants'
-import { periodsBetween } from './period'
+import { COST_FIELDS, DAYS_PER_PERIOD, DEFAULT_HORIZON_PERIODS, MAX_HORIZON_PERIODS } from './constants'
+import { nextPeriod, periodKey, periodParts, periodsBetween, periodsForward } from './period'
 import {
   Account,
   CostField,
@@ -23,6 +23,22 @@ export const histDays = (s: Pick<SimState, 'histStart' | 'histEnd'>) => histPeri
 export const cycleDays = (t: Pick<Tranche, 'cycleDays'>) => Math.max(1, Math.round(Number(t.cycleDays) || 1))
 
 export const sumCosts = (c: LaneCosts) => COST_FIELDS.reduce((s, f) => s + (Number(c[f]) || 0), 0)
+
+export const clampHorizon = (v: unknown) =>
+  Math.min(MAX_HORIZON_PERIODS, Math.max(1, Math.round(Number(v) || DEFAULT_HORIZON_PERIODS)))
+export const horizonDays = (s: Pick<SimState, 'horizonPeriods'>) => clampHorizon(s.horizonPeriods) * DAYS_PER_PERIOD
+
+// Tab 8's start choices: the 12 periods right after the last cycle that has data.
+export function simStartOptions(source: Pick<SimulationSource, 'cycles'>): string[] {
+  const last = periodParts(source.cycles[source.cycles.length - 1] ?? '')
+  if (!last) return []
+  return periodsForward(periodKey(...nextPeriod(last.year, last.month, last.half)), 12)
+}
+
+const defaultHistRange = (source: SimulationSource) => ({
+  histStart: source.cycles[Math.max(0, source.cycles.length - 6)] ?? '',
+  histEnd: source.cycles[source.cycles.length - 1] ?? '',
+})
 
 export const accountOf = (s: Pick<SimState, 'accounts'>, id: string) => s.accounts.find((a) => a.id === id)
 export const routeOf = (s: Pick<SimState, 'routes'>, key: string) => s.routes.find((r) => r.key === key)
@@ -57,10 +73,10 @@ export const emptyTranche = (id: string, label: string): Tranche => ({
 // A new page starts with one empty account per vendor that has flown, so lanes are immediately
 // usable and the planner only has to type capital. ESP is flagged by name, as in the prototype.
 export function createState(source: SimulationSource): SimState {
-  const cycles = source.cycles
   const s: SimState = {
-    histStart: cycles[Math.max(0, cycles.length - 6)] ?? '',
-    histEnd: cycles[cycles.length - 1] ?? '',
+    ...defaultHistRange(source),
+    simStart: simStartOptions(source)[0] ?? '',
+    horizonPeriods: DEFAULT_HORIZON_PERIODS,
     accounts: source.vendors
       .filter((v) => v.hasData)
       .map((v) => ({
@@ -166,9 +182,9 @@ export function toPayload(s: SimState): ScenarioPayload {
     routeEdits[r.key] = { rateSpx: r.rateSpx, overrideTon: r.overrideTon, slots: r.slots }
   }
   return {
-    version: 1,
-    histStart: s.histStart,
-    histEnd: s.histEnd,
+    version: 2,
+    simStart: s.simStart,
+    horizonPeriods: s.horizonPeriods,
     accounts: s.accounts,
     routeEdits,
     customRoutes: s.routes.filter((r) => r.custom),
@@ -189,7 +205,7 @@ export function toPayloadWithSource(source: SimulationSource, s: SimState): Scen
 // payload fails this (wrong shape, wrong version, or not an object at all — e.g. a future format,
 // or corrupted storage) must not be loaded at all, rather than crash on a missing/renamed key.
 export function isScenarioPayload(x: unknown): x is ScenarioPayload {
-  return typeof x === 'object' && x !== null && !Array.isArray(x) && (x as { version?: unknown }).version === 1
+  return typeof x === 'object' && x !== null && !Array.isArray(x) && (x as { version?: unknown }).version === 2
 }
 
 // Routes the master gained since the scenario was saved are included with defaults; routes it
@@ -198,9 +214,6 @@ export function isScenarioPayload(x: unknown): x is ScenarioPayload {
 // (routeEdits, sim, accounts, …) still produces a usable state instead of throwing, falling back
 // to the same defaults createState() would pick for a brand-new scenario.
 export function fromPayload(source: SimulationSource, p: ScenarioPayload): SimState {
-  const cycles = source.cycles
-  const histStart = p.histStart ?? cycles[Math.max(0, cycles.length - 6)] ?? ''
-  const histEnd = p.histEnd ?? cycles[cycles.length - 1] ?? ''
   const accounts = p.accounts ?? []
   const routeEdits = p.routeEdits ?? {}
   const customRoutes = p.customRoutes ?? []
@@ -215,8 +228,9 @@ export function fromPayload(source: SimulationSource, p: ScenarioPayload): SimSt
       return e ? { ...base, ...e, overrideTon: e.overrideTon ?? null, slots: e.slots ?? base.slots } : base
     })
   const s: SimState = {
-    histStart,
-    histEnd,
+    ...defaultHistRange(source),
+    simStart: p.simStart ?? simStartOptions(source)[0] ?? '',
+    horizonPeriods: clampHorizon(p.horizonPeriods),
     accounts,
     routes: [...sourceRoutes, ...customRoutes.filter((r) => !sourceRoutes.some((x) => x.key === r.key))],
     laneEdits,
