@@ -10,8 +10,12 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts'
+import { AlertTriangle, BarChart3 } from 'lucide-react'
 import { PnlFilter, PnlRouteFilter, usePnlDailyMargin } from '../hooks/usePnl'
 import { fmt } from '../utils/format'
+import { CHART_STATUS } from '@/lib/chart-colors'
+import { Card, CardContent, CardHead } from '@/components/ui/card'
+import { Banner } from '@/components/shared/banner'
 
 interface PnlDailyMarginChartProps {
   filter: PnlFilter
@@ -29,11 +33,11 @@ const filterLabel = (filter: PnlFilter) =>
   filter.mode === 'cycle' ? filter.cycle : `${filter.start} → ${filter.end}`
 
 const colorForMargin = (margin: number | null, incomplete: boolean) => {
-  if (incomplete) return '#94A3B8'
-  if (margin == null) return '#94A3B8'
-  if (margin < 0) return '#EF4444'
-  if (margin < 10) return '#F59E0B'
-  return '#22C55E'
+  if (incomplete) return CHART_STATUS.neutral
+  if (margin == null) return CHART_STATUS.neutral
+  if (margin < 0) return CHART_STATUS.bad
+  if (margin < 10) return CHART_STATUS.warn
+  return CHART_STATUS.good
 }
 
 interface TooltipPayload {
@@ -52,7 +56,10 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Toolti
         Margin: {p.marginPct == null ? '—' : `${p.marginPct.toFixed(1)}%`}
       </p>
       {p.hasIncompleteCost && (
-        <p className="mt-1 text-amber-600 font-medium">⚠ Cost data incomplete</p>
+        <p className="mt-1 flex items-center gap-1 text-warn-ink font-medium">
+          <AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />
+          Cost data incomplete
+        </p>
       )}
     </div>
   )
@@ -72,45 +79,51 @@ export function PnlDailyMarginChart({ filter, scope }: PnlDailyMarginChartProps)
   }
 
   return (
-    <div className="rounded-lg border bg-card p-4">
-      <div className="mb-4 flex items-center justify-between">
-        <p className="text-sm font-medium">Daily Gross Margin — {filterLabel(filter)}</p>
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1"><span className="inline-block h-2 w-3 rounded-sm bg-green-500" />≥10%</span>
-          <span className="flex items-center gap-1"><span className="inline-block h-2 w-3 rounded-sm bg-amber-400" />0–10%</span>
-          <span className="flex items-center gap-1"><span className="inline-block h-2 w-3 rounded-sm bg-red-500" />&lt;0%</span>
-          <span className="flex items-center gap-1"><span className="inline-block h-2 w-3 rounded-sm bg-slate-400" />Incomplete</span>
-        </div>
-      </div>
-      {hasAnyIncomplete && (
-        <div className="mb-3 flex items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-400">
-          <span>⚠</span>
-          <span>Some days have incomplete cost data (booking records missing). Grey bars show revenue only — margin figures are overstated.</span>
-        </div>
-      )}
-      {isLoading && <p className="text-muted-foreground text-sm">Loading…</p>}
-      {data && data.length === 0 && (
-        <p className="text-muted-foreground text-sm">No data for this range.</p>
-      )}
-      {data && data.length > 0 && (
-        <ResponsiveContainer width="100%" height={280}>
-          <BarChart data={data} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-            <XAxis dataKey="date" tickFormatter={formatDateLabel} tick={{ fontSize: 11 }} />
-            <YAxis
-              tickFormatter={(v: number) => `${v.toFixed(0)}%`}
-              tick={{ fontSize: 11 }}
-              width={50}
-            />
-            <Tooltip content={<CustomTooltip />} />
-            <Bar dataKey="marginPct" name="Margin %" radius={[4, 4, 0, 0]}>
-              {data.map((d) => (
-                <Cell key={d.date} fill={colorForMargin(d.marginPct, d.hasIncompleteCost)} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      )}
-    </div>
+    <Card>
+      <CardHead
+        icon={BarChart3}
+        title="Daily Gross Margin"
+        subtitle={filterLabel(filter)}
+        actions={
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1"><span className="inline-block h-2 w-3 rounded-sm bg-good" />≥10%</span>
+            <span className="flex items-center gap-1"><span className="inline-block h-2 w-3 rounded-sm bg-warn" />0–10%</span>
+            <span className="flex items-center gap-1"><span className="inline-block h-2 w-3 rounded-sm bg-bad-strong" />&lt;0%</span>
+            <span className="flex items-center gap-1"><span className="inline-block h-2 w-3 rounded-sm bg-faint" />Incomplete</span>
+          </div>
+        }
+      />
+      <CardContent className="pt-4">
+        {hasAnyIncomplete && (
+          <Banner tone="warn">
+            Some days have incomplete cost data (booking records missing). Grey bars show revenue
+            only — margin figures are overstated.
+          </Banner>
+        )}
+        {isLoading && <p className="text-muted-foreground text-sm">Loading…</p>}
+        {data && data.length === 0 && (
+          <p className="text-muted-foreground text-sm">No data for this range.</p>
+        )}
+        {data && data.length > 0 && (
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={data} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+              <XAxis dataKey="date" tickFormatter={formatDateLabel} tick={{ fontSize: 11 }} />
+              <YAxis
+                tickFormatter={(v: number) => `${v.toFixed(0)}%`}
+                tick={{ fontSize: 11 }}
+                width={50}
+              />
+              <Tooltip content={<CustomTooltip />} cursor={{ fill: '#e2ebe2', fillOpacity: 0.5 }} />
+              <Bar dataKey="marginPct" name="Margin %" radius={[4, 4, 0, 0]}>
+                {data.map((d) => (
+                  <Cell key={d.date} fill={colorForMargin(d.marginPct, d.hasIncompleteCost)} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </CardContent>
+    </Card>
   )
 }

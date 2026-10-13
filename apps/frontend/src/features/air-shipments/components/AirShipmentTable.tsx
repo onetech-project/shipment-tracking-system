@@ -3,6 +3,7 @@ import moment from 'moment'
 import { Ban } from 'lucide-react'
 import { AirShipmentRow, CellProps, PaginationMeta, SortOrder } from '../types'
 import { colLabel, FROZEN_KEYS } from '../columns.config'
+import { Button } from '@/components/ui/button'
 
 const DATETIME_COLS = new Set(['last_synced_at', 'created_at', 'updated_at'])
 
@@ -26,7 +27,7 @@ function formatCell(props: CellProps): string | JSX.Element {
       <input
         type="checkbox"
         checked={Boolean(value)}
-        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary/50"
+        className="h-4 w-4 rounded-sm border-border accent-brand-2 focus:ring-1 focus:ring-brand/40"
         onChange={() => additional?.onToggleLock?.(id ?? '', !Boolean(value))}
       />
     )
@@ -126,10 +127,10 @@ export function AirShipmentTable({
   const isFrozen = (col: string): boolean => col in FROZEN_LEFT
 
   return (
-    <div className="flex flex-col gap-4">
-      <div id="table-container" className="overflow-auto rounded-md border max-h-[70vh]">
-        <table className="min-w-full divide-y divide-border text-sm">
-          <thead className="bg-muted sticky top-0 z-20">
+    <div className="flex flex-col gap-3.5">
+      <div id="table-container" className="max-h-[70vh] overflow-auto rounded-md border bg-card">
+        <table className="w-full border-collapse text-[11px]">
+          <thead className="sticky top-0 z-20 bg-table-head">
             <tr>
               <th
                 style={{
@@ -138,7 +139,7 @@ export function AirShipmentTable({
                   minWidth: FROZEN_WIDTH['#'],
                   maxWidth: FROZEN_WIDTH['#'],
                 }}
-                className="xl:sticky z-30 bg-muted whitespace-nowrap px-4 py-2 text-left font-medium text-muted-foreground"
+                className="xl:sticky z-30 whitespace-nowrap border-b bg-table-head px-2.5 py-2 text-left text-[9px] font-bold uppercase tracking-[0.06em] text-muted-foreground"
               >
                 #
               </th>
@@ -160,8 +161,8 @@ export function AirShipmentTable({
                       : undefined
                   }
                   className={[
-                    'cursor-pointer select-none whitespace-nowrap px-4 py-2 text-left font-medium text-muted-foreground hover:text-foreground',
-                    isFrozen(col) ? 'xl:sticky z-30 bg-muted' : '',
+                    'cursor-pointer select-none whitespace-nowrap border-b px-2.5 py-2 text-left text-[9px] font-bold uppercase tracking-[0.06em] text-muted-foreground hover:text-foreground',
+                    isFrozen(col) ? 'xl:sticky z-30 bg-table-head' : '',
                   ].join(' ')}
                 >
                   {colLabel(col)}
@@ -169,13 +170,13 @@ export function AirShipmentTable({
                 </th>
               ))}
               {showExclude && (
-                <th className="whitespace-nowrap px-4 py-2 text-left font-medium text-muted-foreground">
+                <th className="whitespace-nowrap border-b px-2.5 py-2 text-left text-[9px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
                   Actions
                 </th>
               )}
             </tr>
           </thead>
-          <tbody className="divide-y divide-border">
+          <tbody>
             {data.length === 0 ? (
               <tr>
                 <td
@@ -187,10 +188,9 @@ export function AirShipmentTable({
               </tr>
             ) : (
               data.map((row, idx) => {
-                const isOdd = idx % 2 === 1
-                const frozenBg = isOdd ? 'bg-muted' : 'bg-background'
+                const frozenBg = 'bg-card'
                 return (
-                <tr key={row.id} className={`hover:bg-muted/30 ${isOdd ? 'bg-muted/70' : ''}`}>
+                <tr key={row.id} className="motion-safe:transition-colors hover:bg-row-hover">
                   <td
                     style={{
                       left: FROZEN_LEFT['#'],
@@ -198,7 +198,7 @@ export function AirShipmentTable({
                       minWidth: FROZEN_WIDTH['#'],
                       maxWidth: FROZEN_WIDTH['#'],
                     }}
-                    className={`xl:sticky z-10 ${frozenBg} text-center`}
+                    className={`xl:sticky z-10 ${frozenBg} border-b py-[7px] text-center tabular text-faint`}
                   >
                     {(meta.page - 1) * meta.limit + idx + 1}
                   </td>
@@ -219,7 +219,7 @@ export function AirShipmentTable({
                           : undefined
                       }
                       className={[
-                        'whitespace-nowrap px-4 py-2',
+                        'whitespace-nowrap border-b px-2.5 py-[7px] text-[11px] text-foreground',
                         isFrozen(col) ? `xl:sticky z-10 ${frozenBg}` : '',
                         col === 'is_locked' ? 'text-center' : '',
                       ].join(' ')}
@@ -245,16 +245,17 @@ export function AirShipmentTable({
                     </td>
                   ))}
                   {showExclude && (
-                    <td className="whitespace-nowrap px-3 py-2">
-                      <button
+                    <td className="whitespace-nowrap border-b px-2.5 py-[7px]">
+                      <Button
                         type="button"
+                        variant="danger-soft"
+                        size="sm"
                         title="Exclude from this alert"
                         onClick={() => onExclude!(row)}
-                        className="inline-flex items-center gap-1 rounded border border-destructive px-2 py-1 text-xs text-destructive hover:bg-destructive/10 transition-colors focus:outline-none focus:ring-2 focus:ring-destructive/40"
                       >
                         <Ban size={12} />
                         Exclude
-                      </button>
+                      </Button>
                     </td>
                   )}
                 </tr>
@@ -266,33 +267,35 @@ export function AirShipmentTable({
       </div>
 
       {/* Pagination */}
-      <div className="flex items-center justify-between text-sm">
-        <span>
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span className="tabular">
           {meta.total === 0
             ? 'No records'
             : `${(meta.page - 1) * meta.limit + 1}–${Math.min(meta.page * meta.limit, meta.total)} of ${meta.total}`}
         </span>
-        <div className="flex gap-2">
-          <button
+        <div className="flex gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => {
               scrollToTop()
               onPageChange(meta.page - 1)
             }}
             disabled={meta.page <= 1}
-            className="rounded border px-3 py-1 disabled:opacity-40 hover:bg-muted"
           >
             Previous
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => {
               scrollToTop()
               onPageChange(meta.page + 1)
             }}
             disabled={meta.page >= meta.totalPages}
-            className="rounded border px-3 py-1 disabled:opacity-40 hover:bg-muted"
           >
             Next
-          </button>
+          </Button>
         </div>
       </div>
     </div>

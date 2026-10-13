@@ -1,53 +1,11 @@
 'use client'
 
+import { ArrowUpFromLine, Package, Receipt, Target, TrendingUp, Wallet } from 'lucide-react'
+import { KpiGrid, KpiCard } from '@/components/shared/kpi-card'
 import { PnlSummary } from '../hooks/usePnl'
 import { fmt, num, pct } from '../utils/format'
 
 export type PnlKpiKey = 'revenue' | 'cost' | 'gp'
-
-interface KpiCardProps {
-  label: string
-  value: string
-  sub?: string
-  active?: boolean
-  onClick?: () => void
-}
-
-function KpiCard({ label, value, sub, active, onClick }: KpiCardProps) {
-  const interactive = onClick != null
-  return (
-    <div
-      role={interactive ? 'button' : undefined}
-      tabIndex={interactive ? 0 : undefined}
-      onClick={onClick}
-      onKeyDown={
-        interactive
-          ? (e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                onClick?.()
-              }
-            }
-          : undefined
-      }
-      className={[
-        'min-w-0 rounded-lg border bg-card p-3 sm:p-4 transition-colors',
-        interactive ? 'cursor-pointer hover:border-primary/50' : '',
-        active ? 'ring-2 ring-primary border-primary' : '',
-      ]
-        .filter(Boolean)
-        .join(' ')}
-    >
-      <p className="truncate text-xs font-medium text-muted-foreground uppercase tracking-wide">
-        {label}
-      </p>
-      <p className="mt-1 text-xl font-bold leading-tight sm:text-2xl xl:text-sm 2xl:text-base">
-        {value}
-      </p>
-      {sub && <p className="mt-0.5 truncate text-xs text-muted-foreground">{sub}</p>}
-    </div>
-  )
-}
 
 interface PnlKpiCardsProps {
   summary: PnlSummary
@@ -56,32 +14,51 @@ interface PnlKpiCardsProps {
 }
 
 export function PnlKpiCards({ summary, activeKpi, onSelect }: PnlKpiCardsProps) {
+  // The shared 6-col grid defaults to a 2xl breakpoint; the mockup is 6-across already at
+  // 1440px (xl), so widen it here rather than changing the shared default (Barhal also uses
+  // cols=6 at the narrower default).
   return (
-    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
+    <KpiGrid cols={6} className="xl:grid-cols-6">
       <KpiCard
         label="Est. Revenue"
         value={fmt.format(summary.totalRevenue)}
-        sub="net of pph & disc"
-        active={activeKpi === 'revenue'}
+        hint="net of pph & disc"
+        icon={Wallet}
+        tone="brand"
         onClick={() => onSelect('revenue')}
+        selected={activeKpi === 'revenue'}
       />
       <KpiCard
         label="Est. Cost"
         value={fmt.format(summary.totalCost)}
-        sub="based on arrival date"
-        active={activeKpi === 'cost'}
+        hint="based on arrival date"
+        icon={ArrowUpFromLine}
+        tone="dark"
         onClick={() => onSelect('cost')}
+        selected={activeKpi === 'cost'}
       />
       <KpiCard
         label="Est. Gross Profit"
         value={fmt.format(summary.grossProfit)}
-        sub="revenue − cost"
-        active={activeKpi === 'gp'}
+        hint="revenue − cost"
+        icon={TrendingUp}
+        tone="alt"
         onClick={() => onSelect('gp')}
+        selected={activeKpi === 'gp'}
       />
-      <KpiCard label="Est. Gross Margin" value={pct(summary.grossMarginPct)} sub="GP / revenue" />
-      <KpiCard label="Total TOs" value={num(summary.totalTos)} />
-      <KpiCard label="Total AWBs" value={num(summary.totalAwbs)} />
-    </div>
+      <KpiCard
+        label="Est. Gross Margin"
+        value={pct(summary.grossMarginPct)}
+        hint="GP / revenue"
+        icon={Target}
+        tone="brand"
+        // The mockup's margin icon is a darker green (#2d7a4a) than the shared "brand" tone
+        // (#3dae68) — overridden via KpiCard's iconClassName rather than widening IconTone for
+        // one card.
+        iconClassName="bg-[#2d7a4a]"
+      />
+      <KpiCard label="Total TOs" value={num(summary.totalTos)} hint="orders" icon={Package} tone="light" />
+      <KpiCard label="Total AWBs" value={num(summary.totalAwbs)} hint="waybills" icon={Receipt} tone="muted" />
+    </KpiGrid>
   )
 }

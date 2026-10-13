@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { fieldClass } from '@/components/ui/input'
 import { useUpdatePacking } from '../../hooks/useBarhal'
 import { BarhalKoli } from '../../types'
 
@@ -54,7 +56,7 @@ export function Step3Packing({ koli, onSaved }: Step3PackingProps) {
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <label className="block text-sm font-medium">Berat Sebelum</label>
-          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm tabular">
             {fmt.format(weightBefore)} kg
           </div>
         </div>
@@ -65,14 +67,14 @@ export function Step3Packing({ koli, onSaved }: Step3PackingProps) {
             min={0}
             value={weightAfter}
             onChange={(e) => setWeightAfter(e.target.value)}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            className={`w-full ${fieldClass}`}
           />
         </div>
       </div>
 
       {kenaikan != null && (
         <div className="rounded-lg bg-muted px-3 py-2 text-sm">
-          Kenaikan Berat: <b>{kenaikan >= 0 ? '+' : ''}{fmt.format(kenaikan)} kg</b>
+          Kenaikan Berat: <b className="tabular">{kenaikan >= 0 ? '+' : ''}{fmt.format(kenaikan)} kg</b>
         </div>
       )}
 
@@ -80,21 +82,21 @@ export function Step3Packing({ koli, onSaved }: Step3PackingProps) {
         <div className="space-y-1.5">
           <label className="block text-sm font-medium">Panjang (cm)</label>
           <input type="number" min={0} value={lengthCm} onChange={(e) => setLengthCm(e.target.value)}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+            className={`w-full ${fieldClass}`} />
         </div>
         <div className="space-y-1.5">
           <label className="block text-sm font-medium">Lebar (cm)</label>
           <input type="number" min={0} value={widthCm} onChange={(e) => setWidthCm(e.target.value)}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+            className={`w-full ${fieldClass}`} />
         </div>
         <div className="space-y-1.5">
           <label className="block text-sm font-medium">Tinggi (cm)</label>
           <input type="number" min={0} value={heightCm} onChange={(e) => setHeightCm(e.target.value)}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+            className={`w-full ${fieldClass}`} />
         </div>
         <div className="space-y-1.5">
           <label className="block text-sm font-medium">Volume</label>
-          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+          <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm tabular">
             {volume != null ? fmt.format(volume) : '—'}
           </div>
         </div>
@@ -103,20 +105,15 @@ export function Step3Packing({ koli, onSaved }: Step3PackingProps) {
       <div className="space-y-1.5">
         <label className="block text-sm font-medium">Jumlah Batang Kayu</label>
         <input type="number" min={0} value={batangKayu} onChange={(e) => setBatangKayu(e.target.value)}
-          className="w-full max-w-xs rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+          className={`w-full max-w-xs ${fieldClass}`} />
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p className="text-sm text-bad">{error}</p>}
 
       <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={!canSubmit}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
-        >
+        <Button type="button" onClick={handleSubmit} disabled={!canSubmit}>
           {updatePacking.isPending ? 'Menyimpan…' : 'Simpan'}
-        </button>
+        </Button>
       </div>
     </div>
   )

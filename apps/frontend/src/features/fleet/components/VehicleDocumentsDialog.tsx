@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -11,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Banner } from '@/components/shared/banner'
 import {
   FleetMasterRow,
   FleetVehicle,
@@ -182,12 +182,7 @@ export function VehicleDocumentsDialog({
             )
           })}
 
-          {error && (
-            <p className="flex items-center gap-1 text-sm text-destructive">
-              <AlertCircle size={14} aria-hidden="true" />
-              {error}
-            </p>
-          )}
+          {error && <Banner tone="danger">{error}</Banner>}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>

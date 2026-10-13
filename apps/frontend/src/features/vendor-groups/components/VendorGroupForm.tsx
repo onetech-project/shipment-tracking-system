@@ -1,10 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { FormField } from '@/components/shared/form-field'
+import { Banner } from '@/components/shared/banner'
 import { AvailableVendor, VendorGroup, VendorGroupPayload } from '../types'
 import { VendorPicker } from './VendorPicker'
 
@@ -57,12 +57,7 @@ export function VendorGroupForm({ initial, vendors, onSubmit, onCancel }: Vendor
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {error && (
-        <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-          <AlertCircle size={14} />
-          {error}
-        </div>
-      )}
+      {error && <Banner tone="danger">{error}</Banner>}
       <FormField label="Name" htmlFor="vg-name" required>
         <Input id="vg-name" value={name} onChange={(e) => setName(e.target.value)} />
       </FormField>

@@ -29,14 +29,14 @@ export function SyncStatusBadge({ isConnected, lastSyncAt }: SyncStatusBadgeProp
   return (
     <div className="flex items-center gap-2 text-sm">
       <span
-        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 font-medium ${
+        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 font-semibold ${
           isConnected
-            ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
-            : 'bg-muted text-muted-foreground'
+            ? 'border-brand-line bg-brand-soft text-brand-ink'
+            : 'border-border bg-surface-2 text-muted-foreground'
         }`}
       >
         <span
-          className={`h-1.5 w-1.5 rounded-full ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}
+          className={`h-1.5 w-1.5 rounded-full ${isConnected ? 'bg-brand-2 motion-safe:animate-pulse-soft' : 'bg-faint'}`}
         />
         {isConnected ? 'Live' : 'Offline'}
       </span>

@@ -220,10 +220,10 @@ describe('AnalyticsSummary — hardening', () => {
         scopeLabel="All routes"
       />,
     )
-    expect(card('revenue').querySelectorAll('p')[2].className).toContain('text-emerald-600')
-    expect(card('margin').querySelectorAll('p')[2].className).toContain('text-emerald-600')
-    expect(card('cost').querySelectorAll('p')[2].className).toContain('text-red-600')
-    expect(card('cost').querySelectorAll('p')[2].className).not.toContain('text-emerald-600')
+    expect(card('revenue').querySelectorAll('p')[2].className).toContain('text-good')
+    expect(card('margin').querySelectorAll('p')[2].className).toContain('text-good')
+    expect(card('cost').querySelectorAll('p')[2].className).toContain('text-bad-strong')
+    expect(card('cost').querySelectorAll('p')[2].className).not.toContain('text-good')
   })
 
   it('withholds only the deltas that are null, keeping the others', () => {

@@ -1,6 +1,10 @@
 'use client'
 
+import { BarChart3 } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { Card, CardHead, CardContent } from '@/components/ui/card'
+import { EmptyState } from '@/components/shared/empty-state'
+import { CHART_STATUS } from '@/lib/chart-colors'
 import { BarhalChartByDateItem } from '../types'
 
 interface BarhalWeightChartProps {
@@ -28,28 +32,26 @@ function CustomTooltip({ active, payload }: { active?: boolean; payload?: Toolti
 
 export function BarhalWeightChart({ data }: BarhalWeightChartProps) {
   if (data.length === 0) {
-    return (
-      <div className="rounded-lg border bg-card p-6 text-center">
-        <p className="text-sm text-muted-foreground">No data for this range.</p>
-      </div>
-    )
+    return <EmptyState title="No data for this range." />
   }
 
   return (
-    <div className="rounded-lg border bg-card p-4">
-      <p className="mb-4 text-sm font-medium">Weight Before / After / ChWt per Tanggal</p>
-      <ResponsiveContainer width="100%" height={320}>
-        <BarChart data={data} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-          <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-          <YAxis tick={{ fontSize: 11 }} width={60} />
-          <Tooltip content={<CustomTooltip />} />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
-          <Bar dataKey="weightBefore" name="Weight Before" fill="#60A5FA" radius={[4, 4, 0, 0]} />
-          <Bar dataKey="weightAfter" name="Weight After" fill="#22C55E" radius={[4, 4, 0, 0]} />
-          <Bar dataKey="chwt" name="ChWt" fill="#F59E0B" radius={[4, 4, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
+    <Card>
+      <CardHead icon={BarChart3} tone="info" title="Weight Before / After / ChWt per Tanggal" />
+      <CardContent className="pt-4">
+        <ResponsiveContainer width="100%" height={320}>
+          <BarChart data={data} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke={CHART_STATUS.grid} />
+            <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+            <YAxis tick={{ fontSize: 11 }} width={60} />
+            <Tooltip content={<CustomTooltip />} cursor={{ fill: '#e2ebe2', fillOpacity: 0.5 }} />
+            <Legend wrapperStyle={{ fontSize: 12 }} />
+            <Bar dataKey="weightBefore" name="Weight Before" fill={CHART_STATUS.info} radius={[4, 4, 0, 0]} />
+            <Bar dataKey="weightAfter" name="Weight After" fill={CHART_STATUS.good} radius={[4, 4, 0, 0]} />
+            <Bar dataKey="chwt" name="ChWt" fill={CHART_STATUS.warn} radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
   )
 }

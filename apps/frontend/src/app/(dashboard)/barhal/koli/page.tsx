@@ -2,8 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Plus } from 'lucide-react'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
+import { PageHeader } from '@/components/shared/page-header'
+import { StagingBadge } from '@/components/shared/header-badges'
+import { isStaging } from '@/lib/env'
+import { Button } from '@/components/ui/button'
 import { useBarhalList, useBarhalStations } from '@/features/barhal/hooks/useBarhal'
 import { BarhalListTable } from '@/features/barhal/components/BarhalListTable'
 import { BarhalFilters } from '@/features/barhal/components/BarhalFilters'
@@ -46,21 +51,17 @@ function BarhalKoliPageContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Barhal</h1>
-          <p className="text-sm text-muted-foreground">
-            Pencatatan dan pemantauan TO yang telah di packing kayu
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => openWizardFor(undefined)}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90"
-        >
-          Tambah Koli
-        </button>
-      </div>
+      <PageHeader
+        title="Barhal"
+        subtitle="Pencatatan dan pemantauan TO yang telah di packing kayu"
+        badge={isStaging() ? <StagingBadge /> : undefined}
+        action={
+          <Button type="button" onClick={() => openWizardFor(undefined)}>
+            <Plus size={14} />
+            Tambah Koli
+          </Button>
+        }
+      />
 
       <BarhalTabNav active="koli" />
 
@@ -85,24 +86,33 @@ function BarhalKoliPageContent() {
       />
 
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 text-sm">
-          <button
-            disabled={page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            className="rounded-md border border-border px-3 py-1 disabled:opacity-40"
-          >
-            Prev
-          </button>
-          <span className="text-muted-foreground">
-            Page {page} of {totalPages}
+        <div className="flex items-center justify-between gap-2 text-[11.5px] text-muted-foreground">
+          <span>
+            Menampilkan {data?.data.length ?? 0} dari {total} koli
           </span>
-          <button
-            disabled={page >= totalPages}
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            className="rounded-md border border-border px-3 py-1 disabled:opacity-40"
-          >
-            Next
-          </button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              ← Prev
+            </Button>
+            <span className="tabular">
+              Page {page} of {totalPages}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Next →
+            </Button>
+          </div>
         </div>
       )}
 

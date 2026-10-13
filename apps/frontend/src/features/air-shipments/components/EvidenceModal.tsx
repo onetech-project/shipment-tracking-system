@@ -9,6 +9,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import Spinner from '@/components/ui/spinner'
+import { Button } from '@/components/ui/button'
 
 export interface EvidenceModalProps {
   open: boolean
@@ -69,7 +70,7 @@ export function EvidenceModal({
 
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
-            <label htmlFor="evidence-link" className="text-sm font-medium text-foreground">
+            <label htmlFor="evidence-link" className="text-[10.5px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
               Evidence link{' '}
               <span className="text-destructive" aria-hidden="true">
                 *
@@ -85,7 +86,7 @@ export function EvidenceModal({
               }}
               disabled={loading}
               placeholder="https://… link to the evidence letter"
-              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+              className="w-full rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-50"
             />
             <p className="text-xs text-muted-foreground">
               The evidence letter is stored outside the system — paste a link to it. Saving removes
@@ -95,20 +96,10 @@ export function EvidenceModal({
         </div>
 
         <DialogFooter className="flex gap-1">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={loading}
-            className="rounded-lg border border-border px-4 py-2 text-sm text-foreground transition hover:bg-muted disabled:opacity-50"
-          >
+          <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
             Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirm}
-            disabled={isConfirmDisabled}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:opacity-50 flex items-center gap-2"
-          >
+          </Button>
+          <Button type="button" onClick={handleConfirm} disabled={isConfirmDisabled}>
             {loading ? (
               <>
                 <Spinner size="h-4 w-4" ariaLabel="Saving" />
@@ -117,7 +108,7 @@ export function EvidenceModal({
             ) : (
               'Save Evidence'
             )}
-          </button>
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

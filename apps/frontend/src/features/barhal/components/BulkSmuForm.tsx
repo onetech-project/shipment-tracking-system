@@ -1,6 +1,10 @@
 'use client'
 
 import { ReactNode, useState } from 'react'
+import { ClipboardEdit } from 'lucide-react'
+import { Card, CardHead, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { fieldClass } from '@/components/ui/input'
 import { useBulkUpdateSmu } from '../hooks/useBarhal'
 import { BarhalStations } from '../types'
 
@@ -9,8 +13,7 @@ interface BulkSmuFormProps {
   onApplied: () => void
 }
 
-const inputClass =
-  'rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring'
+const inputClass = fieldClass
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -52,58 +55,57 @@ export function BulkSmuForm({ stations, onApplied }: BulkSmuFormProps) {
   }
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
-      <p className="mb-3 text-sm font-medium">Input Bulk SMU</p>
-      <p className="mb-3 text-xs text-muted-foreground">
-        Date + Destinasi menentukan Koli mana yang menerima data ini. Kolom kosong tidak akan menimpa data yang sudah ada.
-      </p>
-      <div className="grid grid-cols-4 gap-3">
-        <Field label="Date">
-          <input type="date" value={koliDate} onChange={(e) => setKoliDate(e.target.value)} className={inputClass} />
-        </Field>
-        <Field label="Origin">
-          <select value={origin} onChange={(e) => setOrigin(e.target.value)} className={inputClass}>
-            <option value="">Origin</option>
-            {stations.origins.map((o) => (
-              <option key={o} value={o}>{o}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Destination">
-          <select value={dest} onChange={(e) => setDest(e.target.value)} className={inputClass}>
-            <option value="">Destination</option>
-            {stations.dests.map((d) => (
-              <option key={d} value={d}>{d}</option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Airlines">
-          <input placeholder="Airlines" value={airlines} onChange={(e) => setAirlines(e.target.value)} className={inputClass} />
-        </Field>
-        <Field label="Flight No">
-          <input placeholder="Flight No" value={flightNo} onChange={(e) => setFlightNo(e.target.value)} className={inputClass} />
-        </Field>
-        <Field label="STD">
-          <input type="datetime-local" value={std} onChange={(e) => setStd(e.target.value)} className={inputClass} />
-        </Field>
-        <Field label="STA">
-          <input type="datetime-local" value={sta} onChange={(e) => setSta(e.target.value)} className={inputClass} />
-        </Field>
-        <Field label="No. SMU">
-          <input placeholder="No. SMU" value={smuNumber} onChange={(e) => setSmuNumber(e.target.value)} className={inputClass} />
-        </Field>
-      </div>
-      <div className="mt-3 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={handleApply}
-          disabled={!canSubmit}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
-        >
-          {bulkUpdateSmu.isPending ? 'Menerapkan…' : 'Terapkan'}
-        </button>
-        {result && <p className="text-sm text-muted-foreground">{result}</p>}
-      </div>
-    </div>
+    <Card>
+      <CardHead
+        icon={ClipboardEdit}
+        tone="info"
+        title="Input Bulk SMU"
+        subtitle="Date + Destinasi menentukan Koli mana yang menerima data ini. Kolom kosong tidak akan menimpa data yang sudah ada."
+      />
+      <CardContent className="pt-4">
+        <div className="grid grid-cols-4 gap-3">
+          <Field label="Date">
+            <input type="date" value={koliDate} onChange={(e) => setKoliDate(e.target.value)} className={inputClass} />
+          </Field>
+          <Field label="Origin">
+            <select value={origin} onChange={(e) => setOrigin(e.target.value)} className={inputClass}>
+              <option value="">Origin</option>
+              {stations.origins.map((o) => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Destination">
+            <select value={dest} onChange={(e) => setDest(e.target.value)} className={inputClass}>
+              <option value="">Destination</option>
+              {stations.dests.map((d) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Airlines">
+            <input placeholder="Airlines" value={airlines} onChange={(e) => setAirlines(e.target.value)} className={inputClass} />
+          </Field>
+          <Field label="Flight No">
+            <input placeholder="Flight No" value={flightNo} onChange={(e) => setFlightNo(e.target.value)} className={inputClass} />
+          </Field>
+          <Field label="STD">
+            <input type="datetime-local" value={std} onChange={(e) => setStd(e.target.value)} className={inputClass} />
+          </Field>
+          <Field label="STA">
+            <input type="datetime-local" value={sta} onChange={(e) => setSta(e.target.value)} className={inputClass} />
+          </Field>
+          <Field label="No. SMU">
+            <input placeholder="No. SMU" value={smuNumber} onChange={(e) => setSmuNumber(e.target.value)} className={inputClass} />
+          </Field>
+        </div>
+        <div className="mt-3 flex items-center gap-3">
+          <Button type="button" onClick={handleApply} disabled={!canSubmit}>
+            {bulkUpdateSmu.isPending ? 'Menerapkan…' : 'Terapkan'}
+          </Button>
+          {result && <p className="text-sm text-muted-foreground">{result}</p>}
+        </div>
+      </CardContent>
+    </Card>
   )
 }

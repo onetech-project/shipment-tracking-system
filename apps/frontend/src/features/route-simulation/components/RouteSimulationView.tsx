@@ -2,6 +2,9 @@
 
 import React, { useEffect, useReducer, useState } from 'react'
 import { cn } from '@/lib/utils'
+import { PageHeader } from '@/components/shared/page-header'
+import { StagingBadge } from '@/components/shared/header-badges'
+import { isStaging } from '@/lib/env'
 import { SimulationSource } from '../types'
 import { initReducer, simReducer } from '../state/reducer'
 import { periodShort } from '../engine'
@@ -63,32 +66,39 @@ export function RouteSimulationView({ source }: { source: SimulationSource }) {
   const props = { source, sim, dispatch }
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Simulasi Rekomendasi Rute</h1>
-          <p className="text-sm text-muted-foreground">Distribusi modal vendor ke rute dan airlines, dihitung per hari.</p>
-        </div>
-        <p className="text-right text-xs text-muted-foreground">
-          Histori {periodShort(sim.histStart)} s.d. {periodShort(sim.histEnd)}
-          <br />Simulasi mulai {periodShort(sim.simStart)}, horizon {sim.horizonPeriods} periode
-        </p>
-      </div>
+      <PageHeader
+        title="Simulasi Rekomendasi Rute"
+        subtitle="Distribusi modal vendor ke rute dan airlines, dihitung per hari."
+        badge={isStaging() ? <StagingBadge /> : undefined}
+        action={
+          <p className="text-right text-xs font-medium text-muted-foreground">
+            Histori {periodShort(sim.histStart)} s.d. {periodShort(sim.histEnd)}
+            <br />Simulasi mulai {periodShort(sim.simStart)}, horizon {sim.horizonPeriods} periode
+          </p>
+        }
+      />
       <ScenarioBar state={state} dispatch={dispatch} onFlash={show} />
-      <nav aria-label="Tab simulasi" className="sticky top-0 z-20 flex gap-1 overflow-x-auto border-b bg-background">
-        {TAB_IDS.map((id) => (
-          <button
-            key={id}
-            type="button"
-            aria-current={tab === id ? 'page' : undefined}
-            onClick={() => { setTab(id); window.scrollTo(0, 0) }}
-            className={cn(
-              'whitespace-nowrap border-b-2 px-3 py-3 text-sm font-medium',
-              tab === id ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {TAB_LABELS[id]}
-          </button>
-        ))}
+      {/* Kept as plain buttons (not ModeTabs): the spec drives this nav by button role + aria-current,
+          styled here to match ModeTabs' own look (see components/ui/segmented.tsx). A 9-column grid
+          rather than an overflow-x-auto row: at 1440px a nowrap row clips the 9th tab off-screen, so
+          every tab instead shares an equal column and its label wraps to two lines when it needs to. */}
+      <nav aria-label="Tab simulasi" className="sticky top-0 z-20 bg-background py-2">
+        <div className="grid grid-cols-9 gap-0.5 rounded-md bg-surface-2 p-1">
+          {TAB_IDS.map((id) => (
+            <button
+              key={id}
+              type="button"
+              aria-current={tab === id ? 'page' : undefined}
+              onClick={() => { setTab(id); window.scrollTo(0, 0) }}
+              className={cn(
+                'whitespace-normal rounded-[7px] px-1.5 py-[7px] text-center text-[11px] leading-[1.25] font-medium motion-safe:transition-all',
+                tab === id ? 'bg-card font-semibold text-foreground shadow-soft-sm' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {TAB_LABELS[id]}
+            </button>
+          ))}
+        </div>
       </nav>
       <section className="space-y-4">
         {tab === 'setup' && <SetupTab {...props} />}

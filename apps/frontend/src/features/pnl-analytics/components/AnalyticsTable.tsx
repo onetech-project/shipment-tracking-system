@@ -35,12 +35,12 @@ export function AnalyticsTable<T>({
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b text-xs uppercase tracking-wide text-muted-foreground">
+          <tr className="border-b bg-table-head">
             {columns.map((c) => (
               <th
                 key={c.key}
                 scope="col"
-                className={`py-2 font-medium ${c.align === 'right' ? 'text-right' : 'text-left'}`}
+                className={`px-2 py-2 text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground ${c.align === 'right' ? 'text-right' : 'text-left'}`}
               >
                 {c.header}
               </th>
@@ -52,10 +52,10 @@ export function AnalyticsTable<T>({
             <tr
               key={rowKey(row, i)}
               data-testid={rowTestId?.(row, i)}
-              className={`border-b last:border-0 ${rowClassName?.(row) ?? ''}`}
+              className={`border-b last:border-0 hover:bg-row-hover ${rowClassName?.(row) ?? ''}`}
             >
               {columns.map((c) => (
-                <td key={c.key} className={`py-1.5 ${c.align === 'right' ? 'text-right tabular-nums' : ''}`}>
+                <td key={c.key} className={`px-2 py-1.5 text-xs ${c.align === 'right' ? 'text-right tabular-nums' : ''}`}>
                   {c.cell(row, i)}
                 </td>
               ))}

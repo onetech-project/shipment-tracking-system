@@ -1,10 +1,13 @@
 'use client'
 
 import React, { useMemo, useState } from 'react'
+import { GitCompare } from 'lucide-react'
+import { Card, CardContent, CardHead } from '@/components/ui/card'
+import { FilterBar } from '@/components/shared/filter-bar'
 import { compareRoutes, defaultScope, groupNames, resolveScope, routeLabel } from '../../engine'
 import { Scope } from '../../types'
 import { fmtIdr, fmtNum } from '../../utils/format'
-import { EspTag, Hint, RouteChip, ScopePicker, Signed, Tag, TabProps, TD, TDN, TH, THN, ROW_BAND, ROW_GROUP } from '../ui'
+import { EspTag, FIELD, Hint, RouteChip, ScopePicker, Signed, Tag, TabProps, TD, TDN, TH, THN, ROW, ROW_BAND, ROW_GROUP } from '../ui'
 
 export function CompareTab({ source, sim }: TabProps) {
   const enabled = sim.accounts.filter((a) => a.enabled)
@@ -32,11 +35,11 @@ export function CompareTab({ source, sim }: TabProps) {
               <React.Fragment key={v.account.id}>
                 <tr className="font-semibold"><td colSpan={6} className={`${TD} pl-7`}>{v.account.name}<EspTag account={v.account} /> <span className="text-xs font-normal text-muted-foreground">{v.lanes.length} airlines · margin terbaik {fmtIdr(v.bestKg)}/kg</span></td></tr>
                 {v.lanes.map((l) => (
-                  <tr key={l.lane.id}>
+                  <tr key={l.lane.id} className={ROW}>
                     <td className={`${TD} pl-[46px]`}>{l.lane.airline}</td>
                     <td className={TDN}>{fmtIdr(l.costKg)}</td><td className={TDN}>{fmtIdr(l.costDay)}</td>
                     <td className={TDN}><Signed value={l.marginKg} /></td><td className={TDN}><Signed value={l.marginDay} /></td>
-                    <td className={TDN}>{l.isBest ? <Tag tone="best">Optimal</Tag> : <><span className="text-red-700 dark:text-red-400">{fmtIdr(l.deltaDay)}</span> <span className="text-xs text-muted-foreground">{fmtIdr(l.deltaKg)}/kg</span></>}</td>
+                    <td className={TDN}>{l.isBest ? <Tag tone="best">Optimal</Tag> : <><span className="text-bad">{fmtIdr(l.deltaDay)}</span> <span className="text-xs text-muted-foreground">{fmtIdr(l.deltaKg)}/kg</span></>}</td>
                   </tr>
                 ))}
               </React.Fragment>
@@ -48,17 +51,19 @@ export function CompareTab({ source, sim }: TabProps) {
   })
   return (
     <>
-      <div>
-        <h2 className="text-base font-semibold">Perbandingan per Rute</h2>
-        <Hint>Patokan rute. Di bawah tiap rute ada vendor, dan di bawah tiap vendor ada airlines yang bisa dipakainya, masing-masing dengan detailnya sendiri. Pilih per grup rute, per rute satu-satu, atau keduanya; rute yang ada di dua grup tampil di tiap grupnya.</Hint>
-        <Hint>Margin/kg = Rate SPX - cost maskapai, ditambah cashback 2% untuk akun ESP. Cost dan margin per hari = nilai per kg × rata-rata tonase rute per hari. Selisih dari optimal = selisih margin/kg × rata-rata tonase rute per hari.</Hint>
-      </div>
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-md border bg-card p-3 text-sm">
+      <Card>
+        <CardHead icon={GitCompare} title="Perbandingan per Rute" />
+        <CardContent className="space-y-1.5 pt-4">
+          <Hint>Patokan rute. Di bawah tiap rute ada vendor, dan di bawah tiap vendor ada airlines yang bisa dipakainya, masing-masing dengan detailnya sendiri. Pilih per grup rute, per rute satu-satu, atau keduanya; rute yang ada di dua grup tampil di tiap grupnya.</Hint>
+          <Hint>Margin/kg = Rate SPX - cost maskapai, ditambah cashback 2% untuk akun ESP. Cost dan margin per hari = nilai per kg × rata-rata tonase rute per hari. Selisih dari optimal = selisih margin/kg × rata-rata tonase rute per hari.</Hint>
+        </CardContent>
+      </Card>
+      <FilterBar className="text-sm">
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Vendor</span>
+          <span className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-muted-foreground">Vendor</span>
           {enabled.length ? enabled.map((a) => (
-            <label key={a.id} className="inline-flex items-center gap-1">
-              <input type="checkbox" aria-label={a.name} checked={vendors.has(a.id)} onChange={(e) => {
+            <label key={a.id} className="inline-flex items-center gap-1.5 font-medium">
+              <input type="checkbox" className="accent-brand-2" aria-label={a.name} checked={vendors.has(a.id)} onChange={(e) => {
                 const next = new Set(vendors)
                 if (e.target.checked) next.add(a.id)
                 else next.delete(a.id)
@@ -67,9 +72,9 @@ export function CompareTab({ source, sim }: TabProps) {
             </label>
           )) : <Hint>Tidak ada akun aktif</Hint>}
         </div>
-        <input type="search" aria-label="Cari rute" placeholder="Cari rute" className="h-8 rounded border border-input bg-background px-2" value={q} onChange={(e) => setQ(e.target.value)} />
+        <input type="search" aria-label="Cari rute" placeholder="Cari rute" className={FIELD} value={q} onChange={(e) => setQ(e.target.value)} />
         <ScopePicker source={source} sim={sim} scope={scope} onChange={setScope} />
-      </div>
+      </FilterBar>
       <div className="overflow-x-auto rounded-md border bg-card">
         <table className="w-full border-collapse text-[13px]">
           <thead><tr><th className={TH}>Vendor / Airlines</th><th className={THN}>Cost / kg</th><th className={THN}>Cost / hari</th><th className={THN}>Margin / kg</th><th className={THN}>Margin / hari</th><th className={THN}>Selisih dari optimal / hari</th></tr></thead>

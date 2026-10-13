@@ -2,8 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { ListChecks } from 'lucide-react'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
+import { PageHeader } from '@/components/shared/page-header'
+import { StagingBadge } from '@/components/shared/header-badges'
+import { isStaging } from '@/lib/env'
+import { Card, CardHead, CardContent } from '@/components/ui/card'
+import { FilterBar } from '@/components/shared/filter-bar'
 import { useBarhalList, useBarhalStations, useSmuList } from '@/features/barhal/hooks/useBarhal'
 import { BarhalTabNav } from '@/features/barhal/components/BarhalTabNav'
 import { BarhalSmuInlineTable } from '@/features/barhal/components/BarhalSmuInlineTable'
@@ -33,40 +39,43 @@ function BarhalSmuPageContent() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Barhal</h1>
-        <p className="text-sm text-muted-foreground">Input dan pemantauan data SMU</p>
-      </div>
+      <PageHeader
+        title="Barhal"
+        subtitle="Input dan pemantauan data SMU"
+        badge={isStaging() ? <StagingBadge /> : undefined}
+      />
 
       <BarhalTabNav active="smu" />
 
-      <div className="flex flex-wrap items-center gap-2">
+      <FilterBar>
         <input
           type="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
-          className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+          className="rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium text-foreground outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40"
         />
         <select
           value={dest}
           onChange={(e) => setDest(e.target.value)}
-          className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+          className="rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium text-foreground outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40"
         >
           <option value="">Semua Destinasi</option>
           {(stations?.dests ?? []).map((d) => (
             <option key={d} value={d}>{d}</option>
           ))}
         </select>
-      </div>
+      </FilterBar>
 
       <BarhalSmuInlineTable data={koliData?.data ?? []} isLoading={koliLoading} onSaved={handleSaved} />
 
       <BulkSmuForm stations={stations ?? { origins: [], dests: [] }} onApplied={handleSaved} />
 
-      <div>
-        <p className="mb-2 text-sm font-medium">List SMU</p>
-        <BarhalSmuListTable data={smuList ?? []} isLoading={smuLoading} onUnassigned={handleSaved} />
-      </div>
+      <Card>
+        <CardHead icon={ListChecks} tone="info" title="List SMU" />
+        <CardContent className="pt-4">
+          <BarhalSmuListTable data={smuList ?? []} isLoading={smuLoading} onUnassigned={handleSaved} />
+        </CardContent>
+      </Card>
     </div>
   )
 }

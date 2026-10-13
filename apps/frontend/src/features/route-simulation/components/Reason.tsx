@@ -24,7 +24,7 @@ export function ReasonTag({ pr }: { pr: RouteResult }) {
 
 export function TotalsBar({ totals: t, days, label }: { totals: Evaluation['totals']; days: number; label: string }) {
   return (
-    <div className="grid gap-4 rounded-md border bg-card p-4" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))' }}>
+    <div className="grid gap-4 rounded-lg border bg-card p-4" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))' }}>
       <Kpi label={`Revenue / ${label}`} value={fmtIdr(t.revenue * days)} />
       <Kpi label={`Cost / ${label}`} value={fmtIdr(t.cost * days)} />
       <Kpi label={`Gross margin / ${label}`} value={fmtIdr(t.gross * days)} />

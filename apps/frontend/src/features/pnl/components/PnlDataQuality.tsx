@@ -26,23 +26,23 @@ export function PnlDataQuality() {
   const totalPages = Math.ceil(data.total / PAGE_SIZE)
 
   return (
-    <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30">
-      <div className="flex items-center gap-2 border-b border-amber-200 dark:border-amber-800 px-4 py-3">
-        <AlertTriangle size={16} className="text-amber-600" />
-        <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+    <div className="rounded-lg border border-warn/30 bg-warn-soft">
+      <div className="flex items-center gap-2 border-b border-warn/30 px-4 py-3">
+        <AlertTriangle size={16} className="text-warn-ink" />
+        <p className="text-sm font-medium text-warn-ink">
           Data Quality — {data.total} AWB/issue rows need source-sheet fixes
           <span className="ml-2 font-normal opacity-60">· All cycles · fix in source Google Sheets, then re-sync</span>
         </p>
       </div>
       {summary && summary.length > 0 && (
-        <div className="flex flex-wrap gap-2 border-b border-amber-200 px-4 py-3 dark:border-amber-800">
+        <div className="flex flex-wrap gap-2 border-b border-warn/30 px-4 py-3">
           {summary.map((s) => (
             <div
               key={s.issue}
-              className="rounded-md border border-amber-200 bg-white/60 px-3 py-1.5 text-xs dark:border-amber-800 dark:bg-amber-950/40"
+              className="rounded-md border border-warn/30 bg-card/60 px-3 py-1.5 text-xs"
             >
-              <span className="font-medium text-amber-800 dark:text-amber-200">{issueLabel(s.issue)}</span>
-              <span className="ml-2 text-amber-700 dark:text-amber-300">
+              <span className="font-medium text-warn-ink">{issueLabel(s.issue)}</span>
+              <span className="ml-2 text-warn-ink">
                 {s.awbs} AWB · {s.rows} TO
               </span>
             </div>
@@ -52,7 +52,7 @@ export function PnlDataQuality() {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-amber-200 dark:border-amber-800 text-xs text-amber-700 dark:text-amber-300">
+            <tr className="border-b border-warn/30 text-xs text-warn-ink">
               <th className="px-3 py-2 text-left">TO Number</th>
               <th className="px-3 py-2 text-left">AWB</th>
               <th className="px-3 py-2 text-left">Issue</th>
@@ -60,10 +60,10 @@ export function PnlDataQuality() {
           </thead>
           <tbody>
             {data.data.map((row, i) => (
-              <tr key={i} className="border-b border-amber-100 dark:border-amber-900">
+              <tr key={i} className="border-b border-warn/20">
                 <td className="px-3 py-1.5 font-mono text-xs">{row.toNumber ?? '—'}</td>
                 <td className="px-3 py-1.5 font-mono text-xs">{row.awb}</td>
-                <td className="px-3 py-1.5 text-amber-700 dark:text-amber-300">
+                <td className="px-3 py-1.5 text-warn-ink">
                   {issueLabel(row.issue)}
                 </td>
               </tr>
@@ -72,17 +72,17 @@ export function PnlDataQuality() {
         </table>
       </div>
       {totalPages > 1 && (
-        <div className="flex items-center justify-between border-t border-amber-200 px-4 py-3 dark:border-amber-800">
+        <div className="flex items-center justify-between border-t border-warn/30 px-4 py-3">
           <button
-            className="text-xs text-amber-700 disabled:opacity-40 hover:text-amber-900 dark:text-amber-300"
+            className="text-xs text-warn-ink disabled:opacity-40 hover:opacity-80"
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page === 1}
           >
             ← Previous
           </button>
-          <span className="text-xs text-amber-700 dark:text-amber-300">Page {page} / {totalPages}</span>
+          <span className="text-xs text-warn-ink">Page {page} / {totalPages}</span>
           <button
-            className="text-xs text-amber-700 disabled:opacity-40 hover:text-amber-900 dark:text-amber-300"
+            className="text-xs text-warn-ink disabled:opacity-40 hover:opacity-80"
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page === totalPages}
           >

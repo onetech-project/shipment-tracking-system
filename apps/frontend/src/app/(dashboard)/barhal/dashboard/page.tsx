@@ -2,8 +2,15 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Download, TreePine, CalendarDays, Route as RouteIcon, FileText } from 'lucide-react'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
+import { PageHeader } from '@/components/shared/page-header'
+import { StagingBadge } from '@/components/shared/header-badges'
+import { isStaging } from '@/lib/env'
+import { Button } from '@/components/ui/button'
+import { Card, CardHead, CardContent } from '@/components/ui/card'
+import { FilterBar } from '@/components/shared/filter-bar'
 import { useBarhalDashboardStats, exportBarhalCsv } from '@/features/barhal/hooks/useBarhalDashboard'
 import { useBarhalStations } from '@/features/barhal/hooks/useBarhal'
 import { BarhalTabNav } from '@/features/barhal/components/BarhalTabNav'
@@ -68,24 +75,21 @@ function BarhalDashboardContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Barhal Dashboard</h1>
-          <p className="text-sm text-muted-foreground">Statistik packing kayu &amp; Koli</p>
-        </div>
-        <button
-          type="button"
-          onClick={handleExport}
-          disabled={isExporting}
-          className="rounded-lg border border-border px-4 py-2 text-sm font-medium transition hover:bg-muted disabled:opacity-50"
-        >
-          {isExporting ? 'Exporting…' : 'Export CSV'}
-        </button>
-      </div>
+      <PageHeader
+        title="Barhal Dashboard"
+        subtitle="Statistik packing kayu & Koli"
+        badge={isStaging() ? <StagingBadge /> : undefined}
+        action={
+          <Button type="button" variant="outline" onClick={handleExport} disabled={isExporting}>
+            <Download size={14} />
+            {isExporting ? 'Exporting…' : 'Export CSV'}
+          </Button>
+        }
+      />
 
       <BarhalTabNav active="dashboard" />
 
-      <div className="flex flex-wrap items-center gap-2">
+      <FilterBar>
         {/*
           Deliberately no min/max on either input: bounding one side would stop the operator from
           moving it at all, when what they mean by picking a far-away date is that the *other* side
@@ -95,20 +99,20 @@ function BarhalDashboardContent() {
           type="date"
           value={startDate}
           onChange={(e) => handleStartChange(e.target.value)}
-          className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+          className="rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium text-foreground outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40"
         />
-        <span className="text-xs text-muted-foreground">to</span>
+        <span className="pb-1.5 text-xs text-muted-foreground">to</span>
         <input
           type="date"
           value={endDate}
           onChange={(e) => handleEndChange(e.target.value)}
-          className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+          className="rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium text-foreground outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40"
         />
-        <span className="text-xs text-muted-foreground">maks. {MAX_RANGE_DAYS} hari</span>
+        <span className="pb-1.5 text-xs text-muted-foreground">maks. {MAX_RANGE_DAYS} hari</span>
         <select
           value={origin}
           onChange={(e) => setOrigin(e.target.value)}
-          className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+          className="rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium text-foreground outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40"
         >
           <option value="">Semua Origin</option>
           {(stations?.origins ?? []).map((o) => (
@@ -118,14 +122,14 @@ function BarhalDashboardContent() {
         <select
           value={dest}
           onChange={(e) => setDest(e.target.value)}
-          className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+          className="rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium text-foreground outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40"
         >
           <option value="">Semua Destinasi</option>
           {(stations?.dests ?? []).map((d) => (
             <option key={d} value={d}>{d}</option>
           ))}
         </select>
-      </div>
+      </FilterBar>
 
       {isError ? (
         <div className="rounded-lg border bg-card p-8 text-center">
@@ -141,37 +145,45 @@ function BarhalDashboardContent() {
           <BarhalStatCards kpi={data.kpi} />
           <BarhalWeightChart data={data.chartByDate} />
 
-          <div>
-            <p className="mb-2 text-sm font-medium">Rekap Batang Kayu</p>
-            <BarhalRecapBatangKayuTable data={data.recapBatangKayu} />
-          </div>
+          <Card>
+            <CardHead icon={TreePine} tone="dark" title="Rekap Batang Kayu" />
+            <CardContent className="pt-4">
+              <BarhalRecapBatangKayuTable data={data.recapBatangKayu} />
+            </CardContent>
+          </Card>
 
-          <div>
-            <p className="mb-2 text-sm font-medium">Rekap Per Tanggal</p>
-            <BarhalRecapToTable
-              rows={data.recapPerTanggal}
-              groupColumnLabel="Date"
-              groupBy="date"
-              filters={filters}
-            />
-          </div>
+          <Card>
+            <CardHead icon={CalendarDays} tone="info" title="Rekap Per Tanggal" />
+            <CardContent className="pt-4">
+              <BarhalRecapToTable
+                rows={data.recapPerTanggal}
+                groupColumnLabel="Date"
+                groupBy="date"
+                filters={filters}
+              />
+            </CardContent>
+          </Card>
 
-          <div>
-            <p className="mb-2 text-sm font-medium">Rekap Per Rute</p>
-            <BarhalRecapToTable
-              rows={data.recapPerRute}
-              groupColumnLabel="Rute"
-              groupBy="route"
-              filters={filters}
-            />
-          </div>
+          <Card>
+            <CardHead icon={RouteIcon} tone="info" title="Rekap Per Rute" />
+            <CardContent className="pt-4">
+              <BarhalRecapToTable
+                rows={data.recapPerRute}
+                groupColumnLabel="Rute"
+                groupBy="route"
+                filters={filters}
+              />
+            </CardContent>
+          </Card>
         </>
       )}
 
-      <div>
-        <p className="mb-2 text-sm font-medium">Detail TO</p>
-        <BarhalToDetailTable startDate={startDate} endDate={endDate} origin={origin} dest={dest} />
-      </div>
+      <Card>
+        <CardHead icon={FileText} tone="brand" title="Detail TO" />
+        <CardContent className="pt-4">
+          <BarhalToDetailTable startDate={startDate} endDate={endDate} origin={origin} dest={dest} />
+        </CardContent>
+      </Card>
     </div>
   )
 }

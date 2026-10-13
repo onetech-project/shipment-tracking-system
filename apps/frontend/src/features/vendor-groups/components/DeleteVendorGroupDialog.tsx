@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Banner } from '@/components/shared/banner'
 import { VendorGroup } from '../types'
 
 interface DeleteVendorGroupDialogProps {
@@ -49,12 +49,7 @@ export function DeleteVendorGroupDialog({
           pengelompokannya. Perbandingan PnL yang sedang menampilkan group ini akan kehilangan
           kolomnya.
         </p>
-        {error && (
-          <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-            <AlertCircle size={14} />
-            {error}
-          </div>
-        )}
+        {error && <Banner tone="danger">{error}</Banner>}
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel

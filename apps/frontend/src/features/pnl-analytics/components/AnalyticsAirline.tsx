@@ -1,6 +1,7 @@
 'use client'
 
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
+import { Plane } from 'lucide-react'
 import { fmt } from '@/features/pnl/utils/format'
 import { PnlVendorCostItem } from '@/features/pnl/hooks/usePnl'
 import { airlineShare, vendorExecution } from '../utils/share'
@@ -27,6 +28,8 @@ export function AnalyticsAirline({ data, isLoading, isError, scoped, ranged }: A
       id="airline"
       title="SMU & Airline"
       subtitle="Where the main-leg tonnage flies and what it costs"
+      icon={Plane}
+      tone="dark"
     >
       {scoped && <ScopeFallbackNote />}
       {ranged && <RangeFallbackNote />}

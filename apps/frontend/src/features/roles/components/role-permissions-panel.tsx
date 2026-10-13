@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { apiClient } from '@/shared/api/client';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Banner } from '@/components/shared/banner';
 import { cn } from '@/lib/utils';
 
 interface Permission {
@@ -68,7 +69,7 @@ export default function RolePermissionsPanel({ roleId, currentPermissionIds, onS
           <DialogTitle>Edit Role Permissions</DialogTitle>
         </DialogHeader>
 
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {error && <Banner tone="danger">{error}</Banner>}
 
         <div className="flex-1 overflow-y-auto border-t pt-4 space-y-4">
           {loading ? (

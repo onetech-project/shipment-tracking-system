@@ -2,7 +2,12 @@
 import { useEffect, useState } from 'react';
 import { apiClient } from '@/shared/api/client';
 import { PageHeader } from '@/components/shared/page-header';
+import { StagingBadge } from '@/components/shared/header-badges';
+import { isStaging } from '@/lib/env';
+import { Banner } from '@/components/shared/banner';
+import { EmptyState } from '@/components/shared/empty-state';
 import { Button } from '@/components/ui/button';
+import { TableWrap, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 
 interface AuditLog {
   id: string;
@@ -46,46 +51,52 @@ export default function AuditPage() {
       <PageHeader
         title="Audit Logs"
         subtitle={`${total} total events`}
+        badge={isStaging() ? <StagingBadge /> : undefined}
       />
-      {error && <p className="mb-4 text-sm text-destructive">Error: {error}</p>}
+      {error && <Banner tone="danger">Error: {error}</Banner>}
 
       {loading ? (
         <p className="text-muted-foreground">Loading...</p>
       ) : (
         <>
-          <div className="overflow-x-auto rounded-md border">
-            <table className="w-full border-collapse text-sm min-w-[700px]">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Timestamp</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Action</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Resource</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">Actor ID</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground whitespace-nowrap">IP Address</th>
-                </tr>
-              </thead>
-              <tbody>
-                {logs.map((log, idx) => (
-                  <tr key={log.id} className={`border-t hover:bg-muted/30 motion-safe:transition-colors ${idx % 2 === 1 ? 'bg-muted/70' : ''}`}>
-                    <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{new Date(log.createdAt).toLocaleString()}</td>
-                    <td className="px-4 py-3">
-                      <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{log.action}</code>
-                    </td>
-                    <td className="px-4 py-3">
-                      {log.resourceType
-                        ? <span><strong>{log.resourceType}</strong>{log.resourceId ? ` · ${log.resourceId.slice(0, 8)}...` : ''}</span>
-                        : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground">{log.actorId ? log.actorId.slice(0, 8) + '...' : '—'}</td>
-                    <td className="px-4 py-3 text-xs">{log.ipAddress ?? '—'}</td>
-                  </tr>
-                ))}
-                {logs.length === 0 && (
-                  <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No audit logs found.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          {/* The header stays even when empty: e2e/audit asserts the Timestamp column on a fresh DB. */}
+          <TableWrap>
+              <Table className="min-w-[700px]">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Timestamp</TableHead>
+                    <TableHead>Action</TableHead>
+                    <TableHead>Resource</TableHead>
+                    <TableHead>Actor ID</TableHead>
+                    <TableHead>IP Address</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {logs.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="p-0">
+                        <EmptyState title="No audit logs found." className="rounded-none border-0" />
+                      </td>
+                    </tr>
+                  )}
+                  {logs.map((log) => (
+                    <TableRow key={log.id}>
+                      <TableCell className="tabular whitespace-nowrap text-xs text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</TableCell>
+                      <TableCell>
+                        <code className="rounded bg-surface-2 px-1.5 py-0.5 text-xs">{log.action}</code>
+                      </TableCell>
+                      <TableCell>
+                        {log.resourceType
+                          ? <span><strong>{log.resourceType}</strong>{log.resourceId ? ` · ${log.resourceId.slice(0, 8)}...` : ''}</span>
+                          : '—'}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{log.actorId ? log.actorId.slice(0, 8) + '...' : '—'}</TableCell>
+                      <TableCell className="text-xs">{log.ipAddress ?? '—'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableWrap>
 
           {totalPages > 1 && (
             <div className="mt-4 flex items-center gap-3">

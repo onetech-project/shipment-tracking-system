@@ -2,10 +2,13 @@
 import { useEffect, useState } from 'react';
 import { apiClient } from '@/shared/api/client';
 import { PageHeader } from '@/components/shared/page-header';
+import { Banner } from '@/components/shared/banner';
+import { EmptyState } from '@/components/shared/empty-state';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FormField } from '@/components/shared/form-field';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { TableWrap, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 
 interface Role { id: string; name: string; description: string; isSystem: boolean; createdAt: string; }
 
@@ -47,27 +50,31 @@ export default function RolesPage() {
   return (
     <div>
       <PageHeader title="Roles" action={<Button onClick={() => setShowModal(true)}>+ New Role</Button>} />
-      {error && <p className="mb-4 text-sm text-destructive">Error: {error}</p>}
-      <div className="overflow-x-auto rounded-md border">
-        <table className="w-full border-collapse text-sm">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Name</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Description</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">System</th>
-            </tr>
-          </thead>
-          <tbody>
-            {roles.map((r) => (
-              <tr key={r.id} className="border-t hover:bg-muted/30 motion-safe:transition-colors">
-                <td className="px-4 py-3">{r.name}</td>
-                <td className="px-4 py-3">{r.description ?? '—'}</td>
-                <td className="px-4 py-3">{r.isSystem ? 'Yes' : 'No'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {error && <Banner tone="danger">{error}</Banner>}
+      {roles.length === 0 ? (
+        <EmptyState title="No roles found." />
+      ) : (
+        <TableWrap>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>System</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {roles.map((r) => (
+                <TableRow key={r.id}>
+                  <TableCell>{r.name}</TableCell>
+                  <TableCell>{r.description ?? '—'}</TableCell>
+                  <TableCell>{r.isSystem ? 'Yes' : 'No'}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableWrap>
+      )}
 
       {showModal && (
         <Dialog open onOpenChange={(open) => { if (!open) setShowModal(false); }}>

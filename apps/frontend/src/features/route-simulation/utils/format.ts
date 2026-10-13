@@ -8,4 +8,4 @@ export function fmtShort(n: number): string {
   if (a >= 1e6) return (n / 1e6).toLocaleString('id-ID', { maximumFractionDigits: 1 }) + ' jt'
   return fmtNum(n)
 }
-export const toneClass = (n: number) => (n < 0 ? 'text-red-700 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400')
+export const toneClass = (n: number) => (n < 0 ? 'text-bad' : n > 0 ? 'text-good' : 'text-foreground')

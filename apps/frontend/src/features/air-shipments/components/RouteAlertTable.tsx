@@ -1,5 +1,10 @@
 'use client'
 
+import { MapPin } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { Card, CardHead, CardContent } from '@/components/ui/card'
+import { EmptyState } from '@/components/shared/empty-state'
+
 export interface RouteAlertRow {
   route: string
   totalTonnage: number
@@ -27,58 +32,56 @@ function fmt(n: number) {
   return n.toLocaleString('id-ID', { maximumFractionDigits: 2 })
 }
 
-function otpColor(pct: number) {
-  if (pct >= 80) return '#22C55E'
-  if (pct >= 50) return '#EAB308'
-  return '#EF4444'
+function otpClass(pct: number): string {
+  if (pct >= 80) return 'text-good'
+  if (pct >= 50) return 'text-warn'
+  return 'text-bad-strong'
 }
 
 export function RouteAlertTable({ data, isLoading, onAlertClick, cols }: RouteAlertTableProps) {
   return (
-    <div className="rounded-3xl border border-border bg-panel p-4 shadow-sm">
-      <h3 className="mb-3 text-base font-semibold text-foreground">Alerts by Route</h3>
+    <Card>
+      <CardHead icon={MapPin} tone="danger" title="Alerts by Route" />
+      <CardContent className="pt-4">
       {isLoading ? (
         <p className="py-4 text-center text-sm text-muted-foreground">Loading route data…</p>
       ) : data.length === 0 ? (
-        <p className="py-4 text-center text-sm text-muted-foreground">No route data for this period.</p>
+        <EmptyState title="No route data for this period." />
       ) : (
-        <div className="max-h-[480px] overflow-auto">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 z-20 bg-background">
-              <tr className="border-b border-border">
-                <th className="sticky left-0 z-30 bg-background py-2 pr-4 text-left font-medium text-foreground [box-shadow:1px_0_0_0_hsl(var(--border))]">Route</th>
-                <th className="py-2 pr-4 text-right font-medium text-foreground">
-                  <span className="text-xs text-muted-foreground">(TOs)</span> Total{' '}
-                  <span className="text-xs text-muted-foreground">(Kg)</span>
+        <div className="max-h-[480px] overflow-auto rounded-md border">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 z-20 bg-table-head">
+              <tr className="border-b">
+                <th className="sticky left-0 z-30 bg-table-head py-2.5 pl-3.5 pr-4 text-left text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground [box-shadow:1px_0_0_0_hsl(var(--border))]">Route</th>
+                <th className="py-2.5 pr-4 text-right text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
+                  <span className="opacity-60">(TOs)</span> Total{' '}
+                  <span className="opacity-60">(Kg)</span>
                 </th>
                 {cols.map((col) => (
-                  <th key={col.key} className="py-2 pr-4 text-right font-medium" style={{ color: col.color }}>
-                    <span className="text-xs opacity-60">(TOs)</span> {col.label}{' '}
-                    <span className="text-xs opacity-60">(Kg)</span>
+                  <th key={col.key} className="py-2.5 pr-4 text-right text-[10px] font-bold uppercase tracking-[0.06em]" style={{ color: col.color }}>
+                    <span className="opacity-60">(TOs)</span> {col.label}{' '}
+                    <span className="opacity-60">(Kg)</span>
                   </th>
                 ))}
-                <th className="py-2 pr-4 text-right font-medium text-muted-foreground">OTP %</th>
-                <th className="py-2 pr-4 text-right font-medium" style={{ color: '#22C55E' }}>
-                  <span className="text-xs opacity-60">(TOs)</span> On Time{' '}
-                  <span className="text-xs opacity-60">(Kg)</span>
+                <th className="py-2.5 pr-4 text-right text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">OTP %</th>
+                <th className="py-2.5 pr-4 text-right text-[10px] font-bold uppercase tracking-[0.06em] text-good">
+                  <span className="opacity-60">(TOs)</span> On Time{' '}
+                  <span className="opacity-60">(Kg)</span>
                 </th>
-                <th className="py-2 pr-4 text-right font-medium" style={{ color: '#EF4444' }}>
-                  <span className="text-xs opacity-60">(TOs)</span> Late{' '}
-                  <span className="text-xs opacity-60">(Kg)</span>
+                <th className="py-2.5 pr-4 text-right text-[10px] font-bold uppercase tracking-[0.06em] text-bad-strong">
+                  <span className="opacity-60">(TOs)</span> Late{' '}
+                  <span className="opacity-60">(Kg)</span>
                 </th>
               </tr>
             </thead>
             <tbody>
-              {data.map((row, idx) => {
+              {data.map((row) => {
                 const { percentage, onTimeWeight, onTimeCount, lateWeight, lateCount } = row.otp
                 const hasOtp = onTimeWeight > 0 || lateWeight > 0
                 return (
-                  <tr
-                    key={row.route}
-                    className={`border-b border-border/50 ${idx % 2 === 1 ? 'bg-muted/20' : ''}`}
-                  >
-                    <td className={`sticky left-0 z-10 [box-shadow:1px_0_0_0_hsl(var(--border))] py-2 pr-4 font-medium text-foreground ${idx % 2 === 1 ? 'bg-muted' : 'bg-background'}`}>{row.route}</td>
-                    <td className="py-2 pr-4 text-right text-foreground">
+                  <tr key={row.route} className="border-b motion-safe:transition-colors hover:bg-row-hover">
+                    <td className="sticky left-0 z-10 bg-card [box-shadow:1px_0_0_0_hsl(var(--border))] py-[7px] pl-3.5 pr-4 font-medium text-foreground">{row.route}</td>
+                    <td className="tabular py-[7px] pr-4 text-right text-foreground">
                       <span className="text-muted-foreground">({row.totalCount})</span>{' '}
                       {fmt(row.totalTonnage)}
                     </td>
@@ -87,12 +90,12 @@ export function RouteAlertTable({ data, isLoading, onAlertClick, cols }: RouteAl
                       const count = row.alertCounts[col.key] ?? 0
                       const hasAlert = tonnage > 0
                       return (
-                        <td key={col.key} className="py-2 pr-4 text-right">
+                        <td key={col.key} className="tabular py-[7px] pr-4 text-right">
                           {hasAlert ? (
                             <button
                               type="button"
                               onClick={() => onAlertClick(row.route, col.key)}
-                              className="rounded px-1.5 py-0.5 transition hover:opacity-75 hover:underline focus:outline-none focus:ring-2 focus:ring-offset-1"
+                              className="rounded-sm px-1.5 py-0.5 motion-safe:transition-opacity hover:opacity-75 hover:underline focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
                               style={{ color: col.color }}
                               title={`Filter by ${col.label} · ${row.route}`}
                             >
@@ -105,30 +108,28 @@ export function RouteAlertTable({ data, isLoading, onAlertClick, cols }: RouteAl
                         </td>
                       )
                     })}
-                    <td className="py-2 pr-4 text-right">
+                    <td className="tabular py-[7px] pr-4 text-right">
                       {percentage !== null ? (
-                        <span className="font-medium" style={{ color: otpColor(percentage) }}>
-                          {percentage}%
-                        </span>
+                        <span className={cn('font-medium', otpClass(percentage))}>{percentage}%</span>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
                     </td>
-                    <td className="py-2 pr-4 text-right">
+                    <td className="tabular py-[7px] pr-4 text-right">
                       {hasOtp ? (
                         <>
                           <span className="text-muted-foreground">({onTimeCount})</span>{' '}
-                          <span className="font-medium" style={{ color: '#22C55E' }}>{fmt(onTimeWeight)}</span>
+                          <span className="font-medium text-good">{fmt(onTimeWeight)}</span>
                         </>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
                     </td>
-                    <td className="py-2 pr-4 text-right">
+                    <td className="tabular py-[7px] pr-4 text-right">
                       {hasOtp ? (
                         <>
                           <span className="text-muted-foreground">({lateCount})</span>{' '}
-                          <span className="font-medium" style={{ color: '#EF4444' }}>{fmt(lateWeight)}</span>
+                          <span className="font-medium text-bad-strong">{fmt(lateWeight)}</span>
                         </>
                       ) : (
                         <span className="text-muted-foreground">—</span>
@@ -141,6 +142,7 @@ export function RouteAlertTable({ data, isLoading, onAlertClick, cols }: RouteAl
           </table>
         </div>
       )}
-    </div>
+      </CardContent>
+    </Card>
   )
 }

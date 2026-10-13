@@ -9,6 +9,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { DataTable, DataTableColumn } from '@/components/shared/data-table'
+import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { FleetMasterRow, FleetVehicle, FleetVehicleSort } from '../types'
 import { formatTanggal } from '../utils/format-date'
@@ -55,10 +56,10 @@ const DOC_COLUMN = 'min-w-[9.5rem] align-top'
 // unknown code lands on plain rather than a guessed colour, which is the honest reading of a
 // status this table has never seen.
 const STATUS_TONE: Record<string, string> = {
-  aktif: 'bg-emerald-50 text-emerald-700 ring-emerald-600/20',
-  servis: 'bg-amber-50 text-amber-800 ring-amber-600/20',
+  aktif: 'bg-good-soft text-brand-ink ring-good/20',
+  servis: 'bg-warn-soft text-warn-ink ring-warn/20',
 }
-const STATUS_TONE_FALLBACK = 'bg-slate-100 text-slate-600 ring-slate-500/20'
+const STATUS_TONE_FALLBACK = 'bg-surface-2 text-faint ring-border-strong/30'
 
 // Archived is the row's own state and outranks whatever status it was archived with: a unit in the
 // bin is not "Aktif", whatever the column says.
@@ -144,7 +145,9 @@ export function VehicleTable({
             if (!doc) return <span className="text-muted-foreground">—</span>
             return (
               <div className="flex flex-col items-start gap-1">
-                <span className="whitespace-nowrap">{formatTanggal(doc.expiresAt)}</span>
+                <span className="whitespace-nowrap text-[11.5px] font-semibold">
+                  {formatTanggal(doc.expiresAt)}
+                </span>
                 {/* severity and daysLeft arrive already computed; rendering them is the job.
                     The badge keeps its own wording rather than a blank label, so the cell's
                     meaning does not rest on colour alone for a screen reader or a red/green
@@ -167,7 +170,7 @@ export function VehicleTable({
       className: STICKY_PLATE,
       accessor: (row) => (
         <div className="flex flex-col items-start gap-1">
-          <span className="font-medium">{row.nopol}</span>
+          <span className="font-display text-[13px] font-extrabold tabular">{row.nopol}</span>
           <StatusChip row={row} />
         </div>
       ),
@@ -175,9 +178,11 @@ export function VehicleTable({
     {
       header: 'Unit',
       accessor: (row) => (
-        <div className="flex flex-col">
-          <span>{[row.merk, row.tipe].filter(Boolean).join(' ') || '—'}</span>
-          <span className="text-xs text-muted-foreground">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs font-semibold">
+            {[row.merk, row.tipe].filter(Boolean).join(' ') || '—'}
+          </span>
+          <span className="text-[10.5px] text-faint">
             {[row.jenisArmada?.label, row.tahun, row.kapasitas].filter(Boolean).join(' · ') || '—'}
           </span>
         </div>
@@ -207,7 +212,7 @@ export function VehicleTable({
         row.driver ? (
           <div className="flex flex-col items-start gap-1">
             <span>{row.driver.nama}</span>
-            <span className="text-xs text-muted-foreground">{row.pool?.label ?? '—'}</span>
+            {row.pool?.label && <Badge variant="inactive">{row.pool.label}</Badge>}
             <SeverityBadge
               severity={row.driver.simSeverity}
               daysLeft={row.driver.simDaysLeft}
@@ -216,9 +221,9 @@ export function VehicleTable({
             />
           </div>
         ) : (
-          <div className="flex flex-col gap-1">
-            <span className="text-muted-foreground">Belum ada sopir</span>
-            <span className="text-xs text-muted-foreground">{row.pool?.label ?? '—'}</span>
+          <div className="flex flex-col items-start gap-1">
+            <span className="italic text-faint">Belum ada sopir</span>
+            {row.pool?.label && <Badge variant="inactive">{row.pool.label}</Badge>}
           </div>
         ),
     },
@@ -295,6 +300,7 @@ export function VehicleTable({
 
   return (
     <DataTable
+      className="rounded-none border-0"
       columns={columns}
       rows={rows}
       isLoading={isLoading}

@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { fieldClass } from '@/components/ui/input'
 import { useBarhalList, useBarhalStations, useCreateKoliShell } from '../../hooks/useBarhal'
 import { BarhalKoli } from '../../types'
 import { formatDate } from '../../utils/dateFormat'
@@ -84,13 +86,9 @@ export function Step1CreateKoli({ koli: existingKoli, onCreated }: Step1CreateKo
           Tanggal, origin, dan destinasi tidak dapat diubah setelah Koli dibuat.
         </p>
         <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={() => onCreated(existingKoli)}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90"
-          >
+          <Button type="button" onClick={() => onCreated(existingKoli)}>
             Lanjut
-          </button>
+          </Button>
         </div>
       </div>
     )
@@ -105,7 +103,7 @@ export function Step1CreateKoli({ koli: existingKoli, onCreated }: Step1CreateKo
             type="date"
             value={koliDate}
             onChange={(e) => setKoliDate(e.target.value)}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            className={`w-full ${fieldClass}`}
           />
         </div>
         <div className="space-y-1.5">
@@ -113,7 +111,7 @@ export function Step1CreateKoli({ koli: existingKoli, onCreated }: Step1CreateKo
           <select
             value={origin}
             onChange={(e) => setOrigin(e.target.value)}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            className={`w-full ${fieldClass}`}
           >
             <option value="">— Pilih origin —</option>
             {(stations?.origins ?? []).map((o) => (
@@ -128,7 +126,7 @@ export function Step1CreateKoli({ koli: existingKoli, onCreated }: Step1CreateKo
           <select
             value={dest}
             onChange={(e) => setDest(e.target.value)}
-            className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            className={`w-full ${fieldClass}`}
           >
             <option value="">— Pilih destinasi —</option>
             {(stations?.dests ?? []).map((d) => (
@@ -149,7 +147,7 @@ export function Step1CreateKoli({ koli: existingKoli, onCreated }: Step1CreateKo
         <select
           value={komoditi}
           onChange={(e) => setKomoditi(e.target.value)}
-          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className={`w-full ${fieldClass}`}
         >
           <option value="">— Pilih komoditi —</option>
           <option value="HP">HP</option>
@@ -164,17 +162,12 @@ export function Step1CreateKoli({ koli: existingKoli, onCreated }: Step1CreateKo
         </div>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <p className="text-sm text-bad">{error}</p>}
 
       <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={handleSubmit}
-          disabled={!canSubmit}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition hover:opacity-90 disabled:opacity-50"
-        >
+        <Button type="button" onClick={handleSubmit} disabled={!canSubmit}>
           {createShell.isPending ? 'Membuat…' : 'Buat Koli'}
-        </button>
+        </Button>
       </div>
     </div>
   )

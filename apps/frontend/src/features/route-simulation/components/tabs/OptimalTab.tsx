@@ -1,18 +1,21 @@
 'use client'
 
 import React, { useMemo, useState } from 'react'
+import { Target } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHead } from '@/components/ui/card'
+import { Banner } from '@/components/shared/banner'
 import {
   EspVsPartner, LaneEconomics, clampHorizon, espVsPartner, evaluatePlan, groupNames, horizonDays, optimizePlan, periodShort, periodsForward, simStartOptions,
 } from '../../engine'
 import { fmtIdr, fmtNum, fmtPct } from '../../utils/format'
 import { ReasonTag, TotalsBar } from '../Reason'
-import { EspTag, Hint, NumInput, RouteChip, Signed, Tag, TabProps, TD, TDN, TH, THN, ROW_BAND, ROW_SUBTOTAL } from '../ui'
+import { EspTag, FIELD, Hint, NumInput, RouteChip, Signed, Tag, TabProps, TD, TDN, TH, THN, ROW, ROW_BAND, ROW_SUBTOTAL } from '../ui'
 
-const LABEL = 'mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground'
+const LABEL = 'mb-1 block text-[10.5px] font-bold uppercase tracking-[0.06em] text-muted-foreground'
 const SUB = 'text-xs text-muted-foreground'
-const CMP_HEAD = 'bg-indigo-50 dark:bg-indigo-950/40'
-const CMP_ROW = 'bg-muted/40'
+const CMP_HEAD = 'bg-info-soft/60'
+const CMP_ROW = 'bg-surface-3'
 
 function Verdict({ c }: { c: EspVsPartner }) {
   // One-sided cases: the prototype read bestPartner.account.name here and crashed (ESP only) or
@@ -64,15 +67,15 @@ function PeriodCard({ source, sim, dispatch }: TabProps) {
     setDraftHorizon(null)
   }
   return (
-    <div className="rounded-md border bg-card p-4">
-      <h3 className="mb-1 text-sm font-semibold">Periode estimasi</h3>
+    <div className="rounded-lg border bg-card p-4">
+      <h3 className="mb-1 font-display text-sm font-bold tracking-[-0.01em]">Periode estimasi</h3>
       <Hint className="mb-3">
         Pilih simulasi mulai dan jumlah periode, lalu tekan <b>Run</b> untuk menghitung hasil di bawah. 1 periode = setengah bulan (H1 tanggal 1 sampai 15, H2 tanggal 16 sampai akhir bulan). Rentang estimasi yang sedang ditampilkan: <b>{rangeLabel}</b> ({H} periode).
       </Hint>
       <div className="grid grid-cols-1 items-end gap-3 md:grid-cols-3">
         <label className="block">
           <span className={LABEL}>Simulasi mulai</span>
-          <select aria-label="Simulasi mulai" className="h-8 w-full rounded border border-input bg-background px-2 text-sm" disabled={!choices.length} value={start} onChange={(e) => setDraftStart(e.target.value)}>
+          <select aria-label="Simulasi mulai" className={`${FIELD} w-full`} disabled={!choices.length} value={start} onChange={(e) => setDraftStart(e.target.value)}>
             {choices.map((c) => <option key={c} value={c}>{periodShort(c)}</option>)}
           </select>
         </label>
@@ -102,20 +105,21 @@ export function OptimalTab({ source, sim, dispatch, onOpenSim }: TabProps & { on
   const noCapital = res.totals.cash < 1
   return (
     <>
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="max-w-4xl">
-          <h2 className="text-base font-semibold">Distribusi Optimal</h2>
+      <Card>
+        <CardHead
+          icon={Target}
+          title="Distribusi Optimal"
+          actions={<Button size="sm" onClick={onOpenSim}>Buka Coba-coba</Button>}
+        />
+        <CardContent className="space-y-1.5 pt-4">
           <Hint>Tiap rute: sebaiknya dijalankan vendor apa, naik airlines apa, dan berapa kg per hari, kalau modal dipakai terus-menerus. Faktor: tab 1 (modal, COF, siklus bayar), tab 2 (vendor dan airlines, cost, load), tab 3 (rate SPX), tab 5 (tonase rute).</Hint>
           <Hint>Cara hitung: dicari pembagian dengan margin harian terbesar (program linear, hasilnya eksak) dalam tiga batas: tonase rute per hari, load tiap airlines per hari, dan modal per hari = modal dibagi siklus bayar. Satu rute hanya dipecah bila lane terbaiknya penuh atau modal vendornya tidak cukup.</Hint>
           <Hint>Di tiap rute juga ditampilkan <b>Perbandingan ESP vs vendor lain</b>: lane terbaik milik ESP sendiri (termasuk cashback 2%) dibandingkan dengan lane terbaik tiap vendor lain, supaya kelihatan di rute mana ESP lebih untung pakai modal sendiri atau menitip ke vendor lain.</Hint>
-        </div>
-        <Button size="sm" onClick={onOpenSim}>Buka Coba-coba</Button>
-      </div>
+        </CardContent>
+      </Card>
       <PeriodCard key={`${sim.simStart}|${sim.horizonPeriods}`} source={source} sim={sim} dispatch={dispatch} />
       {noCapital && (
-        <div className="rounded-md border bg-card p-3">
-          <Hint>Belum ada modal. Isi nominal modal tiap akun di tab 1 · Setup Histori & Akun untuk melihat rekomendasi.</Hint>
-        </div>
+        <Banner tone="info" role="note">Belum ada modal. Isi nominal modal tiap akun di tab 1 · Setup Histori & Akun untuk melihat rekomendasi.</Banner>
       )}
       <div className="flex flex-wrap gap-x-6 gap-y-1 rounded-md border bg-card p-3 text-sm">
         <span><b>{count('single')}</b> rute cukup 1 vendor 1 airlines</span>
@@ -142,7 +146,7 @@ export function OptimalTab({ source, sim, dispatch, onOpenSim }: TabProps & { on
                     </td>
                   </tr>
                   {pr.rows.length ? pr.rows.map((r) => (
-                    <tr key={r.lane.id}>
+                    <tr key={r.lane.id} className={ROW}>
                       <td className={`${TD} pl-7`}>{r.account.name}<EspTag account={r.account} /></td><td className={TD}>{r.lane.airline}</td>
                       <td className={TDN}>{fmtNum(r.kg)}</td><td className={TDN}>{fmtIdr(r.costDay)}</td><td className={TDN}><Signed value={r.netDay} /></td><td className={TDN}><Signed value={r.netDay * D} /></td>
                     </tr>
@@ -168,14 +172,14 @@ export function OptimalTab({ source, sim, dispatch, onOpenSim }: TabProps & { on
         </table>
       </div>
       <div className="overflow-x-auto rounded-md border bg-card">
-        <h3 className="px-4 pb-2 pt-3 text-sm font-semibold">Pemakaian modal</h3>
+        <h3 className="px-4 pb-2 pt-3.5 font-display text-sm font-bold tracking-[-0.01em]">Pemakaian modal</h3>
         <table className="w-full border-collapse text-[13px]">
           <thead><tr><th className={TH}>Akun</th><th className={TH}>Modal</th><th className={THN}>Nominal</th><th className={THN}>Terkunci</th><th className={THN}>Terpakai</th><th className={THN}>Siklus bayar</th><th className={THN}>COF / {span}</th><th className={THN}>Net akun / {span}</th></tr></thead>
           <tbody>
             {res.perAccount.length ? res.perAccount.map((pa) => (
               <React.Fragment key={pa.account.id}>
                 {res.perTranche.filter((x) => x.account.id === pa.account.id).map((x) => (
-                  <tr key={x.tranche.id}>
+                  <tr key={x.tranche.id} className={ROW}>
                     <td className={`${TD} whitespace-nowrap`}>{x.account.name}<EspTag account={x.account} /></td><td className={`${TD} whitespace-nowrap`}>{x.tranche.label}</td>
                     <td className={TDN}>{fmtIdr(x.cash)}</td><td className={TDN}>{fmtIdr(x.locked)}</td>
                     <td className={TDN}>{x.cash < 1 ? <Hint>Belum ada modal</Hint> : x.locked < 1 ? <Tag tone="warn">Menganggur</Tag> : fmtPct(x.locked / x.cash)}</td>

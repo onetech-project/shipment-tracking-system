@@ -1,5 +1,6 @@
 'use client'
 
+import { Route } from 'lucide-react'
 import { fmt, num, pct } from '@/features/pnl/utils/format'
 import { AnalyticsJourneyRow } from '../types'
 import { BestRouteRow, bestCombination } from '../utils/journey'
@@ -29,6 +30,8 @@ export function AnalyticsJourney({
       id="journey"
       title="Best Journey"
       subtitle="The best vendor × airline combination per route, and what the rest of the tonnage leaves on the table"
+      icon={Route}
+      tone="info"
     >
       {scoped && <ScopeFallbackNote />}
       {ranged && <RangeFallbackNote />}
@@ -61,7 +64,7 @@ export function AnalyticsJourney({
                     {!r.floorCleared && (
                       <span
                         title="No combination cleared the 5% tonnage floor, so this winner may not be repeatable."
-                        className="text-amber-600"
+                        className="text-warn"
                       >
                         ⚠
                       </span>
@@ -87,7 +90,7 @@ export function AnalyticsJourney({
             rows={result.byRoute}
             rowKey={(r) => r.routeKey}
             rowTestId={(r) => `journey-${r.routeKey}`}
-            rowClassName={(r) => (r.floorCleared ? undefined : 'bg-amber-50/60')}
+            rowClassName={(r) => (r.floorCleared ? undefined : 'bg-warn-soft/60')}
           />
           <p className="text-xs text-muted-foreground">
             A combination must carry at least 5% of a route&apos;s attributed tonnage to set that

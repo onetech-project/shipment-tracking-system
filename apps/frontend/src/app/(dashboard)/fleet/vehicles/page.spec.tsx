@@ -466,7 +466,9 @@ describe('FleetVehiclesPage', () => {
       ...ok,
     }
     render(<FleetVehiclesPage />)
-    expect(screen.getByText(/87/)).toBeInTheDocument()
+    // The total now also surfaces in the "Daftar Armada" card's subtitle (mockup parity), so
+    // more than one element can carry "87" — getAllByText rather than the single-match getByText.
+    expect(screen.getAllByText(/87/).length).toBeGreaterThan(0)
     expect(screen.getByText(/halaman 2 dari 4/i)).toBeInTheDocument()
   })
 
@@ -721,7 +723,10 @@ describe('FleetVehiclesPage', () => {
         ...ok,
       }
       render(<FleetVehiclesPage />)
-      expect(screen.getByText(/1 armada/)).toBeInTheDocument()
+      // The count now also surfaces in the "Daftar Armada" card's subtitle (mockup parity), so
+      // more than one element can carry this text — getAllByText rather than the single-match
+      // getByText.
+      expect(screen.getAllByText(/1 armada/).length).toBeGreaterThan(0)
 
       fireEvent.click(screen.getByRole('tab', { name: /softcopy berkas/i }))
       expect(screen.getByPlaceholderText(/cari nopol, merk, sopir/i)).toBeInTheDocument()

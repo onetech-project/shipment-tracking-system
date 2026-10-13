@@ -2,15 +2,22 @@
 
 import { useEffect, useState } from 'react'
 import { apiClient } from '@/shared/api/client'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHead } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { TableWrap, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { FormField } from '@/components/shared/form-field'
 import { InfoTooltip } from '@/components/shared/info-tooltip'
+import { KpiCard, KpiGrid } from '@/components/shared/kpi-card'
+import { PageHeader } from '@/components/shared/page-header'
+import { Banner } from '@/components/shared/banner'
+import { EmptyState } from '@/components/shared/empty-state'
 import { normalizeTableName } from '../utils/normalizeTableName'
 import { GoogleSheetConfig, SheetConfig } from '../types'
 import Spinner from '@/components/ui/spinner'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
-import { AlertTriangle, Info } from 'lucide-react'
+import { Info, FileSpreadsheet } from 'lucide-react'
 import moment from 'moment'
 
 const SYNC_SERVICE_ACCOUNT_EMAIL = 'esp-dashboard@fluted-arch-489408-b1.iam.gserviceaccount.com'
@@ -223,49 +230,116 @@ export function GoogleSheetConfigPanel() {
         <Spinner size="h-12 w-12" ariaLabel="Loading Google Sheet Configs" />
       </div>
     )
-  if (error) return <div className="text-red-500">{error}</div>
+  if (error) return <Banner tone="danger">{error}</Banner>
 
   return (
     <div>
       <div className="mb-6">
-        <div className="flex justify-between mb-3">
-          <h2 className="text-lg font-medium mb-2">Google Sheet Configs</h2>
-          {!editMode && <Button onClick={handleAdd}>+ Add Config</Button>}
-        </div>
+        <PageHeader
+          as="h2"
+          title="Google Sheet Configs"
+          subtitle="Konfigurasi sumber data Google Sheets, mapping kolom, dan sync schedule."
+          action={!editMode ? <Button onClick={handleAdd}>+ Add Config</Button> : undefined}
+        />
         {configs.length === 0 && !editMode && (
-          <div className="text-muted-foreground">No Google Sheet configs found.</div>
+          <EmptyState icon={FileSpreadsheet} title="No Google Sheet configs found." />
         )}
-        {configs.length > 0 &&
-          !editMode &&
-          configs.map((cfg) => (
-            <div
-              key={cfg.id}
-              className="border rounded p-3 mb-2 flex justify-between items-center bg-muted/30"
-            >
-              <div>
-                <div className="font-semibold">{cfg.label || 'No Label'}</div>
-                <div className="text-sm text-muted-foreground">Link: {cfg.sheetLink}</div>
-                <div className="text-sm text-muted-foreground">
-                  Sync Interval: {cfg.syncInterval} seconds
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  Status: {cfg.enabled ? 'Enabled' : 'Disabled'}
-                </div>
-                {cfg.updatedAt && (
-                  <div className="text-sm text-muted-foreground">
-                    Last Updated: {moment(cfg.updatedAt).fromNow()} (
-                    {moment(cfg.updatedAt).format('DD-MMM-YYYY HH:mm:ss')})
-                  </div>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <Button onClick={() => handleEdit(cfg)}>Edit</Button>
-                <Button variant="destructive" onClick={() => setDeleteTarget(cfg)}>
-                  Delete
-                </Button>
-              </div>
-            </div>
-          ))}
+        {configs.length > 0 && !editMode && (
+          <>
+            {/* Only truthfully derivable from the configs list already fetched here — no rows
+                synced/error count is available without a sync-status endpoint this panel does
+                not call. */}
+            <KpiGrid cols={3} className="mb-4">
+              <KpiCard
+                label="total konfigurasi"
+                value={String(configs.length)}
+                hint="terdaftar"
+                icon={FileSpreadsheet}
+                tone="brand"
+              />
+              <KpiCard
+                label="sheets aktif"
+                value={String(configs.filter((c) => c.enabled).length)}
+                hint="sync enabled"
+                icon={FileSpreadsheet}
+                tone="brand"
+              />
+              <KpiCard
+                label="sheets paused"
+                value={String(configs.filter((c) => !c.enabled).length)}
+                hint="sync nonaktif"
+                icon={FileSpreadsheet}
+                tone="warn"
+              />
+            </KpiGrid>
+
+            <Card>
+              <CardHead
+                icon={FileSpreadsheet}
+                title="Connected Sheets"
+                subtitle="Daftar sheet aktif & mapping-nya"
+              />
+              <CardContent className="p-0">
+                <TableWrap className="rounded-none border-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Sheet URL</TableHead>
+                        <TableHead>Sync interval</TableHead>
+                        <TableHead>Last updated</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {configs.map((cfg) => (
+                        <TableRow key={cfg.id}>
+                          <TableCell className="font-semibold">{cfg.label || 'No Label'}</TableCell>
+                          <TableCell className="max-w-[20rem]">
+                            <a
+                              href={cfg.sheetLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="break-all text-[11px] text-brand-2 hover:underline"
+                            >
+                              {cfg.sheetLink}
+                            </a>
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {cfg.syncInterval} seconds
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                            {cfg.updatedAt ? moment(cfg.updatedAt).fromNow() : '—'}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={cfg.enabled ? 'active' : 'pending'}>
+                              {cfg.enabled ? 'Active' : 'Paused'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button variant="subtle" size="sm" onClick={() => handleEdit(cfg)}>
+                                Edit
+                              </Button>
+                              <Button
+                                variant="danger-soft"
+                                size="sm"
+                                onClick={() => setDeleteTarget(cfg)}
+                              >
+                                Delete
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableWrap>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
       <ConfirmDialog
         open={!!deleteTarget}
@@ -279,22 +353,16 @@ export function GoogleSheetConfigPanel() {
       {editMode && form && (
         <>
           <div className="space-y-4">
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950/30">
-              <div className="flex items-start gap-2">
-                <Info size={16} className="mt-0.5 shrink-0 text-blue-600 dark:text-blue-400" />
-                <div className="text-sm text-blue-800 dark:text-blue-200">
-                  <p className="mb-1 font-medium">Before syncing, share your Google Sheet</p>
-                  <p>
-                    Invite{' '}
-                    <code className="rounded bg-blue-100 px-1 py-0.5 font-mono text-xs dark:bg-blue-900/50">
-                      {SYNC_SERVICE_ACCOUNT_EMAIL}
-                    </code>{' '}
-                    as a <strong>Viewer (read permission)</strong> on the Google Sheet you want to
-                    sync, otherwise the sync will fail.
-                  </p>
-                </div>
-              </div>
-            </div>
+            <Banner tone="info" icon={Info} title="Before syncing, share your Google Sheet">
+              <p>
+                Invite{' '}
+                <code className="rounded-sm bg-info-soft px-1 py-0.5 font-mono text-xs">
+                  {SYNC_SERVICE_ACCOUNT_EMAIL}
+                </code>{' '}
+                as a <strong>Viewer (read permission)</strong> on the Google Sheet you want to
+                sync, otherwise the sync will fail.
+              </p>
+            </Banner>
             <FormField
               label="Label"
               required
@@ -355,15 +423,14 @@ export function GoogleSheetConfigPanel() {
                 <span className="font-semibold">Sheet Configs</span>
               </div>
               {editMode && !allSheetConfigsComplete && (
-                <div className="my-2 flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
-                  <AlertTriangle size={14} className="shrink-0" />
+                <Banner tone="warn" className="my-2">
                   {!hasSheetConfigs
                     ? 'Add at least one sheet config before saving.'
                     : 'Fill in all sheet config fields (Sheet Name, Header Row, Unique Key) before saving.'}
-                </div>
+                </Banner>
               )}
               {form?.sheetConfigs?.map((sheet, idx) => (
-                <div key={idx} className="border rounded p-3 mb-2 space-y-2 bg-muted/30">
+                <div key={idx} className="mb-2 space-y-2 rounded-md border bg-surface-2 p-3">
                   <div className="flex gap-2">
                     <FormField
                       label="Sheet Name"

@@ -1,6 +1,8 @@
 'use client'
 
+import { Activity } from 'lucide-react'
 import { num, pct } from '@/features/pnl/utils/format'
+import { Banner } from '@/components/shared/banner'
 import { OffloadedAwbRow } from '@/features/air-shipments/types'
 import { SlaOverview } from '../types'
 import { SlaRouteRow, SlaView, offloadView, slaView } from '../utils/ops'
@@ -41,15 +43,16 @@ export function AnalyticsOps({
         id="ops"
         title="Operations"
         subtitle="On-time performance, SLA alerts and offloaded AWBs"
+        icon={Activity}
+        tone="info"
       >
-        <p
-          data-testid="analytics-ops-permission"
-          className="rounded-md border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900"
-        >
-          This section needs the SLA read permission, which your account does not have. Ask an
-          administrator for <code>read.sla</code> to see on-time performance, SLA alerts and
-          offloaded AWBs here.
-        </p>
+        <Banner tone="warn">
+          <p data-testid="analytics-ops-permission">
+            This section needs the SLA read permission, which your account does not have. Ask an
+            administrator for <code>read.sla</code> to see on-time performance, SLA alerts and
+            offloaded AWBs here.
+          </p>
+        </Banner>
       </AnalyticsSection>
     )
   }
@@ -67,6 +70,8 @@ export function AnalyticsOps({
       id="ops"
       title="Operations"
       subtitle="On-time performance, SLA alerts and offloaded AWBs"
+      icon={Activity}
+      tone="info"
     >
       {ranged && <RangeFallbackNote />}
 

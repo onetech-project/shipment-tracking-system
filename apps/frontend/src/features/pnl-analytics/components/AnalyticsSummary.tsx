@@ -1,6 +1,8 @@
 'use client'
 
+import { Gauge } from 'lucide-react'
 import { fmt, fmtIdrCompact, num, pct } from '@/features/pnl/utils/format'
+import { Banner } from '@/components/shared/banner'
 import { KPI_KEYS, KpiKey, KpiSet, Kpis } from '../types'
 import { AnalyticsSection } from './AnalyticsSection'
 
@@ -53,15 +55,14 @@ export function AnalyticsSummary({
   scopeLabel,
 }: AnalyticsSummaryProps) {
   return (
-    <AnalyticsSection id="summary" title="Summary" subtitle={scopeLabel}>
+    <AnalyticsSection id="summary" title="Summary" subtitle={scopeLabel} icon={Gauge} tone="brand">
       {baselineIncomplete && (
-        <p
-          data-testid="analytics-summary-note"
-          className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900"
-        >
-          Period-over-period deltas are hidden: the baseline period&apos;s own cost data is
-          incomplete, so a delta against it would not be a fact.
-        </p>
+        <Banner tone="warn">
+          <p data-testid="analytics-summary-note">
+            Period-over-period deltas are hidden: the baseline period&apos;s own cost data is
+            incomplete, so a delta against it would not be a fact.
+          </p>
+        </Banner>
       )}
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
@@ -82,7 +83,7 @@ export function AnalyticsSummary({
               {/* Absent, not zero: a 0% here would read as "unchanged". */}
               {d.deltaPct != null && (
                 <p
-                  className={`mt-0.5 text-xs tabular-nums ${d.deltaPct >= 0 ? 'text-emerald-600' : 'text-red-600'}`}
+                  className={`mt-0.5 text-xs tabular-nums ${d.deltaPct >= 0 ? 'text-good' : 'text-bad-strong'}`}
                 >
                   {d.deltaPct >= 0 ? '+' : ''}
                   {d.deltaPct.toFixed(1)}%

@@ -13,7 +13,9 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { TrendingUp } from 'lucide-react'
 import { fmt, num, pct } from '@/features/pnl/utils/format'
+import { CHART_COLORS, CHART_STATUS } from '@/lib/chart-colors'
 import { Campaign, SeriesDay } from '../types'
 import { campaignDates } from '../utils/weekday'
 import { colorForMargin, formatDateLabel } from '../utils/theme'
@@ -45,7 +47,7 @@ function TrendTooltip({ active, payload }: { active?: boolean; payload?: { paylo
       <p>Revenue: {fmt.format(d.revenue)}</p>
       <p>Cost: {fmt.format(d.cost)}</p>
       <p>Margin: {pct(d.marginPct)}</p>
-      {d.incomplete && <p className="text-amber-600">Cost incomplete on this day</p>}
+      {d.incomplete && <p className="text-warn">Cost incomplete on this day</p>}
     </div>
   )
 }
@@ -71,6 +73,8 @@ export function AnalyticsTrend({ series, campaigns, scopeLabel }: AnalyticsTrend
       id="trend"
       title="Daily Trend"
       subtitle={`${scopeLabel} — tonnage bars, margin % line, campaign days marked`}
+      icon={TrendingUp}
+      tone="info"
     >
       {data.length === 0 ? (
         <p className="text-sm text-muted-foreground">No days in this period.</p>
@@ -78,23 +82,29 @@ export function AnalyticsTrend({ series, campaigns, scopeLabel }: AnalyticsTrend
         <div className="h-[320px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-              <YAxis yAxisId="weight" tick={{ fontSize: 11 }} />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_STATUS.grid} />
+              <XAxis
+                dataKey="label"
+                tick={{ fontSize: 10.5, fill: CHART_STATUS.axis }}
+              />
+              <YAxis yAxisId="weight" tick={{ fontSize: 10.5, fill: CHART_STATUS.axis }} />
               <YAxis
                 yAxisId="margin"
                 orientation="right"
                 unit="%"
-                tick={{ fontSize: 11 }}
+                tick={{ fontSize: 10.5, fill: CHART_STATUS.axis }}
                 domain={['auto', 'auto']}
               />
-              <Tooltip content={<TrendTooltip />} />
+              <Tooltip content={<TrendTooltip />} cursor={{ fill: '#e2ebe2', fillOpacity: 0.5 }} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               {Array.from(marks).map((date) => (
                 <ReferenceLine
                   key={date}
                   yAxisId="weight"
                   x={formatDateLabel(date)}
+                  // Intentional categorical hue, not in CHART_COLORS: this pink dash is called out
+                  // by name in the caption below, and must stay visually distinct from every
+                  // margin-bucket colour (good/warn/bad/neutral) and from the margin line itself.
                   stroke="#EC4899"
                   strokeDasharray="4 4"
                 />
@@ -109,7 +119,7 @@ export function AnalyticsTrend({ series, campaigns, scopeLabel }: AnalyticsTrend
                 type="monotone"
                 dataKey="marginPct"
                 name="Margin %"
-                stroke="#0F172A"
+                stroke={CHART_COLORS[3]}
                 strokeWidth={2}
                 dot={false}
                 connectNulls={false}

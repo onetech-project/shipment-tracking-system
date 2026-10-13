@@ -4,10 +4,20 @@ import { apiClient } from '@/shared/api/client';
 import InvitationForm from '@/features/invitations/components/invitation-form';
 import { usePermissions } from '@/shared/hooks/use-permissions';
 import { PageHeader } from '@/components/shared/page-header';
+import { StagingBadge } from '@/components/shared/header-badges';
+import { isStaging } from '@/lib/env';
 import { StatusBadge } from '@/components/shared/status-badge';
 import type { StatusVariant } from '@/components/shared/status-badge';
+import { Banner } from '@/components/shared/banner';
+import { EmptyState } from '@/components/shared/empty-state';
+import { FilterBar } from '@/components/shared/filter-bar';
+import { KpiCard, KpiGrid } from '@/components/shared/kpi-card';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHead } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { TableWrap, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
+import { fieldClass } from '@/components/ui/input';
+import { Hourglass, Mail, MailCheck, MailX } from 'lucide-react';
 
 interface Invitation {
   id: string;
@@ -27,7 +37,9 @@ const STATUS_VARIANT: Record<string, StatusVariant> = {
   revoked: 'error',
 };
 
-const selectCls = 'flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2';
+// Matches Input's own styling (the shared fieldClass export), so this select reads as the same
+// field as every other filter control in the app.
+const selectCls = `w-full ${fieldClass}`;
 
 export default function InvitationsSettingsPage() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
@@ -80,57 +92,100 @@ export default function InvitationsSettingsPage() {
     <div>
       <PageHeader
         title="Invitations"
+        subtitle="Kirim undangan ke calon pengguna aplikasi."
+        badge={isStaging() ? <StagingBadge /> : undefined}
         action={<Button onClick={() => setShowModal(true)}>+ Send Invitation</Button>}
       />
-      {error && <p className="mb-4 text-sm text-destructive">Error: {error}</p>}
+      {error && <Banner tone="danger">Error: {error}</Banner>}
 
-      <div className="mb-4">
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className={selectCls}
-        >
-          <option value="">All statuses</option>
-          <option value="pending">Pending</option>
-          <option value="accepted">Accepted</option>
-          <option value="expired">Expired</option>
-          <option value="revoked">Revoked</option>
-        </select>
-      </div>
+      {invitations.length > 0 && (
+        <KpiGrid cols={4}>
+          <KpiCard
+            label="total sent"
+            value={String(invitations.length)}
+            hint="all time"
+            icon={Mail}
+            tone="brand"
+          />
+          <KpiCard
+            label="accepted"
+            value={String(invitations.filter((i) => i.status === 'accepted').length)}
+            hint={`${((invitations.filter((i) => i.status === 'accepted').length / invitations.length) * 100).toFixed(1)}%`}
+            icon={MailCheck}
+            tone="brand"
+          />
+          <KpiCard
+            label="pending"
+            value={String(invitations.filter((i) => i.status === 'pending').length)}
+            hint="menunggu"
+            icon={Hourglass}
+            tone="warn"
+          />
+          <KpiCard
+            label="expired"
+            value={String(invitations.filter((i) => i.status === 'expired').length)}
+            hint="kadaluarsa"
+            icon={MailX}
+            tone="danger"
+          />
+        </KpiGrid>
+      )}
 
-      <div className="overflow-x-auto rounded-md border">
-        <table className="w-full border-collapse text-sm">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Email</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Expires</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Sent</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {invitations.map((inv, idx) => (
-              <tr key={inv.id} className={`border-t hover:bg-muted/30 motion-safe:transition-colors ${idx % 2 === 1 ? 'bg-muted/70' : ''}`}>
-                <td className="px-4 py-3">{inv.email}</td>
-                <td className="px-4 py-3">
-                  <StatusBadge variant={STATUS_VARIANT[inv.status] ?? 'inactive'} label={inv.status} />
-                </td>
-                <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(inv.expiresAt).toLocaleDateString()}</td>
-                <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(inv.createdAt).toLocaleDateString()}</td>
-                <td className="px-4 py-3">
-                  {inv.status === 'pending' && (
-                    <Button size="sm" variant="destructive" onClick={() => handleCancel(inv.id)}>Cancel</Button>
-                  )}
-                </td>
-              </tr>
-            ))}
-            {invitations.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No invitations found.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <FilterBar>
+        <div className="min-w-[160px]">
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className={selectCls}
+          >
+            <option value="">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="accepted">Accepted</option>
+            <option value="expired">Expired</option>
+            <option value="revoked">Revoked</option>
+          </select>
+        </div>
+      </FilterBar>
+
+      {invitations.length === 0 ? (
+        <EmptyState title="No invitations found." />
+      ) : (
+        <Card>
+          <CardHead icon={Mail} title="Daftar Undangan" subtitle="Status undangan pengguna" />
+          <CardContent className="p-0">
+            <TableWrap className="rounded-none border-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Expires</TableHead>
+                    <TableHead>Sent</TableHead>
+                    <TableHead>Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {invitations.map((inv) => (
+                    <TableRow key={inv.id}>
+                      <TableCell className="font-mono">{inv.email}</TableCell>
+                      <TableCell>
+                        <StatusBadge variant={STATUS_VARIANT[inv.status] ?? 'inactive'} label={inv.status} />
+                      </TableCell>
+                      <TableCell className="tabular text-xs text-muted-foreground">{new Date(inv.expiresAt).toLocaleDateString()}</TableCell>
+                      <TableCell className="tabular text-xs text-muted-foreground">{new Date(inv.createdAt).toLocaleDateString()}</TableCell>
+                      <TableCell>
+                        {inv.status === 'pending' && (
+                          <Button size="sm" variant="danger-soft" onClick={() => handleCancel(inv.id)}>Cancel</Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableWrap>
+          </CardContent>
+        </Card>
+      )}
 
       {showModal && (
         <Dialog open onOpenChange={(open) => { if (!open) setShowModal(false); }}>

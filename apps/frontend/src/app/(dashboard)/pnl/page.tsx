@@ -5,6 +5,12 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
 import { useRouteGroups } from '@/features/route-groups/hooks/useRouteGroups'
+import { cn } from '@/lib/utils'
+import { PageHeader } from '@/components/shared/page-header'
+import { StagingBadge } from '@/components/shared/header-badges'
+import { isStaging } from '@/lib/env'
+import { PeriodChip } from '@/components/shared/period-chip'
+import { fieldClass } from '@/components/ui/input'
 import {
   usePnlCycles,
   usePnlSummary,
@@ -219,77 +225,38 @@ function PnlPageContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">P&amp;L Analysis</h1>
-          <p className="text-muted-foreground text-sm">{VIEW_SUBTITLE[view]}</p>
-          {/* A gapped pill row, not a segmented control. Five tabs no longer fit on one line at
-              narrow widths, and merely adding flex-wrap to the old segmented control leaves the
-              first button of the wrapped row drawing a border-l against nothing, with no border-t
-              separating the rows. Each button owns its whole border instead. */}
-          <div data-testid="pnl-view-tabs" className="mt-2 flex flex-wrap gap-2 text-sm">
-            <button
-              className={`rounded-md border px-3 py-1.5 ${view === 'estimate' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-              onClick={() => setView('estimate')}
-            >
-              Estimated
-            </button>
-            <button
-              className={`rounded-md border px-3 py-1.5 ${view === 'actual' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-              onClick={() => setView('actual')}
-            >
-              Actual vs Estimate
-            </button>
-            <button
-              className={`rounded-md border px-3 py-1.5 ${view === 'daily' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-              onClick={() => setView('daily')}
-            >
-              Daily Report
-            </button>
-            {hasPermission('read.route_group') && (
+      <PageHeader
+        title="P&L Analysis"
+        subtitle={VIEW_SUBTITLE[view]}
+        badge={isStaging() ? <StagingBadge /> : undefined}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex h-8 items-center rounded-md border bg-surface-2 p-[3px]">
               <button
-                className={`rounded-md border px-3 py-1.5 ${view === 'routes' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-                onClick={() => setView('routes')}
+                type="button"
+                className={cn(
+                  'h-full rounded-[6px] px-2.5 text-[11.5px] font-medium motion-safe:transition-colors',
+                  mode === 'cycle' ? 'bg-brand-2 font-semibold text-white' : 'text-muted-foreground hover:text-foreground',
+                )}
+                onClick={() => setMode('cycle')}
               >
-                {ROUTE_COMPARISON_LABEL}
+                Billing Cycle
               </button>
-            )}
-            {hasPermission('read.vendor_group') && (
               <button
-                className={`rounded-md border px-3 py-1.5 ${view === 'vendors' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-                onClick={() => setView('vendors')}
+                type="button"
+                className={cn(
+                  'h-full rounded-[6px] px-2.5 text-[11.5px] font-medium motion-safe:transition-colors',
+                  mode === 'range' ? 'bg-brand-2 font-semibold text-white' : 'text-muted-foreground hover:text-foreground',
+                )}
+                onClick={() => setMode('range')}
               >
-                {VENDOR_COMPARISON_LABEL}
+                Custom Range
               </button>
-            )}
-            <button
-              className={`rounded-md border px-3 py-1.5 ${view === 'analytics' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-              onClick={() => setView('analytics')}
-            >
-              {ANALYTICS_LABEL}
-            </button>
-          </div>
-        </div>
+            </div>
 
-        <div className="flex flex-col items-end gap-2">
-          <div className="flex rounded-md border text-sm overflow-hidden">
-            <button
-              className={`px-3 py-1.5 ${mode === 'cycle' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-              onClick={() => setMode('cycle')}
-            >
-              Billing Cycle
-            </button>
-            <button
-              className={`px-3 py-1.5 border-l ${mode === 'range' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:text-foreground'}`}
-              onClick={() => setMode('range')}
-            >
-              Custom Range
-            </button>
-          </div>
-
-          <div className="flex items-center gap-2">
+            <span className="text-[10.5px] font-bold uppercase tracking-[0.06em] text-muted-foreground">Date</span>
             <select
-              className="rounded-md border bg-background px-3 py-1.5 text-sm"
+              className={fieldClass}
               value={dateBasis}
               onChange={(e) => handleBasisChange(e.target.value as DateBasis)}
               title="Date field used to assign the billing cycle / filter the range"
@@ -301,7 +268,7 @@ function PnlPageContent() {
 
             {mode === 'cycle' && (
               <select
-                className="rounded-md border bg-background px-3 py-1.5 text-sm"
+                className={fieldClass}
                 value={cycle ?? ''}
                 onChange={(e) => setCycle(e.target.value)}
               >
@@ -325,24 +292,86 @@ function PnlPageContent() {
               <div className="flex items-center gap-2">
                 <input
                   type="date"
-                  className="rounded-md border bg-background px-2 py-1.5 text-sm"
+                  className={fieldClass}
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
                 />
                 <span className="text-xs text-muted-foreground">to</span>
                 <input
                   type="date"
-                  className="rounded-md border bg-background px-2 py-1.5 text-sm"
+                  className={fieldClass}
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
                 />
               </div>
             )}
           </div>
-          {mode === 'cycle' && cycleDateHint && (
-            <p className="text-xs text-muted-foreground">{cycleDateHint}</p>
+        }
+      />
+
+      {/* The mockup's `.mode-tabs` look: a grey track with each tab a pill, the active one lifted
+          to a white card with a soft shadow. A gapped pill row rather than ModeTabs itself — five
+          tabs no longer fit on one line at narrow widths, and these need to stay plain <button>s
+          (not role=tab) for the existing getByRole('button', …) queries below. */}
+      <div data-testid="pnl-view-tabs" className="inline-flex flex-wrap gap-2 rounded-md bg-surface-2 p-1 text-sm">
+        <button
+          className={cn(
+            'rounded-[7px] px-3 py-[7px] text-[12.5px] font-medium motion-safe:transition-all',
+            view === 'estimate' ? 'bg-card font-semibold text-foreground shadow-soft-sm' : 'text-muted-foreground hover:text-foreground',
           )}
-        </div>
+          onClick={() => setView('estimate')}
+        >
+          Estimated
+        </button>
+        <button
+          className={cn(
+            'rounded-[7px] px-3 py-[7px] text-[12.5px] font-medium motion-safe:transition-all',
+            view === 'actual' ? 'bg-card font-semibold text-foreground shadow-soft-sm' : 'text-muted-foreground hover:text-foreground',
+          )}
+          onClick={() => setView('actual')}
+        >
+          Actual vs Estimate
+        </button>
+        <button
+          className={cn(
+            'rounded-[7px] px-3 py-[7px] text-[12.5px] font-medium motion-safe:transition-all',
+            view === 'daily' ? 'bg-card font-semibold text-foreground shadow-soft-sm' : 'text-muted-foreground hover:text-foreground',
+          )}
+          onClick={() => setView('daily')}
+        >
+          Daily Report
+        </button>
+        {hasPermission('read.route_group') && (
+          <button
+            className={cn(
+              'rounded-[7px] px-3 py-[7px] text-[12.5px] font-medium motion-safe:transition-all',
+              view === 'routes' ? 'bg-card font-semibold text-foreground shadow-soft-sm' : 'text-muted-foreground hover:text-foreground',
+            )}
+            onClick={() => setView('routes')}
+          >
+            {ROUTE_COMPARISON_LABEL}
+          </button>
+        )}
+        {hasPermission('read.vendor_group') && (
+          <button
+            className={cn(
+              'rounded-[7px] px-3 py-[7px] text-[12.5px] font-medium motion-safe:transition-all',
+              view === 'vendors' ? 'bg-card font-semibold text-foreground shadow-soft-sm' : 'text-muted-foreground hover:text-foreground',
+            )}
+            onClick={() => setView('vendors')}
+          >
+            {VENDOR_COMPARISON_LABEL}
+          </button>
+        )}
+        <button
+          className={cn(
+            'rounded-[7px] px-3 py-[7px] text-[12.5px] font-medium motion-safe:transition-all',
+            view === 'analytics' ? 'bg-card font-semibold text-foreground shadow-soft-sm' : 'text-muted-foreground hover:text-foreground',
+          )}
+          onClick={() => setView('analytics')}
+        >
+          {ANALYTICS_LABEL}
+        </button>
       </div>
 
       {isPageError ? (
@@ -406,7 +435,11 @@ function PnlPageContent() {
         )
       ) : (
         <>
-          <PnlFormulaPanel />
+          {/* mockup `.period-row`: the active cycle/range chip beside the formula help link. */}
+          <div className="mb-2 flex flex-wrap items-center gap-3">
+            {mode === 'cycle' && cycleDateHint && <PeriodChip>{cycleDateHint}</PeriodChip>}
+            <PnlFormulaPanel />
+          </div>
           {filter && (
             <div ref={filterBarRef}>
               <PnlEstimateFilterBar

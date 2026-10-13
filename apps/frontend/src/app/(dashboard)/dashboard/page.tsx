@@ -1,8 +1,10 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { Plane, RefreshCw, Settings, Ship } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { apiClient } from '@/shared/api/client'
-import { PageHeader } from '@/components/shared/page-header'
+import { Button } from '@/components/ui/button'
 import {
   DashboardAlertCards,
   DashboardAlertKey,
@@ -14,7 +16,7 @@ import { useGeneralParams } from '@/features/general-params/hooks/useGeneralPara
 import { useSyncNotification } from '@/features/air-shipments/hooks/useSyncNotification'
 import { useAuth } from '@/features/auth/auth.context'
 import { usePermissions } from '@/shared/hooks/use-permissions'
-import { cn } from '@/lib/utils'
+import { ModeTabs } from '@/components/ui/segmented'
 
 const DASHBOARD_MODES: SlaMode[] = [AIR_SLA_MODE, SEA_SLA_MODE]
 
@@ -39,6 +41,34 @@ function defaultDateRange(): { start: string; end: string } {
   }
 }
 
+const JAKARTA_DATE_FMT = new Intl.DateTimeFormat('id-ID', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'Asia/Jakarta',
+})
+const JAKARTA_TIME_FMT = new Intl.DateTimeFormat('id-ID', {
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+  timeZone: 'Asia/Jakarta',
+})
+
+/** "<tanggal> · <jam> WIB", derived from the browser clock — refreshed every minute so the
+ *  hero's eyebrow pill never goes visibly stale while the page stays open. */
+function useJakartaClock(): string {
+  const [label, setLabel] = useState('')
+  useEffect(() => {
+    const update = () => {
+      const now = new Date()
+      setLabel(`${JAKARTA_DATE_FMT.format(now)} · ${JAKARTA_TIME_FMT.format(now)} WIB`)
+    }
+    update()
+    const id = setInterval(update, 60_000)
+    return () => clearInterval(id)
+  }, [])
+  return label
+}
 
 export default function DashboardPage() {
   const { isConnected, lastSyncAt, lastCompletedSheet } = useSyncNotification()
@@ -47,6 +77,7 @@ export default function DashboardPage() {
   const { hasPermission } = usePermissions()
   const canReadSla = hasPermission('read.sla')
   const router = useRouter()
+  const clock = useJakartaClock()
 
   const [mode, setMode] = useState<SlaMode>(AIR_SLA_MODE)
   const [startDate, setStartDate] = useState(() => defaultDateRange().start)
@@ -106,38 +137,65 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <PageHeader title="Dashboard" />
-
-      <section className="space-y-6">
-        <div className="rounded-3xl border border-border bg-panel p-6 shadow-sm">
-          <div className="text-xl font-semibold text-foreground">
-            Welcome back, {user?.username}
+      {/* ── Hero ── */}
+      <div className="mb-[18px] rounded-lg bg-[linear-gradient(135deg,#1a2420_0%,#223029_100%)] px-[26px] py-[22px] text-white">
+        <div className="grid grid-cols-1 items-center gap-5 md:grid-cols-[1fr_auto]">
+          <div>
+            <div className="mb-2.5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[.08] px-2.5 py-[3px] text-[10.5px] font-semibold uppercase tracking-[0.1em] text-[#c5d0c5]">
+              <span
+                className={cn(
+                  'h-1.5 w-1.5 rounded-full',
+                  isConnected ? 'bg-brand-2 motion-safe:animate-pulse-soft' : 'bg-faint',
+                )}
+                aria-hidden="true"
+              />
+              {isConnected ? 'Online' : 'Offline'} · {clock}
+            </div>
+            <h1 className="mb-1 font-display text-2xl font-bold tracking-[-0.02em]">
+              Welcome back, <span className="text-brand-light">{user?.username}</span>
+            </h1>
+            <p className="max-w-[640px] text-[13.5px] text-[#c5d0c5]">
+              Ringkasan operasional hari ini. Periode{' '}
+              <em className="font-semibold not-italic text-brand-light">
+                {startDate} – {endDate}
+              </em>
+              , SLA refresh live.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 md:justify-end">
+            <Button
+              type="button"
+              variant="ghost-dark"
+              size="sm"
+              onClick={() => void fetchAlertSummary()}
+              disabled={!canReadSla || summaryLoading}
+            >
+              <RefreshCw size={14} aria-hidden="true" />
+              Refresh
+            </Button>
+            {canReadSla && (
+              <Button type="button" variant="ghost-dark" size="sm" onClick={() => setShowConfigModal(true)}>
+                <Settings size={14} aria-hidden="true" />
+                Configure
+              </Button>
+            )}
           </div>
         </div>
+      </div>
 
+      <section className="space-y-6">
         {canReadSla && (
           <>
-            <nav className="flex gap-1 border-b border-border">
-              {DASHBOARD_MODES.map((m) => {
-                const isActive = m.key === mode.key
-                return (
-                  <button
-                    key={m.key}
-                    type="button"
-                    onClick={() => setMode(m)}
-                    className={cn(
-                      'px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors',
-                      isActive
-                        ? 'border-primary text-foreground'
-                        : 'border-transparent text-muted-foreground hover:text-foreground'
-                    )}
-                    aria-current={isActive ? 'page' : undefined}
-                  >
-                    {m.key === 'air' ? 'Air' : 'Sea'}
-                  </button>
-                )
-              })}
-            </nav>
+            <ModeTabs
+              value={mode.key}
+              onValueChange={(key) => setMode(DASHBOARD_MODES.find((m) => m.key === key) ?? AIR_SLA_MODE)}
+              items={DASHBOARD_MODES.map((m) => ({
+                value: m.key,
+                label: m.key === 'air' ? 'Air' : 'Sea',
+                icon: m.key === 'air' ? Plane : Ship,
+              }))}
+              aria-label="Shipment mode"
+            />
             <DashboardAlertCards
               summary={summary}
               activeAlert={null}

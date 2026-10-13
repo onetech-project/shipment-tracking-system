@@ -3,12 +3,22 @@ import { useEffect, useState } from 'react';
 import { apiClient } from '@/shared/api/client';
 import { PageHeader } from '@/components/shared/page-header';
 import { StatusBadge } from '@/components/shared/status-badge';
+import { Banner } from '@/components/shared/banner';
+import { EmptyState } from '@/components/shared/empty-state';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { FormField } from '@/components/shared/form-field';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { TableWrap, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 
 interface User { id: string; username: string; isActive: boolean; isLocked: boolean; lastLoginAt: string; createdAt: string; }
+
+function initials(label: string) {
+  const parts = label.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
 
 export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
@@ -55,29 +65,43 @@ export default function UsersPage() {
         title="Users"
         action={<Button onClick={() => setShowModal(true)}>+ New User</Button>}
       />
-      {error && <p className="mb-4 text-sm text-destructive">Error: {error}</p>}
-      <div className="overflow-x-auto rounded-md border">
-        <table className="w-full border-collapse text-sm">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Username</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Locked</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Last Login</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id} className="border-t hover:bg-muted/30 motion-safe:transition-colors">
-                <td className="px-4 py-3">{u.username}</td>
-                <td className="px-4 py-3"><StatusBadge variant={u.isActive ? 'active' : 'inactive'} /></td>
-                <td className="px-4 py-3">{u.isLocked ? <StatusBadge variant="locked" /> : <span className="text-muted-foreground">—</span>}</td>
-                <td className="px-4 py-3 text-xs text-muted-foreground">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {error && <Banner tone="danger">Error: {error}</Banner>}
+      {users.length === 0 ? (
+        <EmptyState title="No users found." />
+      ) : (
+        <TableWrap>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>User</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Locked</TableHead>
+                <TableHead>Last Login</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {users.map((u) => (
+                <TableRow key={u.id}>
+                  <TableCell>
+                    <div className="flex items-center gap-2.5">
+                      <span
+                        aria-hidden="true"
+                        className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary text-xs font-bold text-white"
+                      >
+                        {initials(u.username)}
+                      </span>
+                      <span className="truncate text-[13px] font-semibold text-foreground">{u.username}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell><StatusBadge variant={u.isActive ? 'active' : 'inactive'} /></TableCell>
+                  <TableCell>{u.isLocked ? <StatusBadge variant="locked" /> : <span className="text-faint">—</span>}</TableCell>
+                  <TableCell className="tabular text-xs text-muted-foreground">{u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '—'}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableWrap>
+      )}
 
       {showModal && (
         <Dialog open onOpenChange={(open) => { if (!open) setShowModal(false); }}>

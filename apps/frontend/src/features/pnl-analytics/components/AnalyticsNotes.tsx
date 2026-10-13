@@ -1,12 +1,6 @@
 'use client'
 
-function Note({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
-      {children}
-    </p>
-  )
-}
+import { Banner } from '@/components/shared/banner'
 
 /**
  * Sections 6–9 read period-wide endpoints that carry no route dimension at all. When the viewer
@@ -14,10 +8,10 @@ function Note({ children }: { children: React.ReactNode }) {
  */
 export function ScopeFallbackNote() {
   return (
-    <Note>
+    <Banner tone="warn">
       The route scope selected above does not apply to this section: the API only provides these
       figures as a period-wide aggregate, with no per-route or per-group breakdown.
-    </Note>
+    </Banner>
   )
 }
 
@@ -26,16 +20,16 @@ export function ScopeFallbackNote() {
  */
 export function RangeFallbackNote() {
   return (
-    <Note>
+    <Banner tone="warn">
       A custom date range is active. The figures in this section are only available as period
       aggregates, so they are still calculated over the whole period.
-    </Note>
+    </Banner>
   )
 }
 
 /** The dataset failed to load. Not the same fact as "there was nothing this period". */
 export function AbsentNote({ what }: { what: string }) {
-  return <Note>{what} could not be loaded, so this section is incomplete.</Note>
+  return <Banner tone="warn">{what} could not be loaded, so this section is incomplete.</Banner>
 }
 
 /** The dataset loaded and genuinely had nothing in it. */

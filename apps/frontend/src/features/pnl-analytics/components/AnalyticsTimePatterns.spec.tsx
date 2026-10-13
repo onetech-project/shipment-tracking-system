@@ -203,9 +203,9 @@ describe('AnalyticsTimePatterns', () => {
     const chips = Array.from(block.querySelectorAll('span')).slice(1)
     expect(
       chips.map((c) =>
-        c.className.includes('text-emerald-700')
+        c.className.includes('text-brand-ink')
           ? 'up'
-          : c.className.includes('text-red-700')
+          : c.className.includes('text-bad')
             ? 'down'
             : 'none',
       ),

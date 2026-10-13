@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import Spinner from '@/components/ui/spinner'
+import { Banner } from '@/components/shared/banner'
 
 export type FilePreviewState =
   | { status: 'loading' }
@@ -62,7 +63,11 @@ function PreviewBody({ state }: { state: FilePreviewState }) {
   }
 
   if (state.status === 'error') {
-    return <p className="px-6 py-10 text-center text-sm text-destructive">{state.message}</p>
+    return (
+      <div className="mx-auto max-w-md text-center">
+        <Banner tone="danger">{state.message}</Banner>
+      </div>
+    )
   }
 
   const name = state.filename ?? 'berkas'

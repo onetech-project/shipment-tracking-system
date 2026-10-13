@@ -1,9 +1,15 @@
 'use client'
 
 import { useState } from 'react'
+import { CloudOff, Truck } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
+import { StagingBadge } from '@/components/shared/header-badges'
+import { isStaging } from '@/lib/env'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import { Banner } from '@/components/shared/banner'
+import { EmptyState } from '@/components/shared/empty-state'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHead } from '@/components/ui/card'
 import { usePermissions } from '@/shared/hooks/use-permissions'
 import { VehicleFilters } from '@/features/fleet/components/VehicleFilters'
 import { VehicleTable } from '@/features/fleet/components/VehicleTable'
@@ -244,15 +250,16 @@ export default function FleetVehiclesPage() {
     <div>
       {/* Eyebrow, title and description follow the prototype's masthead verbatim, so the operator
           meets the same words here as in the document they signed off. */}
-      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <p className="mb-1.5 text-[10.5px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
         Buku induk kendaraan · angkutan barang
       </p>
       <PageHeader
         title="Registrasi Armada"
         subtitle="Data kendaraan, masa berlaku KIR & STNK, softcopy dokumen, status kepemilikan, dan angsuran leasing dalam satu tempat. Peringatan muncul otomatis 30 hari sebelum jatuh tempo."
+        badge={isStaging() ? <StagingBadge /> : undefined}
         action={
           <div className="flex gap-2">
-            <Button variant="outline" onClick={handleExport} disabled={exportCsv.isPending}>
+            <Button variant="subtle" onClick={handleExport} disabled={exportCsv.isPending}>
               {exportCsv.isPending ? 'Menyiapkan…' : 'Ekspor CSV'}
             </Button>
             {canCreate && <Button onClick={() => setModal({ type: 'create' })}>+ Tambah armada</Button>}
@@ -260,21 +267,17 @@ export default function FleetVehiclesPage() {
         }
       />
 
-      {actionError && (
-        <p className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {actionError}
-        </p>
-      )}
+      {actionError && <Banner tone="danger">{actionError}</Banner>}
 
       <FleetSummaryCards summary={summary} isLoading={summaryLoading} />
 
       <VehiclesTabs value={tab} onChange={setTab} />
 
       {!canReadMaster && (
-        <p className="mb-4 text-sm text-muted-foreground">
+        <Banner tone="info">
           Daftar jenis armada, kepemilikan, leasing, pool, status dan jenis dokumen tidak tersedia
           — butuh izin akses master data. Filter dan pilihan terkait dikosongkan.
-        </p>
+        </Banner>
       )}
 
       {tab === 'armada' && (
@@ -298,29 +301,41 @@ export default function FleetVehiclesPage() {
             // The empty-state copy is an affirmative claim that no unit matches. During an outage
             // that claim is false, and an operator who believes it starts re-registering units
             // that already exist.
-            <div className="rounded-lg border bg-card p-8 text-center">
-              <p className="text-sm text-muted-foreground">Gagal memuat data armada.</p>
-              <button onClick={() => refetch()} className="mt-2 text-sm text-primary underline">
-                Coba lagi
-              </button>
-            </div>
+            <EmptyState
+              icon={CloudOff}
+              title="Gagal memuat data armada."
+              action={
+                <Button variant="outline" size="sm" onClick={() => refetch()}>
+                  Coba lagi
+                </Button>
+              }
+            />
           ) : (
-            <>
-              <VehicleTable
-                rows={rows}
-                docTypes={docTypes ?? []}
-                isLoading={isLoading}
-                sort={filters.sort ?? 'nopol'}
-                onSortChange={(sort: FleetVehicleSort) => setFilters({ ...filters, sort, page: 1 })}
-                onEdit={canUpdate ? (v) => setModal({ type: 'edit', vehicle: v }) : () => {}}
-                onDocuments={canUpdate ? (v) => setModal({ type: 'documents', vehicle: v }) : () => {}}
-                onArchive={canDelete ? (v) => setModal({ type: 'archive', vehicle: v }) : () => {}}
-                onRestore={canDelete ? handleRestore : () => {}}
-                onBerkas={canUpdate ? handleFocusBerkas : undefined}
-                showActions={{ edit: canUpdate, documents: canUpdate, archive: canDelete }}
+            <Card>
+              <CardHead
+                icon={Truck}
+                title="Daftar Armada"
+                subtitle={`${total} armada · masa berlaku dokumen per kendaraan`}
               />
+              <CardContent className="p-0">
+                <VehicleTable
+                  rows={rows}
+                  docTypes={docTypes ?? []}
+                  isLoading={isLoading}
+                  sort={filters.sort ?? 'nopol'}
+                  onSortChange={(sort: FleetVehicleSort) => setFilters({ ...filters, sort, page: 1 })}
+                  onEdit={canUpdate ? (v) => setModal({ type: 'edit', vehicle: v }) : () => {}}
+                  onDocuments={
+                    canUpdate ? (v) => setModal({ type: 'documents', vehicle: v }) : () => {}
+                  }
+                  onArchive={canDelete ? (v) => setModal({ type: 'archive', vehicle: v }) : () => {}}
+                  onRestore={canDelete ? handleRestore : () => {}}
+                  onBerkas={canUpdate ? handleFocusBerkas : undefined}
+                  showActions={{ edit: canUpdate, documents: canUpdate, archive: canDelete }}
+                />
+              </CardContent>
 
-              <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+              <div className="flex items-center justify-between border-t px-[18px] py-3 text-[11.5px] text-muted-foreground">
                 <span>{total} armada</span>
                 <div className="flex items-center gap-2">
                   <Button
@@ -329,7 +344,7 @@ export default function FleetVehiclesPage() {
                     disabled={page <= 1}
                     onClick={() => setFilters({ ...filters, page: page - 1 })}
                   >
-                    Sebelumnya
+                    ← Sebelumnya
                   </Button>
                   <span>
                     Halaman {page} dari {totalPages}
@@ -340,11 +355,11 @@ export default function FleetVehiclesPage() {
                     disabled={page >= totalPages}
                     onClick={() => setFilters({ ...filters, page: page + 1 })}
                   >
-                    Berikutnya
+                    Berikutnya →
                   </Button>
                 </div>
               </div>
-            </>
+            </Card>
           )}
         </>
       )}

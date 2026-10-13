@@ -1,9 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Input, fieldClass } from '@/components/ui/input'
 import {
   Dialog,
   DialogContent,
@@ -12,6 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { FormField } from '@/components/shared/form-field'
+import { Banner } from '@/components/shared/banner'
 import { FleetDriver, FleetDriverPayload, FleetMasterRow } from '../types'
 import { apiErrorMessage } from '../utils/api-error'
 import { formatBytes } from '../utils/format-bytes'
@@ -113,7 +113,7 @@ export function DriverFormDialog({
               id="driver-sim-jenis"
               value={simJenisId}
               onChange={(e) => setSimJenisId(e.target.value)}
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              className={`w-full ${fieldClass}`}
             >
               <option value="">— pilih —</option>
               {simTypes.map((t) => (
@@ -200,16 +200,15 @@ export function DriverFormDialog({
                   </Button>
                 )}
               </div>
-              {simError && <p className="mt-2 text-sm text-destructive">{simError}</p>}
+              {simError && (
+                <Banner tone="danger" className="mt-2">
+                  {simError}
+                </Banner>
+              )}
             </div>
           )}
 
-          {error && (
-            <p className="flex items-center gap-1 text-sm text-destructive">
-              <AlertCircle size={14} aria-hidden="true" />
-              {error}
-            </p>
-          )}
+          {error && <Banner tone="danger">{error}</Banner>}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>

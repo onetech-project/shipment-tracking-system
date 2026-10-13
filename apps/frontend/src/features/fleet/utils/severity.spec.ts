@@ -41,10 +41,10 @@ describe('severityMeta', () => {
   })
 
   it.each([
-    ['crit', 'bg-red-500'],
-    ['warn', 'bg-amber-500'],
-    ['ok', 'bg-emerald-500'],
-    ['none', 'bg-slate-400'],
+    ['crit', 'bg-bad-strong'],
+    ['warn', 'bg-warn'],
+    ['ok', 'bg-good'],
+    ['none', 'bg-faint'],
   ])('paints the %s dot %s', (severity, dot) => {
     expect(severityMeta(severity as never).dot).toBe(dot)
   })

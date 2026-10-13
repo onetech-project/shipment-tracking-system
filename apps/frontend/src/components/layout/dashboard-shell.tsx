@@ -32,7 +32,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <div className={`hidden lg:flex lg:flex-col lg:shrink-0 h-full transition-[width] duration-200 ${collapsed ? 'lg:w-14' : 'lg:w-60'}`}>
+      <div className={`hidden lg:flex lg:flex-col lg:shrink-0 h-full transition-[width] duration-200 ${collapsed ? 'lg:w-14' : 'lg:w-[248px]'}`}>
         <Sidebar collapsed={collapsed} onToggleCollapse={toggleCollapsed} />
       </div>
       <MobileDrawer open={isOpen} onClose={close} />
@@ -40,7 +40,9 @@ export function DashboardShell({ children }: DashboardShellProps) {
         <div className="flex lg:hidden">
           <TopBar onMenuToggle={toggle} />
         </div>
-        <main className="flex-1 overflow-auto p-4 lg:p-8">{children}</main>
+        <main className="flex-1 overflow-auto px-4 py-4 lg:px-8 lg:pb-14 lg:pt-[26px]">
+          <div className="mx-auto w-full max-w-[1700px]">{children}</div>
+        </main>
       </div>
     </div>
   );

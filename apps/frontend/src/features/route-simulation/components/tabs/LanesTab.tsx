@@ -2,11 +2,14 @@
 
 import React, { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHead } from '@/components/ui/card'
+import { FilterBar } from '@/components/shared/filter-bar'
+import { ListChecks } from 'lucide-react'
 import { COST_FIELDS, COST_LABELS, accountOf, groupNames, laneMargin, routeDemand } from '../../engine'
 import { Lane } from '../../types'
 import { fmtIdr, fmtNum } from '../../utils/format'
 import {
-  EspTag, Hint, NumInput, RouteChip, RouteFilter, RouteFilterBar, Signed, Tag, TabProps, TD, TDN, TH, THN, ROW_BAND, visibleRoutes,
+  EspTag, Hint, NumInput, RouteChip, RouteFilter, RouteFilterBar, Signed, Tag, TabProps, TD, TDN, TH, THN, ROW, ROW_BAND, visibleRoutes,
 } from '../ui'
 
 const COLS = 11
@@ -19,7 +22,7 @@ export function LanesTab({ source, sim, dispatch }: TabProps) {
   const laneRow = (l: Lane) => {
     const account = accountOf(sim, l.vendor)
     return (
-      <tr key={l.id} style={l.enabled ? undefined : { opacity: 0.55 }}>
+      <tr key={l.id} className={ROW} style={l.enabled ? undefined : { opacity: 0.55 }}>
         <td className={`${TD} whitespace-nowrap pl-[46px]`}>
           {l.airline}
           {!l.hasData && <> <Tag>tidak ada data di rentang histori</Tag></>}
@@ -55,14 +58,16 @@ export function LanesTab({ source, sim, dispatch }: TabProps) {
 
   return (
     <>
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="max-w-4xl">
-          <h2 className="text-base font-semibold">SMU Rute</h2>
+      <Card>
+        <CardHead icon={ListChecks} title="SMU Rute" />
+        <CardContent className="space-y-1.5 pt-4">
           <Hint>Patokan rute. Daftar vendor dan airlines di tiap rute diambil dari seluruh histori AWB (vendor, airlines, berat, cost), jadi tidak perlu ditambah manual; cost/kg, load, dan tag &quot;tidak ada data&quot; memakai rentang histori di kepala halaman. Cost/kg tiap komponen dari data = total cost komponen itu (SG Outgoing, SG Incoming, RA, SMU) dibagi total berat, hanya dari AWB yang sudah dibooking dan cost-nya bukan estimasi. Data AWB tidak memuat kapasitas maskapai, jadi load awal = kg per hari tertinggi dalam satu periode pada rentang histori.</Hint>
           <Hint>Tiap komponen cost dan load boleh diubah untuk mencoba; nilai yang diubah bergaris oranye dan bisa dikembalikan ke data. Total Cost = Cost SG Outgoing + Cost SG Incoming + Cost RA + Cost SMU (otomatis). Hapus centang Ikut bila suatu airlines tidak boleh dipakai. Margin/kg = Rate SPX - Total Cost, ditambah cashback 2% untuk akun ESP.</Hint>
-        </div>
+        </CardContent>
+      </Card>
+      <FilterBar>
         <RouteFilterBar source={source} value={filter} onChange={setFilter} />
-      </div>
+      </FilterBar>
       <div className="overflow-x-auto rounded-md border bg-card">
         <table className="w-full border-collapse text-[13px]">
           <thead>

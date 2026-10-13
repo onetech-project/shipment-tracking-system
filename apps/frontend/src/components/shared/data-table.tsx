@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableWrap } from '@/components/ui/table';
 
 export interface DataTableColumn<T> {
   // ReactNode, not string, so a sort control can live inside the header cell it sorts rather
@@ -25,33 +26,31 @@ export function DataTable<T>({
   isLoading = false, className, 'data-testid': testId, rowDataTestId,
 }: DataTableProps<T>) {
   return (
-    <div className={cn('overflow-x-auto rounded-md border', className)}>
-      <table data-testid={testId} className="w-full border-collapse">
-        <thead className="bg-muted/50">
-          <tr>
+    <TableWrap className={className}>
+      <Table data-testid={testId}>
+        <TableHeader>
+          <TableRow>
             {columns.map((col, i) => (
-              <th key={i} className={cn('px-4 py-3 text-left text-sm font-medium text-muted-foreground', col.className)}>
-                {col.header}
-              </th>
+              <TableHead key={i} className={col.className}>{col.header}</TableHead>
             ))}
-          </tr>
-        </thead>
-        <tbody>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {isLoading ? (
             <tr><td colSpan={columns.length} className="px-4 py-8 text-center text-muted-foreground">Loading…</td></tr>
           ) : rows.length === 0 ? (
             <tr><td colSpan={columns.length} className="px-4 py-8 text-center text-muted-foreground">{emptyMessage}</td></tr>
           ) : (
             rows.map((row) => (
-              <tr key={keyExtractor(row)} data-testid={rowDataTestId} className="hover:bg-muted/30 motion-safe:transition-colors motion-safe:duration-150">
+              <TableRow key={keyExtractor(row)} data-testid={rowDataTestId}>
                 {columns.map((col, i) => (
-                  <td key={i} className={cn('px-4 py-3 text-sm', col.className)}>{col.accessor(row)}</td>
+                  <TableCell key={i} className={cn(col.className)}>{col.accessor(row)}</TableCell>
                 ))}
-              </tr>
+              </TableRow>
             ))
           )}
-        </tbody>
-      </table>
-    </div>
+        </TableBody>
+      </Table>
+    </TableWrap>
   );
 }

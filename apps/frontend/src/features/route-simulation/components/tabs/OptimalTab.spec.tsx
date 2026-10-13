@@ -11,15 +11,15 @@ const sim0 = { ...createState(src), accounts: PROTOTYPE_ACCOUNTS }
 const sim = { ...sim0, lanes: buildLanes(src, sim0) }
 
 // The route band row (RouteChip, e.g. 'CGK → Aceh') plus every row below it up to (not including)
-// the next band row, found by its route chip (span.font-mono). This scopes assertions to the one
+// the next band row, found by its route chip (span[data-route-chip]). This scopes assertions to the one
 // route they claim to describe, instead of the whole page.
 function routeRows(label: string): HTMLElement[] {
-  const chip = screen.getByText(label, { selector: 'span.font-mono' })
+  const chip = screen.getByText(label, { selector: 'span[data-route-chip]' })
   const band = chip.closest('tr')
   if (!band) throw new Error(`no <tr> around route chip ${label}`)
   const rows: HTMLElement[] = [band]
   let el = band.nextElementSibling
-  while (el && !el.querySelector('span.font-mono')) {
+  while (el && !el.querySelector('span[data-route-chip]')) {
     rows.push(el as HTMLElement)
     el = el.nextElementSibling
   }

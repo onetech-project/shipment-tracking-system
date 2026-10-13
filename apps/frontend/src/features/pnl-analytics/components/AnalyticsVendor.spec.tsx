@@ -183,9 +183,9 @@ describe('AnalyticsVendor', () => {
     render(<AnalyticsVendor data={ranked} isLoading={false} isError={false} scoped={false} ranged={false} />)
     const rows = within(tableWithHeaders(GAP_HEADERS)).getAllByRole('row').slice(1)
     expect(rows).toHaveLength(3)
-    expect(rows[2]).toHaveClass('text-emerald-700')
-    expect(rows[0]).not.toHaveClass('text-emerald-700')
-    expect(rows[1]).not.toHaveClass('text-emerald-700')
+    expect(rows[2]).toHaveClass('text-brand-ink')
+    expect(rows[0]).not.toHaveClass('text-brand-ink')
+    expect(rows[1]).not.toHaveClass('text-brand-ink')
   })
 
   it('lists every vendor in the share table, ESP included, ranked by tonnage', () => {

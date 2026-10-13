@@ -18,8 +18,10 @@ import {
   batchCountAirShipments,
 } from '@/features/air-shipments/hooks/useAirShipments'
 import { DEFAULT_HIDDEN, FROZEN_KEYS, colLabel } from '../columns.config'
-import { Lock, Trash2 } from 'lucide-react'
+import { Lock, Trash2, ChevronDown, Search } from 'lucide-react'
 import { AxiosError } from 'axios'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
 interface AirShipmentsPageProps {
   endpoint: string
@@ -221,80 +223,58 @@ export function AirShipmentsPage({
         <h2 className="text-lg font-medium">{title}</h2>
       </div> */}
 
-      {/* title.includes('compileaircgk') && (
-        <>
-          <AlertPieChart
-            tableName={tableName}
-            activeAlert={activeAlert}
-            onAlertSelect={handleAlertSelect}
-            affectedTables={affectedTables}
-          />
+      {/* The per-table AlertPieChart + alert filter chip were disabled for this generic page —
+          see AlertPieChart.tsx, which is still used elsewhere. */}
 
-          {activeAlert && (
-            <div className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-slate-50 px-3 py-1 text-sm text-slate-700">
-              <span>Filtered by: {ALERT_TYPE_LABELS[activeAlert]}</span>
-              <button
-                type="button"
-                onClick={() => handleAlertSelect(null)}
-                className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-slate-700 hover:bg-slate-300"
-                aria-label="Clear alert filter"
-              >
-                ×
-              </button>
-            </div>
-          )}
-        </>
-      ) */}
-
-      <div className="flex flex-wrap items-center gap-4 justify-between">
-        <div className="flex flex-wrap items-center gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-surface-2 p-2.5">
+        <div className="flex flex-wrap items-center gap-3">
           {/* Search input (hidden for Rate and Routes menu) */}
-          <input
-            type="text"
-            className="border rounded px-2 py-1 min-w-[200px]"
-            placeholder="Search shipments..."
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-          />
+          <div className="relative">
+            <Search
+              size={14}
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-faint"
+              aria-hidden="true"
+            />
+            <Input
+              type="text"
+              className="min-w-[200px] pl-8"
+              placeholder="Search shipments..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+            />
+          </div>
         </div>
         {/* Column visibility controls in dropdown, right-aligned */}
         <div className="relative flex items-center gap-2" ref={dropdownRef}>
-          <button
+          <Button
             type="button"
-            className="border rounded px-2 py-1 text-xs bg-background hover:bg-accent flex items-center gap-1 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/50"
+            variant="subtle"
+            size="sm"
             onClick={() => setDropdownOpen((open) => !open)}
             aria-haspopup="true"
             aria-expanded={dropdownOpen}
           >
-            <span className="font-medium">Columns</span>
-            <svg width="14" height="14" viewBox="0 0 20 20" fill="none" className="ml-1">
-              <path
-                d="M5 8L10 13L15 8"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
+            Columns
+            <ChevronDown size={14} aria-hidden="true" />
+          </Button>
           {dropdownOpen && (
             <div
-              className="absolute right-0 mt-2 min-w-[180px] max-h-72 overflow-auto rounded-lg border border-border bg-popover shadow-lg ring-1 ring-black/10 z-[100] animate-fade-in"
-              style={{ boxShadow: '0 8px 32px 0 rgba(0,0,0,0.18)' }}
+              className="absolute right-0 top-full z-[100] mt-2 max-h-72 min-w-[180px] overflow-auto rounded-md border bg-popover shadow-soft-md"
             >
-              <div className="px-3 py-2 border-b border-border text-xs font-semibold text-muted-foreground bg-muted rounded-t-lg sticky top-0 z-10">
+              <div className="sticky top-0 z-10 border-b bg-table-head px-3 py-2 text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">
                 Toggle Columns
               </div>
-              <div className="flex flex-col gap-1 px-3 py-2">
+              <div className="flex flex-col gap-0.5 px-2 py-2">
                 {allColumns.map((col) => (
                   <label
                     key={col}
-                    className="flex items-center gap-2 text-xs cursor-pointer hover:bg-accent/30 rounded px-1 py-1 transition-colors"
+                    className="flex items-center gap-2 rounded-sm px-1 py-1 text-xs motion-safe:transition-colors hover:bg-surface-2"
                   >
                     <input
                       type="checkbox"
                       checked={visibleColumns[col] || false}
                       onChange={() => handleColumnToggle(col)}
-                      className="accent-accent h-3 w-3 rounded border border-border focus:ring-1 focus:ring-accent"
+                      className="h-3 w-3 rounded-sm border border-border accent-brand-2 focus:ring-1 focus:ring-brand/40"
                     />
                     <span className="truncate" title={colLabel(col)}>
                       {colLabel(col)}
@@ -304,57 +284,39 @@ export function AirShipmentsPage({
               </div>
             </div>
           )}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => openBatch('lock')}
-              className="border rounded px-2 py-1 text-xs bg-background hover:bg-accent flex items-center gap-1"
-            >
+          <div className="flex items-center gap-1.5">
+            <Button type="button" variant="subtle" size="sm" onClick={() => openBatch('lock')}>
               <Lock size={14} /> Batch Lock
-            </button>
-            <button
-              type="button"
-              onClick={() => openBatch('delete')}
-              className="border border-destructive rounded px-2 py-1 text-xs bg-background hover:bg-accent text-destructive flex items-center gap-1"
-            >
+            </Button>
+            <Button type="button" variant="danger-soft" size="sm" onClick={() => openBatch('delete')}>
               <Trash2 size={14} /> Batch Delete
-            </button>
+            </Button>
           </div>
           <SyncStatusBadge isConnected={isConnected} lastSyncAt={lastSyncAtByTable[tableName] ?? lastSyncAt} />
           {batchDialog.op && (
-            <div className="absolute right-0 mt-12 w-[300px] p-3 rounded-lg border border-border bg-popover shadow-lg z-50">
-              <div className="text-sm font-medium mb-2">
+            <div className="absolute right-0 top-full z-50 mt-2 w-[300px] rounded-md border bg-popover p-3 shadow-soft-md">
+              <div className="mb-2 font-display text-sm font-bold">
                 {batchDialog.op === 'lock' ? 'Batch Lock Rows' : 'Batch Delete Rows'}
               </div>
-              <label className="text-xs block mb-1">Start</label>
+              <label className="mb-1 block text-[10.5px] font-bold uppercase tracking-[0.06em] text-muted-foreground">Start</label>
               <input
                 type="date"
                 value={batchDialog.start}
                 onChange={(e) => setBatchDialog((s) => ({ ...s, start: e.target.value }))}
-                className="w-full border rounded px-2 py-1 mb-2"
+                className="mb-2 w-full rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40"
               />
-              <label className="text-xs block mb-1">End</label>
+              <label className="mb-1 block text-[10.5px] font-bold uppercase tracking-[0.06em] text-muted-foreground">End</label>
               <input
                 type="date"
                 value={batchDialog.end}
                 onChange={(e) => setBatchDialog((s) => ({ ...s, end: e.target.value }))}
-                className="w-full border rounded px-2 py-1 mb-3"
+                className="mb-3 w-full rounded-[7px] border border-input bg-card px-2.5 py-1.5 text-[12.5px] font-medium outline-none transition focus-visible:border-brand focus-visible:ring-1 focus-visible:ring-brand/40"
               />
               <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={closeBatch}
-                  disabled={batchDialog.loading}
-                  className="rounded border px-3 py-1"
-                >
+                <Button type="button" variant="outline" size="sm" onClick={closeBatch} disabled={batchDialog.loading}>
                   Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmBatch}
-                  disabled={batchDialog.loading || !batchDialog.start || !batchDialog.end}
-                  className="rounded border px-3 py-1 flex items-center gap-1"
-                >
+                </Button>
+                <Button type="button" size="sm" onClick={handleConfirmBatch} disabled={batchDialog.loading || !batchDialog.start || !batchDialog.end}>
                   {batchDialog.loading ? (
                     'Working...'
                   ) : batchDialog.op === 'lock' ? (
@@ -366,7 +328,7 @@ export function AirShipmentsPage({
                       <Trash2 size={14} /> Delete
                     </>
                   )}
-                </button>
+                </Button>
               </div>
             </div>
           )}

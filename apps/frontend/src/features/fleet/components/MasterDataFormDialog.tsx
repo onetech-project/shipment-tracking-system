@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -12,6 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { FormField } from '@/components/shared/form-field'
+import { Banner } from '@/components/shared/banner'
 import {
   CATEGORIES_WITH_REQUIRED,
   CATEGORIES_WITH_WARN_DAYS,
@@ -147,7 +147,7 @@ export function MasterDataFormDialog({
                 />
                 Wajib
               </label>
-              <p className="text-xs text-amber-700 dark:text-amber-400">
+              <p className="text-xs text-warn-ink">
                 {category === 'jenis_dokumen'
                   ? // jenis_dokumen's flag is not a chip input: assertRequiredDocuments (backend) and
                     // useVehicleForm's validation (frontend) both reject a vehicle save that is
@@ -158,12 +158,7 @@ export function MasterDataFormDialog({
             </div>
           )}
 
-          {error && (
-            <p className="flex items-center gap-1 text-sm text-destructive">
-              <AlertCircle size={14} aria-hidden="true" />
-              {error}
-            </p>
-          )}
+          {error && <Banner tone="danger">{error}</Banner>}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>

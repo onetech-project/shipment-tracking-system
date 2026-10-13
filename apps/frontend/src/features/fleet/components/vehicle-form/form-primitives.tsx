@@ -2,10 +2,11 @@
 
 import * as React from 'react'
 import { FormField } from '@/components/shared/form-field'
+import { fieldClass } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { FleetMasterRow } from '../../types'
 
-export const SELECT_CLASS = 'h-9 w-full rounded-md border border-input bg-background px-3 text-sm'
+export const SELECT_CLASS = cn('w-full', fieldClass)
 
 // A real <fieldset><legend>, not a styled div: the legend is what a screen reader announces when
 // the operator tabs into the group, and on a 22-field form that announcement is the only thing

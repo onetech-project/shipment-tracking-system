@@ -1,9 +1,9 @@
 'use client';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Input, fieldClass } from '@/components/ui/input';
 import { FormField } from '@/components/shared/form-field';
-import { AlertCircle } from 'lucide-react';
+import { Banner } from '@/components/shared/banner';
 
 interface PermissionFormProps {
   onSubmit: (data: { name: string; description?: string }) => Promise<void>;
@@ -11,7 +11,7 @@ interface PermissionFormProps {
 }
 
 const ACTIONS = ['read', 'create', 'update', 'delete'];
-const selectCls = 'flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2';
+const selectCls = `w-full ${fieldClass}`;
 
 export default function PermissionForm({ onSubmit, onCancel }: PermissionFormProps) {
   const [action, setAction] = useState('read');
@@ -39,12 +39,7 @@ export default function PermissionForm({ onSubmit, onCancel }: PermissionFormPro
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {error && (
-        <div className="flex items-center gap-2 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-          <AlertCircle size={14} />
-          {error}
-        </div>
-      )}
+      {error && <Banner tone="danger">{error}</Banner>}
       <FormField label="Action" htmlFor="perm-action" required>
         <select id="perm-action" className={selectCls} value={action} onChange={(e) => setAction(e.target.value)}>
           {ACTIONS.map((a) => <option key={a} value={a}>{a}</option>)}

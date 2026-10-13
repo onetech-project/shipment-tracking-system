@@ -1,6 +1,9 @@
 'use client'
 
+import { Activity } from 'lucide-react'
 import { fmt, num, pct } from '@/features/pnl/utils/format'
+import { Badge, type BadgeProps } from '@/components/ui/badge'
+import { Banner } from '@/components/shared/banner'
 import { COVERAGE_MIN, DqReport } from '../utils/dq'
 import { Outlier } from '../utils/series'
 import { AnalyticsSection } from './AnalyticsSection'
@@ -18,10 +21,10 @@ const LEVEL_TEXT: Record<DqReport['level'], string> = {
   bad: 'Unreliable',
 }
 
-const LEVEL_CLASS: Record<DqReport['level'], string> = {
-  ok: 'bg-emerald-50 text-emerald-800 border-emerald-200',
-  warn: 'bg-amber-50 text-amber-900 border-amber-200',
-  bad: 'bg-red-50 text-red-800 border-red-200',
+const LEVEL_VARIANT: Record<DqReport['level'], BadgeProps['variant']> = {
+  ok: 'active',
+  warn: 'pending',
+  bad: 'danger',
 }
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -42,34 +45,31 @@ export function AnalyticsHealth({ dq, outliers, baselineIncomplete }: AnalyticsH
       id="health"
       title="Data Health"
       subtitle="Read this before trusting anything below."
+      icon={Activity}
+      tone="info"
       action={
-        <span
-          data-testid="analytics-health-level"
-          className={`rounded-full border px-2.5 py-1 text-xs font-medium ${LEVEL_CLASS[dq.level]}`}
-        >
+        <Badge data-testid="analytics-health-level" variant={LEVEL_VARIANT[dq.level]}>
           {LEVEL_TEXT[dq.level]}
-        </span>
+        </Badge>
       }
     >
       {!dq.coverageOk && (
-        <p
-          data-testid="analytics-health-warning"
-          className="rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-800"
-        >
-          Only {pct(dq.coveragePct)} of revenue falls on days whose cost is fully attributed
-          (threshold {COVERAGE_MIN}%). Margin figures for this period are artifacts of missing cost
-          data, not results.
-        </p>
+        <Banner tone="danger">
+          <p data-testid="analytics-health-warning">
+            Only {pct(dq.coveragePct)} of revenue falls on days whose cost is fully attributed
+            (threshold {COVERAGE_MIN}%). Margin figures for this period are artifacts of missing
+            cost data, not results.
+          </p>
+        </Banner>
       )}
 
       {baselineIncomplete && (
-        <p
-          data-testid="analytics-baseline-note"
-          className="rounded-md border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900"
-        >
-          The previous period&apos;s own cost data is incomplete, so period-over-period deltas have
-          been withdrawn rather than shown against a broken baseline.
-        </p>
+        <Banner tone="warn">
+          <p data-testid="analytics-baseline-note">
+            The previous period&apos;s own cost data is incomplete, so period-over-period deltas
+            have been withdrawn rather than shown against a broken baseline.
+          </p>
+        </Banner>
       )}
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">

@@ -266,7 +266,7 @@ describe('PnlPage click-through from Daily Report to Estimated drilldown', () =>
     fireEvent.click(screen.getByRole('button', { name: 'Daily Report' }))
     fireEvent.click(screen.getByRole('button', { name: 'Fake cell' }))
 
-    expect(screen.getByRole('button', { name: 'Estimated' })).toHaveClass('bg-primary')
+    expect(screen.getByRole('button', { name: 'Estimated' })).toHaveClass('bg-card')
     expect(screen.getByTestId('drilldown-route')).toHaveTextContent(
       JSON.stringify(routeFromCell(CELL_COLUMN, CELL_DATE)),
     )
@@ -279,7 +279,7 @@ describe('PnlPage click-through from Daily Report to Estimated drilldown', () =>
     fireEvent.click(screen.getByRole('button', { name: 'Route Comparison' }))
     fireEvent.click(screen.getByRole('button', { name: 'comparison-cell' }))
 
-    expect(screen.getByText('Estimated').className).toContain('bg-primary')
+    expect(screen.getByText('Estimated').className).toContain('bg-card')
     expect(screen.getByTestId('drilldown-route')).toHaveTextContent(
       JSON.stringify({
         routes: [{ origin: 'Jabo', dest: 'Aceh' }],
@@ -360,12 +360,12 @@ describe('PnlPage Route Comparison tab gating', () => {
     const { rerender } = renderPage({ permissions: ['read.pnl', 'read.route_group'] })
 
     fireEvent.click(screen.getByRole('button', { name: 'Route Comparison' }))
-    expect(screen.getByRole('button', { name: 'Route Comparison' })).toHaveClass('bg-primary')
+    expect(screen.getByRole('button', { name: 'Route Comparison' })).toHaveClass('bg-card')
 
     setPermissions(['read.pnl'])
     rerender(<PnlPage />)
 
-    expect(screen.getByRole('button', { name: 'Estimated' })).toHaveClass('bg-primary')
+    expect(screen.getByRole('button', { name: 'Estimated' })).toHaveClass('bg-card')
   })
 })
 
@@ -436,12 +436,12 @@ describe('PnlPage Vendor Comparison tab', () => {
     const { rerender } = renderPage({ permissions: ['read.pnl', 'read.vendor_group'] })
 
     fireEvent.click(screen.getByRole('button', { name: 'Vendor Comparison' }))
-    expect(screen.getByRole('button', { name: 'Vendor Comparison' })).toHaveClass('bg-primary')
+    expect(screen.getByRole('button', { name: 'Vendor Comparison' })).toHaveClass('bg-card')
 
     setPermissions(['read.pnl'])
     rerender(<PnlPage />)
 
-    expect(screen.getByRole('button', { name: 'Estimated' })).toHaveClass('bg-primary')
+    expect(screen.getByRole('button', { name: 'Estimated' })).toHaveClass('bg-card')
   })
 
   it('switches to Estimated and applies a clicked vendor cell as the drilldown route', () => {
@@ -450,14 +450,15 @@ describe('PnlPage Vendor Comparison tab', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Vendor Comparison' }))
     fireEvent.click(screen.getByRole('button', { name: 'vendor-cell' }))
 
-    expect(screen.getByText('Estimated').className).toContain('bg-primary')
+    expect(screen.getByText('Estimated').className).toContain('bg-card')
     expect(screen.getByTestId('drilldown-route')).toHaveTextContent(
       JSON.stringify(VENDOR_CELL_ROUTE),
     )
   })
 
   // flex-wrap alone would leave the first button of the wrapped row drawing a border-l against
-  // nothing, with no border-t between the two rows. The row is a gapped pill row instead.
+  // nothing, with no border-t between the two rows. The row is a grey track (mockup `.mode-tabs`)
+  // with each button its own pill instead, so no button carries a border at all.
   it('renders the six tabs as a wrapping gapped pill row, with no leftover separators', () => {
     const { container } = renderPage({
       permissions: ['read.pnl', 'read.route_group', 'read.vendor_group'],
@@ -471,7 +472,7 @@ describe('PnlPage Vendor Comparison tab', () => {
     const buttons = Array.from(row.querySelectorAll('button'))
     expect(buttons).toHaveLength(6)
     for (const button of buttons) {
-      expect(button.className).toContain('rounded-md border')
+      expect(button.className).toContain('rounded-[7px]')
       expect(button.className).not.toContain('border-l')
     }
   })

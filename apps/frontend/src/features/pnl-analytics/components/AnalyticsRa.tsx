@@ -1,5 +1,6 @@
 'use client'
 
+import { ShieldCheck } from 'lucide-react'
 import { PnlNamedCostItem } from '@/features/pnl/hooks/usePnl'
 import { shareTable } from '../utils/share'
 import { AnalyticsSection } from './AnalyticsSection'
@@ -20,6 +21,8 @@ export function AnalyticsRa({ data, isLoading, isError, scoped, ranged }: Analyt
       id="ra"
       title="Regulated Agent"
       subtitle="Screening cost, by provider"
+      icon={ShieldCheck}
+      tone="dark"
     >
       {scoped && <ScopeFallbackNote />}
       {ranged && <RangeFallbackNote />}

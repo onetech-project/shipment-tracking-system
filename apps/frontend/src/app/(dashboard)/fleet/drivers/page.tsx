@@ -1,9 +1,12 @@
 'use client'
 
 import { useState } from 'react'
+import { CloudOff } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
 import { DataTable } from '@/components/shared/data-table'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import { Banner } from '@/components/shared/banner'
+import { EmptyState } from '@/components/shared/empty-state'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { usePermissions } from '@/shared/hooks/use-permissions'
@@ -148,17 +151,9 @@ export default function FleetDriversPage() {
         }
       />
 
-      {deleteError && (
-        <p className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {deleteError}
-        </p>
-      )}
+      {deleteError && <Banner tone="danger">{deleteError}</Banner>}
 
-      {simError && (
-        <p className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {simError}
-        </p>
-      )}
+      {simError && <Banner tone="danger">{simError}</Banner>}
 
       <div className="mb-4">
         <Input
@@ -171,12 +166,15 @@ export default function FleetDriversPage() {
       </div>
 
       {isError ? (
-        <div className="rounded-lg border bg-card p-8 text-center">
-          <p className="text-sm text-muted-foreground">Gagal memuat data sopir.</p>
-          <button type="button" onClick={() => refetch()} className="mt-2 text-sm text-primary underline">
-            Coba lagi
-          </button>
-        </div>
+        <EmptyState
+          icon={CloudOff}
+          title="Gagal memuat data sopir."
+          action={
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              Coba lagi
+            </Button>
+          }
+        />
       ) : (
         <DataTable
           rows={drivers ?? []}

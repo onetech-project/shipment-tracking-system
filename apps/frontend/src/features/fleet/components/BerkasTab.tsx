@@ -1,6 +1,10 @@
 'use client'
 
 import { useState } from 'react'
+import { FileWarning } from 'lucide-react'
+import { EmptyState } from '@/components/shared/empty-state'
+import { FilterBar } from '@/components/shared/filter-bar'
+import { Input } from '@/components/ui/input'
 import { FleetMasterRow, FleetVehicle, FleetVehicleFile } from '../types'
 import { useVehicleFiles } from '../hooks/useFleetVehicleFiles'
 import { BerkasSlotCard } from './BerkasSlotCard'
@@ -24,9 +28,10 @@ export function BerkasTab({ vehicles, slots, canEdit, onUpload, onView, onDelete
   // "the files are gone" rather than "the list has not loaded".
   if (slots.length === 0) {
     return (
-      <div className="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground">
-        Belum ada jenis berkas di master data. Tambahkan dulu di tab Master Data.
-      </div>
+      <EmptyState
+        icon={FileWarning}
+        title="Belum ada jenis berkas di master data. Tambahkan dulu di tab Master Data."
+      />
     )
   }
 
@@ -47,14 +52,14 @@ export function BerkasTab({ vehicles, slots, canEdit, onUpload, onView, onDelete
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <input
+      <FilterBar>
+        <Input
           type="text"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Cari nopol, merk, sopir, atau pool…"
           aria-label="Cari kendaraan"
-          className="h-9 min-w-56 flex-1 rounded-md border bg-background px-3 text-sm"
+          className="min-w-56 flex-1"
         />
         <div role="group" aria-label="Saring kelengkapan berkas" className="flex gap-1">
           {(
@@ -68,20 +73,20 @@ export function BerkasTab({ vehicles, slots, canEdit, onUpload, onView, onDelete
               key={value}
               aria-pressed={completeness === value}
               onClick={() => setCompleteness(value)}
-              className={`h-9 rounded-md border px-3 text-sm ${
-                completeness === value ? 'bg-primary text-primary-foreground' : 'bg-background'
+              className={`h-8 rounded-[7px] border px-3 text-[12.5px] font-medium motion-safe:transition-colors ${
+                completeness === value
+                  ? 'border-brand-ink bg-brand-ink text-white'
+                  : 'border-border bg-card text-muted-foreground hover:border-brand hover:text-brand-ink'
               }`}
             >
               {label}
             </button>
           ))}
         </div>
-      </div>
+      </FilterBar>
 
       {rows.length === 0 ? (
-        <div className="rounded-lg border bg-card p-8 text-center text-sm text-muted-foreground">
-          Tidak ada kendaraan yang cocok.
-        </div>
+        <EmptyState title="Tidak ada kendaraan yang cocok." />
       ) : (
         <div className="space-y-4">
           {rows.map((vehicle) => (
@@ -126,16 +131,16 @@ function BerkasVehicleCard({
   const { ada, wajib } = vehicle.berkasCount
   const tone =
     ada >= wajib
-      ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+      ? 'bg-good/10 text-brand-ink'
       : ada === 0
-        ? 'bg-destructive/10 text-destructive'
-        : 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
+        ? 'bg-bad/10 text-bad'
+        : 'bg-warn/10 text-warn-ink'
 
   return (
     <article className="rounded-lg border bg-card p-4">
       <header className="mb-3 flex items-start justify-between gap-2">
         <div>
-          <div className="font-medium tabular-nums">{vehicle.nopol}</div>
+          <div className="font-display font-extrabold tabular">{vehicle.nopol}</div>
           <div className="text-xs text-muted-foreground">
             {[vehicle.merk, vehicle.tipe].filter(Boolean).join(' ')}
             {' · '}

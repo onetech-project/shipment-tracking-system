@@ -17,7 +17,7 @@ export interface CellWarning {
 
 // The amber tint every warned cell shares, across both the daily matrix and the route comparison
 // tables — one definition so the two tables cannot drift into two different "warned" colors.
-export const WARNING_TINT = 'bg-amber-100 dark:bg-amber-950/40'
+export const WARNING_TINT = 'bg-warn-soft'
 
 export function hasWarning(warning: CellWarning | undefined): warning is CellWarning {
   if (!warning) return false

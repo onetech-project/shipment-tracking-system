@@ -29,8 +29,11 @@ const FIELDS = ['revenue', 'cost', 'margin'] as const
 type Field = (typeof FIELDS)[number]
 
 function valueClass(field: Field, value: number | null): string {
-  // Only margin can meaningfully be negative; revenue and cost are sums of non-negative amounts.
-  return field === 'margin' && value != null && value < 0 ? 'text-red-600 dark:text-red-400' : ''
+  // Only the margin block is ever coloured — revenue and cost are sums of non-negative amounts.
+  if (field !== 'margin' || value == null) return ''
+  if (value < 0) return 'text-bad font-bold'
+  if (value > 0) return 'text-good font-bold'
+  return 'text-foreground font-bold'
 }
 
 // A missing value is marked, not left blank: an empty cell and a real 0 read the same at a glance,
@@ -104,7 +107,7 @@ export function PnlComparisonTable<TColumn extends ComparisonColumn>({
       <tr
         key={`${key}-${componentKey}`}
         data-testid={`detail-${key}-${componentKey}`}
-        className={striped ? 'bg-muted/30' : 'bg-muted/10'}
+        className={striped ? 'bg-surface-2' : 'bg-surface-2/60'}
       >
         <td
           className={`sticky left-0 z-10 whitespace-nowrap border-b border-r px-3 py-1 pl-6 text-xs text-muted-foreground ${
@@ -138,25 +141,27 @@ export function PnlComparisonTable<TColumn extends ComparisonColumn>({
             <tr>
               <th
                 rowSpan={2}
-                className="sticky left-0 z-20 border-b border-r bg-card px-3 py-2 text-left font-medium"
+                className="sticky left-0 z-20 border-b border-r bg-table-head px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground"
               >
                 {firstColumnHeader}
               </th>
               <th
                 colSpan={columnCount}
-                className="border-b border-l bg-green-100 px-3 py-1.5 text-center font-semibold dark:bg-green-950/40"
+                className="border-b border-l bg-good-soft px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-[0.04em]"
               >
                 Revenue
               </th>
               <th
                 colSpan={columnCount}
-                className="border-b border-l bg-blue-100 px-3 py-1.5 text-center font-semibold dark:bg-blue-950/40"
+                className="border-b border-l bg-info-soft px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-[0.04em]"
               >
                 Cost
               </th>
+              {/* Margin is neither "info" nor "warning" — the third categorical block keeps its own
+                  tint (chart-palette ink-2, Task 7's third hue) distinct from Revenue/Cost above. */}
               <th
                 colSpan={columnCount}
-                className="border-b border-l bg-violet-100 px-3 py-1.5 text-center font-semibold dark:bg-violet-950/40"
+                className="border-b border-l bg-ink-2/10 px-3 py-1.5 text-center text-[11px] font-bold uppercase tracking-[0.04em]"
               >
                 Margin
               </th>
@@ -165,7 +170,7 @@ export function PnlComparisonTable<TColumn extends ComparisonColumn>({
               {model.columns.map((column) => (
                 <th
                   key={`rev-${column.id}`}
-                  className="whitespace-nowrap border-b border-l px-3 py-2 text-right font-medium text-muted-foreground"
+                  className="whitespace-nowrap border-b border-l bg-table-head px-3 py-2 text-right text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground"
                 >
                   {column.name}
                 </th>
@@ -173,7 +178,7 @@ export function PnlComparisonTable<TColumn extends ComparisonColumn>({
               {model.columns.map((column) => (
                 <th
                   key={`cost-${column.id}`}
-                  className="whitespace-nowrap border-b border-l px-3 py-2 text-right font-medium text-muted-foreground"
+                  className="whitespace-nowrap border-b border-l bg-table-head px-3 py-2 text-right text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground"
                 >
                   {column.name}
                 </th>
@@ -181,7 +186,7 @@ export function PnlComparisonTable<TColumn extends ComparisonColumn>({
               {model.columns.map((column) => (
                 <th
                   key={`margin-${column.id}`}
-                  className="whitespace-nowrap border-b border-l px-3 py-2 text-right font-medium text-muted-foreground"
+                  className="whitespace-nowrap border-b border-l bg-table-head px-3 py-2 text-right text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground"
                 >
                   {column.name}
                 </th>
@@ -198,7 +203,7 @@ export function PnlComparisonTable<TColumn extends ComparisonColumn>({
                 <React.Fragment key={row.rowKey}>
                   <tr
                     data-testid={`row-${row.rowKey}`}
-                    className={striped ? 'bg-muted/30' : ''}
+                    className={`hover:bg-row-hover ${striped ? 'bg-surface-2' : ''}`}
                   >
                     <RowHeaderCell
                       label={row.rowLabel}
@@ -247,16 +252,16 @@ export function PnlComparisonTable<TColumn extends ComparisonColumn>({
           <tfoot>
             {model.footerRows.map((footerRow, i) => (
               <React.Fragment key={footerRow.label}>
-                <tr className={i === 0 ? 'border-t-2 font-semibold' : 'font-semibold'}>
+                <tr className={`bg-table-head font-semibold ${i === 0 ? 'border-t-2' : ''}`}>
                   {footerRow.components ? (
                     <RowHeaderCell
                       label={footerRow.label}
                       open={openRows.has(FOOTER_KEY)}
                       onToggle={() => toggle(FOOTER_KEY)}
-                      className="bg-card text-right"
+                      className="bg-table-head text-right"
                     />
                   ) : (
-                    <td className="sticky left-0 z-10 whitespace-nowrap border-b border-r bg-card px-3 py-1.5 text-right">
+                    <td className="sticky left-0 z-10 whitespace-nowrap border-b border-r bg-table-head px-3 py-1.5 text-right">
                       {footerRow.label}
                     </td>
                   )}

@@ -1,6 +1,7 @@
 'use client'
 
 import { Search } from 'lucide-react'
+import { fieldClass } from '@/components/ui/input'
 
 interface BarhalFiltersProps {
   search: string
@@ -26,26 +27,28 @@ export function BarhalFilters({
   stations,
 }: BarhalFiltersProps) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    // `.toolbar` in the mockup: a grey strip (not the white `.filter-row` card) holding the
+    // search field plus the date/origin/destination selects in one row.
+    <div className="mb-3.5 flex flex-wrap items-center gap-2.5 rounded-md bg-surface-2 px-3.5 py-2.5">
       <div className="relative">
-        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-faint" />
         <input
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Cari No. Koli, No. Penerbangan, No. TO…"
-          className="w-72 rounded-md border border-border bg-background py-1.5 pl-8 pr-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+          className={`w-72 bg-card pl-8 ${fieldClass}`}
         />
       </div>
       <input
         type="date"
         value={date}
         onChange={(e) => onDateChange(e.target.value)}
-        className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+        className={`bg-card ${fieldClass}`}
       />
       <select
         value={origin}
         onChange={(e) => onOriginChange(e.target.value)}
-        className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+        className={`bg-card ${fieldClass}`}
       >
         <option value="">Semua Origin</option>
         {stations.origins.map((o) => (
@@ -57,7 +60,7 @@ export function BarhalFilters({
       <select
         value={dest}
         onChange={(e) => onDestChange(e.target.value)}
-        className="rounded-md border border-border bg-background px-2 py-1.5 text-sm"
+        className={`bg-card ${fieldClass}`}
       >
         <option value="">Semua Destinasi</option>
         {stations.dests.map((d) => (

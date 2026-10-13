@@ -1,5 +1,9 @@
 'use client'
 
+import { AlertTriangle } from 'lucide-react'
+import { Card, CardContent, CardHead } from '@/components/ui/card'
+import { Banner } from '@/components/shared/banner'
+import { EmptyState } from '@/components/shared/empty-state'
 import { FleetAlert } from '../types'
 import { formatTanggal } from '../utils/format-date'
 
@@ -20,92 +24,105 @@ function sisaText(daysLeft: number): string {
 
 export function FleetAlertList({ alerts, isLoading, isError, onOpen }: Props) {
   return (
-    <section className="mb-6 rounded-lg border bg-card">
-      <header className="flex items-baseline justify-between border-b px-4 py-3">
-        <h2 className="text-sm font-semibold">Perlu tindakan</h2>
-        <span className="text-xs text-muted-foreground">
-          {isLoading || isError
+    <Card className="mb-6">
+      <CardHead
+        icon={AlertTriangle}
+        tone="danger"
+        title="Perlu tindakan"
+        subtitle={
+          isLoading || isError
             ? ''
             : alerts.length > 0
               ? `${alerts.length} dokumen perlu diperpanjang`
-              : 'ambang sesuai jenis dokumen'}
-        </span>
-      </header>
+              : 'ambang sesuai jenis dokumen'
+        }
+      />
+      <CardContent className="pt-4">
+        {isLoading ? (
+          <div data-testid="alert-skeleton" className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="h-10 animate-pulse rounded-md bg-muted/40" />
+            ))}
+          </div>
+        ) : isError ? (
+          // Never the empty state during an outage: "nothing is due" is an affirmative claim, and
+          // an operator who believes it stops checking.
+          <Banner tone="danger">Gagal memuat daftar jatuh tempo.</Banner>
+        ) : alerts.length === 0 ? (
+          <EmptyState title="Tidak ada dokumen yang jatuh tempo dalam ambang peringatan." />
+        ) : (
+          <ul className="flex flex-col gap-1.5">
+            {alerts.map((alert) => {
+              const overdue = alert.severity === 'crit'
+              const subtitle = [
+                [alert.merk, alert.tipe].filter(Boolean).join(' '),
+                alert.pool,
+                alert.kind === 'sim' ? alert.driverName : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')
 
-      {isLoading ? (
-        <div data-testid="alert-skeleton" className="space-y-2 p-4">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-10 animate-pulse rounded-md bg-muted/40" />
-          ))}
-        </div>
-      ) : isError ? (
-        // Never the empty state during an outage: "nothing is due" is an affirmative claim, and
-        // an operator who believes it stops checking.
-        <p className="p-4 text-sm text-muted-foreground">Gagal memuat daftar jatuh tempo.</p>
-      ) : alerts.length === 0 ? (
-        <p className="p-4 text-sm text-muted-foreground">
-          Tidak ada dokumen yang jatuh tempo dalam ambang peringatan.
-        </p>
-      ) : (
-        <ul className="divide-y">
-          {alerts.map((alert) => {
-            const tone =
-              alert.severity === 'crit'
-                ? 'bg-destructive/10 text-destructive'
-                : 'bg-amber-500/10 text-amber-700 dark:text-amber-400'
-            const subtitle = [
-              [alert.merk, alert.tipe].filter(Boolean).join(' '),
-              alert.pool,
-              alert.kind === 'sim' ? alert.driverName : null,
-            ]
-              .filter(Boolean)
-              .join(' · ')
+              const title = (
+                <span className="font-display font-extrabold tabular">
+                  {alert.nopol ?? alert.driverName ?? '—'}
+                </span>
+              )
 
-            const title = (
-              <span className="font-medium tabular-nums">{alert.nopol ?? alert.driverName ?? '—'}</span>
-            )
-
-            return (
-              <li
-                key={`${alert.kind}-${alert.subjectId}-${alert.vehicleId ?? 'none'}`}
-                className="flex items-center gap-3 px-4 py-2.5"
-              >
-                <span
-                  aria-hidden
-                  className={`h-2 w-2 shrink-0 rounded-full ${
-                    alert.severity === 'crit' ? 'bg-destructive' : 'bg-amber-500'
+              return (
+                <li
+                  key={`${alert.kind}-${alert.subjectId}-${alert.vehicleId ?? 'none'}`}
+                  // The row tints, not just the chip: `#fef5f5`/`#fdecec` (overdue) and
+                  // `#fffbe8`/`#fef5d1` (soon) are the mockup's exact `.action-item` wash —
+                  // paler than any `bg-bad-soft`/`bg-warn-soft` shade, intentionally kept as
+                  // literal hex per the task brief rather than approximated with a token.
+                  className={`grid grid-cols-[auto_1fr_auto] items-center gap-3 rounded-sm border-l-[3px] px-3 py-2.5 motion-safe:transition-colors ${
+                    overdue
+                      ? 'border-l-bad bg-[#fef5f5] hover:bg-[#fdecec]'
+                      : 'border-l-warn bg-[#fffbe8] hover:bg-[#fef5d1]'
                   }`}
-                />
-                <div className="min-w-0 flex-1">
-                  {/* A licence with no vehicle has nothing to open, so it is not made to look
-                      clickable. */}
-                  {alert.vehicleId ? (
-                    <button
-                      onClick={() => onOpen(alert.vehicleId as string)}
-                      className="text-left hover:underline"
-                    >
-                      {title}
-                      <span className="text-muted-foreground"> · {alert.label}</span>
-                    </button>
-                  ) : (
-                    <span>
-                      {title}
-                      <span className="text-muted-foreground"> · {alert.label}</span>
-                    </span>
-                  )}
-                  <div className="truncate text-xs text-muted-foreground">{subtitle}</div>
-                </div>
-                <span className="hidden shrink-0 text-xs tabular-nums text-muted-foreground sm:block">
-                  {formatTanggal(alert.expiresAt)}
-                </span>
-                <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}>
-                  {sisaText(alert.daysLeft)}
-                </span>
-              </li>
-            )
-          })}
-        </ul>
-      )}
-    </section>
+                >
+                  <span
+                    className={`grid h-8 min-w-11 shrink-0 place-items-center rounded-sm border px-1.5 font-display text-[10.5px] font-extrabold tracking-[0.04em] ${
+                      overdue
+                        ? 'border-bad/25 bg-bad-soft text-bad-ink'
+                        : 'border-warn/30 bg-warn-soft text-warn-ink'
+                    }`}
+                  >
+                    {alert.label}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    {/* A licence with no vehicle has nothing to open, so it is not made to look
+                        clickable. */}
+                    {alert.vehicleId ? (
+                      <button
+                        onClick={() => onOpen(alert.vehicleId as string)}
+                        className="text-left text-[12.5px] font-semibold hover:underline"
+                      >
+                        {title}
+                        <span className="font-normal text-muted-foreground"> · {alert.label}</span>
+                      </button>
+                    ) : (
+                      <span className="text-[12.5px] font-semibold">
+                        {title}
+                        <span className="font-normal text-muted-foreground"> · {alert.label}</span>
+                      </span>
+                    )}
+                    <div className="truncate text-[11.5px] text-muted-foreground">{subtitle}</div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className="hidden text-[11.5px] font-semibold tabular text-foreground sm:block">
+                      {formatTanggal(alert.expiresAt)}
+                    </div>
+                    <div className={`text-[11px] font-bold ${overdue ? 'text-bad' : 'text-warn'}`}>
+                      {sisaText(alert.daysLeft)}
+                    </div>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   )
 }

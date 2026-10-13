@@ -30,12 +30,12 @@ describe('SeverityBadge', () => {
   // silently loses its tone or paints every dot the same colour still passes every text
   // assertion above.
   it.each([
-    ['crit', 'bg-red-50 text-red-700 ring-red-600/20', 'bg-red-500'],
-    ['warn', 'bg-amber-50 text-amber-800 ring-amber-600/20', 'bg-amber-500'],
-    ['ok', 'bg-emerald-50 text-emerald-700 ring-emerald-600/20', 'bg-emerald-500'],
+    ['crit', 'bg-bad-soft text-bad-ink ring-bad/20', 'bg-bad-strong'],
+    ['warn', 'bg-warn-soft text-warn-ink ring-warn/20', 'bg-warn'],
+    ['ok', 'bg-good-soft text-brand-ink ring-good/20', 'bg-good'],
     // Grey, never green: no dated document is an absence of information, not a clean bill of
     // health.
-    ['none', 'bg-slate-100 text-slate-600 ring-slate-500/20', 'bg-slate-400'],
+    ['none', 'bg-surface-2 text-faint border border-dashed border-border ring-transparent', 'bg-faint'],
   ] as const)('paints %s with its own tone and dot', (severity, tone, dot) => {
     render(<SeverityBadge severity={severity} />)
     const badge = screen.getByRole('img')
@@ -44,9 +44,7 @@ describe('SeverityBadge', () => {
     expect(marker).toHaveClass('h-1.5', 'w-1.5', 'rounded-full', dot)
     // No other severity's dot may leak in — this is what stops every dot collapsing to one
     // colour, green in particular.
-    const others = ['bg-red-500', 'bg-amber-500', 'bg-emerald-500', 'bg-slate-400'].filter(
-      (c) => c !== dot,
-    )
+    const others = ['bg-bad-strong', 'bg-warn', 'bg-good', 'bg-faint'].filter((c) => c !== dot)
     others.forEach((c) => expect(marker).not.toHaveClass(c))
   })
 

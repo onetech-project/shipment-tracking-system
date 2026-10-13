@@ -66,25 +66,25 @@ describe('PnlMatrixTable', () => {
     const model = baseModel({ values: [[-5, 10]], highlightNegative: true })
     const { container } = render(<PnlMatrixTable title="t" model={model} />)
     const [negativeCell] = bodyCells(container)
-    expect(negativeCell.className).toContain('text-red-700')
+    expect(negativeCell.className).toContain('text-bad')
   })
 
   it('does not apply negative styling when highlightNegative is false', () => {
     const model = baseModel({ values: [[-5, 10]], highlightNegative: false })
     const { container } = render(<PnlMatrixTable title="t" model={model} />)
     const [negativeCell] = bodyCells(container)
-    expect(negativeCell.className).not.toContain('text-red-700')
+    expect(negativeCell.className).not.toContain('text-bad')
   })
 
   it('paints a warned cell amber and explains it in the title', () => {
     const model = baseModel({ values: [[10, 20]], warnings: [[warned, clean]] })
     const { container } = render(<PnlMatrixTable title="t" model={model} />)
     const [warnedCell, cleanCell] = bodyCells(container)
-    expect(warnedCell.className).toContain('bg-amber-100')
+    expect(warnedCell.className).toContain('bg-warn-soft')
     expect(warnedCell.getAttribute('title')).toBe(
       'Data quality: SMU rate missing for route (2 AWB) · 3 TO belum ada cost',
     )
-    expect(cleanCell.className).not.toContain('bg-amber-100')
+    expect(cleanCell.className).not.toContain('bg-warn-soft')
     expect(cleanCell.getAttribute('title')).toBeNull()
   })
 
@@ -98,10 +98,10 @@ describe('PnlMatrixTable', () => {
     })
     const { container } = render(<PnlMatrixTable title="t" model={model} />)
     const [warnedCell, cleanCell] = bodyCells(container)
-    expect(warnedCell.className).toContain('bg-amber-100')
-    expect(warnedCell.className).not.toContain('bg-red-50')
-    expect(warnedCell.className).toContain('text-red-700')
-    expect(cleanCell.className).toContain('bg-red-50')
+    expect(warnedCell.className).toContain('bg-warn-soft')
+    expect(warnedCell.className).not.toContain('bg-bad-soft')
+    expect(warnedCell.className).toContain('text-bad')
+    expect(cleanCell.className).toContain('bg-bad-soft')
   })
 
   it('paints a warned footer cell amber but leaves it inert', () => {
@@ -110,7 +110,7 @@ describe('PnlMatrixTable', () => {
     })
     const { container } = render(<PnlMatrixTable title="t" model={model} onCellClick={jest.fn()} />)
     const [warnedFooter] = footerRow(container, 0)
-    expect(warnedFooter.className).toContain('bg-amber-100')
+    expect(warnedFooter.className).toContain('bg-warn-soft')
     expect(warnedFooter.querySelector('button')).toBeNull()
   })
 })

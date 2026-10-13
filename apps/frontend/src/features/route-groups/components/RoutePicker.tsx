@@ -35,13 +35,13 @@ export function RoutePicker({ routes, value, onChange }: RoutePickerProps) {
   }
 
   return (
-    <div className="max-h-72 space-y-3 overflow-y-auto rounded-md border p-3">
+    <div className="max-h-72 space-y-2.5 overflow-y-auto rounded-md border p-2.5">
       {groupByOrigin(routes).map((group) => (
-        <div key={group.label}>
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <div key={group.label} className="overflow-hidden rounded-sm border">
+          <p className="rounded-t-sm bg-brand-soft px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-brand-ink">
             {group.label}
           </p>
-          <div className="grid grid-cols-2 gap-1">
+          <div className="grid grid-cols-2 gap-1 bg-card p-2.5">
             {group.routes.map((route) => {
               const label = `${route.originLabel} → ${route.dest}`
               return (
@@ -54,10 +54,7 @@ export function RoutePicker({ routes, value, onChange }: RoutePickerProps) {
                   />
                   <span>{route.dest}</span>
                   {!route.hasData && (
-                    <span
-                      title="Belum ada shipment di rute ini"
-                      className="text-xs text-amber-600"
-                    >
+                    <span title="Belum ada shipment di rute ini" className="text-xs text-warn">
                       •
                     </span>
                   )}

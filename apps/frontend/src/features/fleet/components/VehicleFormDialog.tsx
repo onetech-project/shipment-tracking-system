@@ -1,7 +1,6 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -11,6 +10,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { FormField } from '@/components/shared/form-field'
+import { fieldClass } from '@/components/ui/input'
+import { Banner } from '@/components/shared/banner'
 import {
   FleetDriver,
   FleetMasterRow,
@@ -217,7 +218,7 @@ export function VehicleFormDialog({
               <textarea
                 id="vf-catatan"
                 rows={3}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                className={`w-full ${fieldClass}`}
                 value={form.values.catatan}
                 onChange={(e) => form.setValue('catatan', e.target.value)}
               />
@@ -225,10 +226,7 @@ export function VehicleFormDialog({
           </DocumentSection>
 
           {uploadFailures && (
-            <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
-              <p className="font-medium">
-                Armada tersimpan. {uploadFailures.length} berkas gagal diunggah:
-              </p>
+            <Banner tone="warn" title={`Armada tersimpan. ${uploadFailures.length} berkas gagal diunggah:`}>
               <ul className="mt-1 list-inside list-disc">
                 {uploadFailures.map((f) => (
                   <li key={f.slotLabel}>
@@ -236,18 +234,13 @@ export function VehicleFormDialog({
                   </li>
                 ))}
               </ul>
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p className="mt-1 text-xs opacity-80">
                 Berkas lain sudah tersimpan. Data armada tidak perlu diisi ulang.
               </p>
-            </div>
+            </Banner>
           )}
 
-          {error && (
-            <p className="flex items-center gap-2 text-sm text-destructive">
-              <AlertCircle size={16} aria-hidden="true" />
-              {error}
-            </p>
-          )}
+          {error && <Banner tone="danger">{error}</Banner>}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>

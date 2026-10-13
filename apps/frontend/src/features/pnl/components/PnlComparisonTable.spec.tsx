@@ -270,14 +270,14 @@ it('expands the Total footer row from its own chevron', () => {
 it('paints a warned cost cell amber', () => {
   render(<PnlComparisonTable model={baseModel()} firstColumnHeader={firstColumnHeader} cellHint={cellHint} />)
   expect(screen.getByTestId('cost-2026-05-02-g1').closest('td')!.className).toContain(
-    'bg-amber-100',
+    'bg-warn-soft',
   )
 })
 
 it('leaves a clean cost cell untinted', () => {
   render(<PnlComparisonTable model={baseModel()} firstColumnHeader={firstColumnHeader} cellHint={cellHint} />)
   expect(screen.getByTestId('cost-2026-05-02-g2').closest('td')!.className).not.toContain(
-    'bg-amber-100',
+    'bg-warn-soft',
   )
 })
 
@@ -288,10 +288,10 @@ it('leaves a clean cost cell untinted', () => {
 it('paints a warned revenue cell amber and leaves a clean one untinted', () => {
   render(<PnlComparisonTable model={baseModel()} firstColumnHeader={firstColumnHeader} cellHint={cellHint} onCellClick={jest.fn()} />)
   expect(screen.getByTestId('revenue-2026-05-02-g1').closest('td')!.className).toContain(
-    'bg-amber-100',
+    'bg-warn-soft',
   )
   expect(screen.getByTestId('revenue-2026-05-02-g2').closest('td')!.className).not.toContain(
-    'bg-amber-100',
+    'bg-warn-soft',
   )
 })
 
@@ -301,10 +301,10 @@ it('paints a warned revenue cell amber and leaves a clean one untinted', () => {
 it('paints both blocks of the Total footer row amber for a warned column, and leaves a clean column untinted', () => {
   const { container } = render(<PnlComparisonTable model={baseModel()} firstColumnHeader={firstColumnHeader} cellHint={cellHint} />)
   const [revenueWarned, revenueClean, costWarned, costClean] = footerRow(container, 'Total')
-  expect(revenueWarned.className).toContain('bg-amber-100')
-  expect(revenueClean.className).not.toContain('bg-amber-100')
-  expect(costWarned.className).toContain('bg-amber-100')
-  expect(costClean.className).not.toContain('bg-amber-100')
+  expect(revenueWarned.className).toContain('bg-warn-soft')
+  expect(revenueClean.className).not.toContain('bg-warn-soft')
+  expect(costWarned.className).toContain('bg-warn-soft')
+  expect(costClean.className).not.toContain('bg-warn-soft')
 })
 
 it('keeps every footer value row 3N cells wide, matching the column count', () => {
@@ -332,6 +332,19 @@ it('renders a Margin block and keeps every row 1 + 3N cells wide', async () => {
   expect(detail.querySelectorAll('td')).toHaveLength(7)
 })
 
+it('colours a zero margin neutral, not green', () => {
+  const model = baseModel()
+  // g1 on 2026-05-01 carries no warning, so the neutral colour should show cleanly.
+  model.rows[0].margin = [0, null]
+
+  render(<PnlComparisonTable model={model} firstColumnHeader={firstColumnHeader} cellHint={cellHint} />)
+
+  const cell = screen.getByTestId('margin-2026-05-01-g1')
+  expect(cell.className).toContain('text-foreground')
+  expect(cell.className).not.toContain('text-good')
+  expect(cell.className).not.toContain('text-bad')
+})
+
 it('colours a negative margin red and lets a warning tint win over it', () => {
   const model = baseModel()
   // g1 on 2026-05-01 carries no warning (issues: [], incompleteTos: 0), so red should show cleanly.
@@ -342,11 +355,11 @@ it('colours a negative margin red and lets a warning tint win over it', () => {
 
   render(<PnlComparisonTable model={model} firstColumnHeader={firstColumnHeader} cellHint={cellHint} />)
 
-  expect(screen.getByTestId('margin-2026-05-01-g1').className).toContain('text-red')
+  expect(screen.getByTestId('margin-2026-05-01-g1').className).toContain('text-bad')
 
   const warnedNegativeCell = screen.getByTestId('margin-2026-05-02-g1').closest('td')!
-  expect(warnedNegativeCell.className).toContain('bg-amber-100')
-  expect(warnedNegativeCell.className).not.toContain('text-red')
+  expect(warnedNegativeCell.className).toContain('bg-warn-soft')
+  expect(warnedNegativeCell.className).not.toContain('text-bad')
 })
 
 it('labels the first column from a prop and hands the row key to the click handler', async () => {

@@ -74,7 +74,7 @@ export function PnlDailyMatrixView({
             plain <div>, unlike the Route Group field below whose <select> already carries its own
             aria-label and so is immune to the same trap. */}
         <div className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">Rute</span>
+          <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground">Rute</span>
           <MultiRouteFilter
             className="w-[260px]"
             routes={routeIndex.labels}
@@ -84,7 +84,7 @@ export function PnlDailyMatrixView({
         </div>
 
         <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium">Route Group</span>
+          <span className="text-[11px] font-bold uppercase tracking-[0.06em] text-muted-foreground">Route Group</span>
           <RouteGroupSelect value={groupId} onChange={onGroupChange} />
         </label>
       </div>
