@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { HelpCircle } from 'lucide-react'
 
 function Sheet({ name }: { name: string }) {
   return (
@@ -36,17 +36,19 @@ export function PnlFormulaPanel() {
   const [open, setOpen] = useState(false)
 
   return (
-    <div className="rounded-lg border bg-muted/30 text-sm">
+    <>
       <button
-        className="flex w-full items-center gap-2 px-4 py-3 text-left text-muted-foreground hover:text-foreground"
+        type="button"
+        className="inline-flex items-center gap-1 text-[12.5px] font-medium text-brand-2 hover:text-brand-ink hover:underline"
         onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
       >
-        {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        <span className="font-medium">How is estimated P&amp;L calculated?</span>
+        <HelpCircle className="h-3.5 w-3.5" aria-hidden="true" />
+        How is estimated P&amp;L calculated?
       </button>
 
       {open && (
-        <div className="border-t px-4 pb-5 pt-4 space-y-5 text-xs">
+        <div className="basis-full rounded-lg border bg-muted/30 px-4 pb-5 pt-4 text-xs space-y-5">
 
           {/* ── IMPORTANT CAVEAT ── */}
           <div className="rounded border border-warn/30 bg-warn-soft px-3 py-2 text-warn-ink">
@@ -349,6 +351,6 @@ export function PnlFormulaPanel() {
 
         </div>
       )}
-    </div>
+    </>
   )
 }

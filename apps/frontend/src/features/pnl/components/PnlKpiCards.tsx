@@ -14,8 +14,11 @@ interface PnlKpiCardsProps {
 }
 
 export function PnlKpiCards({ summary, activeKpi, onSelect }: PnlKpiCardsProps) {
+  // The shared 6-col grid defaults to a 2xl breakpoint; the mockup is 6-across already at
+  // 1440px (xl), so widen it here rather than changing the shared default (Barhal also uses
+  // cols=6 at the narrower default).
   return (
-    <KpiGrid cols={6}>
+    <KpiGrid cols={6} className="xl:grid-cols-6">
       <KpiCard
         label="Est. Revenue"
         value={fmt.format(summary.totalRevenue)}
