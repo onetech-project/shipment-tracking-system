@@ -118,7 +118,7 @@ export function Sidebar({ onNavClick, collapsed = false, onToggleCollapse }: Sid
       data-sidebar
       className="flex h-full w-full flex-col overflow-hidden border-r border-white/[.06] bg-sidebar px-3.5 py-[22px] text-sidebar-foreground"
     >
-      <div className={cn('mb-4 flex items-center gap-2.5', collapsed ? 'flex-col' : 'px-1.5')}>
+      <div className={cn('relative mb-4 flex items-center gap-2.5', collapsed ? 'flex-col' : 'px-1.5')}>
         <BrandLogo size={collapsed ? 'sm' : 'md'} />
         {!collapsed && (
           <div className="min-w-0 flex-1 leading-tight">
@@ -135,9 +135,13 @@ export function Sidebar({ onNavClick, collapsed = false, onToggleCollapse }: Sid
             type="button"
             onClick={onToggleCollapse}
             title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className="shrink-0 rounded-md p-1 text-sidebar-muted transition-colors hover:bg-white/10 hover:text-white"
+            className={cn(
+              'shrink-0 rounded-md p-1 text-sidebar-muted transition-colors hover:bg-white/10 hover:text-white',
+              // Open: pinned over the brand row's top-right corner so "Shipment Tracker" keeps one line at 248px.
+              !collapsed && 'absolute -right-1.5 -top-2.5',
+            )}
           >
-            <Menu size={16} />
+            <Menu size={14} />
           </button>
         )}
       </div>

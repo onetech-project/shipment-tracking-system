@@ -50,8 +50,8 @@ export function KpiCard({ label, value, hint, delta, icon, tone = 'brand', iconC
         <span className="text-[10.5px] font-bold uppercase tracking-[0.08em] text-muted-foreground">{label}</span>
         {icon && <IconSquare icon={icon} tone={tone} size="md" className={iconClassName} />}
       </div>
-      <div className={cn('tabular my-0.5 break-words font-display text-xl font-bold leading-tight tracking-[-0.02em] 2xl:text-lg', muted ? 'text-faint' : 'text-foreground')}>
-        {value}
+      <div className={cn('tabular my-0.5 font-display text-xl font-bold leading-tight tracking-[-0.02em] [word-break:keep-all] 2xl:text-lg', muted ? 'text-faint' : 'text-foreground')}>
+        {typeof value === 'string' ? value.replace(/\u00a0/g, ' ') : value}
       </div>
       {(hint || delta) && (
         <div className="text-[11.5px] font-medium text-faint">

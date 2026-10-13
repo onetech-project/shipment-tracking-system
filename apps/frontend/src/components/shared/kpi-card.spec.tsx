@@ -15,9 +15,16 @@ it('is a button when clickable', () => {
   expect(screen.getByRole('button', { name: /breach/i })).toBeInTheDocument();
 });
 
-it('wraps a long value instead of overflowing, and shrinks at the 6-col breakpoint', () => {
+it('wraps a long value between words, never inside a number, and shrinks at the 6-col breakpoint', () => {
   render(<KpiCard label="Revenue" value="Rp 123.456.789.012" />);
-  expect(screen.getByText('Rp 123.456.789.012')).toHaveClass('break-words', '2xl:text-lg');
+  const v = screen.getByText('Rp 123.456.789.012');
+  expect(v).toHaveClass('[word-break:keep-all]', '2xl:text-lg');
+  expect(v).not.toHaveClass('break-words');
+});
+
+it('lets a currency value break after "Rp" (Intl puts a no-break space there)', () => {
+  render(<KpiCard label="Revenue" value={'Rp\u00a07.834.343.942'} />);
+  expect(screen.getByText('Rp 7.834.343.942').textContent).toBe('Rp 7.834.343.942');
 });
 
 it('only sets aria-pressed when the card is clickable', () => {

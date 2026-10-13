@@ -38,7 +38,7 @@ export default function SlaLayout({ children }: { children: React.ReactNode }) {
       />
       {/* Route-based Air/Sea switch — styled like the mockup's mode-tabs, kept as <Link>s
           (not ModeTabs) since it navigates between pages rather than toggling local state. */}
-      <nav className="inline-flex flex-wrap gap-0.5 rounded-md bg-surface-2 p-1" aria-label="SLA mode">
+      <nav className="inline-flex w-fit flex-wrap gap-0.5 rounded-md bg-surface-2 p-1" aria-label="SLA mode">
         {TABS.map(({ href, label }) => {
           const isActive = pathname === href || pathname?.startsWith(href + '/')
           return (
