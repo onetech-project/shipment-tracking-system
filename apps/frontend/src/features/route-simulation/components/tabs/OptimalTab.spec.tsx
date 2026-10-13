@@ -62,3 +62,22 @@ it('scales the totals to the horizon, 15 days per period', () => {
   const net = evaluatePlan(src, two, optimizePlan(src, two)).totals.net
   expect(screen.getByText('Net margin / 2 periode').nextSibling).toHaveTextContent(fmtIdr(net * 30))
 })
+
+it('compares the best ESP lane with each partner vendor on every route', () => {
+  render(<OptimalTab source={src} sim={sim} dispatch={jest.fn()} onOpenSim={jest.fn()} />)
+  expect(screen.getAllByText('Perbandingan ESP vs vendor lain').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('ESP sendiri').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('Vendor lain').length).toBeGreaterThan(0)
+})
+
+it('says when ESP has no workable lane on a route', () => {
+  // Jabo|Ambon has only SILI and PRIME lanes.
+  render(<OptimalTab source={src} sim={sim} dispatch={jest.fn()} onOpenSim={jest.fn()} />)
+  expect(screen.getAllByText('ESP belum punya lane layak di rute ini (cek centang Ikut dan cost di tab 2).').length).toBeGreaterThan(0)
+})
+
+it('shows the daily load the active lanes offer next to the route tonnage', () => {
+  render(<OptimalTab source={src} sim={sim} dispatch={jest.fn()} onOpenSim={jest.fn()} />)
+  expect(screen.getAllByText(/Load\/hari \(\d+ vendor\) [\d.]+ kg/).length).toBe(sim.routes.length)
+  expect(screen.getAllByText(/^(cukup|kurang [\d.]+ kg|belum ada load)$/).length).toBe(sim.routes.length)
+})

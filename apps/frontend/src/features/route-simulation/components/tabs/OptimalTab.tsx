@@ -2,12 +2,47 @@
 
 import React, { useMemo, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { clampHorizon, evaluatePlan, groupNames, horizonDays, optimizePlan, periodShort, periodsForward, simStartOptions } from '../../engine'
+import {
+  EspVsPartner, LaneEconomics, clampHorizon, espVsPartner, evaluatePlan, groupNames, horizonDays, optimizePlan, periodShort, periodsForward, simStartOptions,
+} from '../../engine'
 import { fmtIdr, fmtNum, fmtPct } from '../../utils/format'
 import { ReasonTag, TotalsBar } from '../Reason'
 import { EspTag, Hint, NumInput, RouteChip, Signed, Tag, TabProps, TD, TDN, TH, THN, ROW_BAND, ROW_SUBTOTAL } from '../ui'
 
 const LABEL = 'mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground'
+const SUB = 'text-xs text-muted-foreground'
+const CMP_HEAD = 'bg-indigo-50 dark:bg-indigo-950/40'
+const CMP_ROW = 'bg-muted/40'
+
+function Verdict({ c }: { c: EspVsPartner }) {
+  // One-sided cases: the prototype read bestPartner.account.name here and crashed (ESP only) or
+  // printed "unggul Rp 0/kg" (partner only). Name the side that has no lane instead.
+  if (c.winner === 'esp' && !c.bestPartner) return <Tag tone="best">Pakai ESP sendiri: vendor lain belum punya lane layak</Tag>
+  if (c.winner === 'partner' && !c.esp) return <Tag tone="warn">Pakai {c.bestPartner!.account.name}: ESP belum punya lane layak</Tag>
+  if (c.winner === 'esp') return <Tag tone="best">Pakai ESP sendiri unggul {fmtIdr(c.gap)}/kg vs {c.bestPartner!.account.name}</Tag>
+  if (c.winner === 'partner') return <Tag tone="warn">Pakai {c.bestPartner!.account.name} unggul {fmtIdr(-c.gap)}/kg vs ESP</Tag>
+  if (c.winner === 'tie') return <Tag>ESP dan vendor lain seimbang</Tag>
+  return <span className={SUB}>Belum cukup data untuk membandingkan</span>
+}
+
+function CompareRow({ x }: { x: LaneEconomics }) {
+  return (
+    <tr className={CMP_ROW}>
+      <td className={`${TD} pl-7`}>{x.account.isEsp ? <Tag tone="esp">ESP sendiri</Tag> : <Tag>Vendor lain</Tag>} {x.account.name}<EspTag account={x.account} /></td>
+      <td className={TD}>{x.lane.airline}</td>
+      <td className={TDN}>{fmtIdr(x.m.revPerKg)}<div className={SUB}>rate SPX</div></td>
+      <td className={TDN}>{fmtIdr(x.m.costPerKg)}<div className={SUB}>cost/kg</div></td>
+      <td className={TDN}>{x.account.isEsp ? <>{fmtIdr(x.m.cashbackPerKg)}<div className={SUB}>cashback 2%</div></> : <span className="text-muted-foreground">-</span>}</td>
+      <td className={TDN}><Signed value={x.m.netPerKg} /><div className={SUB}>margin/kg</div></td>
+    </tr>
+  )
+}
+
+function LoadTag({ total, demand }: { total: number; demand: number }) {
+  if (total < 1) return <Tag tone="warn">belum ada load</Tag>
+  if (demand - total > 0) return <Tag tone="warn">kurang {fmtNum(demand - total)} kg</Tag>
+  return <Tag tone="best">cukup</Tag>
+}
 
 // Start and horizon are drafted here and reach the scenario only on Run, as in the prototype. The
 // plan is per day, so they scale the totals below and label the estimate.
@@ -72,6 +107,7 @@ export function OptimalTab({ source, sim, dispatch, onOpenSim }: TabProps & { on
           <h2 className="text-base font-semibold">Distribusi Optimal</h2>
           <Hint>Tiap rute: sebaiknya dijalankan vendor apa, naik airlines apa, dan berapa kg per hari, kalau modal dipakai terus-menerus. Faktor: tab 1 (modal, COF, siklus bayar), tab 2 (vendor dan airlines, cost, load), tab 3 (rate SPX), tab 5 (tonase rute).</Hint>
           <Hint>Cara hitung: dicari pembagian dengan margin harian terbesar (program linear, hasilnya eksak) dalam tiga batas: tonase rute per hari, load tiap airlines per hari, dan modal per hari = modal dibagi siklus bayar. Satu rute hanya dipecah bila lane terbaiknya penuh atau modal vendornya tidak cukup.</Hint>
+          <Hint>Di tiap rute juga ditampilkan <b>Perbandingan ESP vs vendor lain</b>: lane terbaik milik ESP sendiri (termasuk cashback 2%) dibandingkan dengan lane terbaik tiap vendor lain, supaya kelihatan di rute mana ESP lebih untung pakai modal sendiri atau menitip ke vendor lain.</Hint>
         </div>
         <Button size="sm" onClick={onOpenSim}>Buka Coba-coba</Button>
       </div>
@@ -93,23 +129,41 @@ export function OptimalTab({ source, sim, dispatch, onOpenSim }: TabProps & { on
         <table className="w-full border-collapse text-[13px]">
           <thead><tr><th className={TH}>Vendor</th><th className={TH}>Airlines</th><th className={THN}>Kg / hari</th><th className={THN}>Cost / hari</th><th className={THN}>Margin / hari</th><th className={THN}>Margin / {span}</th></tr></thead>
           <tbody>
-            {res.perRoute.length ? res.perRoute.map((pr) => (
-              <React.Fragment key={pr.route.key}>
-                <tr className={ROW_BAND}>
-                  <td colSpan={6} className={TD}>
-                    <RouteChip route={pr.route} /> <span className="text-xs font-normal text-muted-foreground">{groupNames(source, pr.route.key)} · Tonase {fmtNum(pr.demand)} kg/hari · Terlayani {fmtNum(pr.served)} kg · Margin rute {fmtIdr(pr.net)}/hari</span> <ReasonTag pr={pr} />
-                  </td>
-                </tr>
-                {pr.rows.length ? pr.rows.map((r) => (
-                  <tr key={r.lane.id}>
-                    <td className={`${TD} pl-7`}>{r.account.name}<EspTag account={r.account} /></td><td className={TD}>{r.lane.airline}</td>
-                    <td className={TDN}>{fmtNum(r.kg)}</td><td className={TDN}>{fmtIdr(r.costDay)}</td><td className={TDN}><Signed value={r.netDay} /></td><td className={TDN}><Signed value={r.netDay * D} /></td>
+            {res.perRoute.length ? res.perRoute.map((pr) => {
+              const active = sim.lanes.filter((l) => l.route === pr.route.key && l.enabled)
+              const totalLoad = active.reduce((s, l) => s + (Number(l.loadKg) || 0), 0)
+              const vendorCount = new Set(active.map((l) => l.vendor)).size
+              const cmp = espVsPartner(sim, pr.route.key)
+              return (
+                <React.Fragment key={pr.route.key}>
+                  <tr className={ROW_BAND}>
+                    <td colSpan={6} className={TD}>
+                      <RouteChip route={pr.route} /> <span className="text-xs font-normal text-muted-foreground">{groupNames(source, pr.route.key)} · Tonase {fmtNum(pr.demand)} kg/hari · Load/hari ({vendorCount} vendor) {fmtNum(totalLoad)} kg</span> <LoadTag total={totalLoad} demand={pr.demand} /> <span className="text-xs font-normal text-muted-foreground">· Terlayani {fmtNum(pr.served)} kg · Margin rute {fmtIdr(pr.net)}/hari</span> <ReasonTag pr={pr} />
+                    </td>
                   </tr>
-                )) : (
-                  <tr><td colSpan={6} className={`${TD} pl-7`}><Hint>{pr.reason === 'none' ? 'Belum ada airlines yang layak di rute ini. Cek centang Ikut dan cost di tab 2, serta tonase di tab 5.' : noCapital ? 'Belum ada modal untuk dialokasikan. Isi modal di tab 1.' : 'Modal vendor di rute ini lebih menguntungkan dipakai di rute lain.'}</Hint></td></tr>
-                )}
-              </React.Fragment>
-            )) : <tr><td colSpan={6} className={TD}><Hint>Belum ada rute. Tambah rute di tab 5.</Hint></td></tr>}
+                  {pr.rows.length ? pr.rows.map((r) => (
+                    <tr key={r.lane.id}>
+                      <td className={`${TD} pl-7`}>{r.account.name}<EspTag account={r.account} /></td><td className={TD}>{r.lane.airline}</td>
+                      <td className={TDN}>{fmtNum(r.kg)}</td><td className={TDN}>{fmtIdr(r.costDay)}</td><td className={TDN}><Signed value={r.netDay} /></td><td className={TDN}><Signed value={r.netDay * D} /></td>
+                    </tr>
+                  )) : (
+                    <tr><td colSpan={6} className={`${TD} pl-7`}><Hint>{pr.reason === 'none' ? 'Belum ada airlines yang layak di rute ini. Cek centang Ikut dan cost di tab 2, serta tonase di tab 5.' : noCapital ? 'Belum ada modal untuk dialokasikan. Isi modal di tab 1.' : 'Modal vendor di rute ini lebih menguntungkan dipakai di rute lain.'}</Hint></td></tr>
+                  )}
+                  {(cmp.esp || cmp.partners.length > 0) && (
+                    <>
+                      <tr className={CMP_HEAD}>
+                        <td colSpan={6} className={`${TD} pl-7`}>
+                          <b>Perbandingan ESP vs vendor lain</b> · <Verdict c={cmp} />
+                          <div className={SUB}>Lane terbaik tiap vendor, dasar: margin/kg = Rate SPX - Total Cost (+ cashback 2% jika ESP). Tidak memperhitungkan batas modal/load — murni ekonomi lane.</div>
+                        </td>
+                      </tr>
+                      {cmp.esp ? <CompareRow x={cmp.esp} /> : <tr className={CMP_ROW}><td colSpan={6} className={`${TD} pl-7`}><Hint>ESP belum punya lane layak di rute ini (cek centang Ikut dan cost di tab 2).</Hint></td></tr>}
+                      {cmp.partners.length ? cmp.partners.map((x) => <CompareRow key={x.lane.id} x={x} />) : <tr className={CMP_ROW}><td colSpan={6} className={`${TD} pl-7`}><Hint>Vendor lain belum punya lane layak di rute ini.</Hint></td></tr>}
+                    </>
+                  )}
+                </React.Fragment>
+              )
+            }) : <tr><td colSpan={6} className={TD}><Hint>Belum ada rute. Tambah rute di tab 5.</Hint></td></tr>}
           </tbody>
         </table>
       </div>
