@@ -94,7 +94,16 @@ export function RouteSimulationView({ source }: { source: SimulationSource }) {
         {tab === 'compare' && <CompareTab {...props} />}
         {tab === 'actual' && <ActualTab {...props} />}
         {tab === 'distribute' && <OptimalTab {...props} onOpenSim={() => setTab('sim')} />}
-        {tab === 'sim' && <SimTab {...props} />}
+        {tab === 'sim' && (
+          <SimTab
+            {...props}
+            onRun={() => {
+              setTab('distribute')
+              setFlash(`Estimasi dihitung ulang dengan vendor saat ini (${sim.horizonPeriods} periode mulai ${periodShort(sim.simStart)})`)
+              window.scrollTo(0, 0)
+            }}
+          />
+        )}
       </section>
       {flash && (
         <div role="status" aria-live="polite" className="fixed bottom-4 right-4 z-40 max-w-sm rounded-md bg-foreground px-3.5 py-2.5 text-sm text-background">

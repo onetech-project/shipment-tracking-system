@@ -15,11 +15,21 @@ it('starts clean and marks dirty on any edit', () => {
   expect(s1.sim.routes.find((r) => r.key === 'Jabo|Aceh')!.rateSpx).toBe(1)
 })
 
-it('refuses a history range whose start is after its end', () => {
-  const s = simReducer(base(), { type: 'setPeriod', field: 'histStart', value: '2026-08-2H' })
-  const bad = simReducer(s, { type: 'setPeriod', field: 'histEnd', value: '2026-06-1H' })
-  expect(bad.sim.histEnd).toBe(s.sim.histEnd)
-  expect(bad.flash).toMatch(/Histori mulai/)
+it('adds an account under any trimmed name, flags ESP case-insensitively, and confirms', () => {
+  let s = simReducer(base(), { type: 'acctDel', id: 'ESP' })
+  s = simReducer(s, { type: 'acctAdd', vendor: ' esp ', trancheId: 't1' })
+  expect(s.sim.accounts.at(-1)).toMatchObject({ id: 'esp', name: 'esp', isEsp: true })
+  expect(s.flash).toBe('Akun esp ditambahkan. Isi modal, COF, dan siklus bayar sesuai kebutuhan.')
+  s = simReducer(s, { type: 'acctAdd', vendor: 'Garuda Cargo', trancheId: 't2' })
+  expect(s.sim.accounts.at(-1)).toMatchObject({ id: 'Garuda Cargo', isEsp: false })
+})
+
+it('refuses an empty or duplicate account name', () => {
+  const empty = simReducer(base(), { type: 'acctAdd', vendor: '   ', trancheId: 't' })
+  expect(empty.flash).toBe('Nama vendor tidak boleh kosong')
+  expect(empty.sim.accounts).toHaveLength(4)
+  const dup = simReducer(base(), { type: 'acctAdd', vendor: 'SILI', trancheId: 't' })
+  expect(dup.flash).toBe('Akun SILI sudah ada')
 })
 
 it('re-totals a lane when one cost component is edited, and reset restores the data', () => {

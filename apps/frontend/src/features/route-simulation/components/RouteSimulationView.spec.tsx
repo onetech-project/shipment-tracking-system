@@ -22,3 +22,11 @@ it('shows the history range and the simulation range in the header', () => {
   expect(screen.getByText(/Histori Jun 2026 H1 s.d. Agu 2026 H2/)).toBeInTheDocument()
   expect(screen.getByText(/Simulasi mulai Sep 2026 H1, horizon 12 periode/)).toBeInTheDocument()
 })
+
+it('runs the estimate from Coba-coba by jumping to tab 8', () => {
+  render(<RouteSimulationView source={fixtureSource()} />)
+  fireEvent.click(screen.getByRole('button', { name: '9 · Coba-coba' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Run estimasi →' }))
+  expect(screen.getByRole('button', { name: '8 · Distribusi Optimal' })).toHaveAttribute('aria-current', 'page')
+  expect(screen.getByRole('status')).toHaveTextContent('Estimasi dihitung ulang dengan vendor saat ini (12 periode mulai Sep 2026 H1)')
+})

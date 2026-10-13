@@ -3,7 +3,6 @@ import {
   clampHorizon,
   createState,
   emptyTranche,
-  histPeriodsOf,
   laneOf,
   optimizePlan,
   periodShort,
@@ -29,7 +28,6 @@ export type SimAction =
   | { type: 'load'; sim: SimState }
   | { type: 'markSaved' }
   | { type: 'setSimRange'; simStart: string; horizonPeriods: number }
-  | { type: 'setPeriod'; field: 'histStart' | 'histEnd'; value: string }
   | { type: 'acctAdd'; vendor: string; trancheId: string }
   | { type: 'acctSet'; id: string; field: 'enabled' | 'isEsp'; value: boolean }
   | { type: 'acctDel'; id: string }
@@ -97,17 +95,18 @@ function apply(source: SimulationSource, sim: SimState, a: SimAction): Outcome {
       if (a.simStart === sim.simStart && horizonPeriods === sim.horizonPeriods) return { sim, flash }
       return { sim: { ...sim, simStart: a.simStart, horizonPeriods }, flash }
     }
-    case 'setPeriod': {
-      const next = { ...sim, [a.field]: a.value }
-      if (!histPeriodsOf(next).length) return 'Histori mulai harus sebelum atau sama dengan histori akhir'
-      return rebuild(source, next)
-    }
-    case 'acctAdd':
-      if (sim.accounts.some((x) => x.id === a.vendor)) return sim
+    case 'acctAdd': {
+      const name = a.vendor.trim()
+      if (!name) return 'Nama vendor tidak boleh kosong'
+      if (sim.accounts.some((x) => x.id === name)) return `Akun ${name} sudah ada`
       return {
-        ...sim,
-        accounts: [...sim.accounts, { id: a.vendor, name: a.vendor, isEsp: a.vendor === 'ESP', enabled: true, tranches: [emptyTranche(a.trancheId, 'Modal 1')] }],
+        sim: {
+          ...sim,
+          accounts: [...sim.accounts, { id: name, name, isEsp: name.toUpperCase() === 'ESP', enabled: true, tranches: [emptyTranche(a.trancheId, 'Modal 1')] }],
+        },
+        flash: `Akun ${name} ditambahkan. Isi modal, COF, dan siklus bayar sesuai kebutuhan.`,
       }
+    }
     case 'acctSet':
       return { ...sim, accounts: sim.accounts.map((x) => (x.id === a.id ? { ...x, [a.field]: a.value } : x)) }
     case 'acctDel':

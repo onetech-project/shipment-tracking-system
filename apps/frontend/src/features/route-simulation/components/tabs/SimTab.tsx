@@ -8,6 +8,7 @@ import {
 } from '../../engine'
 import { Account, Lane, SimState } from '../../types'
 import { fmtIdr, fmtNum } from '../../utils/format'
+import { AddAccountForm } from '../AddAccountForm'
 import { ReasonTag } from '../Reason'
 import { EspTag, Hint, Kpi, NumInput, RouteChip, RouteFilter, RouteFilterBar, Signed, Tag, TabProps, TD, TDN, TH, THN, visibleRoutes } from '../ui'
 import { SlotEditor } from './RoutesTab'
@@ -38,7 +39,7 @@ function MoneyStatus({ x, days }: { x: TrancheUse; days: number | null }) {
   return <span className="text-emerald-700 dark:text-emerald-400">Aman, berputar tiap {x.refillDay} hari</span>
 }
 
-export function SimTab({ source, sim, dispatch }: TabProps) {
+export function SimTab({ source, sim, dispatch, onRun }: TabProps & { onRun: () => void }) {
   const [filter, setFilter] = useState<RouteFilter>({ group: 'all', q: '' })
   const [open, setOpen] = useState<Set<string>>(new Set())
   const opts = simOpts(sim)
@@ -167,6 +168,16 @@ export function SimTab({ source, sim, dispatch }: TabProps) {
         <Hint>Satu menu untuk mencoba. Di atas: hal yang bukan per rute, yaitu duit sisa tiap modal, siklus bayar, COF, dan jangka hari. Di bawah: tiap rute dengan rate, tonase, slot, serta vendor dan airlines-nya. Rate, tonase, load, siklus bayar, dan COF yang diubah di sini adalah data yang sama dengan tab 1, 2, 3, dan 5.</Hint>
       </div>
 
+      <div className="rounded-md border bg-card p-4">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h3 className="mb-1 text-sm font-semibold">Tambah vendor</h3>
+            <Hint>Tambah akun vendor langsung dari sini — vendor akan langsung muncul di tab 1 dan ikut dihitung di simulasi. Isi modal dan COF-nya setelah ditambahkan.</Hint>
+          </div>
+          <AddAccountForm source={source} sim={sim} dispatch={dispatch} />
+        </div>
+      </div>
+
       <div className="rounded-md border bg-card">
         <div className="flex flex-wrap items-end gap-x-6 gap-y-3 border-b p-4">
           <label className="block">
@@ -210,6 +221,11 @@ export function SimTab({ source, sim, dispatch }: TabProps) {
           </table>
         </div>
         <Hint className="px-4 py-2">Duit sisa hanya dipakai di tab ini dan tidak mengubah modal di tab 1. Boleh dipakai per hari = duit sisa dibagi jangka hari, atau dibagi siklus bayar bila jangkanya lebih panjang dari siklus. Siklus bayar dan COF di sini sama dengan tab 1.</Hint>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-card p-4">
+        <Hint>Setelah mengubah field vendor di atas (duit sisa, siklus bayar, COF) atau menambah vendor baru, klik <b>Run</b> untuk melihat hasil estimasi di tab 8.</Hint>
+        <Button size="sm" onClick={onRun}>Run estimasi →</Button>
       </div>
 
       <div className="rounded-md border bg-card">
