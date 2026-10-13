@@ -95,7 +95,7 @@ export function AnalyticsTrend({ series, campaigns, scopeLabel }: AnalyticsTrend
                 tick={{ fontSize: 10.5, fill: CHART_STATUS.axis }}
                 domain={['auto', 'auto']}
               />
-              <Tooltip content={<TrendTooltip />} />
+              <Tooltip content={<TrendTooltip />} cursor={{ fill: '#e2ebe2', fillOpacity: 0.5 }} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               {Array.from(marks).map((date) => (
                 <ReferenceLine

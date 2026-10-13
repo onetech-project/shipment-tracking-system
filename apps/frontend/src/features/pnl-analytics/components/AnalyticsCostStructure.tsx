@@ -74,7 +74,7 @@ export function AnalyticsCostStructure({ series }: AnalyticsCostStructureProps) 
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={CHART_STATUS.grid} />
                 <XAxis dataKey="label" tick={{ fontSize: 10.5, fill: CHART_STATUS.axis }} />
                 <YAxis tick={{ fontSize: 10.5, fill: CHART_STATUS.axis }} />
-                <Tooltip formatter={(v: number) => fmt.format(v)} />
+                <Tooltip formatter={(v: number) => fmt.format(v)} cursor={{ fill: '#e2ebe2', fillOpacity: 0.5 }} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 {/* dataKey is the SeriesDay FIELD (costSmu…); the colour map is keyed by the
                     component key (smu…). Swapping the two renders four empty bars. */}

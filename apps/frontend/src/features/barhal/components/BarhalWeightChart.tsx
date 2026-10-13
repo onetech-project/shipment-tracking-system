@@ -44,7 +44,7 @@ export function BarhalWeightChart({ data }: BarhalWeightChartProps) {
             <CartesianGrid strokeDasharray="3 3" stroke={CHART_STATUS.grid} />
             <XAxis dataKey="date" tick={{ fontSize: 11 }} />
             <YAxis tick={{ fontSize: 11 }} width={60} />
-            <Tooltip content={<CustomTooltip />} />
+            <Tooltip content={<CustomTooltip />} cursor={{ fill: '#e2ebe2', fillOpacity: 0.5 }} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             <Bar dataKey="weightBefore" name="Weight Before" fill={CHART_STATUS.info} radius={[4, 4, 0, 0]} />
             <Bar dataKey="weightAfter" name="Weight After" fill={CHART_STATUS.good} radius={[4, 4, 0, 0]} />

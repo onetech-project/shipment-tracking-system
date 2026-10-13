@@ -113,7 +113,7 @@ export function PnlDailyMarginChart({ filter }: PnlDailyMarginChartProps) {
                 tick={{ fontSize: 11 }}
                 width={50}
               />
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={<CustomTooltip />} cursor={{ fill: '#e2ebe2', fillOpacity: 0.5 }} />
               <Bar dataKey="marginPct" name="Margin %" radius={[4, 4, 0, 0]}>
                 {data.map((d) => (
                   <Cell key={d.date} fill={colorForMargin(d.marginPct, d.hasIncompleteCost)} />
