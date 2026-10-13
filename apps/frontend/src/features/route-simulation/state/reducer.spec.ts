@@ -22,15 +22,16 @@ it('refuses a history range whose start is after its end', () => {
   expect(bad.error).toMatch(/Histori mulai/)
 })
 
-it('rebuilds lanes when the cost basis or a lane edit changes', () => {
+it('re-totals a lane when one cost component is edited, and reset restores the data', () => {
   const s = base()
-  const id = s.sim.lanes[0].id
-  const edited = simReducer(s, { type: 'laneSet', id, field: 'costPerKg', value: 1 })
-  expect(edited.sim.lanes.find((l) => l.id === id)!.costPerKg).toBe(1)
-  const reset = simReducer(edited, { type: 'laneReset', id })
-  expect(reset.sim.lanes.find((l) => l.id === id)!.costPerKg).toBe(s.sim.lanes[0].costPerKg)
-  const basis = simReducer(s, { type: 'setCostBasis', value: 'all' })
-  expect(basis.sim.costBasis).toBe('all')
+  const lane = s.sim.lanes[0]
+  const edited = simReducer(s, { type: 'laneSet', id: lane.id, field: 'costRa', value: lane.costRa + 500 })
+  const after = edited.sim.lanes.find((l) => l.id === lane.id)!
+  expect(after.costRa).toBe(lane.costRa + 500)
+  expect(after.costPerKg).toBe(lane.costPerKg + 500)
+  const reset = simReducer(edited, { type: 'laneReset', id: lane.id })
+  expect(reset.sim.laneEdits[lane.id]).toBeUndefined()
+  expect(reset.sim.lanes.find((l) => l.id === lane.id)!.costPerKg).toBe(lane.costPerKg)
 })
 
 it('treats typing the data value back as clearing the edit', () => {

@@ -132,7 +132,10 @@ export function SimTab({ source, sim, dispatch }: TabProps) {
                       <tr key={l.id}>
                         <td className={`${TD} whitespace-nowrap`}>{first && <>{x.account?.name ?? l.vendor}<EspTag account={x.account} /></>}</td>
                         <td className={`${TD} whitespace-nowrap`}>{l.airline}</td>
-                        <td className={TDN}><NumInput ariaLabel={`Cost per kg ${l.vendor} ${l.airline}`} className="w-24" step={100} edited={l.edited.costPerKg} value={l.costPerKg} onCommit={(v) => dispatch({ type: 'laneSet', id: l.id, field: 'costPerKg', value: v })} /></td>
+                        <td className={TDN} title={`Rincian: SG Out ${fmtIdr(l.costSgOut)} + SG In ${fmtIdr(l.costSgIn)} + RA ${fmtIdr(l.costRa)} + SMU ${fmtIdr(l.costSmu)}`}>
+                          {fmtIdr(l.costPerKg)}{l.edited.costPerKg && <span className="text-xs text-muted-foreground"> (edited)</span>}
+                          <div className="text-xs text-muted-foreground">data {fmtIdr(l.db.costPerKg)}</div>
+                        </td>
                         <td className={TDN}><NumInput ariaLabel={`Load per hari ${l.vendor} ${l.airline}`} className="w-20" step={10} edited={l.edited.loadKg} value={l.loadKg} onCommit={(v) => dispatch({ type: 'laneSet', id: l.id, field: 'loadKg', value: v })} /></td>
                         <td className={TDN}><Signed value={x.m.netPerKg} /></td>
                         <td className={TDN}>
@@ -161,7 +164,7 @@ export function SimTab({ source, sim, dispatch }: TabProps) {
     <>
       <div>
         <h2 className="text-base font-semibold">Coba-coba</h2>
-        <Hint>Satu menu untuk mencoba. Di atas: hal yang bukan per rute, yaitu duit sisa tiap modal, siklus bayar, COF, dan jangka hari. Di bawah: tiap rute dengan rate, tonase, slot, serta vendor dan airlines-nya. Rate, tonase, cost, load, siklus bayar, dan COF yang diubah di sini adalah data yang sama dengan tab 1, 2, 3, dan 5.</Hint>
+        <Hint>Satu menu untuk mencoba. Di atas: hal yang bukan per rute, yaitu duit sisa tiap modal, siklus bayar, COF, dan jangka hari. Di bawah: tiap rute dengan rate, tonase, slot, serta vendor dan airlines-nya. Rate, tonase, load, siklus bayar, dan COF yang diubah di sini adalah data yang sama dengan tab 1, 2, 3, dan 5.</Hint>
       </div>
 
       <div className="rounded-md border bg-card">

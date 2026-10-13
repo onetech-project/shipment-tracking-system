@@ -9,7 +9,7 @@ import {
   simOpts,
   trancheOf,
 } from '../engine'
-import { CostBasis, LaneEdit, SimRoute, SimState, SimulationSource, Slot, Tranche } from '../types'
+import { CostField, LaneEdit, SimRoute, SimState, SimulationSource, Slot, Tranche } from '../types'
 
 export interface ReducerState {
   source: SimulationSource
@@ -24,14 +24,13 @@ export type SimAction =
   | { type: 'load'; sim: SimState }
   | { type: 'markSaved' }
   | { type: 'setPeriod'; field: 'histStart' | 'histEnd'; value: string }
-  | { type: 'setCostBasis'; value: CostBasis }
   | { type: 'acctAdd'; vendor: string; trancheId: string }
   | { type: 'acctSet'; id: string; field: 'enabled' | 'isEsp'; value: boolean }
   | { type: 'acctDel'; id: string }
   | { type: 'trAdd'; accountId: string; trancheId: string }
   | { type: 'trSet'; trancheId: string; field: TrancheField; value: string | number }
   | { type: 'trDel'; trancheId: string }
-  | { type: 'laneSet'; id: string; field: 'costPerKg' | 'loadKg'; value: number | null }
+  | { type: 'laneSet'; id: string; field: CostField | 'loadKg'; value: number | null }
   | { type: 'laneReset'; id: string }
   | { type: 'laneToggle'; id: string; enabled: boolean }
   | { type: 'rateSet'; key: string; value: number }
@@ -91,8 +90,6 @@ function apply(source: SimulationSource, sim: SimState, a: SimAction): SimState 
       if (!histPeriodsOf(next).length) return 'Histori mulai harus sebelum atau sama dengan histori akhir'
       return rebuild(source, next)
     }
-    case 'setCostBasis':
-      return rebuild(source, { ...sim, costBasis: a.value })
     case 'acctAdd':
       if (sim.accounts.some((x) => x.id === a.vendor)) return sim
       return {
@@ -123,7 +120,7 @@ function apply(source: SimulationSource, sim: SimState, a: SimAction): SimState 
       return setLaneEdit(source, sim, a.id, { [a.field]: v === null || v === lane.db[a.field] ? null : v })
     }
     case 'laneReset':
-      return setLaneEdit(source, sim, a.id, { costPerKg: null, loadKg: null })
+      return setLaneEdit(source, sim, a.id, { costSgOut: null, costSgIn: null, costRa: null, costSmu: null, loadKg: null })
     case 'laneToggle':
       return setLaneEdit(source, sim, a.id, { enabled: a.enabled ? null : false })
     case 'rateSet':

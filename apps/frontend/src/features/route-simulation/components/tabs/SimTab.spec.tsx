@@ -63,3 +63,10 @@ it('still reports "akun nonaktif" when the account itself is switched off', () =
   fireEvent.click(screen.getByRole('button', { name: 'Buka semua' }))
   expect(screen.getAllByText('akun nonaktif').length).toBeGreaterThan(0)
 })
+
+it('shows lane cost read-only with its component breakdown', () => {
+  render(<SimTab source={src} sim={sim} dispatch={jest.fn()} />)
+  fireEvent.click(screen.getByRole('button', { name: 'Buka semua' }))
+  expect(screen.queryAllByLabelText(/^Cost per kg /)).toHaveLength(0)
+  expect(screen.getAllByTitle(/^Rincian: SG Out Rp 0 \+ SG In Rp 0 \+ RA Rp 0 \+ SMU Rp [\d.]+$/).length).toBeGreaterThan(0)
+})

@@ -5,12 +5,11 @@ import { SimulationSource } from '../types'
 describe('createState', () => {
   const src = fixtureSource()
 
-  it('defaults the history range to the last six cycles and SMU cost', () => {
+  it('defaults the history range to the last six cycles', () => {
     const s = createState(src)
     expect(s.histStart).toBe('2026-06-1H')
     expect(s.histEnd).toBe('2026-08-2H')
     expect(histDays(s)).toBe(90)
-    expect(s.costBasis).toBe('smu')
   })
 
   it('starts with one empty account per vendor that has data, ESP flagged', () => {
@@ -35,40 +34,45 @@ describe('buildLanes', () => {
     expect(s.lanes.find((l) => l.id === laneId('SILI', 'Jabo|Aceh', 'Garuda Air CGK'))).toBeDefined()
   })
 
-  it('computes cost/kg on the chosen basis and load as the best cycle per day', () => {
+  it('prices a lane per cost component, totals them, and takes load as the best cycle per day', () => {
     const src = fixtureSource()
-    // Make SMU and all-in disagree on one lane.
     src.history.forEach((h) => {
-      if (h.vendor === 'SILI' && h.dest === 'Aceh') h.laneCostAll = h.laneCostSmu * 2
+      if (h.vendor === 'SILI' && h.dest === 'Aceh') {
+        h.laneCostSgOut = h.laneWeight * 1000
+        h.laneCostSgIn = h.laneWeight * 200
+        h.laneCostRa = h.laneWeight * 300
+      }
     })
-    const s = createState(src)
-    const smu = s.lanes.find((l) => l.id === laneId('SILI', 'Jabo|Aceh', 'Garuda Air CGK'))!
-    const all = buildLanes(src, { ...s, costBasis: 'all' }).find((l) => l.id === smu.id)!
-    expect(all.costPerKg).toBeCloseTo(smu.costPerKg * 2, -1)
+    const lane = createState(src).lanes.find((l) => l.id === laneId('SILI', 'Jabo|Aceh', 'Garuda Air CGK'))!
+    expect([lane.costSgOut, lane.costSgIn, lane.costRa]).toEqual([1000, 200, 300])
+    expect(lane.costSmu).toBeGreaterThan(0)
+    expect(lane.costPerKg).toBe(1000 + 200 + 300 + lane.costSmu)
+    expect(lane.db.costPerKg).toBe(lane.costPerKg)
     const inRange = src.history.filter((h) => h.vendor === 'SILI' && h.dest === 'Aceh' && h.airline === 'Garuda Air CGK' && h.cycle >= '2026-06')
-    expect(smu.loadKg).toBe(Math.round(Math.max(...inRange.map((h) => h.weight)) / 15))
+    expect(lane.loadKg).toBe(Math.round(Math.max(...inRange.map((h) => h.weight)) / 15))
   })
 
   it('marks a lane with no known cost so the optimizer can skip it', () => {
     const src = fixtureSource()
     src.history.forEach((h) => {
-      if (h.vendor === 'PRIME' && h.dest === 'Aceh') { h.laneWeightSmu = 0; h.laneCostSmu = 0 }
+      if (h.vendor === 'PRIME' && h.dest === 'Aceh') Object.assign(h, { laneWeight: 0, laneCostSgOut: 0, laneCostSgIn: 0, laneCostRa: 0, laneCostSmu: 0 })
     })
     const lane = createState(src).lanes.find((l) => l.id === laneId('PRIME', 'Jabo|Aceh', 'Garuda Air CGK'))!
     expect(lane.costKnown).toBe(false)
     expect(lane.costPerKg).toBe(0)
   })
 
-  it('applies user edits over the data and remembers which fields were edited', () => {
+  it('applies a component edit over the data, re-totals, and remembers which fields were edited', () => {
     const src = fixtureSource()
     const s0 = createState(src)
-    const id = s0.lanes[0].id
-    const s = { ...s0, laneEdits: { [id]: { costPerKg: 1, enabled: false as const } } }
-    const lane = buildLanes(src, s).find((l) => l.id === id)!
-    expect(lane.costPerKg).toBe(1)
+    const base = s0.lanes[0]
+    const s = { ...s0, laneEdits: { [base.id]: { costRa: 7, enabled: false as const } } }
+    const lane = buildLanes(src, s).find((l) => l.id === base.id)!
+    expect(lane.costRa).toBe(7)
+    expect(lane.costPerKg).toBe(base.costPerKg - base.costRa + 7)
     expect(lane.enabled).toBe(false)
-    expect(lane.edited).toEqual({ costPerKg: true, loadKg: false })
-    expect(lane.db.costPerKg).toBe(s0.lanes[0].costPerKg)
+    expect(lane.edited).toEqual({ costSgOut: false, costSgIn: false, costRa: true, costSmu: false, costPerKg: true, loadKg: false })
+    expect(lane.db.costRa).toBe(base.costRa)
   })
 })
 
@@ -78,7 +82,6 @@ describe('payload round trip', () => {
     const s0 = createState(src)
     const edited = {
       ...s0,
-      costBasis: 'all' as const,
       routes: [
         ...s0.routes.filter((r) => r.key !== 'Jabo|Ambon').map((r) => (r.key === 'Jabo|Aceh' ? { ...r, rateSpx: 1, overrideTon: 50 } : r)),
         { origin: 'Jabo', originLabel: 'CGK', dest: 'Manado', key: 'Jabo|Manado', rateSpx: 40000, slots: [], overrideTon: 100, custom: true },
@@ -86,7 +89,6 @@ describe('payload round trip', () => {
       sim: { days: 10, cash: { 'ESP-x': 5 }, kg: { a: 1 } },
     }
     const back = fromPayload(src, toPayloadWithSource(src, edited))
-    expect(back.costBasis).toBe('all')
     expect(back.routes.find((r) => r.key === 'Jabo|Aceh')).toMatchObject({ rateSpx: 1, overrideTon: 50 })
     expect(back.routes.find((r) => r.key === 'Jabo|Ambon')).toBeUndefined()
     expect(back.routes.find((r) => r.key === 'Jabo|Manado')).toMatchObject({ custom: true })
@@ -106,7 +108,6 @@ describe('payload round trip', () => {
     expect(s.accounts).toEqual([])
     expect(s.laneEdits).toEqual({})
     expect(s.sim).toEqual({ days: 30, cash: {}, kg: null })
-    expect(s.costBasis).toBe('smu')
     expect(s.routes).toHaveLength(src.routes.length)
     const defaults = createState(src)
     expect(s.histStart).toBe(defaults.histStart)

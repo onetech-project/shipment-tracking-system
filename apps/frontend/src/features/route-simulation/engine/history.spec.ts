@@ -7,7 +7,7 @@ import { UNBOOKED_LABEL } from './constants'
 const src = fixtureSource()
 src.history.push({
   cycle: '2026-07-1H', origin: 'Jabo', dest: 'Aceh', vendor: null, airline: null, awbCount: 2,
-  weight: 500, revenue: 1, costAll: 0, costSmu: 0, laneWeightAll: 0, laneCostAll: 0, laneWeightSmu: 0, laneCostSmu: 0,
+  weight: 500, revenue: 1, costAll: 0, laneWeight: 0, laneCostSgOut: 0, laneCostSgIn: 0, laneCostRa: 0, laneCostSmu: 0,
 })
 const s = createState(src)
 const all = new Set(['ESP', 'PELITA', 'PRIME', 'SILI', UNBOOKED_LABEL])
