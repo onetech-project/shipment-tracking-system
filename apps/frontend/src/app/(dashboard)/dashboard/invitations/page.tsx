@@ -96,7 +96,7 @@ export default function InvitationsPage() {
                   <TableCell className="tabular text-xs text-muted-foreground">{new Date(inv.expiresAt).toLocaleDateString()}</TableCell>
                   <TableCell>
                     {inv.status === 'pending' && (
-                      <Button size="sm" variant="destructive" onClick={() => cancel(inv.id)}>Cancel</Button>
+                      <Button size="sm" variant="danger-soft" onClick={() => cancel(inv.id)}>Cancel</Button>
                     )}
                   </TableCell>
                 </TableRow>

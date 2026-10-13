@@ -102,7 +102,7 @@ export default function OrganizationsSettingsPage() {
                     <div className="flex gap-1">
                       <Button size="sm" variant="outline" onClick={() => setModal({ type: 'edit', org })}>Edit</Button>
                       {org.isActive && (
-                        <Button size="sm" variant="destructive" onClick={() => setModal({ type: 'deactivate', org })}>Deactivate</Button>
+                        <Button size="sm" variant="danger-soft" onClick={() => setModal({ type: 'deactivate', org })}>Deactivate</Button>
                       )}
                     </div>
                   </TableCell>

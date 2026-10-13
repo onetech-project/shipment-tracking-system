@@ -118,7 +118,7 @@ export default function RolesSettingsPage() {
                 <TableBody>
                   {roles.map((role) => (
                     <TableRow key={role.id}>
-                      <TableCell><code className="text-xs">{role.name}</code></TableCell>
+                      <TableCell><code className="font-display text-[13px] font-bold">{role.name}</code></TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
                           {role.permissions?.slice(0, 5).map((p) => (
@@ -138,7 +138,7 @@ export default function RolesSettingsPage() {
                         <div className="flex gap-1">
                           <Button size="sm" variant="subtle" onClick={() => setModal({ type: 'edit-perms', role })}>Permissions</Button>
                           {!role.isSystem && (
-                            <Button size="sm" variant="destructive" onClick={() => handleDelete(role.id, role.name)}>Delete</Button>
+                            <Button size="sm" variant="danger-soft" onClick={() => handleDelete(role.id, role.name)}>Delete</Button>
                           )}
                         </div>
                       </TableCell>

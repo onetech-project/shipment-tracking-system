@@ -177,7 +177,7 @@ export default function UsersSettingsPage() {
                     <div className="flex flex-wrap gap-1">
                       <Button size="sm" variant="subtle" onClick={() => setModal({ type: 'edit', user: u })}>Edit</Button>
                       {u.isActive && u.id !== currentUser?.id && (
-                        <Button size="sm" variant="destructive" onClick={() => setModal({ type: 'inactivate', user: u })}>Inactivate</Button>
+                        <Button size="sm" variant="danger-soft" onClick={() => setModal({ type: 'inactivate', user: u })}>Inactivate</Button>
                       )}
                       {u.isLocked && (
                         <Button size="sm" onClick={() => setModal({ type: 'unlock', user: u })}>Unlock</Button>
