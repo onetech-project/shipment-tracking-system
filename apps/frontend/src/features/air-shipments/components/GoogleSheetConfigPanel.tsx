@@ -2,10 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import { apiClient } from '@/shared/api/client'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHead } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { TableWrap, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { FormField } from '@/components/shared/form-field'
 import { InfoTooltip } from '@/components/shared/info-tooltip'
+import { KpiCard, KpiGrid } from '@/components/shared/kpi-card'
 import { PageHeader } from '@/components/shared/page-header'
 import { Banner } from '@/components/shared/banner'
 import { EmptyState } from '@/components/shared/empty-state'
@@ -240,37 +244,102 @@ export function GoogleSheetConfigPanel() {
         {configs.length === 0 && !editMode && (
           <EmptyState icon={FileSpreadsheet} title="No Google Sheet configs found." />
         )}
-        {configs.length > 0 &&
-          !editMode &&
-          configs.map((cfg) => (
-            <div
-              key={cfg.id}
-              className="mb-2 flex items-center justify-between rounded-md border bg-surface-2 p-3"
-            >
-              <div>
-                <div className="font-semibold">{cfg.label || 'No Label'}</div>
-                <div className="text-sm text-muted-foreground">Link: {cfg.sheetLink}</div>
-                <div className="text-sm text-muted-foreground">
-                  Sync Interval: {cfg.syncInterval} seconds
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  Status: {cfg.enabled ? 'Enabled' : 'Disabled'}
-                </div>
-                {cfg.updatedAt && (
-                  <div className="text-sm text-muted-foreground">
-                    Last Updated: {moment(cfg.updatedAt).fromNow()} (
-                    {moment(cfg.updatedAt).format('DD-MMM-YYYY HH:mm:ss')})
-                  </div>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <Button onClick={() => handleEdit(cfg)}>Edit</Button>
-                <Button variant="destructive" onClick={() => setDeleteTarget(cfg)}>
-                  Delete
-                </Button>
-              </div>
-            </div>
-          ))}
+        {configs.length > 0 && !editMode && (
+          <>
+            {/* Only truthfully derivable from the configs list already fetched here — no rows
+                synced/error count is available without a sync-status endpoint this panel does
+                not call. */}
+            <KpiGrid cols={3} className="mb-4">
+              <KpiCard
+                label="total konfigurasi"
+                value={String(configs.length)}
+                hint="terdaftar"
+                icon={FileSpreadsheet}
+                tone="brand"
+              />
+              <KpiCard
+                label="sheets aktif"
+                value={String(configs.filter((c) => c.enabled).length)}
+                hint="sync enabled"
+                icon={FileSpreadsheet}
+                tone="brand"
+              />
+              <KpiCard
+                label="sheets paused"
+                value={String(configs.filter((c) => !c.enabled).length)}
+                hint="sync nonaktif"
+                icon={FileSpreadsheet}
+                tone="warn"
+              />
+            </KpiGrid>
+
+            <Card>
+              <CardHead
+                icon={FileSpreadsheet}
+                title="Connected Sheets"
+                subtitle="Daftar sheet aktif & mapping-nya"
+              />
+              <CardContent className="p-0">
+                <TableWrap className="rounded-none border-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Sheet URL</TableHead>
+                        <TableHead>Sync interval</TableHead>
+                        <TableHead>Last updated</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {configs.map((cfg) => (
+                        <TableRow key={cfg.id}>
+                          <TableCell className="font-semibold">{cfg.label || 'No Label'}</TableCell>
+                          <TableCell className="max-w-[20rem]">
+                            <a
+                              href={cfg.sheetLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="break-all text-[11px] text-brand-2 hover:underline"
+                            >
+                              {cfg.sheetLink}
+                            </a>
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            {cfg.syncInterval} seconds
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                            {cfg.updatedAt ? moment(cfg.updatedAt).fromNow() : '—'}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={cfg.enabled ? 'active' : 'pending'}>
+                              {cfg.enabled ? 'Active' : 'Paused'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button variant="subtle" size="sm" onClick={() => handleEdit(cfg)}>
+                                Edit
+                              </Button>
+                              <Button
+                                variant="danger-soft"
+                                size="sm"
+                                onClick={() => setDeleteTarget(cfg)}
+                              >
+                                Delete
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableWrap>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </div>
       <ConfirmDialog
         open={!!deleteTarget}
