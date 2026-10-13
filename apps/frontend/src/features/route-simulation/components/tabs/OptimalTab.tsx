@@ -111,7 +111,7 @@ export function OptimalTab({ source, sim, dispatch, onOpenSim }: TabProps & { on
         </div>
         <Button size="sm" onClick={onOpenSim}>Buka Coba-coba</Button>
       </div>
-      <PeriodCard source={source} sim={sim} dispatch={dispatch} />
+      <PeriodCard key={`${sim.simStart}|${sim.horizonPeriods}`} source={source} sim={sim} dispatch={dispatch} />
       {noCapital && (
         <div className="rounded-md border bg-card p-3">
           <Hint>Belum ada modal. Isi nominal modal tiap akun di tab 1 · Setup Histori & Akun untuk melihat rekomendasi.</Hint>

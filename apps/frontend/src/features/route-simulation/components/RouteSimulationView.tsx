@@ -32,21 +32,26 @@ const TAB_LABELS: Record<TabId, string> = {
 export function RouteSimulationView({ source }: { source: SimulationSource }) {
   const [state, dispatch] = useReducer(simReducer, source, (s) => initReducer(s))
   const [tab, setTab] = useState<TabId>('setup')
-  const [flash, setFlash] = useState<string | null>(null)
+  const [flash, setFlash] = useState<{ text: string; seq: number } | null>(null)
   const { sim } = state
+
+  // seq bumps on every call, even when text repeats, so the object below is always new and the
+  // timer effect (keyed on flash) always restarts — setFlash with the same string would otherwise
+  // bail out and leave a stale timer running.
+  const show = (text: string) => setFlash((f) => ({ text, seq: (f?.seq ?? 0) + 1 }))
 
   // Keyed on the whole state, not state.flash: pressing Run twice yields the same message twice,
   // and the second toast must still show. flash is cleared by every other action, so a non-null
   // flash here always belongs to the dispatch that produced this state.
   useEffect(() => {
-    if (state.flash) setFlash(state.flash)
+    if (state.flash) show(state.flash)
   }, [state])
 
   useEffect(() => {
     if (!flash) return
     const t = setTimeout(() => setFlash(null), 4500)
     return () => clearTimeout(t)
-  }, [flash])
+  }, [flash]) // flash is a fresh object every call (seq bumps), so a repeated message re-arms this
 
   useEffect(() => {
     if (!state.dirty) return
@@ -68,7 +73,7 @@ export function RouteSimulationView({ source }: { source: SimulationSource }) {
           <br />Simulasi mulai {periodShort(sim.simStart)}, horizon {sim.horizonPeriods} periode
         </p>
       </div>
-      <ScenarioBar state={state} dispatch={dispatch} onFlash={setFlash} />
+      <ScenarioBar state={state} dispatch={dispatch} onFlash={show} />
       <nav aria-label="Tab simulasi" className="sticky top-0 z-20 flex gap-1 overflow-x-auto border-b bg-background">
         {TAB_IDS.map((id) => (
           <button
@@ -99,7 +104,7 @@ export function RouteSimulationView({ source }: { source: SimulationSource }) {
             {...props}
             onRun={() => {
               setTab('distribute')
-              setFlash(`Estimasi dihitung ulang dengan vendor saat ini (${sim.horizonPeriods} periode mulai ${periodShort(sim.simStart)})`)
+              show(`Estimasi dihitung ulang dengan vendor saat ini (${sim.horizonPeriods} periode mulai ${periodShort(sim.simStart)})`)
               window.scrollTo(0, 0)
             }}
           />
@@ -107,7 +112,7 @@ export function RouteSimulationView({ source }: { source: SimulationSource }) {
       </section>
       {flash && (
         <div role="status" aria-live="polite" className="fixed bottom-4 right-4 z-40 max-w-sm rounded-md bg-foreground px-3.5 py-2.5 text-sm text-background">
-          {flash}
+          {flash.text}
         </div>
       )}
     </div>

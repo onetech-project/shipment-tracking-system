@@ -59,7 +59,7 @@ export function HistoryTab({ source, sim }: TabProps) {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold">Historical PnL</h2>
-          <Hint>Consolidate per rute: gabungan vendor yang dicentang selama {n} periode ({n * DAYS_PER_PERIOD} hari). Pilih per grup rute, per rute satu-satu, atau keduanya; tiap grup punya subtotal. Cost di tab ini selalu all-in (SMU + RA + SG). Detail per periode ada di PDF.</Hint>
+          <Hint>Consolidate per rute: gabungan vendor yang dicentang selama {n} periode ({n * DAYS_PER_PERIOD} hari). Pilih per grup rute, per rute satu-satu, atau keduanya; tiap grup punya subtotal. Detail per periode ada di PDF.</Hint>
         </div>
         <Button size="sm" onClick={pdf}>Download PDF</Button>
       </div>

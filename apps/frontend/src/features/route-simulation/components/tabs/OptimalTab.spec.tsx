@@ -91,6 +91,27 @@ it('applies a new start and horizon only when Run is pressed', () => {
   expect(dispatch).toHaveBeenCalledWith({ type: 'setSimRange', simStart: '2026-10-1H', horizonPeriods: 4 })
 })
 
+it('clears a stale draft when a new scenario is loaded', () => {
+  const dispatch = jest.fn()
+  const { rerender } = render(<OptimalTab source={src} sim={sim} dispatch={dispatch} onOpenSim={jest.fn()} />)
+  const horizon = screen.getByLabelText('Horizon simulasi (periode)')
+  fireEvent.change(horizon, { target: { value: '4' } })
+  fireEvent.blur(horizon)
+  expect(screen.getByText('belum diterapkan')).toBeInTheDocument()
+  const loaded = { ...sim, horizonPeriods: 6 }
+  rerender(<OptimalTab source={src} sim={loaded} dispatch={dispatch} onOpenSim={jest.fn()} />)
+  expect(screen.queryByText('belum diterapkan')).not.toBeInTheDocument()
+  expect(screen.getByLabelText('Horizon simulasi (periode)')).toHaveValue(6)
+})
+
+it('keeps a scenario loaded with a simStart older than today selectable', () => {
+  const older = { ...sim, simStart: '2025-01-1H' }
+  render(<OptimalTab source={src} sim={older} dispatch={jest.fn()} onOpenSim={jest.fn()} />)
+  const select = screen.getByLabelText('Simulasi mulai') as HTMLSelectElement
+  expect(select.options[0].value).toBe('2025-01-1H')
+  expect(select.value).toBe('2025-01-1H')
+})
+
 it('scales the totals to the horizon, 15 days per period', () => {
   const two = { ...sim, horizonPeriods: 2 }
   render(<OptimalTab source={src} sim={two} dispatch={jest.fn()} onOpenSim={jest.fn()} />)
