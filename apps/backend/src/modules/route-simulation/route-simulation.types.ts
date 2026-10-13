@@ -32,13 +32,13 @@ export interface SimulationHistoryRow {
   weight: number // SUM(gross_weight)
   revenue: number // net of revenue_discount
   costAll: number // COALESCE(SUM(cost_to)), reconciles with /pnl/summary
-  costSmu: number // COALESCE(SUM(cost_smu_awb * weight_share))
-  // Lane-cost inputs: only TOs whose cost is known AND booked (not the route fallback). cost/kg of
-  // a lane = laneCost / laneWeight. Kept apart from the totals above so an estimated or missing
-  // cost can never masquerade as a cheap lane.
-  laneWeightAll: number
-  laneCostAll: number
-  laneWeightSmu: number
+  // Lane-cost inputs: only TOs whose cost is known AND booked (not the route fallback). A lane's
+  // cost/kg per component = laneCostX / laneWeight. Kept apart from costAll so an estimated or
+  // missing cost can never masquerade as a cheap lane. The four components add up to cost_to.
+  laneWeight: number
+  laneCostSgOut: number
+  laneCostSgIn: number
+  laneCostRa: number
   laneCostSmu: number
 }
 

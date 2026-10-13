@@ -111,10 +111,13 @@ export class RouteSimulationSourceService {
 
   // TO grain, not AWB grain: every v_pnl_to column used here is either TO-level or prorated by
   // weight_share, so a TO-level SUM reconciles exactly with /pnl/summary (verified on dev: weight,
-  // net revenue and cost_to all match to the rupiah). The four lane_* columns are the subset whose
-  // cost is known and booked — a fallback-costed TO is priced off the most expensive SMU row of its
-  // route, which says nothing about what its vendor x airline actually costs.
+  // net revenue and cost_to all match to the rupiah). The lane_* columns are the subset whose cost
+  // is known and booked — a fallback-costed TO is priced off the most expensive SMU row of its
+  // route, which says nothing about what its vendor x airline actually costs. They are split into
+  // the four parts of cost_to (SG Outgoing, SG Incoming, RA, SMU) so the planner can edit each one;
+  // SG In is COALESCEd exactly as cost_to does, so the four add back up to cost_to.
   private async getHistory(cycleCol: string): Promise<SimulationHistoryRow[]> {
+    const lane = 'NOT is_cost_estimated AND cost_to IS NOT NULL'
     const rows = await this.dataSource.query(`
       SELECT
         ${cycleCol}                                                            AS cycle,
@@ -126,16 +129,11 @@ export class RouteSimulationSourceService {
         COALESCE(SUM(gross_weight), 0)                                         AS weight,
         COALESCE(SUM(revenue_total), 0) - COALESCE(SUM(revenue_discount), 0)   AS revenue,
         COALESCE(SUM(cost_to), 0)                                              AS cost_all,
-        COALESCE(SUM(cost_smu_awb * weight_share), 0)                          AS cost_smu,
-        COALESCE(SUM(gross_weight) FILTER (WHERE NOT is_cost_estimated AND cost_to IS NOT NULL), 0)
-                                                                               AS lane_weight_all,
-        COALESCE(SUM(cost_to) FILTER (WHERE NOT is_cost_estimated AND cost_to IS NOT NULL), 0)
-                                                                               AS lane_cost_all,
-        COALESCE(SUM(gross_weight) FILTER (WHERE NOT is_cost_estimated AND cost_smu_awb IS NOT NULL), 0)
-                                                                               AS lane_weight_smu,
-        COALESCE(SUM(cost_smu_awb * weight_share)
-                 FILTER (WHERE NOT is_cost_estimated AND cost_smu_awb IS NOT NULL), 0)
-                                                                               AS lane_cost_smu
+        COALESCE(SUM(gross_weight) FILTER (WHERE ${lane}), 0)                  AS lane_weight,
+        COALESCE(SUM(cost_sg_out_awb * weight_share) FILTER (WHERE ${lane}), 0) AS lane_cost_sg_out,
+        COALESCE(SUM(COALESCE(cost_sg_in_to, 0)) FILTER (WHERE ${lane}), 0)    AS lane_cost_sg_in,
+        COALESCE(SUM(cost_ra_awb * weight_share) FILTER (WHERE ${lane}), 0)    AS lane_cost_ra,
+        COALESCE(SUM(cost_smu_awb * weight_share) FILTER (WHERE ${lane}), 0)   AS lane_cost_smu
       FROM v_pnl_to
       WHERE ${cycleCol} IS NOT NULL
         AND origin_station IS NOT NULL
@@ -153,10 +151,10 @@ export class RouteSimulationSourceService {
       weight: toNum(r.weight),
       revenue: toNum(r.revenue),
       costAll: toNum(r.cost_all),
-      costSmu: toNum(r.cost_smu),
-      laneWeightAll: toNum(r.lane_weight_all),
-      laneCostAll: toNum(r.lane_cost_all),
-      laneWeightSmu: toNum(r.lane_weight_smu),
+      laneWeight: toNum(r.lane_weight),
+      laneCostSgOut: toNum(r.lane_cost_sg_out),
+      laneCostSgIn: toNum(r.lane_cost_sg_in),
+      laneCostRa: toNum(r.lane_cost_ra),
       laneCostSmu: toNum(r.lane_cost_smu),
     }))
   }
