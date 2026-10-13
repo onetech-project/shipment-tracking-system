@@ -83,4 +83,18 @@ describe('espVsPartner', () => {
     const c = espVsPartner({ ...s0, lanes: buildLanes(src, s0) }, ACEH)
     expect(c).toMatchObject({ esp: null, partners: [], bestPartner: null, winner: null, gap: 0 })
   })
+
+  it('leaves out a lane with no known cost, even though its cost/kg reads as free', () => {
+    const zeroed = fixtureSource()
+    zeroed.history = zeroed.history.map((h) =>
+      h.vendor === 'PRIME' && h.origin === 'Jabo' && h.dest === 'Aceh'
+        ? { ...h, laneWeight: 0, laneCostSgOut: 0, laneCostSgIn: 0, laneCostRa: 0, laneCostSmu: 0 }
+        : h,
+    )
+    const s0 = { ...createState(zeroed), accounts: PROTOTYPE_ACCOUNTS }
+    const s = { ...s0, lanes: buildLanes(zeroed, s0) }
+    const c = espVsPartner(s, ACEH)
+    expect(c.partners.map((x) => x.account.id)).not.toContain('PRIME')
+    expect(c.partners.map((x) => x.account.id)).toContain('SILI')
+  })
 })

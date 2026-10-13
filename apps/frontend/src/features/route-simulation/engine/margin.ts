@@ -110,12 +110,16 @@ export interface EspVsPartner {
 
 // Pure lane economics on one route: ESP's own best lane (cashback included) against each partner
 // vendor's best lane. Capital and load are ignored on purpose — the plan above it in tab 8 answers
-// "who runs it", this answers "whose lane earns more per kg". Within Rp 0,5/kg is a tie.
+// "who runs it", this answers "whose lane earns more per kg". Within Rp 0,5/kg is a tie. Lanes
+// without a known cost are left out, as in the optimizer (see planCandidates in budget.ts) — a
+// lane with no costed history would otherwise read as free and win by default.
 export function espVsPartner(s: Pick<SimState, 'lanes' | 'routes' | 'accounts'>, routeKey: string): EspVsPartner {
   const lanes = s.lanes
     .filter((l) => l.route === routeKey && l.enabled)
     .map((lane) => ({ lane, account: accountOf(s, lane.vendor), m: laneMargin(s, lane) }))
-    .filter((x): x is LaneEconomics => !!x.account && x.account.enabled && x.account.tranches.length > 0 && x.m.netPerKg > 0)
+    .filter((x): x is LaneEconomics =>
+      !!x.account && x.account.enabled && x.account.tranches.length > 0 && x.m.netPerKg > 0 &&
+      x.lane.costKnown && x.m.costPerKg > 0)
   const byNet = (a: LaneEconomics, b: LaneEconomics) => b.m.netPerKg - a.m.netPerKg
   const esp = lanes.filter((x) => x.account.isEsp).sort(byNet)[0] ?? null
   const best: Record<string, LaneEconomics> = {}
