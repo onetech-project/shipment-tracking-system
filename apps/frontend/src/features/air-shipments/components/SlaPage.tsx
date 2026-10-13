@@ -6,8 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Input, fieldClass } from '@/components/ui/input'
 import { Banner } from '@/components/shared/banner'
 import { EmptyState } from '@/components/shared/empty-state'
-import { FilterBar } from '@/components/shared/filter-bar'
 import { FormField } from '@/components/shared/form-field'
+import { Card, CardContent, CardHead } from '@/components/ui/card'
 import { ModeTabs, SubTabs } from '@/components/ui/segmented'
 import {
   TableWrap,
@@ -60,7 +60,7 @@ import {
   OffloadedAwbRow,
   SortOrder,
 } from '@/features/air-shipments/types'
-import { Lock, Trash2, RotateCcw, Ban, GripVertical, Pin, PinOff, Download, ChevronDown } from 'lucide-react'
+import { Lock, Trash2, RotateCcw, Ban, GripVertical, Pin, PinOff, Download, ChevronDown, MapPin } from 'lucide-react'
 import { AxiosError } from 'axios'
 
 /** One column's persisted layout: position (array order), visibility, and frozen/pinned state. */
@@ -839,82 +839,93 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
       </section>
 
       <section ref={tableRef} className="space-y-4">
-        {/* ── Tab Bar ── */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <ModeTabs
-            aria-label="Alerts view"
-            value={activeTab}
-            onValueChange={setActiveTab}
-            items={[
-              { value: 'active', label: 'Active Alerts' },
-              {
-                value: 'excluded',
-                label: 'Excluded',
-                count: (() => {
-                  const excludedCount = isFlightTracking
-                    ? excludedOffloaded?.meta.total ?? 0
-                    : excludedMeta?.total ?? 0
-                  return excludedCount > 0 ? excludedCount : undefined
-                })(),
-              },
-            ]}
+        <Card>
+          <CardHead
+            icon={MapPin}
+            tone="alt"
+            title="Alerts by Route"
+            subtitle="Daftar alert per rute · aktif & dikecualikan"
+            actions={
+              /* Exports BOTH tables (Active Alert + Exclude) to one .xlsx, honoring current filters. */
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => void handleExport()}
+                disabled={isExporting || !!dateError}
+                title="Export Active Alert & Exclude tables to Excel"
+              >
+                <Download size={14} /> {isExporting ? 'Exporting…' : 'Export Excel'}
+              </Button>
+            }
           />
+          <CardContent className="space-y-4 pt-4">
+            {/* ── Toolbar: Active/Excluded switch + (active tab) search/alert/route filters ── */}
+            <div className="flex flex-wrap items-center gap-3 rounded-md bg-surface-2 px-3.5 py-2.5">
+              <ModeTabs
+                aria-label="Alerts view"
+                value={activeTab}
+                onValueChange={setActiveTab}
+                items={[
+                  { value: 'active', label: 'Active Alerts' },
+                  {
+                    value: 'excluded',
+                    label: 'Excluded',
+                    count: (() => {
+                      const excludedCount = isFlightTracking
+                        ? excludedOffloaded?.meta.total ?? 0
+                        : excludedMeta?.total ?? 0
+                      return excludedCount > 0 ? excludedCount : undefined
+                    })(),
+                  },
+                ]}
+              />
 
-          {/* Exports BOTH tables (Active Alert + Exclude) to one .xlsx, honoring current filters. */}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => void handleExport()}
-            disabled={isExporting || !!dateError}
-            title="Export Active Alert & Exclude tables to Excel"
-          >
-            <Download size={14} /> {isExporting ? 'Exporting…' : 'Export Excel'}
-          </Button>
-        </div>
+              {activeTab === 'active' && (
+                <>
+                  <FormField label="Search" htmlFor="sla-filter-search" className="min-w-[220px] flex-1">
+                    <Input
+                      id="sla-filter-search"
+                      value={searchInput}
+                      onChange={(e) => setSearchInput(e.target.value)}
+                      placeholder="Search shipments..."
+                      className="bg-card"
+                    />
+                  </FormField>
+
+                  <FormField label="Alert" htmlFor="sla-filter-alert" className="min-w-[160px]">
+                    <select
+                      id="sla-filter-alert"
+                      value={activeAlert ?? 'null'}
+                      onChange={(e) => handleAlertDropdownChange(e.target.value)}
+                      className={`w-full bg-card ${fieldClass}`}
+                    >
+                      {ALERT_OPTIONS.map((option) => (
+                        <option key={option.label} value={option.value ?? 'null'}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </FormField>
+
+                  {/* MultiRouteFilter has no id/aria-labelledby prop to target from a sibling
+                      FormField label, so keep the original nested-<label> association instead. */}
+                  <label className="flex min-w-[160px] flex-col gap-1.5">
+                    <span className="text-[10.5px] font-bold uppercase leading-none tracking-[0.06em] text-muted-foreground">
+                      Route
+                    </span>
+                    <MultiRouteFilter
+                      routes={routeLabels}
+                      selected={activeRoutes}
+                      onChange={handleRoutesChange}
+                    />
+                  </label>
+                </>
+              )}
+            </div>
 
         {/* ── Active Alerts Tab ── */}
         {activeTab === 'active' && (
           <>
-            <FilterBar>
-              <FormField label="Search" htmlFor="sla-filter-search" className="min-w-[260px] flex-1">
-                <Input
-                  id="sla-filter-search"
-                  value={searchInput}
-                  onChange={(e) => setSearchInput(e.target.value)}
-                  placeholder="Search shipments..."
-                />
-              </FormField>
-
-              <FormField label="Alert" htmlFor="sla-filter-alert" className="min-w-[180px]">
-                <select
-                  id="sla-filter-alert"
-                  value={activeAlert ?? 'null'}
-                  onChange={(e) => handleAlertDropdownChange(e.target.value)}
-                  className={`w-full ${fieldClass}`}
-                >
-                  {ALERT_OPTIONS.map((option) => (
-                    <option key={option.label} value={option.value ?? 'null'}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </FormField>
-
-              {/* MultiRouteFilter has no id/aria-labelledby prop to target from a sibling
-                  FormField label, so keep the original nested-<label> association instead. */}
-              <label className="flex min-w-[180px] flex-col gap-1.5">
-                <span className="text-[10.5px] font-bold uppercase leading-none tracking-[0.06em] text-muted-foreground">
-                  Route
-                </span>
-                <MultiRouteFilter
-                  routes={routeLabels}
-                  selected={activeRoutes}
-                  onChange={handleRoutesChange}
-                />
-              </label>
-            </FilterBar>
-
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="relative ml-auto flex items-center gap-2" ref={dropdownRef}>
                 {/* Column config doesn't apply to the AWB-based Flight Tracking table. */}
@@ -1244,6 +1255,8 @@ export function SlaPage({ mode }: { mode: SlaMode }) {
           </>
           )
         })()}
+          </CardContent>
+        </Card>
       </section>
 
       {/* ── Exclude Modal ── */}
