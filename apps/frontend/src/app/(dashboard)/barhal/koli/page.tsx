@@ -86,28 +86,33 @@ function BarhalKoliPageContent() {
       />
 
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2 text-sm">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-          >
-            Prev
-          </Button>
-          <span className="tabular text-muted-foreground">
-            Page {page} of {totalPages}
+        <div className="flex items-center justify-between gap-2 text-[11.5px] text-muted-foreground">
+          <span>
+            Menampilkan {data?.data.length ?? 0} dari {total} koli
           </span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={page >= totalPages}
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-          >
-            Next
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              ← Prev
+            </Button>
+            <span className="tabular">
+              Page {page} of {totalPages}
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            >
+              Next →
+            </Button>
+          </div>
         </div>
       )}
 

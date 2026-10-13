@@ -2,6 +2,7 @@
 
 import { Fragment, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { TableWrap, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { useDeleteKoli } from '../hooks/useBarhal'
@@ -60,12 +61,14 @@ function KoliRow({ koli, index, page, pageSize, isExpanded, onToggleExpanded, on
         </TableCell>
         <TableCell>{koli.origin_name}</TableCell>
         <TableCell>{koli.dest_name}</TableCell>
-        <TableCell>{koli.komoditi}</TableCell>
+        <TableCell>
+          <Badge variant={koli.komoditi === 'HP' ? 'active' : 'inactive'}>{koli.komoditi}</Badge>
+        </TableCell>
         <TableCell>
           <div className="flex items-center gap-2">
             <Button
               type="button"
-              variant={incomplete ? 'default' : 'outline'}
+              variant={incomplete ? 'default' : 'subtle'}
               size="sm"
               onClick={() => onOpenKoli(koli)}
             >

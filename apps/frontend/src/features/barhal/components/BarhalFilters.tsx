@@ -1,7 +1,6 @@
 'use client'
 
 import { Search } from 'lucide-react'
-import { FilterBar } from '@/components/shared/filter-bar'
 import { fieldClass } from '@/components/ui/input'
 
 interface BarhalFiltersProps {
@@ -28,18 +27,29 @@ export function BarhalFilters({
   stations,
 }: BarhalFiltersProps) {
   return (
-    <FilterBar>
+    // `.toolbar` in the mockup: a grey strip (not the white `.filter-row` card) holding the
+    // search field plus the date/origin/destination selects in one row.
+    <div className="mb-3.5 flex flex-wrap items-center gap-2.5 rounded-md bg-surface-2 px-3.5 py-2.5">
       <div className="relative">
-        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-faint" />
         <input
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder="Cari No. Koli, No. Penerbangan, No. TO…"
-          className={`w-72 pl-8 ${fieldClass}`}
+          className={`w-72 bg-card pl-8 ${fieldClass}`}
         />
       </div>
-      <input type="date" value={date} onChange={(e) => onDateChange(e.target.value)} className={fieldClass} />
-      <select value={origin} onChange={(e) => onOriginChange(e.target.value)} className={fieldClass}>
+      <input
+        type="date"
+        value={date}
+        onChange={(e) => onDateChange(e.target.value)}
+        className={`bg-card ${fieldClass}`}
+      />
+      <select
+        value={origin}
+        onChange={(e) => onOriginChange(e.target.value)}
+        className={`bg-card ${fieldClass}`}
+      >
         <option value="">Semua Origin</option>
         {stations.origins.map((o) => (
           <option key={o} value={o}>
@@ -47,7 +57,11 @@ export function BarhalFilters({
           </option>
         ))}
       </select>
-      <select value={dest} onChange={(e) => onDestChange(e.target.value)} className={fieldClass}>
+      <select
+        value={dest}
+        onChange={(e) => onDestChange(e.target.value)}
+        className={`bg-card ${fieldClass}`}
+      >
         <option value="">Semua Destinasi</option>
         {stations.dests.map((d) => (
           <option key={d} value={d}>
@@ -55,6 +69,6 @@ export function BarhalFilters({
           </option>
         ))}
       </select>
-    </FilterBar>
+    </div>
   )
 }
